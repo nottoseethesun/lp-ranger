@@ -43,7 +43,8 @@ describe("openapi.json is in sync with the server", () => {
      *  looking at the wrong files. */
     const { routeCount, configKeyCount, uiSettingCount } = checkOpenApiSync();
     assert.ok(routeCount > 25, `only ${routeCount} routes found`);
-    assert.ok(configKeyCount > 30, `only ${configKeyCount} config keys found`);
+    /*- Settings only: the route takes no record (src/bot-config-keys.js). */
+    assert.ok(configKeyCount > 25, `only ${configKeyCount} config keys found`);
     assert.ok(uiSettingCount > 10, `only ${uiSettingCount} settings found`);
     assert.ok(registeredRoutes().size > 25);
     assert.ok(specOperations(spec).size > 25);

@@ -12,9 +12,11 @@
 "use strict";
 
 const { attach } = require("./_debug-attach");
+const { serverPort } = require("../src/server-address");
 
 attach({
   entry: "server",
-  port: Number(process.env.PORT || 5555),
+  // Read as `npm stop` reads it: PORT in `.env`, else app-runtime.json.
+  port: serverPort(),
   label: "server",
 });

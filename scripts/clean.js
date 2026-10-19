@@ -30,9 +30,12 @@
  * this file exists to avoid.
  *
  * Usage:
- *   node scripts/clean.js         # full reset
- *   node scripts/clean.js --dev   # keep price/timing caches
- *   node scripts/clean.js --log   # the diagnostic log only
+ *   node scripts/clean.js          # full reset
+ *   node scripts/clean.js --dev    # keep price/timing caches
+ *   node scripts/clean.js --log    # the diagnostic log only
+ *   node scripts/clean.js --help   # what each does
+ *
+ * Any other argument is refused before anything is stopped or deleted.
  */
 
 "use strict";
@@ -64,6 +67,8 @@ const STATE_FILES = [
   "app-config/user-configurable/bot-config.backup.json",
   "app-config/user-configurable/api-keys.json",
   "app-data/rebalance_log.json",
+  "app-data/position-records.json",
+  "app-data/position-records.backup.json",
 ];
 
 /*- Written by `npm run build`; the prestart guard
@@ -219,12 +224,70 @@ function npm(script) {
   return spawnSync("npm", ["run", script], { cwd: ROOT, stdio: "inherit" });
 }
 
-function main() {
-  if (process.argv.includes("--log")) {
-    cleanDiagnosticLog();
-    return;
+const HELP_TEXT = `
+clean — return the install to the state a fresh clone is in
+
+USAGE
+  npm run clean              Stop the server, then delete the wallet file
+                             and WALLET_PASSWORD in .env, bot-config.json,
+                             the api keys, the position records, the
+                             rebalance log, every scan cache, the logs and
+                             the build output. Rebuild before npm start.
+  npm run dev-clean          The same, keeping the price, block-time and
+                             Gecko caches, which cost api quota to refill.
+  npm run clean:log          Empty the diagnostic log, and nothing else.
+  npm run clean -- --help    Show this text.
+
+Anything else is refused before anything is stopped or deleted.
+`.trim();
+
+/**
+ * Read the arguments. Every one is checked before anything is stopped
+ * or deleted, so a mistyped one, `--help` among them, can never start a
+ * full reset.
+ * @param {string[]} argv  The arguments after the script's name.
+ * @returns {{help: boolean, dev: boolean, log: boolean, bad: (string|null)}}
+ */
+function parseCleanArgs(argv) {
+  const out = { help: false, dev: false, log: false, bad: null };
+  for (const a of argv) {
+    if (a === "--help" || a === "-h") out.help = true;
+    else if (a === "--dev") out.dev = true;
+    else if (a === "--log") out.log = true;
+    else if (out.bad === null) out.bad = a;
   }
-  const dev = process.argv.includes("--dev");
+  return out;
+}
+
+/**
+ * Answer what stops and deletes nothing: `--help`, an argument this
+ * script does not know, and `--log`.
+ * @param {{help: boolean, log: boolean, bad: (string|null)}} args
+ * @returns {boolean}  Whether one was answered, and the run is over.
+ */
+function _answerWithoutResetting(args) {
+  if (args.help) {
+    console.log(HELP_TEXT);
+    return true;
+  }
+  if (args.bad !== null) {
+    console.error(
+      `[clean] Unrecognized argument: ${args.bad}. Nothing was stopped or deleted.\n\n${HELP_TEXT}`,
+    );
+    process.exitCode = 2;
+    return true;
+  }
+  if (args.log) {
+    cleanDiagnosticLog();
+    return true;
+  }
+  return false;
+}
+
+function main() {
+  const args = parseCleanArgs(process.argv.slice(2));
+  if (_answerWithoutResetting(args)) return;
+  const dev = args.dev;
 
   /*- Stop first, then WAIT. Shutdown stops every position and closes
    *  the listener, so it is not instant — clearing underneath a server
@@ -288,4 +351,6 @@ module.exports = {
   logFilesFrom,
   rmLogFiles,
   cleanDiagnosticLog,
+  parseCleanArgs,
+  HELP_TEXT,
 };

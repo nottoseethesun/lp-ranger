@@ -649,7 +649,7 @@ async function swapIfNeeded(signer, ethersLib, params) {
  * Label of the route a swap tries first on the active chain: the
  * aggregator's when the chain names one, the V3 router's when it does
  * not. Published on `GET /api/status` as `swapRouteLabel`, so the
- * dashboard's "Routing through:" badge is right on every chain instead
+ * dashboard's "Route:" badge is right on every chain instead
  * of assuming an aggregator exists. Whether the chain has an aggregator
  * is `aggregatorBaseUrl`'s answer, the same one the swap acts on.
  *

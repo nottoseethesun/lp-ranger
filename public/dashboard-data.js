@@ -238,7 +238,7 @@ function _updateSyncBadge(d) {
 }
 
 /**
- * Update the "Routing through: ..." badge with the active chain's first
+ * Update the "Route: ..." badge with the active chain's first
  * swap route, as the server names it (`swapRouteLabel`, from
  * chains.json). The badge is a live indicator, not a historical
  * summary: per-rebalance route detail lives in the Rebalance Events
@@ -247,7 +247,7 @@ function _updateSyncBadge(d) {
 function _updateSwapSourcesBadge(d) {
   const badge = g("swapSourcesBadge");
   if (!badge) return;
-  badge.textContent = "Routing through: " + d.swapRouteLabel;
+  badge.textContent = "Route: " + d.swapRouteLabel;
 }
 
 import {
@@ -524,5 +524,22 @@ import {
   _computeSyncStatus,
   _computeRebalanceFollow,
 } from "./dashboard-sync-decisions.js";
-import { initDataPoll } from "./dashboard-data-poll.js";
+import { initDataPoll, pollNow } from "./dashboard-data-poll.js";
+import { announceRefill } from "./dashboard-config-save.js";
 initDataPoll(updateDashboardFromStatus);
+
+/**
+ * Ask the server about the position on screen and fill the Bot Settings
+ * boxes from its answer, as when the position came on screen; a box
+ * still being edited keeps its text. Announced to
+ * dashboard-config-save.js, which empties a box whose value the server
+ * refused and has it filled this way.
+ *
+ * @returns {Promise<void>}  Settled once the answer is applied.
+ */
+function _refillFromServer() {
+  _configSynced = false;
+  resetGlobalSynced();
+  return pollNow();
+}
+announceRefill(_refillFromServer);

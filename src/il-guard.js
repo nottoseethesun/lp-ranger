@@ -307,6 +307,25 @@ function clearIlGuardWait(st) {
   _clearRetryState(st);
 }
 
+/**
+ * End the Guard's block when a rebalance succeeds: forget its wait and
+ * take down its alert. The Guard measures each NFT against the coins
+ * that NFT was minted with, and a rebalance mints a new one whose loss
+ * starts near zero, so a wait and an alert earned by the old NFT say
+ * nothing about it. The bot state that holds them moves to the new
+ * NFT's key with the rest of the position's state, so they are ended
+ * here, by the poll cycle after every rebalance that succeeds
+ * (src/bot-cycle.js). A Rebalance Now past a block is the rebalance
+ * that finds one standing, since the Guard stands aside for it.
+ *
+ * @param {object} deps  Bot deps: `_botState` holds the wait, and
+ *   `updateBotState` takes the alert down.
+ * @returns {void}
+ */
+function endIlGuardBlock(deps) {
+  _clearBlocked(deps, deps._botState);
+}
+
 /*- End a blocked episode and tell the dashboard.  Emitted on the
  *  TRANSITION only — a position with no block published emits nothing,
  *  so the common path adds no per-poll churn to `/api/status`.
@@ -380,6 +399,19 @@ function _inBackoff(st) {
   return Date.now() - since < ilGuardRetryWaitMs(st._ilGuardRejectCount);
 }
 
+/**
+ * Whether the Guard will measure this poll, rather than stand aside for
+ * a Rebalance Now or wait out a rejection. The poll asks before taking
+ * fresh prices for it (src/bot-cycle.js), so a lookup is spent only when
+ * the Guard will use it.
+ * @param {object} deps    Bot deps; `_botState` holds the Guard's wait.
+ * @param {boolean} forced  A Rebalance Now.
+ * @returns {boolean}
+ */
+function ilGuardWillMeasure(deps, forced) {
+  return !forced && !_inBackoff(deps._botState);
+}
+
 /*- Record an episode: the clock the backoff measures from, and the
  *  doubling counter that widens the next wait. */
 function _stampRejection(st) {
@@ -394,10 +426,11 @@ function _stampRejection(st) {
  * below holding the coins the held NFT was minted with, at today's
  * prices; null to let the rebalance proceed.
  *
- * Read-only by construction: both inputs were computed earlier in this
- * poll cycle, and this runs BEFORE `executeRebalance`, so a rejection
- * cannot reach `removeLiquidity`.  The position is left exactly as it
- * was found.
+ * Read-only by construction: both inputs come from this poll cycle's
+ * figures, worked out again with fresh prices while price lookups are
+ * paused (`snapForGuard`, src/bot-cycle-gates.js), and this runs BEFORE
+ * `executeRebalance`, so a rejection cannot reach `removeLiquidity`.
+ * The position is left exactly as it was found.
  *
  * Skipped for user-forced rebalances, like every other gate in
  * `_checkRebalanceGates` — a
@@ -501,4 +534,6 @@ module.exports = {
   ilGuardRetryWaitMs,
   checkIlGuard,
   clearIlGuardWait,
+  endIlGuardBlock,
+  ilGuardWillMeasure,
 };

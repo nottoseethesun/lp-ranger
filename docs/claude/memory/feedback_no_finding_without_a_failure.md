@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-10-18T02:56:08.703Z
+  modified: 2026-10-19T18:49:51.419Z
 ---
 
 An item earns a place in a findings/review/audit list only if you can
@@ -55,6 +55,26 @@ the user as findings.
 What is left out of the report is not thereby approved for fixing; a fix
 still needs its own go, unless it is a rule correction the standing
 instructions already cover.
+
+## Minor issues wait for a later release (2026-10-19)
+
+The user, during the eleventh audit: "When you review, please avoid any
+minor issues. We would do those for a later release."
+
+The same day I still put three minor items to the user, one of them as
+"freezes the page". The user tested it: "It does not freeze the page,
+although the page is unresponsive for thirty seconds or so. Leave that
+alone and learn from this: I asked you to not do minor optimizations -
+we don't want to spend time on that." Two lessons: a delay that ends on
+its own is minor, and a consequence stated without being reproduced
+(here, "freezes") inflates an item past the minor line.
+
+**How to apply:** in an audit, fix and report only bugs and significant
+optimizations. A minor item (a comment's form, a small rule slip, a doc
+nit, test hygiene) is neither fixed nor put to the user; note it in one
+line in PROJECT-STATE's Deferred section so the later release can take
+it up. This overrides [[feedback_take_up_minor_cleanups]] for audits
+until the user says otherwise.
 
 Related: [[feedback_bug_only_if_current_stack_breaks]],
 [[feedback_nice_to_haves_not_bugs]], [[feedback_prose_style]].

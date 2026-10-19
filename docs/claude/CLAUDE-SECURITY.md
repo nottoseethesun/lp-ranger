@@ -217,13 +217,8 @@ The main ESLint config registers security rules at `off` with
 silently in the main lint pass. The security lint enforces the
 rules and respects the directives.
 
-Current per-line exceptions:
-
-| File | Line | Rule | Reason |
-| ---- | ---- | ---- | ------ |
-| `src/hodl-baseline.js` | 37 | `no-number-from-bigint` | Approximate float math for sqrtPrice |
-| `src/range-math.js` | 294 | `no-number-from-bigint` | Approximate float math for sqrtPrice |
-| `src/position-detector.js` | 169 | `no-number-from-bigint` | Zero-check only |
+The current exceptions are listed, with their reasons, in
+[docs/security.md § Code Review Controls](../security.md#code-review-controls).
 
 ### secretlint false positives
 

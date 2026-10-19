@@ -15,9 +15,9 @@
  * filter by `clean-pool-cache.test.js`.
  *
  * Every test runs against a scratch directory. The tool's real paths
- * point at `tmp/`, which holds live operator caches — a test that
- * wrote there would be one bad predicate away from doing the very
- * damage it is guarding against.
+ * point at the scan-cache folder, which outside a test holds live
+ * operator caches — a test that wrote there would be one bad predicate
+ * away from doing the very damage it is guarding against.
  */
 
 "use strict";
@@ -30,6 +30,7 @@ const path = require("node:path");
 const { captureConsole, captureExit } = require("./_capture");
 
 const cpc = require("../cache/clean-pool-cache");
+const { scanCacheDir } = require("../../src/scan-cache-dir");
 const {
   POOL,
   FACTORY,
@@ -360,12 +361,18 @@ test("_resolveTokensOrExit — aborts BEFORE touching any surface", async () => 
 /* ---------- path resolution + main ---------- */
 
 test("_mainPaths — defaults to the real locations", () => {
+  /*-
+   *  The scan-cache folder, which under `node --test` is this process's
+   *  own (src/scan-cache-dir.js).
+   */
   const p = cpc._mainPaths();
-  assert.match(p.dir, /tmp$/);
-  assert.match(p.poolCreationPath, /pool-creation-blocks-cache\.json$/);
-  assert.match(p.geckoPath, /gecko-pool-cache\.json$/);
-  assert.match(p.epochPath, /pnl-epochs-cache\.json$/);
-  assert.match(p.detailsPath, /liquidity-pair-details-cache\.json$/);
+  const dir = scanCacheDir();
+  assert.equal(p.dir, dir);
+  const inDir = (file, name) => assert.equal(file, path.join(dir, name));
+  inDir(p.poolCreationPath, "pool-creation-blocks-cache.json");
+  inDir(p.geckoPath, "gecko-pool-cache.json");
+  inDir(p.epochPath, "pnl-epochs-cache.json");
+  inDir(p.detailsPath, "liquidity-pair-details-cache.json");
   assert.match(p.chainsPath, /chains\.json$/);
   assert.equal(typeof p.resolveTokens, "function");
 });

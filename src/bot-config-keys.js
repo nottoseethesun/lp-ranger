@@ -100,7 +100,7 @@ const GLOBAL_KEYS = [
  * - Reload Current Position (`server-reload-position.js`), for one
  *   position, so the rebuild it triggers is authoritative;
  * - `npm run clear-blockchain-scan-cache`, for every position, so a
- *   cold start is actually cold rather than cold for `tmp/` only.
+ *   cold start is actually cold rather than cold for the scan caches only.
  *
  * Not included, deliberately: settings, and values recorded live that a
  * scan cannot reproduce — `residuals` (collected minus minted at each
@@ -120,6 +120,36 @@ const CHAIN_DERIVED_POSITION_KEYS = Object.freeze([
    *  behind would mislabel the freshly rebuilt deposit.
    */
   "depositUsedFallback",
+]);
+
+/**
+ * A position's records: what the bot worked out or logged about it, as
+ * against a setting, which the operator chooses. The chain-derived ones
+ * above, less the retired `lifetimeHodlAmounts`, and three the bot
+ * records live that no scan can reproduce: `residuals` (collected minus
+ * minted at each rebalance), `lastCompoundAt` (the auto-compound
+ * spacing) and `failedMoveGas` (the gas each failed rebalance or compound
+ * paid, with when: src/spent-gas.js). Reload Current Position rebuilds
+ * the chain-derived ones and leaves these three alone.
+ *
+ * They are kept in `app-data/position-records.json`, apart from the
+ * settings in bot-config.json (src/position-records.js), and each is saved
+ * as the bot reports it (`_persistPositionConfig`,
+ * src/server-positions.js). `POST /api/config` takes none of them: only
+ * settings are saved from outside the bot.
+ */
+const RECORD_POSITION_KEYS = Object.freeze([
+  "hodlBaseline",
+  "residuals",
+  "compoundHistory",
+  "compoundedAmount0",
+  "compoundedAmount1",
+  "nftGasWeiByTokenId",
+  "nftCompoundedAmountsByTokenId",
+  "lastCompoundAt",
+  "totalLifetimeDepositUsd",
+  "depositUsedFallback",
+  "failedMoveGas",
 ]);
 
 /**
@@ -173,7 +203,7 @@ const RETIRED_POSITION_KEYS = Object.freeze([
   "checkIntervalSec",
   /*-
    *  The pool's lifetime HODL amounts. They live in the epoch cache
-   *  (tmp/pnl-epochs-cache.json), and the position's bot state is built
+   *  (app-data/scan-cache/pnl-epochs-cache.json), and the position's bot state is built
    *  from them there; a copy in the slot was never read back.
    */
   "lifetimeHodlAmounts",
@@ -333,6 +363,12 @@ const POSITION_KEYS = [
   "totalLifetimeDepositUsd",
   "depositUsedFallback",
   /*-
+   *  The gas each failed rebalance or compound paid, with when
+   *  (`src/spent-gas.js`): no chain scan finds it, so it is a record the
+   *  P&L counts in its period on every poll, and Reload leaves it alone.
+   */
+  "failedMoveGas",
+  /*-
    *  User override for the "alive since" start date used by Lifetime
    *  Day Count and APR denominators.  Stored as an ISO YYYY-MM-DD (UTC)
    *  so it's timezone-neutral and human-readable in `bot-config.json`.
@@ -346,6 +382,15 @@ const POSITION_KEYS = [
    */
   "lifetimeStartDateOverrideUtc",
 ];
+
+/**
+ * The per-position keys that are settings: every position key but the
+ * records. These are what bot-config.json holds for a position, beside
+ * its `status`, and all `POST /api/config` takes for one.
+ */
+const SETTING_POSITION_KEYS = Object.freeze(
+  POSITION_KEYS.filter((k) => !RECORD_POSITION_KEYS.includes(k)),
+);
 
 /**
  * Whether a position slot carries a compounded total that the chain
@@ -411,6 +456,8 @@ function isRecordedCoinTotal(v) {
 module.exports = {
   GLOBAL_KEYS,
   POSITION_KEYS,
+  SETTING_POSITION_KEYS,
+  RECORD_POSITION_KEYS,
   CHAIN_DERIVED_POSITION_KEYS,
   RETIRED_POSITION_KEYS,
   RETIRED_GLOBAL_KEYS,

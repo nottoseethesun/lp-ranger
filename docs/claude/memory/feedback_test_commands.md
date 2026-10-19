@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-10-18T19:18:28.625Z
+  modified: 2026-10-19T18:30:24.554Z
 ---
 
 # Running tests
@@ -142,6 +142,12 @@ NEVER run `npm run check` (or any command that touches production files via chec
 
 ## `wipe-settings` is NOT the protection `check` has (2026-09-19)
 
+**Since 2026-10-19 the two cover the same files:** the scan caches moved
+from `tmp/` to `app-data/scan-cache/`, which both back up whole, and
+under `node --test` every scan cache resolves to the test process's own
+folder (src/scan-cache-dir.js). The rule stands: the full suite runs only
+through `npm run check`. What follows is how it was before the move.
+
 Wrapping a raw `node --test` in wipe/restore does **not** give it the
 protection `npm run check` gives. The two cover different sets, and the
 difference is most of `tmp/`:
@@ -221,3 +227,14 @@ which removes the folder when the process exits, failed or not, and
 which `npm run check` sweeps if a run was killed. Prove a cleanup claim
 by listing the temp directory before and after a run, not by reading
 the hook.
+
+## Never try a destructive script on the real install (2026-10-19)
+
+To check the new argument guard in `scripts/clean.js`, I ran
+`node scripts/clean.js --help` and `--bogus` in the user's install after
+the unit tests passed. Both answered as designed, but a bug in the guard
+would have stopped the server and deleted the wallet file, bot config
+and caches. A script that stops, deletes or moves operator files is
+tried only in a copy of the install (a temp folder holding a copy of
+the tree) or through its exported functions, never where the
+operator's files are.

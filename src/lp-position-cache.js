@@ -20,6 +20,7 @@ const { log } = require("./log");
 const { chainCacheTag } = require("./cache-store");
 const fs = require("fs");
 const path = require("path");
+const { scanCachePath } = require("./scan-cache-dir");
 
 const _C = "\x1b[38;5;118;48;5;94m";
 const _R = "\x1b[0m";
@@ -30,18 +31,15 @@ const _R = "\x1b[0m";
  * @param {string} blockchain    The chain's key in chains.json; its
  *   `chainCacheTag` names the file.
  * @param {string} [contract]    NFT factory / position manager address.
- * @returns {string}  Absolute path under tmp/
+ * @returns {string}  Absolute path in the scan-cache folder
+ *   (src/scan-cache-dir.js).
  * @throws {Error} When the chain has no usable cache tag.
  */
 function lpPositionCachePath(walletAddress, blockchain, contract) {
   const bc = chainCacheTag(blockchain);
   const pm = (contract || "").slice(2, 8).toLowerCase();
   const w = walletAddress.slice(2, 8).toLowerCase();
-  return path.join(
-    process.cwd(),
-    "tmp",
-    `lp-position-cache-${bc}-${pm}-${w}.json`,
-  );
+  return scanCachePath(`lp-position-cache-${bc}-${pm}-${w}.json`);
 }
 
 /**

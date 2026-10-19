@@ -80,6 +80,7 @@ jobs:
             --exclude='./.github' \
             --exclude='./app-config/user-configurable/*.json' \
             --exclude='./app-data/*.json' \
+            --exclude='./app-data/scan-cache' \
             --exclude='./logs' \
             --transform "s|^\./|lp-ranger-${VERSION}/|" \
             .

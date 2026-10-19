@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-09-20T02:00:55.373Z
+  modified: 2026-10-19T17:58:59.715Z
 ---
 
 Start at the top and work down. The first sentence names **what is being
@@ -42,6 +42,34 @@ saying what "it" is.
 general to specific" — where each tier must stand alone and each must
 open by naming the subject. Practice the 40 first: if the subject is not
 in it, the longer versions will start in the middle too.
+
+## No shorthand for what the operator does (2026-10-19)
+
+Name the operator's action and what the screen shows, in a full
+sentence, every time. Never compress an action or an event into a noun
+phrase the reader has to decode.
+
+**Why:** in one audit report the user called four items "gibberish" for
+exactly this: "a refused save" ("A refused save from when the user
+clicks the Save button? See, I have to guess through your gibberish.
+Stop gibberishing."), "a second unlock" ("What's 'a second unlock'?"),
+"the new NFT inherits the block" ("An NFT cannot 'inherit' a block"),
+and "Its Rebalance Events list". Earlier the same day: "What's 'the
+list' in this context?" They also asked that an explanation open with a
+heading and "an initial statement of the problem", and go in order:
+"you are skipping around there so I cannot understand".
+
+**How to apply:**
+- Write "you type a value and click Save, and the server turns it down"
+  rather than "a refused save"; "you enter the wallet password in the
+  Unlock Wallet dialog a second time" rather than "a second unlock".
+- Use the screen's own words for each control, dialog and table, quoted
+  as the screen shows them.
+- Each item: a heading, one sentence stating the problem, the normal
+  behavior, then the steps of what goes wrong in order, what the
+  operator sees, and the fix.
+- No metaphors for program state: a figure, a flag or a wait is
+  "kept", "left in place" or "carried over", said with what keeps it.
 
 Related: [[feedback_operator_sees_ui_not_logs]] (answer in badge and
 dialog terms, not log terms), [[feedback_no_internal_constants_in_design_talk]]

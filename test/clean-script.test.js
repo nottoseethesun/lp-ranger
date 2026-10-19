@@ -31,6 +31,8 @@ const {
   BUILD_DIRS,
   LOG_FILES,
   insideInstall,
+  parseCleanArgs,
+  HELP_TEXT,
 } = require("../scripts/clean");
 const { clearScanCache } = require("../scripts/clear-blockchain-scan-cache");
 
@@ -154,4 +156,46 @@ test("only a path inside the install folder may be deleted", () => {
     "",
   ])
     assert.equal(insideInstall(outside), false, outside);
+});
+
+test("reads --help and refuses an argument it does not know", () => {
+  /*-
+   *  `npm run clean -- --help` once ran the full reset: the script knew
+   *  only --dev and --log, so anything else, --help included, fell
+   *  through to stopping the server and deleting the wallet file.
+   */
+  assert.deepEqual(parseCleanArgs([]), {
+    help: false,
+    dev: false,
+    log: false,
+    bad: null,
+  });
+  assert.equal(parseCleanArgs(["--help"]).help, true);
+  assert.equal(parseCleanArgs(["-h"]).help, true);
+  assert.equal(parseCleanArgs(["--dev"]).dev, true);
+  assert.equal(parseCleanArgs(["--log"]).log, true);
+  assert.equal(parseCleanArgs(["--hepl"]).bad, "--hepl");
+  assert.equal(parseCleanArgs(["--dev", "x", "y"]).bad, "x");
+  assert.match(HELP_TEXT, /npm run dev-clean/);
+  assert.match(HELP_TEXT, /npm run clean:log/);
+});
+
+test("answers --help and a wrong argument before stopping or deleting anything", () => {
+  /*-
+   *  Read rather than run: running it would stop a server and delete an
+   *  install's files. Both answers return from main before its first
+   *  action, the npm stop.
+   */
+  const src = readRoot("scripts/clean.js");
+  const main = src.slice(src.indexOf("function main()"));
+  const stop = main.indexOf('spawnSync("npm", ["run", "stop"]');
+  assert.ok(stop > -1, "main stops the server");
+  const answers = main.indexOf("if (_answerWithoutResetting(args)) return;");
+  assert.ok(answers > -1 && answers < stop, "the answers come before the stop");
+  const helper = src.slice(
+    src.indexOf("function _answerWithoutResetting"),
+    src.indexOf("function main()"),
+  );
+  for (const answer of ["if (args.help)", "if (args.bad !== null)"])
+    assert.ok(helper.includes(answer), `${answer} is answered there`);
 });

@@ -360,10 +360,13 @@ describe("when the pass does not go to plan", () => {
     );
   });
 
-  it("still reports ready when the event scan fails with every figure saved", async () => {
+  it("stays on Syncing when the event scan fails, even with every figure saved", async () => {
     /*-
-     *  The saved figures came from a pass that did read the chain, so
-     *  they stay on show.
+     *  The user, 2026-10-19: "If the history didn't complete, then the
+     *  badge has to stay on 'Syncing...'". A restart during an rpc outage
+     *  used to report the position ready from its saved figures alone,
+     *  so the 30-minute rescan never ran and its Rebalance Events table
+     *  stayed empty. The saved figures are left as they are.
      */
     state.cachedHodl = { poolAddress: "0xPOOL" };
     const botState = makeBotState(SAVED);
@@ -376,6 +379,23 @@ describe("when the pass does not go to plan", () => {
       cap.restore();
     }
     assert.equal(run.reads.length, 0);
+    assert.equal(botState.lifetimeScanComplete, false, "so the rescan retries");
+    assert.equal(
+      botState.totalLifetimeDepositUsd,
+      SAVED.totalLifetimeDepositUsd,
+    );
+    assert.ok(
+      cap.lines.some((l) => l.includes("Sync badge stays on Syncing")),
+      cap.lines.join("\n"),
+    );
+  });
+
+  it("reports ready when the event scan succeeds with every figure saved", async () => {
+    state.cachedHodl = { poolAddress: "0xPOOL" };
+    const botState = makeBotState(SAVED);
+    botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
+    await pass(load({}), position(), botState);
+    assert.equal(run.reads.length, 0, "nothing to read: every figure saved");
     assert.equal(botState.lifetimeScanComplete, true);
   });
 

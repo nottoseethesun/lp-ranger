@@ -54,6 +54,7 @@ sequence.
     - [Diagnostic Utilities](#diagnostic-utilities)
       - [Verifying a Reported USD Figure](#verifying-a-reported-usd-figure)
       - [Scenario-Reproduction Scripts](#scenario-reproduction-scripts)
+    - [Update Utilities](#update-utilities)
     - [Cache Utilities](#cache-utilities)
 - [The app-config Directory](#the-app-config-directory)
 - [Bot Config Defaults](#bot-config-defaults)
@@ -410,7 +411,7 @@ non-zero result. A service the chain's `priceServices` entry in
 
    **Free-tier quota caveat:** the free plan has a daily compute quota.
    Very large position sets, repeated cache clears (`npm run clean`,
-   `dev-clean`, or manually deleting `tmp/`), or several fresh wallet
+   `dev-clean`, or manually deleting `app-data/scan-cache/`), or several fresh wallet
    scans in a row can spend it in one session. Once it is spent, Moralis
    refuses the key until the quota resets, and prices come from the
    GeckoTerminal and DexScreener fallbacks below, which cover meme tokens
@@ -443,10 +444,10 @@ always match the Uniswap v3 `token0`/`token1` ordering:
 - **Pool orientation cache** — on first lookup per pool, a one-shot GET to
   the GeckoTerminal pool-info endpoint records whether the pool's `base`
   side is `token0` (`normal`) or `token1` (`flipped`). Persisted to
-  `tmp/gecko-pool-cache.json`. Without this cache, orientation mismatches
+  `app-data/scan-cache/gecko-pool-cache.json`. Without this cache, orientation mismatches
   would produce price ratios that are inverted by orders of magnitude.
 - **Block-time cache** — block number → Unix timestamp lookups are cached
-  in `tmp/block-time-cache.json` so historical API calls use the correct
+  in `app-data/scan-cache/block-time-cache.json` so historical API calls use the correct
   timestamps without re-querying the RPC for every position.
 - **Cascading OHLCV fallback** — `_fetchGeckoTerminalOhlcv` requests a day
   candle first; if none exists (e.g. pool inception, low volume), it
@@ -473,7 +474,7 @@ If the window is full the caller automatically waits until a slot opens.
 Current-price results are cached with a configurable TTL (default 120 s,
 see `priceCacheTtlMs` below), keyed by the canonical `chain-token`
 (`cacheKey` in `src/cache-store.js`). Historical prices have their own
-disk-backed cache in `tmp/historical-price-cache.json`, with no TTL since
+disk-backed cache in `app-data/scan-cache/historical-price-cache.json`, with no TTL since
 a past price never changes. It is keyed by chain, token, and the block
 (`@<block>`) or, for a caller without one, the UTC day
 (`src/price-cache.js`), so it survives restarts and serves every pool
@@ -586,19 +587,28 @@ the guard would block a position whose coins had both fallen though its
 impermanent loss was small, and let a deep loss through inside a rise
 both coins shared.
 
-**Read-only by construction.** Both inputs are already computed earlier
-in the same poll cycle — `snap.totalIL` and the minted coins and prices
-it was measured with, `snap.ilInputs`, both from `_computeIL`
-(`src/bot-pnl-il.js`) inside `updatePnlAndStats` — so evaluating the
-guard performs no chain read and sends no transaction. Holding is
-`hodlValueUsd` (`src/il-calculator.js`), the same expression IL/G uses;
-the projection is holding plus `totalIL`. The gate runs
-inside `_checkRebalanceGates` (`src/bot-cycle.js`), which returns before
-`executeRebalance` is called, so there is no path from a rejection to
-`decreaseLiquidity` or `collect`. A rejected position is left exactly as
-it was found. `test/il-guard.test.js` drives the gate with a `deps` whose
-provider and signer throw on any property access, so a future chain read
-here fails the suite rather than shipping.
+**Read-only by construction.** Both inputs come from the poll cycle's
+figures — `snap.totalIL` and the minted coins and prices it was measured
+with, `snap.ilInputs`, both from `_computeIL` (`src/bot-pnl-il.js`)
+inside `updatePnlAndStats` — so evaluating the guard sends no
+transaction. Holding is `hodlValueUsd` (`src/il-calculator.js`), the
+same expression IL/G uses; the projection is holding plus `totalIL`. The
+gate runs among the rebalance gates (`gatesFromGuard`,
+`src/bot-cycle-gates.js`), which return before `executeRebalance` is
+called, so there is no path from a rejection to `decreaseLiquidity` or
+`collect`. A rejected position is left exactly as it was found.
+`test/il-guard.test.js` drives the gate with a `deps` whose provider and
+signer throw on any property access, so a future chain read here fails
+the suite rather than shipping.
+
+**Fresh prices.** While price lookups are paused (the dashboard idle or
+closed, and always under `npm run bot`), the poll's figures carry the
+last prices fetched, of any age, and a rebalance is due because the
+price has moved, so an old price makes the loss look smaller. Once every
+gate before the guard has passed and the guard will measure, the figures
+are worked out again with fresh prices (`snapForGuard`,
+`src/bot-cycle-gates.js`): one more price lookup per rebalance the bot is
+about to make.
 
 **Slippage is excluded.** A rebalance moves the same dollars from one
 tick range to another, so the projection is the position's present worth:
@@ -634,7 +644,9 @@ except that saving a position's Guard percentage lifts that position's
 wait (`clearIlGuardWait`, called by `POST /api/config`), so the next poll
 decides on the new value, the way a Slippage save frees a slippage
 pause. The ladder resets the moment the guard lets a rebalance through,
-and on such a save. The `ilGuardRejected` Telegram
+and on such a save. Any rebalance that succeeds, a Rebalance Now
+included, ends the block, wait and alert both (`endIlGuardBlock`): the
+new NFT is measured against its own minted coins. The `ilGuardRejected` Telegram
 alert rides the same timestamp, so a position blocked for a long stretch
 reports on a widening interval instead of every `CHECK_INTERVAL_SEC`. The
 backoff state (`_ilGuardRejectedAt`, `_ilGuardRejectCount`) is transient
@@ -819,8 +831,7 @@ falling back to `bot-config-defaults.json`):
 | `pricePauseExceptionPollWindowMultiple` | `10` | Multiplier on `CHECK_INTERVAL_SEC`. Effective fetch cadence = `CHECK_INTERVAL_SEC × multiplier` seconds. Default 10 → 50 min at the default 300 s poll. Higher = lighter load, slower band detection. Positive integer ≥ 1. |
 
 The band and the quiet period are in `bot-config-defaults.json`, and an
-override of either takes effect on restart; one outside its range in
-`setting-bounds.json` stops startup:
+override of either takes effect on restart:
 
 | Key | Default | Notes |
 | --- | --- | --- |
@@ -968,13 +979,13 @@ scan** is answered by three layered bounds, resolved in order by
    narrowing it, so an unanswerable lookup costs time and never events.
 
    The answer is cached permanently in
-   `tmp/pool-creation-blocks-cache.json`, making it a once-per-pool cost
+   `app-data/scan-cache/pool-creation-blocks-cache.json`, making it a once-per-pool cost
    paid only on a cold cache.
 
 3. **Disk cache** (subsequent runs resume from the last scanned block)
 
    Results from a completed scan are persisted to
-   `tmp/event-cache-{cacheTag}-{contract}-{wallet}-{token0}-{token1}-{fee}.json`
+   `app-data/scan-cache/event-cache-{cacheTag}-{contract}-{wallet}-{token0}-{token1}-{fee}.json`
    (`cacheTag` is the chain's tag in `chains.json`, `pulse` on PulseChain)
    via `cache-store.js`. On the next run `loadCache()` reads the cached
    events and sets `scanFrom = lastScannedBlock + 1`, so only blocks
@@ -1409,7 +1420,7 @@ dialogs branch on an empty `aggregatorName`, and the manual's prose,
 which cannot, quotes `aggregatorInUse`, which reads "none" there.
 Whether a chain has one is
 [`src/aggregator-in-use.js`](../src/aggregator-in-use.js)'s answer,
-the same one the swap and the "Routing through:" badge act on.
+the same one the swap and the "Route:" badge act on.
 
 [`src/resolved-settings.js`](../src/resolved-settings.js) resolves the
 values on the server in the bot's order: the shipped file, the
@@ -1632,7 +1643,7 @@ All eight tools here parse this way. The hand-written `USAGE` strings
 and each tool's own `argv` scanner are gone.
 
 - `inspect-pool.js` — Pretty-prints `app-config/user-configurable/bot-config.json` and
-  `tmp/pnl-epochs-cache.json` for a position or pool fragment: status,
+  `app-data/scan-cache/pnl-epochs-cache.json` for a position or pool fragment: status,
   hodlBaseline, residuals, lifetimeHodlAmounts, fresh deposits.
 - `show-rebalance-chain.js` — Walks position-manager `Transfer` events
   for a wallet over N years, listing every NFT mint/burn/move.
@@ -1654,7 +1665,7 @@ and each tool's own `argv` scanner are gone.
   creation block, for when those saved figures are wrong. The lifetime
   scan keeps a saved figure rather than recompute it, so the tool
   removes them from the position's config (`--clear-hodl` also drops the
-  pool's lifetime HODL amounts from `tmp/pnl-epochs-cache.json`). It
+  pool's lifetime HODL amounts from `app-data/scan-cache/pnl-epochs-cache.json`). It
   prints what will change, asks y/N, and writes a timestamped backup of
   each file first. The running bot keeps its in-memory copy, so restart
   afterwards.
@@ -1663,7 +1674,8 @@ and each tool's own `argv` scanner are gone.
   files with the operator's copies over them, `.env`, and
   `bot-config.json`. Its verdict is the server's and the bot's at
   startup, which refuse to start on any problem: both ask
-  `src/settings-check.js`, over the rules the shipped-values tests use.
+  `src/settings-check.js`, over the JSON Schemas the shipped-values test
+  uses.
   It reads files only, so it is safe while the server runs; run it from
   the install's folder. Exit status 0 when every setting passes, 1
   otherwise. See [Checking the Settings](configuration.md#checking-the-settings).
@@ -1885,7 +1897,7 @@ original up to a timestamped sibling first and prints the exact restore
 command.
 
 - `inject-stuck-lifetime-state.sh` — Sets every pool entry in
-  `tmp/pnl-epochs-cache.json` to `freshDeposits: null` and
+  `app-data/scan-cache/pnl-epochs-cache.json` to `freshDeposits: null` and
   `lifetimeHodlAmounts: null`. On the next
   `npm start` that combination drives the lifetime-scan recovery path in
   `src/bot-recorder-lifetime.js` and `src/bot-loop.js` (see
@@ -1895,7 +1907,7 @@ command.
   normal run never has that shape, so the path is otherwise unreachable
   locally.
 - `inject-short-epoch-history.sh` — Drops the last N closed epochs from
-  every pool entry in `tmp/pnl-epochs-cache.json`, leaving the live epoch
+  every pool entry in `app-data/scan-cache/pnl-epochs-cache.json`, leaving the live epoch
   and the lifetime figures alone. On the next start the app still knows
   from the rebalance events how many closed positions the chain has, so
   its stored history is short: the state a reconstruction that gave up
@@ -1931,10 +1943,19 @@ procedure documented in README.md &sect; Update.
   require anything from it. Its tests are in
   `util/test/migrate-app-state.test.js`, with every other `util/` test.
 
+`util/migration/` brings the files Step Six copied up to date with the
+new release, also in Step Six, straight after the copy (`node
+./util/migration`). Each change a release makes to where a file lives or
+what it holds is one step, a file of its own, run in release order from
+the `STEPS` list in `util/migration/index.js`. Every
+step prints what it changed and is safe to run again; `--dry-run`
+reports without changing anything. Node built-ins only, like the copy.
+Its tests are in `util/test/migration.test.js`.
+
 #### Cache Utilities
 
 `util/cache/` holds small Node.js scripts that operate on the
-pool-address-keyed disk caches under `tmp/`.
+pool-address-keyed disk caches in `app-data/scan-cache/`.
 
 - `clean-pool-cache.js` — Wipe every cached entry for one pool. Default
   behaviour is **scorched-earth**: removes pool-creation-blocks,
@@ -1997,7 +2018,7 @@ pool-address-keyed disk caches under `tmp/`.
 **Read this before adding new config files.**
 
 Every file the app reads or writes for its own configuration and runtime
-state lives in ONE dedicated directory at the project root:
+state lives in two directories at the project root:
 
 ```text
 lp-ranger/
@@ -2031,14 +2052,24 @@ lp-ranger/
 │                                (Moralis, Telegram bot token + chat ID)
 └── app-data/                 ← per-install runtime data
     ├── README.md             ← tracked
-    └── rebalance_log.json    ← runtime (gitignored) — historical P&L events
+    ├── rebalance_log.json    ← runtime (gitignored) — historical P&L events
+    ├── position-records.json ← runtime (gitignored) — each position's records
+    └── scan-cache/           ← runtime (gitignored) — the scan caches
 ```
 
-Pure performance caches (historical prices, block times, OHLCV pool
-orientation, event scanner results, LP position enumeration) DO NOT belong
-here — they live in `tmp/` and are rebuilt on demand from the blockchain or
-APIs. Deleting any cache file in `tmp/` is always safe; the app will
-regenerate it.
+One home for each kind of data:
+
+- **`app-config/`** — only what the operator chooses: the settings, the
+  managed positions, the encrypted wallet and api keys, and the shipped
+  defaults with the operator's copies. **Never cache data.**
+- **`app-data/position-records.json`** — what the bot worked out or
+  recorded about each position (`src/position-records.js`).
+- **`app-data/scan-cache/`** — what was read from the blockchain or a
+  price service; rebuilt if deleted, at about an hour per position
+  (`src/scan-cache-dir.js`).
+- **`tmp/`** — only what is disposable, such as the server's PID file.
+
+`test/data-homes.test.js` fails the build when code puts data elsewhere.
 
 ### File Inventory
 
@@ -2073,8 +2104,7 @@ regenerate it.
   Tracked shipped default. The base url of each price service's api
   (DexScreener, GeckoTerminal, Moralis), version included where the url
   carries one. Read once at module load by `src/price-service-urls.js`,
-  which every price request is built through and which stops startup
-  on a value that is not an https url. Which tokens a service can price
+  which every price request is built through. Which tokens a service can price
   on a chain is per chain instead, in `chains.json` → `priceServices`.
   `geckoTerminal.topPoolsConsidered`, read by `src/gecko-pool-cache.js`,
   is how many of a token's pools are weighed when its historical price is
@@ -2082,9 +2112,8 @@ regenerate it.
 - **`app-defaults-for-user-configurable/setting-bounds.json`** —
   Tracked. The range every checked setting must fall in, at the setting's
   own path; `timers` holds the timer rule. Read through
-  `src/setting-bounds.js`: a Bot Configuration save outside a range is refused
-  (`src/config-bounds.js`), and a value outside one stops startup, naming
-  the setting (`src/config.js`, through `src/bot-config-defaults.js`,
+  `src/setting-bounds.js` by the save check (`src/config-bounds.js`) and
+  the startup check (`src/config.js`, through `src/bot-config-defaults.js`,
   `src/ui-defaults.js`, `src/runtime-flags.js` and
   `src/timer-bounds.js`). The dashboard bundles it for the figures its
   help quotes and for its token-decimals check. **Not overridable:** a
@@ -2097,11 +2126,20 @@ regenerate it.
   `user-configurable/`.
 - **`user-configurable/bot-config.json`** — Runtime, gitignored.
   Managed position lifecycle (`status: running/stopped`), per-position
-  settings (HODL baseline, residuals, thresholds, slippage,
-  auto-compound config, compound history, initial deposit overrides),
-  global bot settings. Read/written by `src/bot-config-v2.js` via
-  `loadConfig()` / `saveConfig()`. Atomic write (tmp + rename); every
+  settings (thresholds, slippage, auto-compound config, initial deposit
+  overrides), global bot settings. Read/written by `src/bot-config-v2.js`
+  via `loadConfig()` / `saveConfig()`. Atomic write (tmp + rename); every
   write is logged with the caller's stack for config-stomp debugging.
+- **`app-data/position-records.json`** — Runtime, gitignored. Each
+  position's records, what the bot worked out or logged about it (HODL
+  baseline, compound history and coins, gas per NFT, lifetime deposit,
+  residuals, last compound time, and the gas failed moves paid, which
+  the P&L counts in each period and no rebuild can drop:
+  `RECORD_POSITION_KEYS`), kept apart
+  from the settings so a settings reset leaves the figures. Read and
+  written with bot-config.json, which merges them into each position's
+  slot in memory (`src/position-records.js`); copied to
+  `position-records.backup.json` on every load, as bot-config.json is.
 - **`user-configurable/bot-config.backup.json`** — Runtime, gitignored.
   Automatic snapshot created by bot-config-v2 on every successful load.
   A safety net: if `bot-config.json` is ever accidentally truncated,
@@ -2154,8 +2192,7 @@ needed exactly when the server cannot be asked.
 server-up file once, at startup, with the operator's copy on top. An
 on/off setting must be true or false. A setting the page turns into a
 timer delay must meet the timer rule (`src/timer-bounds.js`). Any other
-must fall in its range in `setting-bounds.json`. A value outside its
-rule stops startup, naming it. The answer is kept for the life of the
+must fall in its range in `setting-bounds.json`. The answer is kept for the life of the
 process, so the server's own copy of the poll interval
 (`src/config.js`, which times "the dashboard has had a chance to poll")
 and the figures the help quotes (`src/resolved-settings.js`) are the
@@ -2204,9 +2241,11 @@ page reads it through `uiSetting`.
    `app-config/<name>.example.json` (tracked; add an explicit
    un-ignore rule to `.gitignore`).  Pre-dates the user-configurable
    pattern; new tunables should use rule 1 instead.
-5. **Pure performance cache** (can be deleted with no loss of data;
-   rebuilt on demand from the blockchain or an API) →
-   `tmp/<name>.json`.  DO NOT put caches in `app-config/`.
+5. **Scan cache** (can be deleted with no loss of data; rebuilt on
+   demand from the blockchain or an API) →
+   `app-data/scan-cache/<name>.json`, its path from `scanCachePath`
+   (`src/scan-cache-dir.js`).  DO NOT put caches in `app-config/` or
+   `tmp/`.
 
 ### One-Time Migration from the Legacy Layout
 
@@ -2295,8 +2334,8 @@ only be changed by editing
 | `dustUnitPriceCacheMultiplier` | `30` | `POST /api/config` | Dust-unit-price TTL as a multiple of `priceCacheTtlMs` |
 | `moveCacheTtlMs` | `4000` | `POST /api/config` | Cache TTL for the fresh-price window around a rebalance or compound |
 | `pricePauseExceptionPollWindowMultiple` | `10` | `POST /api/config` | Poll cycles between the balanced-band notifier's fresh-price probes. The dashboard reads it to label the resulting cadence next to the checkbox, but offers no field to set it |
-| `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request. Its range in `setting-bounds.json` stops at 10,000, and an override outside it stops startup — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
-| `globalRPCRequestRateIntervalMS` | `222` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process. `0` disables pacing, which is only sensible against a local node |
+| `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request, up to 10,000 — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
+| `globalRPCRequestRateIntervalMS` | `222` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process, 5 to 2000; the low end only against a node of your own |
 
 **`lowGasThresholds`** — drives the Mission Control "Gas Running Low" /
 "Gas Critical" badge in [`src/gas-monitor.js`](../src/gas-monitor.js).
@@ -2321,7 +2360,7 @@ in the UI.
 Guard has rejected, in [`src/il-guard.js`](../src/il-guard.js). Not
 exposed in the UI. Each has a range in `setting-bounds.json`, a minute
 to thirty days, so a mistyped value cannot turn the guard into a
-per-poll retry; an override outside it stops startup.
+per-poll retry.
 
 | Key | Default | Description |
 | --- | --- | --- |
@@ -2642,8 +2681,8 @@ What happens when the process starts, in order:
    nothing for a long-running scan and only weakens a slow-client
    guard.
 8. **If run directly (`require.main === module`)**, the server first
-   reads the shutdown timings (an unusable value stops startup here) and
-   empties the previous run's error log, then:
+   reads the shutdown timings and empties the previous run's error log,
+   then:
    1. `start()` calls `server.listen(PORT, HOST)` and logs the
       blockchain name, NFT factory, wallet address (or `(not loaded)`),
       dashboard URL, `/api/status` URL, port, and `/health` URL.
@@ -2700,9 +2739,8 @@ shipped file and stops there.
 
 The difference only shows when a value is wrong, which is exactly when
 it matters. `checkIntervalSec` must be 10 to 3600 seconds. Read raw, a
-hand-edited `0` or `"soon"` travels on as a live setting; through its
-reader it stops startup, or, read after startup, leaves the shipped 300
-standing.
+hand-edited `0` or `"soon"` travels on as a live setting; read after
+startup through its reader, it leaves the shipped 300 standing.
 
 Five rules follow.
 
@@ -2762,6 +2800,13 @@ every setting the dashboard lets an operator type into, and
 a settable key means adding its rule to the first and mapping the key
 to its input id in the second; leave either out and the save fails with
 nothing said and the refused value still on screen.
+
+Each setting's rule is a JSON Schema, and the startup check builds
+bot-config.json's schema from the same ones (`src/bot-config-checks.js`),
+so a value a save refuses stops startup, and one a save takes passes.
+The Telegram alerts chosen work the same way: one schema
+(`ALERT_CHOICES`, beside the alert list) for the Telegram route's save
+and for the startup check.
 
 The price-cache settings (`priceCacheTtlMs`,
 `dustUnitPriceCacheMultiplier`, `moveCacheTtlMs` and
@@ -3506,7 +3551,7 @@ reads that partial number as settled, so it survives every later scan.
 A price is remembered in two places, and a re-value has to read past
 both:
 
-- `tmp/historical-price-cache.json` keeps historical prices with no
+- `app-data/scan-cache/historical-price-cache.json` keeps historical prices with no
   expiry. `fetchHistoricalPriceGecko` takes `refresh`, which skips the
   cached entry and overwrites it with whatever comes back.
 - Each deposit entry memoizes the dollar figure it was last given, and
@@ -3582,8 +3627,10 @@ these files — the log renders them via `<img>` and it won't cascade.
 ### Category 2 — UI icons (`ui-*.svg`)
 
 Prefix: `ui-`. Inlined into `public/index.html` **at build time** by
-`scripts/inline-svgs.js`, which runs as the last step of `npm run build`
-after esbuild + `cache-bust.js`. Source `public/index.html` carries
+`scripts/inline-svgs.js`. `scripts/build-bundles.js` runs it last, after
+esbuild and `cache-bust.js`, so the page it writes carries the stamp; it
+does so for `npm run build` and after each `npm run build:watch`
+rebuild. Source `public/index.html` carries
 `data-svg="…" data-w=".." data-h=".."` placeholder attributes; the
 build script reads each referenced file, sizes the root `<svg>` per
 the data-attrs, and writes the composed HTML to

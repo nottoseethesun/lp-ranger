@@ -6,7 +6,8 @@
  * Keyed by `blockchain-tokenAddress-YYYY-MM-DDTHH:MM` (UTC, minute granularity).
  * Token prices are pool-independent — cached by token contract address, not pool.
  *
- * Cache file: `tmp/historical-price-cache.json` (gitignored).
+ * Cache file: `app-data/scan-cache/historical-price-cache.json`
+ * (gitignored; src/scan-cache-dir.js).
  * Deleted by `npm run clean`; preserved by `npm run dev-clean`.
  *
  * No TTL — historical prices never change.  Lazy-loaded on first access.
@@ -18,12 +19,12 @@
 const { log } = require("./log");
 const fs = require("fs");
 const path = require("path");
+const { scanCachePath } = require("./scan-cache-dir");
 
 // Cache path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
 const _CACHE_PATH =
-  process.env.PRICE_CACHE_PATH ||
-  path.join(process.cwd(), "tmp", "historical-price-cache.json");
+  process.env.PRICE_CACHE_PATH || scanCachePath("historical-price-cache.json");
 
 /** @type {Record<string, { priceUsd: number, cachedAt: string }> | null} */
 let _cache = null;

@@ -172,7 +172,7 @@ const { buildGasStatusPayload } = require("./src/gas-monitor");
 const { actualGasCostUsd } = require("./src/bot-pnl-updater");
 const { userConfigurableRoutes } = require("./src/user-configurable-routes");
 const { createPauseInfra } = require("./src/server-pause");
-const _unlockLog = require("./src/server-unlock-log");
+const { createUnlockHandler } = require("./src/server-unlock");
 const { logVersionBanner } = require("./src/build-info");
 const sendTx = require("./src/send-transaction");
 
@@ -481,31 +481,14 @@ const _routes = {
       ...walletManager.getStatus(),
       locked: walletManager.hasWallet() && !_privateKeyRef.current,
     }),
-  "POST /api/wallet/unlock": async (req, res) => {
-    _unlockLog.logUnlockRequest(req);
-    const body = await readJsonBody(req);
-    if (!body.password) {
-      _unlockLog.logUnlockMissing();
-      return jsonResponse(res, 400, { ok: false, error: "Missing password" });
-    }
-    _unlockLog.logUnlockAttempt(String(body.password).length);
-    try {
-      _privateKeyRef.current = (
-        await walletManager.revealWallet(body.password)
-      ).privateKey;
-      _unlockLog.logUnlockSuccess(req);
-      const _pw = body.password;
-      const _w = (t) => (e) => log.warn("[server] %s: %s", t, e.message);
-      _routeHandlers._decryptApiKeys(_pw).catch(_w("API key decrypt failed"));
-      _routeHandlers
-        ._autoStartManagedPositions()
-        .catch(_w("Auto-start failed"));
-      jsonResponse(res, 200, { ok: true });
-    } catch (_err) {
-      _unlockLog.logUnlockFail(_err);
-      jsonResponse(res, 401, { ok: false, error: "Wrong password" });
-    }
-  },
+  "POST /api/wallet/unlock": createUnlockHandler({
+    walletManager,
+    privateKeyRef: _privateKeyRef,
+    decryptApiKeys: (pw) => _routeHandlers._decryptApiKeys(pw),
+    startManagedPositions: () => _routeHandlers._autoStartManagedPositions(),
+    jsonResponse,
+    readJsonBody,
+  }),
   "DELETE /api/wallet": (_, res) => {
     log.warn(
       "[server] DELETE /api/wallet received" + " — clearing wallet file",

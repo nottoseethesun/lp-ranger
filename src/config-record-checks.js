@@ -5,19 +5,18 @@
  * @module config-record-checks
  * @description
  * What makes a value acceptable for each record the bot keeps per
- * position in bot-config.json, when `POST /api/config` is asked to save
- * one.
+ * position in app-data/position-records.json (src/position-records.js).
  *
  * The bot writes these records itself: the HODL baseline, the coins
  * rebalances left in the wallet, the compound history and its coin
  * totals, each NFT's gas and compounded coins, and the lifetime deposit.
- * No dashboard control sets them, but the route accepts them as it
- * accepts a setting, so a request can carry one. Each is held here to
- * the shape the bot writes, field by field, using the kinds of value the
- * tests hold the shipped files to (`src/value-kinds.js`), so a value is
- * judged one way whichever way it arrives. `src/config-bounds.js` asks
- * these checks along with its own, before the route applies anything,
- * and a value the bot would have written passes.
+ * No dashboard control sets them, and `POST /api/config` takes none of
+ * them. Each is held here to the shape the bot writes, field by field,
+ * using the kinds of value the tests hold the shipped files to
+ * (`src/value-kinds.js`); the startup check holds the records file to
+ * these rules (src/bot-config-checks.js), so a record the next start
+ * cannot read stops startup rather than the bot, and a value the bot
+ * would have written passes.
  *
  * A record's fields are checked where present, and the ones its readers
  * cannot do without are required. A field no reader knows is left alone,
@@ -175,6 +174,13 @@ const RECORD_CHECKS = Object.freeze({
   lastCompoundAt: _isoTime,
   totalLifetimeDepositUsd: _usd,
   depositUsedFallback: _of(KINDS.bool),
+  /*-
+   *  One entry for each failed rebalance or compound that paid gas: when,
+   *  the wei, and its dollars on that day (src/spent-gas.js).
+   */
+  failedMoveGas: _listOf(
+    _record({ at: _isoTime, wei: _digits, usd: _usd }, ["at", "wei", "usd"]),
+  ),
 });
 
 module.exports = { RECORD_CHECKS };

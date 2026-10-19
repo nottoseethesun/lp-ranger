@@ -113,8 +113,10 @@ function flattenStampedHref(html, css) {
  * `<script src="/dist/manual-figures.js?v=123" defer></script>`, with its
  * line when the tag stands alone on it, whatever stamp follows the path.
  *
- * String scanning, as `flattenStampedHref` does, for the same reasons;
- * and as there, a longer path sharing the prefix is left alone.
+ * String scanning, as in `flattenStampedHref`: the path comes from the
+ * spec file, and a pattern built from it would trip the security lint
+ * and need its dots escaped. As there, a longer path sharing the prefix
+ * is left alone.
  *
  * @param {string} html
  * @param {string} src  The script's path as the page names it.

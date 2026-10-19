@@ -200,9 +200,14 @@ aggregator, DexScreener, GeckoTerminal, Moralis — use the `https://`
 urls the app ships, and the shipped rpc endpoints enforce TLS. An rpc
 endpoint you add yourself may be plain `http://`, which suits a node on
 your own machine only: anything else would carry your transactions in
-the clear. Inbound dashboard traffic uses plain HTTP because it never
-leaves the loopback interface; adding TLS to a localhost-only listener
-buys nothing and complicates setup.
+the clear. The dashboard page itself makes two more kinds of outbound
+call, both https as shipped. It reads the chain's token list
+(`chains.json` → `tokenList.url`) as it loads, and then loads each token
+logo from the address the list gives, skipping any that is not https.
+The host of each logo, which the list chooses, sees the browser's ip
+address and which logos it asks for. Inbound dashboard traffic uses
+plain HTTP because it never leaves the loopback interface; adding TLS
+to a localhost-only listener buys nothing and complicates setup.
 
 ### Rate Limiting
 
@@ -474,6 +479,11 @@ session. Neither is ever written to disk unencrypted, returned by
 server only through `POST /api/wallet/reveal`, which decrypts it again
 from the password sent with that request.
 
+The dashboard tab plays no part in signing. Once the server confirms it
+holds a wallet being created or imported, the tab clears the key, the
+seed phrase and the password from the setup dialog. The unlock dialog
+and Reveal Key clear the password once the server has accepted it.
+
 **Lint enforcement:** The custom ESLint rule
 [`9mm/no-secret-logging`](../eslint-rules/no-secret-logging.js) flags
 any `console.log/warn/error/info` call that references an identifier,
@@ -601,19 +611,15 @@ position as stopped).
 
 LP Ranger prevents this with a strict `allowlist`. The route handler
 in `src/server-config-route.js` walks two hardcoded arrays —
-`GLOBAL_KEYS` (RPC URLs, gas fee limit, etc.) and `POSITION_KEYS`
-(slippage, threshold, timeout, auto-compound settings, etc.) defined
-in `src/bot-config-keys.js` — and copies only those recognized names
-from the request body. Every other field is silently dropped. Each
-setting an operator can change is then held to its range by
-`src/config-bounds.js` before anything is saved. `POSITION_KEYS` also
-names the position's bookkeeping the app maintains itself, such as
-`hodlBaseline`, `residuals` and `compoundHistory`. The route accepts
-those too, each held to the shape the bot writes
-(`src/config-record-checks.js`) with the same kinds of value the
-shipped-values test holds the shipped files to (`src/value-kinds.js`),
-so a malformed record is refused before it reaches the file the next
-start reads. A test fails any key the route accepts without a check.
+`GLOBAL_KEYS` (RPC URLs, gas fee limit, etc.) and
+`SETTING_POSITION_KEYS` (slippage, threshold, timeout, auto-compound
+settings, etc.) defined in `src/bot-config-keys.js` — and copies only
+those recognized names from the request body. Every other field is
+silently dropped, the bot's own records among them: the HODL baseline,
+residuals and compound history are written by the bot alone, to
+`app-data/position-records.json`. Each setting is then held to its
+range by `src/config-bounds.js` before anything is saved. A test fails
+any key the route accepts without a check.
 The outer layers (the localhost binding, the origin check and the
 CSRF token) still stand in front of all of it. Because
 the `allowlist` is a constant inside server code (never derived from
@@ -1097,10 +1103,10 @@ documenting why the deviation is intentional. Current exceptions:
 | File | Line | Rule | Reason |
 | ---- | ---- | ---- | ------ |
 | `src/hodl-baseline.js` | 41 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/range-math.js` | 303 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/range-math.js` | 305 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
 | `src/position-detector.js` | 185 | `9mm/no-number-from-bigint` | Zero-check only |
-| `scripts/cache-bust.js` | 17, 19, 24 | `security/detect-unsafe-regex` | Input is local `index.html`, not user-supplied |
-| `scripts/cache-bust.js` | 31 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
+| `scripts/cache-bust.js` | 24 | `security/detect-unsafe-regex` | Input is the app's own `public/*.html` pages, not user-supplied |
+| `scripts/cache-bust.js` | 50 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
 | `scripts/check-report-parse.js` | 283 | `security/detect-unsafe-regex` | Input is deterministic TAP v14 from `node --test` |
 | `scripts/import-wallet.js` | 97 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
 
@@ -1224,8 +1230,8 @@ reaching `main`.
 ## Test-Time State Protection
 
 `scripts/check.js` copies the operator's files — those in
-`app-config/user-configurable/` and `app-data/`, except each directory's
-`README.md`, plus `tmp/*.json` — to a fresh temporary directory, wipes
+`app-config/user-configurable/`, `app-data/` and `app-data/scan-cache/`,
+except each directory's `README.md` — to a fresh temporary directory, wipes
 the live copies, runs the test suite against vanilla state, and restores
 the originals in a `finally` block. Until then SIGINT, SIGTERM and SIGHUP
 are caught, so an interrupt still restores the files before the process

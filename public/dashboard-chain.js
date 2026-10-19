@@ -27,9 +27,9 @@ import { askUntilAnswered } from "./dashboard-ask-server.js";
 import SERVER_DOWN from "../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json" with { type: "json" };
 
 /*-
- *  The server's answer, `{ chainId, displayName, homepage, logo }`.
- *  Null until the server has answered; startup awaits that answer before
- *  anything reads it.
+ *  The server's answer, `{ chainId, displayName, homepage, logo,
+ *  tokenListUrl }`. Null until the server has answered; startup awaits
+ *  that answer before anything reads it.
  */
 let _chain = null;
 
@@ -52,6 +52,17 @@ export function activeChainDisplayName() {
   if (_chain === null) return "";
   const name = _chain.displayName;
   return typeof name === "string" ? name : "";
+}
+
+/**
+ * Where the active chain's token logos are listed: the url of its token
+ * list (`dashboard-token-logos.js`), or "" for a chain with none. The
+ * page reads it once startup has learned the chain.
+ * @returns {string}
+ */
+export function activeChainTokenListUrl() {
+  const url = _chain.tokenListUrl;
+  return typeof url === "string" ? url : "";
 }
 
 /**

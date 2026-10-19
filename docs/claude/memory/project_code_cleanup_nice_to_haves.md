@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d932d59e-01b4-45db-82b1-6d987abcda8f
-  modified: 2026-09-20T22:28:42.547Z
+  modified: 2026-10-19T18:30:33.672Z
 ---
 
 Running list of **code-cleanup nice-to-haves**.  Each entry here is polish
@@ -69,7 +69,7 @@ the same `Collect`/`DecreaseLiquidity` logs, into two different stores:
 
 | | Per-Day P&L table | Lifetime "Fees Compounded" |
 | --- | --- | --- |
-| store | `tmp/pnl-epochs-cache.json` | `bot-config.json` |
+| store | `app-data/scan-cache/pnl-epochs-cache.json` | `bot-config.json` |
 | key | pool identity | composite key |
 | filled by | `reconstructEpochs` → `getPositionHistory` | `_classifyAllCompounds` → `classifyCompounds` |
 | order | first | second |

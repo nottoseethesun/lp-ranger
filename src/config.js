@@ -202,8 +202,13 @@ const TX_SPEEDUP_SEC = parseTimerSec(
 
 /*- On-chain contract deadline (seconds) stamped into removeLiquidity /
  *  swap / mint calldata.  Sourced from app-runtime.json — see the
- *  `tx._comment` block there for the full explanation. */
-const DEADLINE_SEC = readEnv("DEADLINE_SEC") ?? APP_CONFIG.tx.deadlineSec;
+ *  `tx._comment` block there for the full explanation — and held to its
+ *  range in setting-bounds.json when `.env` sets it. */
+const DEADLINE_SEC = parseBoundedSetting(
+  "DEADLINE_SEC",
+  APP_CONFIG.tx.deadlineSec,
+  "tx.deadlineSec",
+);
 
 /*-
  *  Seconds before a stuck TX is cancelled with a zero-value self-transfer.
@@ -491,7 +496,7 @@ const SWAP_ROUTER = _chainContract(
 
 /**
  * Read the name the active chain's entry gives one of its swap routes,
- * which is what the "Routing through:" badge and the Rebalance Events
+ * which is what the "Route:" badge and the Rebalance Events
  * table show.
  *
  * Like an address, a name has no fallback. A route the entry does not
@@ -561,6 +566,29 @@ function _aggregatorName() {
 
 /** How a swap through the active chain's aggregator is named. */
 const AGGREGATOR_NAME = _aggregatorName();
+
+/**
+ * Read where the active chain's token list lives, the list the dashboard
+ * takes token logos from (`public/dashboard-token-logos.js`).
+ *
+ * The entry must say one way or the other. An empty url means the chain
+ * has no list, and every token there shows a transparent placeholder. A
+ * missing one stops startup here rather than being read as that.
+ *
+ * @returns {string} The url, or "" on a chain with no list.
+ * @throws {Error} When the chain's entry gives no url, not even "".
+ */
+function _tokenListUrl() {
+  const url = CHAIN.tokenList?.url;
+  if (typeof url === "string") return url;
+  throw new Error(
+    `[config] No token list url for ${CHAIN_NAME}: set chains.json → ` +
+      `${CHAIN_NAME}.tokenList.url, or set it to "" for a chain with none.`,
+  );
+}
+
+/** Url of the active chain's token list; "" when it has none. */
+const TOKEN_LIST_URL = _tokenListUrl();
 
 // ── Chain description ──────────────────────────────────────────────────────────
 
@@ -808,6 +836,7 @@ module.exports = {
   AGGREGATOR_URL,
   AGGREGATOR_NAME,
   AGGREGATOR_QUOTE_TIMEOUT_MS,
+  TOKEN_LIST_URL,
 
   // Per-blockchain
   CHAIN,

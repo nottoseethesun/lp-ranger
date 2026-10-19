@@ -1,7 +1,7 @@
 {
   "_comment": "The range each checked setting must fall in. A range is {min, max, integer}: inclusive bounds, either optional, and integer true for a whole number. A setting sits at the path it has in its own file, groups included. src/config-bounds.js refuses a Bot Settings save out of range; the files' own values are checked at startup. The help quotes ranges from here. Only the shipped copy is read: an override could widen a range.",
   "timers": {
-    "_comment": "Every setting that becomes a timer delay, from any file or .env, is checked by src/timer-bounds.js: a whole number of at least minimum (seconds, or milliseconds for a key ending in ms), at most the lesser of maxDefaultMultiple times its shipped default and maxHours, well inside the 24.8 days a timer can hold (past that, it fires at once). An entry under settings overrides the rule: the poll intervals have their own ranges, request pacing is at least 5 ms and cannot be turned off, and the outage pause takes 0 to mean off. The dashboard's poll: half a second at least, or each open tab would flood the server; a minute at most, or its figures go stale. Its stale-figures check: ten milliseconds at least, more often than a screen redraws; a second at most, or the previous position's figures stay on screen that long after a switch.",
+    "_comment": "Every setting that becomes a timer delay, from any file or .env, is checked by src/timer-bounds.js: a whole number of at least minimum (seconds, or milliseconds for a key ending in ms), at most the lesser of maxDefaultMultiple times its shipped default and maxHours, well inside the 24.8 days a timer can hold (past that, it fires at once). An entry under settings overrides the rule: the poll intervals have their own ranges, request pacing is 5 ms to 2 s (under 5 ms it no longer paces anything; over 2 s a five-year history scan takes more than two hours, and the bot spends its time waiting on its own pace), and the outage pause takes 0 to mean off. The dashboard's poll: half a second at least, or each open tab would flood the server; a minute at most, or its figures go stale. Its stale-figures check: ten milliseconds at least, more often than a screen redraws; a second at most, or the previous position's figures stay on screen that long after a switch. A stop (app-runtime.json's shutdown group): a force-stop exits within one second to one minute, since under a second it cannot close its listener and send the shutdown alert, and waiting longer is what gentle-stop is for; npm stop gives a slow exit half a second to a minute more before it kills; it looks for the exit every ten milliseconds to five seconds; gentle-stop asks every second to every hour, since past an hour a stop could come hours after the last move ended.",
     "minimum": 1,
     "maxDefaultMultiple": 1000,
     "maxHours": 48,
@@ -9,8 +9,12 @@
       "checkIntervalSec": { "min": 10, "max": 3600 },
       "dashboardPollIntervalMs": { "min": 500, "max": 60000 },
       "staleDataCheckIntervalMs": { "min": 10, "max": 1000 },
-      "globalRPCRequestRateIntervalMS": { "min": 5 },
-      "rpcAllEndpointsDownPauseMS": { "min": 0 }
+      "globalRPCRequestRateIntervalMS": { "min": 5, "max": 2000 },
+      "rpcAllEndpointsDownPauseMS": { "min": 0 },
+      "exitTimeoutMs": { "min": 1000, "max": 60000 },
+      "stopKillMarginMs": { "min": 500, "max": 60000 },
+      "stopCheckIntervalMs": { "min": 10, "max": 5000 },
+      "gentleStopPollMs": { "min": 1000, "max": 3600000 }
     }
   },
   "_approvalMultiple_comment": "Too small defeats approving ahead; too large wastes nothing but looks alarming in an explorer.",
@@ -113,6 +117,8 @@
     "quietWindowMultiple": { "min": 1, "max": 1440, "integer": true }
   },
   "tx": {
+    "_deadlineSec_comment": "The deadline a removeLiquidity, swap or mint carries on chain, in seconds; DEADLINE_SEC in .env is held to the same range. Five minutes at least, so a transaction sped up at two minutes, as shipped, still lands before it. An hour at most, so a move stuck that long can no longer be mined at a range and price worked out an hour before.",
+    "deadlineSec": { "min": 300, "max": 3600, "integer": true },
     "sendRetries": { "min": 0, "max": 10, "integer": true },
     "_swapBackoff_comment": "A retry after the price moved under a rebalance: the first wait from a second to an hour, the longest from a second to a day, past which the position sits idle for no gain. midwayRetryLimit: at least one try, at most twenty.",
     "swapBackoffBaseMs": { "min": 1000, "max": 3600000, "integer": true },

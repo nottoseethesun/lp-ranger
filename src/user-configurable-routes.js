@@ -53,9 +53,11 @@ function userConfigurableRoutes(jsonResponse) {
      *  against. The dashboard reads it once, before it builds any
      *  position key or url: the chain is the first segment of both, and
      *  a dashboard that assumed "pulsechain" would file a testnet
-     *  position's settings under a mainnet key. The rest makes the
-     *  header's chain link. `src/config.js` refuses to start without any
-     *  of them, so none needs a fallback here.
+     *  position's settings under a mainnet key. The display name,
+     *  homepage and logo make the header's chain link, and the token
+     *  list's url is where the dashboard reads token logos ("" for a
+     *  chain with none). `src/config.js` refuses to start without any of
+     *  them, so none needs a fallback here.
      */
     "GET /api/chain": (_req, res) =>
       jsonResponse(res, 200, {
@@ -63,6 +65,7 @@ function userConfigurableRoutes(jsonResponse) {
         displayName: config.CHAIN.displayName,
         homepage: config.CHAIN.homepage,
         logo: config.CHAIN.logo,
+        tokenListUrl: config.TOKEN_LIST_URL,
       }),
   };
 }

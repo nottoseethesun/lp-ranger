@@ -26,6 +26,7 @@ const { log } = require("./log");
 const { emojiId } = require("./logger");
 const { poolKeyOf, readPoolOfPosition } = require("./pool-already-managed");
 const { loadLpPositionCache } = require("./lp-position-cache");
+const { isContractRevert } = require("./rpc-error-classifier");
 
 /**
  * Whether the scan saw `p` holding liquidity.
@@ -46,7 +47,9 @@ function _scannedOpen(p) {
  * Whether `tokenId`, which the last scan saw open, is still open and in
  * the wallet. It is, unless the chain answers otherwise: its liquidity is
  * zero, another address owns it, or the contract reverts when asked its
- * owner, as it does for a burned NFT. A read that fails answers nothing.
+ * owner, as it does for a burned NFT. A read that fails answers nothing,
+ * an endpoint's error answer included, which ethers labels as it labels
+ * a revert (`isContractRevert`).
  * @param {object} pm  The position manager contract.
  * @param {string} tokenId
  * @param {object} o   As for `openInPool`.
@@ -64,7 +67,7 @@ async function _stillOpenInWallet(pm, tokenId, o) {
     const owner = await pm.ownerOf(BigInt(tokenId));
     return owner.toLowerCase() === o.wallet.toLowerCase();
   } catch (err) {
-    if (err.code === "CALL_EXCEPTION") return false;
+    if (isContractRevert(err)) return false;
     const emoji = emojiId(tokenId);
     log.warn(
       "[pool-rule] Could not read who owns NFT #%s %s: %s; the last wallet scan's answer stands, open in the wallet",

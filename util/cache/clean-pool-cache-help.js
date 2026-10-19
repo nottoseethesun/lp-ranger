@@ -59,33 +59,34 @@ OPTIONS
         Print this message and exit.
 
 DEFAULT BEHAVIOUR (no options)
-  Cleans EVERY pool-scoped cache surface for the given pool:
+  Cleans EVERY pool-scoped cache surface for the given pool, each a file
+  in the scan-cache folder, app-data/scan-cache/:
 
-    1. tmp/pool-creation-blocks-cache.json
+    1. pool-creation-blocks-cache.json
          Removes this chain's entry for the pool: the key that begins
          with the chain and ends with the pool address, in either
          letter case. Another chain's entry for the same address is
          kept.
 
-    2. tmp/gecko-pool-cache.json
+    2. gecko-pool-cache.json
          Removes this chain's entry for the pool, matched the same way.
 
-    3. tmp/event-cache-*.json   (one file per wallet that has positions
-                                 in this pool)
+    3. event-cache-*.json   (one file per wallet that has positions
+                             in this pool)
          Resolves (token0, token1, fee) by calling pool.token0/1/fee()
          on the address, then deletes every event-cache file whose
          filename matches both prefix
          event-cache-{chain:5}-{nftFactory:6hex}- AND suffix
          -{token0:8hex}-{token1:8hex}-{fee}.json (wallet wildcarded).
 
-    4. tmp/pnl-epochs-cache.json
+    4. pnl-epochs-cache.json
          Removes every internal key of the form
          {chain}.{nftFactory}.{wallet}.{token0}.{token1}.{fee} that
          matches the supplied chain + nft-factory + token0 + token1 +
          fee (wallet wildcarded), so accumulated P&L history for this
          pool configuration is dropped.
 
-    5. tmp/liquidity-pair-details-cache.json
+    5. liquidity-pair-details-cache.json
          Removes every top-level key whose prefix
          {chain:5}-{nftFactory:6hex}- AND suffix
          -{token0:8hex}-{token1:8hex}-{fee} match this pool's scope
@@ -93,9 +94,9 @@ DEFAULT BEHAVIOUR (no options)
          (Pool)" snapshot so the next scan re-resolves wallet balances
          + historical prices at the first-mint block.
 
-    6. tmp/lp-position-cache-*.json   (one file per wallet that has
-                                        any positions on this chain +
-                                        nft-factory)
+    6. lp-position-cache-*.json   (one file per wallet that has
+                                    any positions on this chain +
+                                    nft-factory)
          Surgically removes every entry from the cached positions[]
          array whose (token0, token1, fee) matches this pool's scope.
          Other pools' entries in the same file are preserved, and the
@@ -110,10 +111,10 @@ DEFAULT BEHAVIOUR (no options)
   configuration is wiped.
 
   Caches that are NOT touched (intentional — not pool-scoped):
-    - tmp/historical-price-cache.json   keyed by chain + token + block or day
-    - tmp/nft-mint-date-cache.json      keyed by chain + nft-factory + tokenId
-    - tmp/block-time-cache.json         keyed by chain + block
-    - tmp/token-symbol-cache.json       keyed by chain + token
+    - historical-price-cache.json   keyed by chain + token + block or day
+    - nft-mint-date-cache.json      keyed by chain + nft-factory + tokenId
+    - block-time-cache.json         keyed by chain + block
+    - token-symbol-cache.json       keyed by chain + token
 
 REQUIREMENTS
   Default mode reads token0/token1/fee from the pool via RPC.  Tries

@@ -25,6 +25,7 @@ const assert = require("node:assert/strict");
 const { Wallet, Transaction } = require("ethers");
 
 const { _handleSwapError } = require("../src/rebalancer-aggregator");
+const { nonceTooLow } = require("./helpers/ethers-rpc-errors");
 /*-
  *  From the module that owns them, not through the aggregator: both moved
  *  out when rebalancer-aggregator.js reached its line cap.
@@ -425,13 +426,7 @@ describe("_handleSwapError", () => {
       signer: {
         getAddress: async () => "0xme",
         sendTransaction: async () => {
-          const e = new Error("nonce too low");
-          e.code = "NONCE_EXPIRED";
-          e.payload = {
-            method: "eth_sendRawTransaction",
-            params: [refusedCancel],
-          };
-          throw e;
+          throw nonceTooLow(refusedCancel);
         },
       },
       reset: () => {},

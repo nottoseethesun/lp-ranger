@@ -13,8 +13,8 @@
  * skipped build degrades gracefully — the page still boots, just with
  * empty placeholders where the UI icons would be.
  *
- * Runs from `npm run build` after `cache-bust.js` so the cache-bust
- * `?v=…` stamps flow through into the composed output.  See
+ * `scripts/build-bundles.js` runs it after `cache-bust.js`, so the
+ * composed page carries the build's `?v=…` stamps.  See
  * docs/engineering.md § "SVG Assets" for the full policy.
  */
 

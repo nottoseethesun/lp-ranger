@@ -403,6 +403,8 @@ export async function revealWallet() {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
+    // The server has checked the password; the tab keeps no copy.
+    g("revealPassword").value = "";
 
     g("revealAddr").textContent = data.address;
     g("revealKey").textContent = data.privateKey;
@@ -466,9 +468,7 @@ export async function confirmClearWallet() {
     /* server unavailable */
   }
   wallet.address = null;
-  wallet.privateKey = null;
   wallet.source = null;
-  wallet.mnemonic = null;
   const revealBtn = g("wsRevealBtn");
   if (revealBtn) revealBtn.style.display = "none";
   const clearBtn = g("wsClearBtn");

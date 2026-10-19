@@ -38,6 +38,7 @@ const {
   readShutdownTimings,
   shutdownTimingsFrom,
 } = require("../src/shutdown-timing");
+const { SETTING_BOUNDS } = require("../src/setting-bounds");
 const shipped = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
 describe("shutdown timings", () => {
@@ -67,5 +68,22 @@ describe("shutdown timings", () => {
         );
       });
     }
+
+    /*-
+     *  The range the startup check holds the setting to, so a value it
+     *  lets the server start on never keeps `npm stop` from running.
+     */
+    const { min, max } = SETTING_BOUNDS.timers.settings[key];
+    it(`holds ${key} to its range in setting-bounds.json, ${min} to ${max}`, () => {
+      for (const ok of [min, max])
+        assert.doesNotThrow(() =>
+          shutdownTimingsFrom({ ...shipped.shutdown, [key]: ok }),
+        );
+      for (const bad of [min - 1, max + 1])
+        assert.throws(
+          () => shutdownTimingsFrom({ ...shipped.shutdown, [key]: bad }),
+          new RegExp(`shutdown\\.${key}`),
+        );
+    });
   }
 });

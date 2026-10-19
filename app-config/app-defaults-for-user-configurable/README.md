@@ -69,20 +69,11 @@ shipped value, including any future shipped-default updates.
 
 ## Format errors
 
-The shipped JSON files in *this* directory are required and must be
-valid — a missing or malformed file is treated as a broken install and
-the app refuses to start.
-
-The user override file is **optional** — its absence is the normal
-case.  An override file that is not valid JSON stops the server and the
-bot at startup, naming the file.
-
-A value the app cannot use stops startup too, with a message naming the
-setting and what it accepts: a value of the wrong kind, a value outside
-its range in `setting-bounds.json`, or a setting LP Ranger does not
-read.  Correct the value, or remove it to use the shipped default, and
-restart.  To check without starting, run
-`node util/diagnostic/validate-config-values-with-any-user-overrides.js`.
+The shipped JSON files in *this* directory are required; a missing or
+malformed one is a broken install. An override file is optional, and
+every value in one is checked at startup, as
+[Checking the Settings](../../docs/configuration.md#checking-the-settings)
+describes.
 
 ## File inventory
 
@@ -101,4 +92,4 @@ restart.  To check without starting, run
 | `setting-labels.json` | How the dashboard names each setting, for messages and the Activity Log. |
 | `ui-defaults_layout.json` | Dashboard layout settings (the dialog height), built into its CSS; an override applies at the next `npm run build`. |
 | `ui-defaults_non-layout_for-server-down-scenario.json` | The two dashboard settings needed while the server is unreachable, built into the page. **An override has no effect.** |
-| `ui-defaults_non-layout_for-server-up-scenario.json` | Every other dashboard setting, sent by the server, including the first-visit defaults for sounds and privacy. An override takes effect after a restart and a page reload; a value outside its range stops startup. |
+| `ui-defaults_non-layout_for-server-up-scenario.json` | Every other dashboard setting, sent by the server, including the first-visit defaults for sounds and privacy. An override takes effect after a restart and a page reload. |

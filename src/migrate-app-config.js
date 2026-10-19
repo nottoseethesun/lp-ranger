@@ -10,7 +10,7 @@
  * Target layout (see the `app-config/` section of server.js for the full
  * explanation): per-operator runtime state lives under
  * `app-config/user-configurable/`; the historical rebalance log lives
- * under `app-data/`; pure performance caches stay in `tmp/`; shipped
+ * under `app-data/`, the scan caches under `app-data/scan-cache/`; shipped
  * defaults live in `app-config/app-defaults-for-user-configurable/`.
  *
  * This module's `migrateAppConfig()` function is idempotent and safe:

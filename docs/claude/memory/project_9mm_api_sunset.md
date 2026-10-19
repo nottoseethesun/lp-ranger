@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-18T03:15:27.307Z
+  modified: 2026-10-19T21:13:30.722Z
 ---
 
 # 9mm api sunset
@@ -316,10 +316,9 @@ the user's low-volume advice; failing to learn the blockchain counts
 toward HALTED; every cache of chain data is keyed chain-first
 ([[feedback_cache_keys_lead_with_the_chain]]).
 
-**How to apply:** the work is committed on branch
-`migrate-to-new-9mm-data-api` and pushed, not merged. Next: the user's
-browser check of the badge, the header chain link, the dialogs and the
-disclosure, then the four disclosure sentences, then the merge.
+**How to apply:** the work was merged to main as c2a2e14
+(2026-10-19 01:36 CDT, PR #230). Production runs 0.9.8, so the Dex
+Detail Page link stays broken there until a release ships.
 The user ruled out building a 9mm api failover on this branch. Related:
 [[project_aggregator_swap_wait_double_swap]], [[project_swap_serialized]],
 [[project_tests_write_operator_error_log]].

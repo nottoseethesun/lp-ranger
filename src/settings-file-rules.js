@@ -4,300 +4,430 @@
  * @file src/settings-file-rules.js
  * @module settings-file-rules
  * @description
- * What every value in the JSON settings files may be, and the values that
- * must agree with each other.
+ * What every value in the JSON settings files may be, as one JSON Schema
+ * for each file, and the values that must agree with each other.
  *
- * Every value in a file is checked by exactly one of three rules. A value
- * with a range in `setting-bounds.json`, at its own path, is held to that
- * range. A value that becomes a timer delay is held to the timer rule in
- * `src/timer-bounds.js`, under the name the app checks it by, its ceiling
- * set by the shipped value. Every other value is named in
- * `SETTINGS_FILE_RULES` with the kind of value it must be
- * (src/value-kinds.js). A value no rule covers is not a setting LP Ranger
- * reads.
+ * Each file's schema (draft 2020-12) is built here, as the module loads,
+ * from the pieces in src/settings-schema-parts.js, and checked by Ajv,
+ * the JSON Schema validator (`AJV`, src/value-kinds.js). A group's
+ * schema names every key it takes and
+ * refuses any other, so a setting misspelled, or put in a file that does
+ * not read it, is reported rather than ignored, and a value of the wrong
+ * type, such as a list where one number belongs, is refused by its
+ * schema's `type`. A value's schema is one of three:
  *
- * The test suite holds the files that ship to these rules
+ *   - its range in setting-bounds.json, found by its path in its own
+ *     file (`ranged`);
+ *   - the timer rule of src/timer-bounds.js, for a value that becomes a
+ *     timer delay, its ceiling set by the value as shipped (`timer`);
+ *   - a kind of value from src/value-kinds.js.
+ *
+ * Each schema carries, as its `description`, the words a refusal uses:
+ * "app-runtime.json → tx.deadlineSec must be a whole number from 300 to
+ * 3600; it is 50". What a schema cannot say, code says after it: values
+ * that must agree with each other, within a file or across files
+ * (`agreementProblems`).
+ *
+ * The test suite holds the files that ship to these schemas
  * (test/shipped-config-values.test.js). The settings check holds an
  * install's own values to them, its copies over the shipped files
  * included (src/settings-check.js), for the
  * `validate-config-values-with-any-user-overrides` diagnostic and for the
  * server's and the bot's startup. So a value is judged one way, wherever
  * it comes from.
- *
- * A rule answers the problem with a value, in words that name where the
- * value is and what it must be, or null when there is none.
  */
 
-const fs = require("fs");
-const path = require("path");
-const { SETTING_BOUNDS } = require("./setting-bounds");
-const { withinBound, boundText } = require("./range-check");
+const { loadShippedDefaults } = require("./load-merged-defaults");
+const { boundAt } = require("./setting-bounds");
 const { assertTimerSec } = require("./timer-bounds");
 const { cacheTagProblem } = require("./cache-store");
-const { KINDS, isText, isUrl, isAddress } = require("./value-kinds");
+const { AJV, isText } = require("./value-kinds");
+const { GLOBAL_KEYS, SETTING_POSITION_KEYS } = require("./bot-config-keys");
+const {
+  K,
+  group,
+  named,
+  ranged,
+  rangedEach,
+  timer,
+  listOf,
+  problemsFromErrors,
+} = require("./settings-schema-parts");
 
-const _PUBLIC = path.join(__dirname, "..", "public");
+// ── Each file's schema ─────────────────────────────────────────────────
 
-// ── What a value may be ────────────────────────────────────────────────
-
-/** Words for a value that fails: where it is, what it must be, what it is. */
-function _problem(where, v, what) {
-  return `${where} must be ${what}; it is ${JSON.stringify(v)}`;
+function _botConfigDefaults(shipped) {
+  const t = (key) => timer(key, shipped[key]);
+  return group({
+    ...rangedEach([
+      "approvalMultiple",
+      "gasFeePct",
+      "rebalanceGasDeferPct",
+      "getLogsChunkSize",
+      "rpcFailoverRatePercentage",
+      "rpcFailoverRateDurationMinutes",
+      "rpcMax429PenaltyMs",
+      "rpcFailoverStickyMs",
+      "boundedReadAttemptsPerEndpoint",
+      "feeDataLogIntervalMs",
+      "historyLookbackYears",
+      "eventCacheTtlMs",
+      "poolScanReuseMs",
+      "rebalancePairingWindowSec",
+      "priceCacheTtlMs",
+      "dustUnitPriceCacheMultiplier",
+      "moveCacheTtlMs",
+      "pricePauseExceptionPollWindowMultiple",
+      "positionBalancedBandPct",
+      "positionBalancedCooldownMs",
+      "rescanPricesRecentWindowDays",
+      "impermanentLossGuardPct",
+      "rebalanceOutOfRangeThresholdPercent",
+      "rebalanceTimeoutMin",
+      "slippagePct",
+      "swapChunkCount",
+      "minSwapAmountRaw",
+      "slippageSuggestionMarginPct",
+      "correctiveSwapMaxRounds",
+      "minRebalanceIntervalMin",
+      "maxRebalancesPerDay",
+      "offsetToken0Pct",
+      "rebalanceRangeWidthPct",
+    ]),
+    // Each delay in the list is held to the range alone.
+    rpcRetryOn429DelaysMs: {
+      type: "array",
+      items: ranged("rpcRetryOn429DelaysMs"),
+      description: "a list of delays in milliseconds",
+    },
+    gasDeferRetrySec: t("gasDeferRetrySec"),
+    globalRPCRequestRateIntervalMS: t("globalRPCRequestRateIntervalMS"),
+    rpcAllEndpointsDownPauseMS: t("rpcAllEndpointsDownPauseMS"),
+    boundedReadRetryDelayMs: t("boundedReadRetryDelayMs"),
+    checkIntervalSec: t("checkIntervalSec"),
+    moralisEnabled: K.bool,
+    fullRangeRebalanceEnabled: K.bool,
+    rangeOverrideEnabled: K.bool,
+    throttleDoubling: group(
+      rangedEach(
+        ["triggerCount", "triggerWindowMultiple", "quietWindowMultiple"],
+        "throttleDoubling.",
+      ),
+    ),
+    lowGasThresholds: group(
+      rangedEach(
+        ["worstCaseGasFactor", "safetyMultiplier", "standardSendGas"],
+        "lowGasThresholds.",
+      ),
+    ),
+    ilGuardRetry: group(rangedEach(["baseMs", "maxMs"], "ilGuardRetry.")),
+    residualCleanup: group(
+      rangedEach(["delayMs", "thresholdPct"], "residualCleanup."),
+    ),
+  });
 }
-
-/** A rule from a test of the value and a description of what passes. */
-const rule = (what, ok) => (v, where) =>
-  ok(v) ? null : _problem(where, v, what);
-
-/**
- * A rule from a kind of value the app holds its own inputs to as well,
- * so a file's value is judged as a request's is.
- */
-const kindRule = (k) => rule(k.what, k.ok);
-const bool = kindRule(KINDS.bool);
-const text = kindRule(KINDS.text);
-const textOrNone = kindRule(KINDS.textOrNone);
-const count = kindRule(KINDS.count);
-const ms = kindRule(KINDS.ms);
-const seconds = kindRule(KINDS.seconds);
-const positive = kindRule(KINDS.positive);
-const usd = kindRule(KINDS.usd);
-const scalesUp = kindRule(KINDS.scalesUp);
-const outbids = kindRule(KINDS.outbids);
-const port = kindRule(KINDS.port);
-const gasUnits = kindRule(KINDS.gasUnits);
-const url = kindRule(KINDS.url);
-const urlOrNone = kindRule(KINDS.urlOrNone);
-const addressOrNone = kindRule(KINDS.addressOrNone);
-const scheme = kindRule(KINDS.scheme);
-const host = kindRule(KINDS.host);
-const textList = kindRule(KINDS.textList);
-const lowerTextList = kindRule(KINDS.lowerTextList);
-
-/** A chain named in the chains.json the values are judged against. */
-const chain = (v, where, ctx) =>
-  typeof v === "string" && Object.hasOwn(ctx.chains, v)
-    ? null
-    : _problem(where, v, "the name of a chain in chains.json");
-
-/** A list of chains named in that chains.json. */
-const chainList = (v, where, ctx) =>
-  Array.isArray(v) &&
-  v.length > 0 &&
-  v.every((c) => typeof c === "string" && Object.hasOwn(ctx.chains, c))
-    ? null
-    : _problem(where, v, "a list of chains named in chains.json");
-
-// The dashboard loads a chain's logo from public/ by this name.
-const logoFile = rule("the name of an image in public/", (v) =>
-  isText(v) ? fs.existsSync(path.join(_PUBLIC, v)) : false,
-);
-
-/** Both rules must pass. */
-const both = (a, b) => (v, where, ctx) => a(v, where, ctx) ?? b(v, where, ctx);
-
-/** Held to another setting's range: the one this value is a default of. */
-const rangeOf = (key) => (v, where) => {
-  const bound = SETTING_BOUNDS[key];
-  return withinBound(v, bound)
-    ? null
-    : _problem(where, v, `${boundText(bound)}, the range of ${key}`);
-};
-
-/**
- * Held to the timer rule under the name the app checks it by. The
- * shipped value at the same place (`ctx.shipped`) is the default whose
- * multiple bounds it, as it is when the app reads the setting; without
- * one, the value bounds itself.
- */
-const timer = (key) => (v, where, ctx) => {
-  const shipped = ctx?.shipped;
-  try {
-    assertTimerSec({
-      sec: v,
-      key,
-      defaultSec: typeof shipped === "number" ? shipped : v,
-      label: where,
-    });
-    return null;
-  } catch (err) {
-    return err.message;
-  }
-};
-
-/** A list of tokens the dust threshold is priced from. */
-function tokenList(v, where) {
-  if (!Array.isArray(v) || v.length === 0) return `${where} must list tokens`;
-  for (const [i, t] of v.entries()) {
-    const at = `${where}[${i}]`;
-    for (const k of ["symbol", "name", "moralisChain", "dexScreenerChain"]) {
-      const problem = text(t?.[k], `${at}.${k}`);
-      if (problem !== null) return problem;
-    }
-    const problem = kindRule(KINDS.address)(t?.address, `${at}.address`);
-    if (problem !== null) return problem;
-  }
-  return null;
-}
-
-/** The rpc endpoints a chain fails over between, as many as allowed. */
-function rpcUrls(v, where) {
-  const problem = rule("a list of http or https addresses", (u) =>
-    Array.isArray(u) ? u.every(isUrl) : false,
-  )(v, where);
-  return problem ?? rangeOf("rpcUrlCount")(v.length, `${where} (how many)`);
-}
-
-// ── Each file, and what its values must be ─────────────────────────────
 
 /*-
- *  Keyed by each value's path in its file; `*` stands for any one key, a
- *  chain or an LP provider. A value with a range in setting-bounds.json
- *  has no entry here, because that range is its rule.
+ *  The auto-compound threshold a position starts with: dollars, inside
+ *  the range a threshold saved from the dashboard is held to.
  */
-const SETTINGS_FILE_RULES = Object.freeze({
-  "bot-config-defaults.json": {
-    checkIntervalSec: timer("checkIntervalSec"),
-    gasDeferRetrySec: timer("gasDeferRetrySec"),
-    globalRPCRequestRateIntervalMS: timer("globalRPCRequestRateIntervalMS"),
-    rpcAllEndpointsDownPauseMS: timer("rpcAllEndpointsDownPauseMS"),
-    boundedReadRetryDelayMs: timer("boundedReadRetryDelayMs"),
-    moralisEnabled: bool,
-    fullRangeRebalanceEnabled: bool,
-    rangeOverrideEnabled: bool,
-  },
-  "app-runtime.json": {
-    "server.port": port,
-    "server.host": text,
-    "shutdown.exitTimeoutMs": ms,
-    "shutdown.stopKillMarginMs": ms,
-    "shutdown.stopCheckIntervalMs": ms,
-    "shutdown.gentleStopPollMs": ms,
-    "defaults.chain": chain,
-    "tx.speedupSec": timer("txSpeedupSec"),
-    "tx.deadlineSec": seconds,
-    "tx.cancelToDeadlineMultiple": positive,
-    "tx.retrySwapLimit": count,
-    "tx.cancelPhaseFloorSec": timer("cancelPhaseFloorSec"),
-    "tx.sendRetryBaseDelayMs": timer("sendRetryBaseDelayMs"),
-    "poll.afterActionMs": timer("afterActionMs"),
-    "poll.lifetimeRescanCheckMs": timer("lifetimeRescanCheckMs"),
-    "rescanPrices.timeoutMs": ms,
-    "compound.minFeeUsd": usd,
-    "compound.defaultThresholdUsd": both(
-      usd,
-      rangeOf("autoCompoundThresholdUsd"),
+function _defaultThreshold() {
+  const bound = boundAt("autoCompoundThresholdUsd");
+  const min = Math.max(K.usd.minimum, bound.min ?? -Infinity);
+  return {
+    type: "number",
+    minimum: min,
+    maximum: bound.max,
+    description: `a number of dollars from ${min} to ${bound.max}`,
+  };
+}
+
+function _appRuntime(shipped) {
+  const { shutdown, tx, poll } = shipped;
+  return group({
+    server: group({ port: K.port, host: K.text }),
+    shutdown: group({
+      exitTimeoutMs: timer("exitTimeoutMs", shutdown.exitTimeoutMs),
+      stopKillMarginMs: timer("stopKillMarginMs", shutdown.stopKillMarginMs),
+      stopCheckIntervalMs: timer(
+        "stopCheckIntervalMs",
+        shutdown.stopCheckIntervalMs,
+      ),
+      gentleStopPollMs: timer("gentleStopPollMs", shutdown.gentleStopPollMs),
+    }),
+    // Which chain it names is checked against chains.json, below.
+    defaults: group({ chain: K.text }),
+    tx: group({
+      ...rangedEach(
+        [
+          "deadlineSec",
+          "swapBackoffBaseMs",
+          "swapBackoffMaxMs",
+          "midwayRetryLimit",
+          "sendRetries",
+        ],
+        "tx.",
+      ),
+      speedupSec: timer("txSpeedupSec", tx.speedupSec),
+      cancelPhaseFloorSec: timer("cancelPhaseFloorSec", tx.cancelPhaseFloorSec),
+      sendRetryBaseDelayMs: timer(
+        "sendRetryBaseDelayMs",
+        tx.sendRetryBaseDelayMs,
+      ),
+      cancelToDeadlineMultiple: K.positive,
+      retrySwapLimit: K.count,
+    }),
+    dashboard: group(rangedEach(["pollsBeforeAssumedSeen"], "dashboard.")),
+    poll: group({
+      afterActionMs: timer("afterActionMs", poll.afterActionMs),
+      lifetimeRescanCheckMs: timer(
+        "lifetimeRescanCheckMs",
+        poll.lifetimeRescanCheckMs,
+      ),
+    }),
+    retire: group(rangedEach(["drainedAfterMs"], "retire.")),
+    rescanPrices: group({ timeoutMs: K.ms }),
+    compound: group({
+      ...rangedEach(["autoSpacingPolls", "autoSpacingFloorSec"], "compound."),
+      minFeeUsd: K.usd,
+      defaultThresholdUsd: _defaultThreshold(),
+      repositionWindowSec: K.seconds,
+    }),
+    log: group({ file: K.text }),
+  });
+}
+
+/** The endpoints a chain fails over between, as many as allowed. */
+function _rpcUrls() {
+  const count = boundAt("rpcUrlCount");
+  return {
+    type: "array",
+    minItems: count.min,
+    maxItems: count.max,
+    items: K.url,
+    description: `a list of ${count.min} to ${count.max} http or https addresses`,
+  };
+}
+
+/** One chain's settings; `shipped` is the chain as shipped, if it is. */
+function _chain(shipped) {
+  const aggregator = shipped?.aggregator;
+  return group({
+    chainId: K.count,
+    displayName: K.text,
+    homepage: K.url,
+    logo: K.image,
+    tokenList: group({ url: K.urlOrNone }),
+    blockTimeSec: K.positive,
+    nativeCurrencySymbol: K.text,
+    cacheTag: K.text,
+    priceServices: group({
+      dexScreenerChain: K.textOrNone,
+      geckoTerminalNetwork: K.textOrNone,
+      moralisChain: K.textOrNone,
+    }),
+    nativeWrappedToken: K.addressOrNone,
+    transactionEnvelopeType: {
+      enum: ["legacy", "eip1559"],
+      description:
+        "legacy or eip1559, the envelopes src/runtime-flags.js knows",
+    },
+    gasPriceMultiplier: K.scalesUp,
+    gasLimitMultiplier: K.scalesUp,
+    speedUpGasBump: K.outbids,
+    cancelGasBump: K.outbids,
+    gasLimitFloor: K.gasUnits,
+    estimatedRebalanceGasUnits: K.gasUnits,
+    rpc: group({ urls: _rpcUrls() }),
+    blockExplorer: K.url,
+    contracts: group({
+      positionManager: group({
+        address: K.addressOrNone,
+        mintGasLimit: K.gasUnits,
+      }),
+      factory: K.addressOrNone,
+      swapRouter: group({ address: K.addressOrNone, name: K.textOrNone }),
+    }),
+    aggregator: group({
+      url: K.urlOrNone,
+      name: K.textOrNone,
+      gasPriceMultiplier: K.scalesUp,
+      // The swap's own price times speedUpGasBump is the cancel's floor.
+      cancelGasMultiplier: K.positive,
+      waitMs: timer("aggregatorWaitMs", aggregator?.waitMs),
+      quoteTimeoutMs: timer(
+        "aggregatorQuoteTimeoutMs",
+        aggregator?.quoteTimeoutMs,
+      ),
+      maxAttempts: K.count,
+      estimatedSwapGasUnits: K.gasUnits,
+      gasUnitsWhenQuoteOmitsGas: K.gasUnits,
+    }),
+    dexPairDetailPageUrl: group({ blockchain: K.textOrNone }),
+    chartProviders: named(
+      group({
+        name: K.text,
+        scheme: K.scheme,
+        domain: K.host,
+        blockchain: K.text,
+        pathSegments: K.textList,
+      }),
     ),
-    "compound.repositionWindowSec": seconds,
-    "log.file": text,
-  },
-  "chains.json": {
-    "*.chainId": count,
-    "*.displayName": text,
-    "*.homepage": url,
-    "*.logo": logoFile,
-    "*.blockTimeSec": positive,
-    "*.nativeCurrencySymbol": text,
-    "*.cacheTag": text,
-    "*.priceServices.dexScreenerChain": textOrNone,
-    "*.priceServices.geckoTerminalNetwork": textOrNone,
-    "*.priceServices.moralisChain": textOrNone,
-    "*.nativeWrappedToken": addressOrNone,
-    "*.transactionEnvelopeType": rule(
-      "legacy or eip1559, the envelopes src/runtime-flags.js knows",
-      (v) => v === "legacy" || v === "eip1559",
+  });
+}
+
+/*-
+ *  Each chain as shipped, whose timers' ceilings its own values set, and
+ *  any chain an operator adds.
+ */
+function _chains(shipped) {
+  return {
+    ...named(_chain(undefined)),
+    properties: Object.fromEntries(
+      Object.entries(shipped).map(([name, c]) => [name, _chain(c)]),
     ),
-    "*.gasPriceMultiplier": scalesUp,
-    "*.gasLimitMultiplier": scalesUp,
-    "*.speedUpGasBump": outbids,
-    "*.cancelGasBump": outbids,
-    "*.gasLimitFloor": gasUnits,
-    "*.estimatedRebalanceGasUnits": gasUnits,
-    "*.rpc.urls": rpcUrls,
-    "*.blockExplorer": url,
-    "*.contracts.positionManager.address": addressOrNone,
-    "*.contracts.positionManager.mintGasLimit": gasUnits,
-    "*.contracts.factory": addressOrNone,
-    "*.contracts.swapRouter.address": addressOrNone,
-    "*.contracts.swapRouter.name": textOrNone,
-    "*.aggregator.url": urlOrNone,
-    "*.aggregator.name": textOrNone,
-    "*.aggregator.gasPriceMultiplier": scalesUp,
-    // The swap's own price times speedUpGasBump is the cancel's floor.
-    "*.aggregator.cancelGasMultiplier": positive,
-    "*.aggregator.waitMs": timer("aggregatorWaitMs"),
-    "*.aggregator.quoteTimeoutMs": timer("aggregatorQuoteTimeoutMs"),
-    "*.aggregator.maxAttempts": count,
-    "*.aggregator.estimatedSwapGasUnits": gasUnits,
-    "*.aggregator.gasUnitsWhenQuoteOmitsGas": gasUnits,
-    "*.dexPairDetailPageUrl.blockchain": textOrNone,
-    "*.chartProviders.*.name": text,
-    "*.chartProviders.*.scheme": scheme,
-    "*.chartProviders.*.domain": host,
-    "*.chartProviders.*.blockchain": text,
-    "*.chartProviders.*.pathSegments": textList,
-  },
-  "csrf.json": {
-    tokenTtlMs: ms,
-    refreshIntervalMs: ms,
-  },
-  "dust-threshold.json": {
-    thresholdUnits: positive,
-    fallbackThresholdUsd: positive,
-    priceSourceTokens: tokenList,
-  },
-  "evm-rpc-response-codes.json": {
-    "*.description": text,
-    "*.ethersCodes": textList,
-    "*.messageSubstrings": lowerTextList,
-  },
-  "logging.json": {
-    enabled: bool,
-    path: text,
-    errorLogPath: text,
-  },
-  "lp-providers.json": {
-    "*.displayName": text,
-    "*.supportedBlockchainsByLpRangerAndLpProvider": chainList,
-    "*.swapProtocolVersion": text,
-    "*.dexDetailPage.name": text,
-    "*.dexDetailPage.scheme": scheme,
-    "*.dexDetailPage.domain": host,
-    "*.dexDetailPage.pathSegments": textList,
-  },
-  "price-services.json": {
-    "*.baseUrl": url,
-  },
-  "setting-labels.json": {
-    "*.label": text,
-    "*.unit": textOrNone,
-  },
-  "ui-defaults_layout.json": {
-    dialogMaxHeightPx: count,
-  },
-  "ui-defaults_non-layout_for-server-down-scenario.json": {
-    chainQueryTimeoutMs: timer("chainQueryTimeoutMs"),
-    pollFailuresBeforeHalted: count,
-  },
-  /*-
-   *  Its other settings have ranges in setting-bounds.json, which are
-   *  their rule.
-   */
-  "ui-defaults_non-layout_for-server-up-scenario.json": {
-    copyFeedbackMs: timer("copyFeedbackMs"),
-    heapLogIntervalMs: timer("heapLogIntervalMs"),
-    dashboardPollIntervalMs: timer("dashboardPollIntervalMs"),
-    staleDataCheckIntervalMs: timer("staleDataCheckIntervalMs"),
-    soundsEnabled: bool,
-    privacyModeEnabled: bool,
-    privacyBlurWalletAddresses: bool,
-    privacyBlurUsdAmounts: bool,
-  },
-});
+  };
+}
+
+function _rpcResponseCodes() {
+  const withCodes = group({
+    description: K.text,
+    ethersCodes: K.textList,
+    messageSubstrings: K.lowerTextList,
+  });
+  // Buckets the classifier matches by message alone.
+  const byMessage = group({
+    description: K.text,
+    messageSubstrings: K.lowerTextList,
+  });
+  return group({
+    blockRangeCap: byMessage,
+    transient: withCodes,
+    terminalNonceUnused: withCodes,
+    terminalNonceConsumed: withCodes,
+    alreadyKnown: byMessage,
+  });
+}
+
+function _lpProviders() {
+  return named(
+    group({
+      displayName: K.text,
+      // Which chains each names is checked against chains.json, below.
+      supportedBlockchainsByLpRangerAndLpProvider: listOf(
+        K.text,
+        "a list of chains named in chains.json",
+      ),
+      swapProtocolVersion: K.text,
+      dexDetailPage: group({
+        name: K.text,
+        scheme: K.scheme,
+        domain: K.host,
+        pathSegments: K.textList,
+      }),
+    }),
+    {
+      type: "string",
+      format: "lp-provider-key",
+      description:
+        "a pool factory's and a position manager's EIP-55 addresses, " +
+        "joined by _",
+    },
+  );
+}
+
+/** Every file's schema, built from the files as shipped. */
+function _schemas() {
+  const s = (file) => loadShippedDefaults(file);
+  const serverDown = s("ui-defaults_non-layout_for-server-down-scenario.json");
+  const serverUp = s("ui-defaults_non-layout_for-server-up-scenario.json");
+  return {
+    "bot-config-defaults.json": _botConfigDefaults(
+      s("bot-config-defaults.json"),
+    ),
+    "app-runtime.json": _appRuntime(s("app-runtime.json")),
+    "chains.json": _chains(s("chains.json")),
+    "csrf.json": group({ tokenTtlMs: K.ms, refreshIntervalMs: K.ms }),
+    "dust-threshold.json": group({
+      thresholdUnits: K.positive,
+      fallbackThresholdUsd: K.positive,
+      priceSourceTokens: listOf(
+        group({
+          symbol: K.text,
+          name: K.text,
+          moralisChain: K.text,
+          dexScreenerChain: K.text,
+          address: K.address,
+        }),
+        "a list of tokens, not empty",
+      ),
+    }),
+    "evm-rpc-response-codes.json": _rpcResponseCodes(),
+    "logging.json": group({
+      enabled: K.bool,
+      path: K.text,
+      errorLogPath: K.text,
+    }),
+    "lp-providers.json": _lpProviders(),
+    "price-services.json": group({
+      dexScreener: group({ baseUrl: K.baseUrl }),
+      geckoTerminal: group({
+        baseUrl: K.baseUrl,
+        ...rangedEach(["topPoolsConsidered"], "geckoTerminal."),
+      }),
+      moralis: group({ baseUrl: K.baseUrl }),
+    }),
+    "setting-labels.json": named(group({ label: K.text, unit: K.textOrNone }), {
+      enum: [...GLOBAL_KEYS, ...SETTING_POSITION_KEYS],
+      description: "the name of a setting the dashboard saves",
+    }),
+    "ui-defaults_layout.json": group({ dialogMaxHeightPx: K.count }),
+    "ui-defaults_non-layout_for-server-down-scenario.json": group({
+      chainQueryTimeoutMs: timer(
+        "chainQueryTimeoutMs",
+        serverDown.chainQueryTimeoutMs,
+      ),
+      pollFailuresBeforeHalted: K.count,
+    }),
+    "ui-defaults_non-layout_for-server-up-scenario.json": group({
+      ...rangedEach([
+        "reloadMaxWaitMs",
+        "pollSkipLogEvery",
+        "lastCheckJustNowSec",
+        "autoCompoundSyncHoldMs",
+        "slippageConfirmAbovePct",
+        "slippageTypedConfirmFromPct",
+        "throttleNearLimitPct",
+        "activityLogMaxEntries",
+        "privacyUsdAmountThreshold",
+      ]),
+      ...Object.fromEntries(
+        [
+          "copyFeedbackMs",
+          "heapLogIntervalMs",
+          "dashboardPollIntervalMs",
+          "staleDataCheckIntervalMs",
+        ].map((key) => [key, timer(key, serverUp[key])]),
+      ),
+      soundsEnabled: K.bool,
+      privacyModeEnabled: K.bool,
+      privacyBlurWalletAddresses: K.bool,
+      privacyBlurUsdAmounts: K.bool,
+    }),
+  };
+}
+
+/** Each settings file's schema, by the file's name. */
+const SETTINGS_FILE_SCHEMAS = Object.freeze(_schemas());
+
+// Each schema compiled once, as the module loads.
+const _VALIDATE = Object.fromEntries(
+  Object.entries(SETTINGS_FILE_SCHEMAS).map(([f, s]) => [f, AJV.compile(s)]),
+);
 
 /*-
  *  The JSON files in the shipped directory that hold no settings, and so
- *  are not checked here.
+ *  have no schema here.
  */
 const NOT_SETTINGS_FILES = Object.freeze({
   // The ranges themselves; test/setting-bounds.test.js checks their shape.
@@ -314,109 +444,53 @@ const NEVER_OVERRIDDEN = Object.freeze({
   "ui-defaults_non-layout_for-server-down-scenario.json": true,
 });
 
-// ── Walking a file ─────────────────────────────────────────────────────
-
-/** Every value in `node`, with its path; `_`-keys are notes, not values. */
-function leaves(node, at = []) {
-  if (node === null || typeof node !== "object" || Array.isArray(node))
-    return [[at, node]];
-  return Object.entries(node)
-    .filter(([k]) => !k.startsWith("_"))
-    .flatMap(([k, v]) => leaves(v, [...at, k]));
-}
-
-/** A range: an object whose only keys are min, max and integer. */
-function _isRange(v) {
-  return (
-    v !== null &&
-    typeof v === "object" &&
-    Object.keys(v).length > 0 &&
-    Object.keys(v).every((k) => ["min", "max", "integer"].includes(k))
-  );
-}
-
-/** The range setting-bounds.json gives the value at `at`, if any. */
-function rangeAt(at) {
-  const found = at.reduce((node, k) => node?.[k], SETTING_BOUNDS);
-  return _isRange(found) ? found : null;
-}
-
-/** Whether a rule's path, with its `*`s, names the value at `at`. */
-function matches(pattern, at) {
-  const parts = pattern.split(".");
-  return (
-    parts.length === at.length &&
-    parts.every((p, i) => p === "*" || p === at[i])
-  );
-}
-
-/** Whether `at` is a group some rule's path runs through. */
-function _isGroup(rules, at) {
-  return Object.keys(rules).some((pattern) => {
-    const parts = pattern.split(".");
-    return (
-      parts.length > at.length &&
-      at.every((k, i) => parts[i] === "*" || parts[i] === k)
-    );
-  });
-}
-
-/** The value at path `at` in `node`, or undefined. */
-const _valueAt = (node, at) => at.reduce((n, k) => n?.[k], node);
+// ── Each file checked ──────────────────────────────────────────────────
 
 /**
  * Every problem with the values of one settings file: a value of the
- * wrong kind, outside its range, or that no rule names, which is not a
- * setting LP Ranger reads.
+ * wrong type or outside its range, a key its schema does not name, which
+ * is not a setting LP Ranger reads, and a setting missing.
  *
- * @param {string} file    The file's name, a key of `SETTINGS_FILE_RULES`.
+ * @param {string} file    The file's name, a key of `SETTINGS_FILE_SCHEMAS`.
  * @param {object} values  Its values: as shipped, or as an install
- *   resolves them, its own copy over the shipped file.
- * @param {object} ctx
- * @param {object} ctx.chains   The chains.json the values are judged
- *   against, an install's copy included.
- * @param {object} ctx.shipped  The file as shipped, whose timers set each
- *   timer's ceiling.
+ *   resolves them, its own copy over the shipped file; doc keys, those
+ *   starting `_`, removed.
  * @returns {string[]}
  */
-function settingsFileProblems(file, values, ctx) {
-  const rules = SETTINGS_FILE_RULES[file];
-  const problems = [];
-  for (const [at, v] of leaves(values)) {
-    const where = `${file} → ${at.join(".")}`;
-    const range = rangeAt(at);
-    if (range !== null) {
-      for (const each of Array.isArray(v) ? v : [v])
-        if (!withinBound(each, range))
-          problems.push(_problem(where, each, boundText(range)));
-      continue;
-    }
-    const named = Object.keys(rules).find((p) => matches(p, at));
-    if (named === undefined) {
-      problems.push(
-        _isGroup(rules, at)
-          ? `${where} must be a group of settings, as shipped`
-          : `${where} is not a setting LP Ranger reads`,
-      );
-      continue;
-    }
-    const problem = rules[named](v, where, {
-      chains: ctx.chains,
-      shipped: _valueAt(ctx.shipped, at),
-    });
-    if (problem !== null) problems.push(problem);
-  }
-  return problems;
+function settingsFileProblems(file, values) {
+  const validate = _VALIDATE[file];
+  return validate(values) ? [] : problemsFromErrors(file, validate.errors);
 }
 
 // ── Values that must agree ─────────────────────────────────────────────
 
 /**
  * A group of settings, or an empty one in place of anything else, which
- * the walk over its file has already reported.
+ * its file's schema has already reported.
  */
 const _group = (v) =>
   v !== null && typeof v === "object" && !Array.isArray(v) ? v : {};
+
+/** Every problem with a chain's name the settings give, against chains.json. */
+function _chainNameProblems(read, chains) {
+  const problems = [];
+  const chain = _group(_group(read("app-runtime.json")).defaults).chain;
+  if (isText(chain) && !Object.hasOwn(chains, chain))
+    problems.push(
+      "app-runtime.json → defaults.chain must be the name of a chain in " +
+        `chains.json; it is ${JSON.stringify(chain)}`,
+    );
+  for (const [key, p] of Object.entries(_group(read("lp-providers.json")))) {
+    const list = _group(p).supportedBlockchainsByLpRangerAndLpProvider;
+    for (const c of Array.isArray(list) ? list : [])
+      if (isText(c) && !Object.hasOwn(chains, c))
+        problems.push(
+          `lp-providers.json → ${key}.supportedBlockchainsByLpRangerAndLpProvider ` +
+            `names ${JSON.stringify(c)}, which is not a chain in chains.json`,
+        );
+  }
+  return problems;
+}
 
 /**
  * Every problem with values that must agree with each other, across the
@@ -432,11 +506,20 @@ function agreementProblems(read) {
    *  app checks the product as a timer at startup.
    */
   const tx = _group(_group(read("app-runtime.json")).tx);
-  const cancel = timer("txCancelSec")(
-    tx.deadlineSec * tx.cancelToDeadlineMultiple,
-    "app-runtime.json → tx.deadlineSec × tx.cancelToDeadlineMultiple",
-  );
-  if (cancel !== null) problems.push(cancel);
+  const cancel = tx.deadlineSec * tx.cancelToDeadlineMultiple;
+  // A deadline or multiple that is no number, its schema has reported.
+  if (Number.isFinite(cancel))
+    try {
+      assertTimerSec({
+        sec: cancel,
+        key: "txCancelSec",
+        defaultSec: cancel,
+        label:
+          "app-runtime.json → tx.deadlineSec × tx.cancelToDeadlineMultiple",
+      });
+    } catch (err) {
+      problems.push(err.message);
+    }
   const csrf = _group(read("csrf.json"));
   if (!(csrf.refreshIntervalMs < csrf.tokenTtlMs))
     problems.push(
@@ -446,7 +529,8 @@ function agreementProblems(read) {
     );
   const chains = _group(read("chains.json"));
   for (const [name, c] of Object.entries(chains)) {
-    const tag = cacheTagProblem(chains, name);
+    // A cache tag missing, or not text, its schema has reported.
+    const tag = isText(c?.cacheTag) ? cacheTagProblem(chains, name) : null;
     if (tag !== null) problems.push(tag);
     if (isText(c?.aggregator?.name) !== isText(c?.aggregator?.url))
       problems.push(
@@ -454,24 +538,14 @@ function agreementProblems(read) {
           "when it gives one's url",
       );
   }
-  for (const key of Object.keys(_group(read("lp-providers.json")))) {
-    const parts = key.split("_");
-    if (parts.length !== 2 || !parts.every(isAddress))
-      problems.push(
-        `lp-providers.json → ${key} must be a pool factory's and a ` +
-          "position manager's EIP-55 addresses, joined by _",
-      );
-  }
+  problems.push(..._chainNameProblems(read, chains));
   return problems;
 }
 
 module.exports = {
-  SETTINGS_FILE_RULES,
+  SETTINGS_FILE_SCHEMAS,
   NOT_SETTINGS_FILES,
   NEVER_OVERRIDDEN,
   settingsFileProblems,
   agreementProblems,
-  leaves,
-  rangeAt,
-  matches,
 };

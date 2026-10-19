@@ -1,6 +1,6 @@
 /**
  * @file dashboard-all-positions-stats.js
- * @description "All Positions Stats" header button + modal.
+ * @description "All Stats" header button + the All Positions Stats modal.
  *
  *   Header-button readiness gate: the button only enables when EVERY
  *   currently-running managed position has finished BOTH its
@@ -597,8 +597,8 @@ function _countReadiness(data) {
 }
 
 /**
- * Compute the readiness-gate decision for the "All Positions Stats"
- * header button — pure function of the flattened /api/status payload.
+ * Compute the readiness-gate decision for the "All Stats" header
+ * button — pure function of the flattened /api/status payload.
  * Extracted from `updateAllPositionsStatsBtn` so the gate contract is
  * directly testable without driving the DOM cache path.
  * @param {object} data  Flattened poll payload (from flattenV2Status).
@@ -628,7 +628,7 @@ export function computeAllPositionsStatsGate(data) {
 
 /**
  * Compute readiness across every RUNNING managed position and update
- * the "All Positions Stats" header button's disabled state + title.
+ * the "All Stats" header button's disabled state + title.
  * Also re-renders the modal table if it's currently open.  Called
  * after each successful /api/status poll.
  * @param {object} data  Flattened poll payload (from flattenV2Status).

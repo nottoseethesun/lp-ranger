@@ -75,6 +75,10 @@ import { startStaleDataWatch } from "./dashboard-stale-data.js";
 import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadLpProviders } from "./dashboard-lp-providers.js";
+import {
+  loadTokenLogos,
+  paintStatTokenLogos,
+} from "./dashboard-token-logos.js";
 import { loadChartProviders } from "./dashboard-chart-providers.js";
 import { initRpcEndpoints } from "./dashboard-rpc-endpoints.js";
 import { loadSettingLabels } from "./dashboard-setting-labels.js";
@@ -301,6 +305,15 @@ function _afterDisclaimer() {
    *  the next user-driven render.
    */
   loadLpProviders().then(() => updatePosStripUI());
+  /*-
+   *  Read the chain's token list, then repaint the token logos in the
+   *  Pool line and atop Position Stats, which show placeholders until it
+   *  lands.
+   */
+  loadTokenLogos().then(() => {
+    updatePosStripUI();
+    paintStatTokenLogos(posStore.getActive());
+  });
 
   /*- Fetch the per-chain Chart Links list (DexScreener / GeckoTerminal /
    *  DexTools) so the Pool Details modal can render hrefs without any

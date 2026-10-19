@@ -19,7 +19,11 @@ const assert = require("node:assert/strict");
 const { Wallet, Transaction, TransactionResponse } = require("ethers");
 
 const logModule = require("../src/log");
-const { heldTransaction } = require("../src/held-transaction");
+const {
+  heldTransaction,
+  signedTransactionHash,
+} = require("../src/held-transaction");
+const { nonceTooLow } = require("./helpers/ethers-rpc-errors");
 const { _retrySend } = require("../src/tx-retry");
 const { classifyRpcError } = require("../src/rpc-error-classifier");
 
@@ -118,6 +122,23 @@ describe("heldTransaction", () => {
     other.payload.method = "eth_call";
     assert.equal(await heldTransaction(other, pair), null);
     assert.equal(await heldTransaction(alreadyKnown("x", "0xnot"), pair), null);
+  });
+
+  it("rebuilds a resubmission refused as 'nonce too low', as ethers raises it", async () => {
+    /*-
+     *  ethers raises this refusal as NONCE_EXPIRED with the signed bytes
+     *  as `transaction` and no `payload`, unlike "already known". The
+     *  refused copy is byte for byte the copy that may have mined, so its
+     *  hash is the one to ask the chain about.
+     */
+    const refused = nonceTooLow(RAW);
+    assert.equal(refused.code, "NONCE_EXPIRED");
+    assert.equal(refused.payload, undefined);
+    assert.equal(signedTransactionHash(refused), SIGNED.hash);
+    const { pair } = providers();
+    const held = await heldTransaction(refused, pair);
+    assert.equal(held.hash, SIGNED.hash);
+    assert.equal(held.nonce, 7);
   });
 
   it("answers null when a provider is missing", async () => {

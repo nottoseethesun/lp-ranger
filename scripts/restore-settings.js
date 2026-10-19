@@ -41,7 +41,7 @@ function walkFiles(dir) {
 let restored = 0;
 
 for (const src of walkFiles(BACKUP_DIR)) {
-  // Relative path from BACKUP_DIR (e.g. ".env", "tmp/event-cache.json").
+  // Relative path from BACKUP_DIR (e.g. ".env", "app-data/scan-cache/block-time-cache.json").
   const rel = path.relative(BACKUP_DIR, src);
   fs.mkdirSync(path.dirname(rel) || ".", { recursive: true });
   fs.renameSync(src, rel);

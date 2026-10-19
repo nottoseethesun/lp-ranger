@@ -38,70 +38,15 @@ const {
  *  attempts) completes in milliseconds rather than ~6 seconds. */
 _setRetryDelayForTests(0);
 
-/*- getPoolState takes its endpoints from the app's failover now, so a
- *  test has to stand that up rather than hand a provider in.  `init`
- *  keeps existing providers when the url list matches, which would
- *  silently reuse the previous case's mock, so each run resets first.
- *
- *  buildProvider tolerates this mock: with no `Network.from` it takes
- *  the plain `new JsonRpcProvider(url)` branch, and both of its patches
- *  return early on a stub with no `send` or `getFeeData`. */
-function withMockRpc(lib, fn) {
-  const sendTx = require("../src/send-transaction");
-  const { RPC_URLS } = require("../src/config");
-  sendTx._resetForTests();
-  sendTx.init({ urls: [...RPC_URLS] }, lib);
-  return (async () => fn())().finally(() => sendTx._resetForTests());
-}
-
-const FACTORY = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
-const TOKEN0 = "0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b";
-const TOKEN1 = "0xAEbcD0F8f69ECF9587e292bdfc4d731c1abedB68";
-const POOL = "0x3d3fF0F4FD039f8d94effA935678128072B72f6B";
-const ZERO = "0x0000000000000000000000000000000000000000";
-
-/*- Build a minimal mocked ethersLib whose `Contract` ctor returns an
- *  object with the methods getPoolState's chain calls.  Defaults
- *  produce a valid pool state for the (TOKEN0, TOKEN1) pair;
- *  `responses` overrides are checked with `in` (not `??`) so the
- *  caller can explicitly set a field to `undefined` / `null` and have
- *  THAT value flow through, rather than silently falling back to the
- *  default. */
-function makeMockEthers(responses = {}) {
-  const has = (k) => Object.prototype.hasOwnProperty.call(responses, k);
-  const constructed = []; // tracks each `new JsonRpcProvider(url)`
-  function Contract(address) {
-    /*- Each contract has methods that decide what to return based on
-     *  the constructor address — factory contracts return pool / fee
-     *  info, token contracts return decimals, pool contract returns
-     *  slot0. */
-    return {
-      getPool: async () => (has("poolAddress") ? responses.poolAddress : POOL),
-      feeAmountTickSpacing: async () =>
-        has("tickSpacing") ? responses.tickSpacing : 200,
-      decimals: async () => {
-        if (address === TOKEN0 && has("decimals0")) return responses.decimals0;
-        if (address === TOKEN1 && has("decimals1")) return responses.decimals1;
-        if (address === TOKEN0) return 8;
-        if (address === TOKEN1) return 18;
-        return 18;
-      },
-      slot0: async () => ({
-        sqrtPriceX96: has("sqrtPriceX96")
-          ? responses.sqrtPriceX96
-          : 79228162514264337593543950336n,
-        tick: has("tick") ? responses.tick : 310280,
-      }),
-    };
-  }
-  function JsonRpcProvider(url) {
-    constructed.push(url);
-  }
-  return {
-    lib: { Contract, JsonRpcProvider, ZeroAddress: ZERO },
-    constructed,
-  };
-}
+const {
+  withMockRpc,
+  makeMockEthers,
+  FACTORY,
+  TOKEN0,
+  TOKEN1,
+  POOL,
+  ZERO,
+} = require("./helpers/mock-pool-rpc");
 
 // ── _getPoolStateOnce: validation throws ────────────────────────────────────
 

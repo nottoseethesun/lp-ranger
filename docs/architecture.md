@@ -162,18 +162,22 @@ The bot persists its state to three locations:
 1. **`app-config/` directory** — all app-managed config, in two
    subdirectories. `app-defaults-for-user-configurable/` holds the tracked
    shipped defaults, `chains.json` among them. `user-configurable/` holds
-   the operator's files: `bot-config.json` (per-position settings, HODL
-   baselines, compound history) and its automatic snapshot
+   the operator's files: `bot-config.json` (managed positions and
+   per-position settings) and its automatic snapshot
    `bot-config.backup.json`; the encrypted wallet `wallet.json` (AES-256-GCM,
    PBKDF2-SHA512 at 600,000 iterations); the encrypted third-party api keys
    `api-keys.json`; and any override of a shipped file.
 2. **`app-data/` directory** — per-install runtime data. Contains the
-   historical rebalance event log (`rebalance_log.json`). Separate
-   from `app-config/` because it's per-install data, not config.
-3. **`tmp/` directory** — JSON file caches for expensive blockchain queries
-   (event scan results, P&L epoch history, historical prices, block times,
-   LP position lists, pool orientation). Pure performance optimization —
-   deleting these forces a rebuild from the blockchain on next startup.
+   historical rebalance event log (`rebalance_log.json`) and each
+   position's records (`position-records.json`: HODL baseline, compound
+   history and coins, gas per NFT, lifetime deposit, residuals).
+   Separate from `app-config/` because it's per-install data, not config.
+3. **`app-data/scan-cache/` directory** — JSON file caches for expensive
+   blockchain queries (event scan results, P&L epoch history, historical
+   prices, block times, LP position lists, pool orientation). Deleting
+   these forces a rebuild from the blockchain on next startup, which takes
+   about an hour per position, so they live with the install's data
+   rather than in the disposable `tmp/`.
 
 The dashboard persists its own state to browser `localStorage` — the position
 store (up to 300 entries), last-viewed position, realized gains, and initial
@@ -297,7 +301,7 @@ chain (consecutive NFT mints by the same wallet in the same pool), and
 fetching historical token prices from Moralis when a key is stored, else from
 GeckoTerminal's OHLCV API.
 
-Epoch data is cached to disk (`tmp/pnl-epochs-cache.json`) keyed by pool
+Epoch data is cached to disk (`app-data/scan-cache/pnl-epochs-cache.json`) keyed by pool
 identity — not by tokenId — so P&L history survives rebalances (which mint
 new NFTs) without migration.
 
@@ -308,7 +312,7 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
 - **Lifetime deposited amounts** (`lifetimeHodlAmounts`) — the tokens
   deposited into the pool from outside across the whole rebalance chain,
   computed by `src/lifetime-hodl.js` and kept in the pool's epoch cache
-  (`tmp/pnl-epochs-cache.json`). The first NFT's mint is the original
+  (`app-data/scan-cache/pnl-epochs-cache.json`). The first NFT's mint is the original
   deposit; a later IncreaseLiquidity worth more than the fees collected is
   an external deposit.
 
@@ -337,7 +341,7 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
   current HODL baseline.
 
   **Incremental caching:** Fresh deposit totals (raw BigInt amounts + last
-  scanned block) are cached in `tmp/pnl-epochs-cache.json` via
+  scanned block) are cached in `app-data/scan-cache/pnl-epochs-cache.json` via
   `getCachedFreshDeposits` / `setCachedFreshDeposits` in `epoch-cache.js`.
   On subsequent runs, only rebalance boundaries past the cached block are
   scanned — previously accumulated fresh amounts are restored from cache.
@@ -545,9 +549,10 @@ so a rebalance or compound that runs while the user is away plays no sound.
 
 ## Security Model
 
-- **Private keys** exist in plaintext only in the server's memory, while it
-  runs. On disk, they are encrypted with AES-256-GCM (PBKDF2-SHA512 key
-  derivation, 600,000 iterations). The encrypted file is gitignored.
+- **Private keys** are never written to disk in plaintext. On disk they
+  are encrypted with AES-256-GCM, under a key derived from the wallet
+  password and a random salt (PBKDF2-SHA512, 600,000 iterations). The
+  encrypted file is gitignored.
 - **Localhost only** by default. The server binds to `127.0.0.1` so only
   local connections are accepted. CORS is locked to `localhost:<PORT>`,
   mutating requests from non-localhost origins are rejected, and every POST

@@ -604,7 +604,10 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
          *  shows. */
         compoundedAccrued: nftCompoundedUsd,
       });
-      pnlSnapshot = pnlTracker.snapshot(poolState.price);
+      pnlSnapshot = pnlTracker.snapshot(
+        poolState.price,
+        deps._botState?.failedMoveGas ?? [],
+      );
       await overridePnlWithRealValues(
         pnlSnapshot,
         deps,

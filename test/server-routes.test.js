@@ -29,6 +29,7 @@ function makeDeps(overrides = {}) {
       runningCount: () => 0,
       count: () => 0,
       stopAll: async () => {},
+      resetSharedSigner: () => {},
       startPosition: async () => {},
       get: () => null,
       getAll: () => [],
@@ -107,6 +108,48 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(res._body.address, "0xABCD1234567890");
       assert.ok(importedWith);
       assert.ok(stoppedAll);
+    });
+
+    it("keeps nothing of the previous wallet once its positions stop", async () => {
+      /*-
+       *  The cached signer was built from the old wallet's key. Kept, it
+       *  signed for the new wallet's positions, and every rebalance
+       *  failed at the ownership check until a restart.
+       */
+      const order = [];
+      const privateKeyRef = { current: "0xold" };
+      const deps = makeDeps({
+        privateKeyRef,
+        readJsonBody: async () => ({ address: "0x2", password: "pw" }),
+        positionMgr: {
+          ...makeDeps().positionMgr,
+          stopAll: async () => order.push("stop"),
+          resetSharedSigner: () => {
+            order.push("forget signer");
+            assert.equal(privateKeyRef.current, null, "old key gone first");
+          },
+        },
+      });
+      const res = makeRes();
+      await createRouteHandlers(deps)._handleWalletImport({}, res);
+      assert.deepEqual(order, ["stop", "forget signer"]);
+      assert.equal(privateKeyRef.current, "0xpk_pw", "the new wallet's key");
+    });
+
+    it("leaves the wallet locked, not the old key in use, when the new one cannot be decrypted", async () => {
+      const privateKeyRef = { current: "0xold" };
+      const deps = makeDeps({
+        privateKeyRef,
+        readJsonBody: async () => ({ address: "0x2", password: "pw" }),
+        walletManager: {
+          ...makeDeps().walletManager,
+          revealWallet: async () => {
+            throw new Error("decrypt fail");
+          },
+        },
+      });
+      await createRouteHandlers(deps)._handleWalletImport({}, makeRes());
+      assert.equal(privateKeyRef.current, null);
     });
 
     it("handles key resolution failure gracefully", async () => {

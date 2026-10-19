@@ -26,6 +26,7 @@ const { Wallet, Transaction } = require("ethers");
 const config = require("../src/config");
 const logModule = require("../src/log");
 const { _waitOrSpeedUp } = require("../src/tx-speedup");
+const { nonceTooLow } = require("./helpers/ethers-rpc-errors");
 
 const WALLET = "0x" + "11".repeat(20);
 
@@ -356,13 +357,7 @@ describe("the speed-up pipeline", () => {
           taken.reason = "cancelled";
           taken.receipt = mined(CANCEL_HASH);
           replaceOriginal(taken);
-          const e = new Error("nonce too low");
-          e.code = "NONCE_EXPIRED";
-          e.payload = {
-            method: "eth_sendRawTransaction",
-            params: [RAW_CANCEL],
-          };
-          throw e;
+          throw nonceTooLow(RAW_CANCEL);
         },
         provider: {
           getBlockNumber: async () => 100,

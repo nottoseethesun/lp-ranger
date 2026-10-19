@@ -93,10 +93,9 @@ branches. Under a file's `SF:` line, each `BRDA:<line>,<block>,<branch>,<hits>`
 with hits `0` is a branch no test took.
 
 Take it from `npm run check` rather than from a test run of your own.
-`npm run check` backs up the operator's settings and every `tmp/*.json`
-cache around its tests. `npm run wipe-settings` covers far fewer of
-them, so a direct `node --test` of the whole suite can write test data
-into a cache the app reads.
+`npm run check` backs up the operator's settings and every scan cache
+around its tests, as `npm run wipe-settings` does; a direct `node --test`
+of the whole suite has neither protection.
 
 ### Branches still uncovered, and why
 
@@ -125,7 +124,7 @@ pin a meaningless input as if it were correct:
 
 The `app-config/app-defaults-for-user-configurable/` subdir (including the tracked `api-keys.example.json` format template) is shipped repo content and is excluded from backup/delete. Each operator-state directory (`app-config/user-configurable/` and `app-data/`) is tracked via its own `README.md`; the gitignored contents are protected by the backup pass on the same "operator state" footing as `.env`.
 
-**`tmp/` directory (all JSON files):**
+**`app-data/scan-cache/` directory (`src/scan-cache-dir.js`; under `node --test` each test process has its own instead):**
 
 - `pnl-epochs-cache.json` — reconstructed P&L epochs (expensive to rebuild)
 - `historical-price-cache.json` — GeckoTerminal OHLCV prices (rate-limited API)
@@ -138,7 +137,7 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 
 ### How it works
 
-1. Before tests: `backupProdFiles()` copies every file under the two operator-state dirs (`app-config/user-configurable/` and `app-data/`, each preserving its tracked `README.md`) plus every `tmp/*.json` to a `mkdtempSync` directory, then `wipeRuntimeFiles()` deletes the originals so tests start from vanilla state
+1. Before tests: `backupProdFiles()` copies every file under the operator-state dirs (`app-config/user-configurable/`, `app-data/` and `app-data/scan-cache/`, each preserving its tracked `README.md`) to a `mkdtempSync` directory, then `wipeRuntimeFiles()` deletes the originals so tests start from vanilla state
 2. Tests run (may create, modify, or delete any of these files)
 3. After tests (try/finally in `check.js`): `restoreProdFiles()` deletes any test-created files and copies the backed-up originals back into place
 
@@ -147,7 +146,7 @@ This is the ONLY protection mechanism. Individual test files do NOT need their o
 ### `logs/`
 
 The backup pass covers `app-config/user-configurable/`, `app-data/` and
-`tmp/*.json`. It does **not** cover `logs/`. The two files there are
+`app-data/scan-cache/`. It does **not** cover `logs/`. The two files there are
 handled differently.
 
 **`logs/error.log`.** `npm run check` deletes it, and the previous run's
@@ -178,7 +177,7 @@ asserts in an `after` hook that the file survived the suite.
 
 When adding a new disk-backed cache or config file:
 
-1. If it's a pure performance cache → put it in `tmp/` as `*.json`. Automatically protected by the `tmp/*.json` glob.
+1. If it's a scan cache → name its file with `scanCachePath` (`src/scan-cache-dir.js`), which puts it in `app-data/scan-cache/`, or under `node --test` in the test process's own folder. Protected by the backup pass, and out of every test's reach.
 2. If it's runtime state (managed by the app, may include user secrets) → put it in `app-config/` (top level). Automatically protected by the `find app-config -maxdepth 1 -type f` scan.
 3. If it's a tracked shipped default → put it in `app-config/app-defaults-for-user-configurable/`. Excluded from the protection scan (it's committed to git). Operators override at the matching `app-config/user-configurable/<same-name>.json` (gitignored, protected by the backup pass). Every value in a file there is checked for type and range by `test/shipped-config-values.test.js`: by its range in `setting-bounds.json`, by the timer rule, or by the kind of value its entry in that test's `RULES` names. A value, or a file, with no rule fails that test, naming it, until it is given one; a file that holds no defaults is named in `NOT_DEFAULTS` instead. `npm run check` runs that test and `test/setting-bounds.test.js` before every other test (`configValueTests()` in `scripts/check.js`), so a wrong shipped value is reported as the cause before the failures it causes.
 4. Document new files in this file under "Protected files".
@@ -198,11 +197,11 @@ Default/vanilla config values come from `.env.example` and the shipped JSON file
 
 ### Temp folders
 
-A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these. A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
+A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so is the scan-cache folder. A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
 
 A process stopped outright (Ctrl+C, kill -9) cannot remove its folders, so `npm run check` removes them before its tests start: each `lp-ranger-test-` folder whose process, named in the folder's name, is no longer running. A running process's folder is left alone, so a test run under way elsewhere keeps its files.
 
-Why the system's temp directory and not the project's `tmp/`: the project's `tmp/` holds the operator's caches, which `npm run check` moves out and back around its tests, and anything left there stays in the install. The system's temp directory is outside the install, and most systems clear it at boot. Why a folder per process and not one shared folder: the runner runs test files in parallel processes, which would overwrite one another's files.
+Why the system's temp directory and not the project's `tmp/`: anything left in the project's `tmp/` stays in the install. The system's temp directory is outside the install, and most systems clear it at boot. Why a folder per process and not one shared folder: the runner runs test files in parallel processes, which would overwrite one another's files.
 
 ### Settings moved off what ships
 

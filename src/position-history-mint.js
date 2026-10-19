@@ -3,7 +3,7 @@
  * @module positionHistoryMint
  * @description
  * On-chain lookup of an NFT's original mint, with its own disk cache
- * (`tmp/nft-mint-date-cache.json`).
+ * (`app-data/scan-cache/nft-mint-date-cache.json`, src/scan-cache-dir.js).
  *
  * Extracted from `position-history.js` to keep that file under the
  * 500-line cap. It earns a module of its own rather than a place in
@@ -42,14 +42,11 @@ const {
 } = require("./pool-creation-block");
 const { historyFloorBlock } = require("./history-lookback");
 const { cacheKey } = require("./cache-store");
+const { scanCachePath } = require("./scan-cache-dir");
 
 const _IFACE = new ethers.Interface(PM_ABI);
 
-const _MINT_CACHE_PATH = path.join(
-  process.cwd(),
-  "tmp",
-  "nft-mint-date-cache.json",
-);
+const _MINT_CACHE_PATH = scanCachePath("nft-mint-date-cache.json");
 const _mintCache = new Map();
 
 /**

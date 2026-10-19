@@ -18,8 +18,16 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { checkConfigValues, BOUNDS } = require("../src/config-bounds");
-const { GLOBAL_KEYS, POSITION_KEYS } = require("../src/bot-config-keys");
+const {
+  checkConfigValues,
+  settingSchemas,
+  BOUNDS,
+} = require("../src/config-bounds");
+const {
+  GLOBAL_KEYS,
+  POSITION_KEYS,
+  SETTING_POSITION_KEYS,
+} = require("../src/bot-config-keys");
 const { SETTING_BOUNDS } = require("../src/setting-bounds");
 
 // What the route hands in: a value it has already resolved.
@@ -246,6 +254,19 @@ describe("every saved key with a declared range is held to it", () => {
       checked++;
     }
     assert.ok(checked > 0, "the walk found no ranged keys to check");
+  });
+});
+
+describe("every setting POST /api/config saves has a schema", () => {
+  it("names each one", () => {
+    /*-
+     *  The route copies these keys from a request and asks
+     *  `checkConfigValues`, which passes a key it has no schema for, so
+     *  a setting without one would be saved unchecked.
+     */
+    const schemas = settingSchemas(CTX);
+    for (const key of [...GLOBAL_KEYS, ...SETTING_POSITION_KEYS])
+      assert.equal(typeof schemas[key], "object", key);
   });
 });
 

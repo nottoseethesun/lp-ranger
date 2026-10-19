@@ -50,6 +50,47 @@ const { SETTING_BOUNDS } = require("./setting-bounds");
 const _TIMERS = SETTING_BOUNDS.timers;
 
 /**
+ * The least and the most a timer setting may be, in its own unit: the
+ * rule `assertTimerSec` enforces, given out so a settings file's schema
+ * can carry the same figures (src/settings-file-rules.js).
+ *
+ * @param {object} o
+ * @param {string} o.key  Canonical setting name, e.g. `checkIntervalSec`;
+ *   a name ending in "ms" is milliseconds, any other seconds.
+ * @param {number} [o.defaultSec]  Shipped default, which sets the general
+ *   ceiling at 1000x itself. Left out for a value that has none, such as
+ *   a timer of a chain an operator adds: what such a value is bounded by
+ *   is the 48-hour ceiling and any range of its own.
+ * @returns {{min: number, max: number, unit: string}}
+ */
+function timerRange({ key, defaultSec }) {
+  const explicit = _TIMERS.settings[key];
+  const min =
+    typeof explicit?.min === "number" ? explicit.min : _TIMERS.minimum;
+  /*-
+   *  The cap is the LESSER of 48 hours and 1000x the default; this is
+   *  the 48-hour half of it, expressed in whatever unit the setting
+   *  uses. The key name says which: a name ending in "ms" is
+   *  milliseconds, anything else seconds. Matched without regard to
+   *  case because this file spells it both ways —
+   *  `rpcAllEndpointsDownPauseMS` beside `priceCacheTtlMs` — and
+   *  reading one of those as seconds would put this half a thousand
+   *  times too low without saying so. The messages below name the same
+   *  unit.
+   */
+  const inMs = /ms$/i.test(key);
+  const capSec = _TIMERS.maxHours * 60 * 60;
+  const max = Math.min(
+    defaultSec === undefined
+      ? Infinity
+      : defaultSec * _TIMERS.maxDefaultMultiple,
+    inMs ? capSec * 1000 : capSec,
+    typeof explicit?.max === "number" ? explicit.max : Infinity,
+  );
+  return { min, max, unit: inMs ? "milliseconds" : "seconds" };
+}
+
+/**
  * Accept `sec` as a timer delay, or throw explaining why not.
  *
  * @param {object} o
@@ -87,29 +128,7 @@ function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
       remedy,
     );
   }
-  const explicit = _TIMERS.settings[key];
-  const minSec =
-    typeof explicit?.min === "number" ? explicit.min : _TIMERS.minimum;
-  /*-
-   *  The cap is the LESSER of 48 hours and 1000x the default; this is
-   *  the 48-hour half of it, expressed in whatever unit the setting
-   *  uses. The key name says which: a name ending in "ms" is
-   *  milliseconds, anything else seconds. Matched without regard to
-   *  case because this file spells it both ways —
-   *  `rpcAllEndpointsDownPauseMS` beside `priceCacheTtlMs` — and
-   *  reading one of those as seconds would put this half a thousand
-   *  times too low without saying so. The messages below name the same
-   *  unit.
-   */
-  const inMs = /ms$/i.test(key);
-  const unit = inMs ? "milliseconds" : "seconds";
-  const capSec = _TIMERS.maxHours * 60 * 60;
-  const capFromHours = inMs ? capSec * 1000 : capSec;
-  const maxSec = Math.min(
-    defaultSec * _TIMERS.maxDefaultMultiple,
-    capFromHours,
-    typeof explicit?.max === "number" ? explicit.max : Infinity,
-  );
+  const { min: minSec, max: maxSec, unit } = timerRange({ key, defaultSec });
   /*- Checked before the ceiling, so a negative is reported as what it
    *  is: the ceiling of a negative default is itself negative, and
    *  checking that first would call -60 "above its maximum of
@@ -139,4 +158,4 @@ function _badTimerValue(message, remedy) {
   return err;
 }
 
-module.exports = { assertTimerSec };
+module.exports = { assertTimerSec, timerRange };

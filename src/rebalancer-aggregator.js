@@ -73,7 +73,7 @@ function _setWaitMsForTests(ms) {
  * no aggregator; `src/config.js` refuses to start on an entry that gives
  * no url at all. Whether there is one is `src/aggregator-in-use.js`'s
  * answer, and this is where the app asks it: the swap through
- * `_aggregatorBase`, and the "Routing through:" badge through
+ * `_aggregatorBase`, and the "Route:" badge through
  * `primaryRouteLabel`, so the badge cannot name a route the swap does not
  * try.
  *
@@ -110,7 +110,7 @@ function _aggregatorBase() {
  * Display label for the aggregator route: the active chain's
  * `aggregator.name` in chains.json. Stamped onto `result.swapSources` on
  * every successful aggregator swap, and named by the Mission Control
- * "Routing through:" badge through `primaryRouteLabel`.
+ * "Route:" badge through `primaryRouteLabel`.
  *
  * Intentionally coarse: we do NOT drill into the underlying pools
  * (NineMM_V3, PulseX_V2, …) that the aggregator chose, because the

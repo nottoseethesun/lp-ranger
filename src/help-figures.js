@@ -284,6 +284,12 @@ function helpFigures({
     historyLookback: _years(botDefaults.historyLookbackYears),
     rpcPaceGapMs: String(botDefaults.globalRPCRequestRateIntervalMS),
     rpcPacePerSecond: _perSecond(botDefaults.globalRPCRequestRateIntervalMS),
+    rpcPaceMinMs: String(
+      settingBounds.timers.settings.globalRPCRequestRateIntervalMS.min,
+    ),
+    rpcPaceMaxMs: String(
+      settingBounds.timers.settings.globalRPCRequestRateIntervalMS.max,
+    ),
     residualCleanupDelay: duration(botDefaults.residualCleanup.delayMs / 1000),
     residualCleanupThresholdPct: String(
       botDefaults.residualCleanup.thresholdPct,

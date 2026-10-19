@@ -39,7 +39,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [flag operational side effects](feedback_flag_operational_side_effects.md) — Flag restarts; never say hard-reload
 - [hardening minimal scope](feedback_hardening_minimal_scope.md) — Hardening = no refactor beyond the fix
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Such lists need a "not bugs" note
-- [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete it; "inert" means delete; an audit report shows only bugs and significant optimizations
+- [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete it; "inert" means delete; an audit report shows only bugs and significant optimizations; minor issues wait for a later release (neither fixed nor reported)
 - [dead code removed](feedback_dead_code_removed.md) — Can never fire → delete it now, pre-existing or not; prove it first
 - [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line; record each one durably at once
 - [no internal constants in design talk](feedback_no_internal_constants_in_design_talk.md) — Operator-facing behavior, not implementation constants
@@ -49,14 +49,14 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Only what was asked; yes/no means yes/no
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
-- [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms
+- [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms; heading + problem statement first; name the operator's action in a full sentence, never shorthand like "a refused save"
 - [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens and what a reader would see; function names come last, if at all
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei; an editing pass removes bulk (point buried in detail) and gaps (steps replaced by vague words)
 - [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Meet a word limit by dropping points, never steps or context
 - [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns; a question names what its "both" means, and never asks what the spec already decides
 - [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one
 - [revert means code](feedback_revert_means_code.md) — "Revert" = repo edits only, never the plan
-- [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed in review
+- [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed in review (suspended for audits since 2026-10-19)
 - [try before commit](feedback_try_before_commit.md) — Browser-observable changes wait for sign-off
 - [user launches app](feedback_user_launches_app.md) — The user launches it during manual testing
 - [never test against Production](feedback_never_test_against_production.md) — Nothing that can transact on mainnet; live tests on the testnet only
@@ -69,7 +69,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [use the path being tested](feedback_use_the_path_being_tested.md) — Validate through the exact entry point
 - [prove the revert applied](feedback_prove_the_revert_applied.md) — A silently-failed revert reports green
 - [verify runtime before rediagnosing](feedback_verify_runtime_before_rediagnosing.md) — "Still broken" but green? Check what's actually running
-- [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check; a partial sample proves nothing
+- [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check; a partial sample proves nothing; an audit plan presents verified items only
 - [trace the claim, not just the code](feedback_trace_the_claim_not_just_the_code.md) — Follow a value to the screen and a condition to every writer before putting the consequence in writing
 - [audit before declaring done](feedback_audit_before_declaring_done.md) — Re-read the rules and audit state + sequence before saying done; a green check is not sufficient
 - [verify symbols a comment names](feedback_verify_symbols_a_comment_names.md) — Grep every symbol a comment names
@@ -77,6 +77,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [check history before changing a design](feedback_check_history_before_changing_a_design.md) — A test pins it as a fix? Read its commit; a user-specified design waits for the user's word
 
 ## Engineering, code, UI & docs rules
+- **[NEVER PUT CACHE DATA IN A CONFIGURATION FILE](feedback_never_cache_in_config.md) — ABSOLUTE. `app-config/` holds only what the operator chooses. Caches → `app-data/scan-cache/` (`scanCachePath`); the bot's per-position records → `app-data/position-records.json`; `tmp/` → nothing worth keeping. test/data-homes.test.js enforces it.**
 - [ask what withholding costs](feedback_ask_what_withholding_costs.md) — A withheld key in a wholesale-replaced container is a deletion, not an abstention
 - [audit program state](feedback_audit_program_state.md) — Audit for needless state; derive from what exists
 - [basic fix first](feedback_basic_fix_first.md) — Look for a one-line or reordering fix first
@@ -127,6 +128,9 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [no classList for state](feedback_no_classlist_for_state.md) — Never read the DOM to determine program state
 - [no data in presentation](feedback_no_data_in_presentation.md) — No defaults, config or business data in HTML/CSS
 - [validate in the core, not the UI](feedback_validate_in_the_core_not_the_ui.md) — Bounds go on the server; one core, many frontends
+- [JSON Schema for settings](feedback_json_schema_for_settings.md) — Settings JSON validated by Ajv, every object refusing unnamed keys, bot-config.json too, from the Save check's schemas; ranges from `setting-bounds.json`; `.env` against an allowlist; a new key in an app-config file is a question for the user; LP Ranger's schemas are its own, never modeled on supe-ons
+- [where data lives](feedback_where_data_lives.md) — bot-config.json: settings only; records in `app-data/position-records.json`; scan caches in `app-data/scan-cache/`; `tmp/` disposable only
+- [docs don't restate checks](feedback_docs_dont_restate_checks.md) — A setting's entry gives its meaning and range once; no lists of refused values; "stops startup" said once
 - [one active position per pool](feedback_one_active_position_per_pool.md) — Period: no fallback between positions of a pool; every start and re-open path enforces it in the core, bot.js included
 - [no HTML in Markdown](feedback_no_html_in_markdown.md) — Pure Markdown, no inline HTML (MD033)
 - [links go direct](feedback_links_go_direct.md) — A redirecting link is replaced by its final address; check with curl's `%{redirect_url}`

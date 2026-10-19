@@ -30,10 +30,10 @@ if (fs.existsSync(BACKUP_DIR)) {
 
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
-/** Fixed list of single-file backups (.env at root + tmp/ epoch cache).
- *  Files under app-config/user-configurable/ and app-data/ are handled
- *  via the directory loops near the end of this script. */
-const FILES = [".env", "tmp/pnl-epochs-cache.json"];
+/** Fixed list of single-file backups: .env at the root. Files under
+ *  app-config/user-configurable/, app-data/ and app-data/scan-cache/
+ *  are handled via the directory loops near the end of this script. */
+const FILES = [".env"];
 
 let backed = 0;
 
@@ -54,15 +54,6 @@ for (const f of FILES) {
   if (fs.existsSync(f) && fs.statSync(f).isFile()) backupOne(f);
 }
 
-// Event-cache files — glob `tmp/event-cache*.json`.
-if (fs.existsSync("tmp")) {
-  for (const entry of fs.readdirSync("tmp")) {
-    if (entry.startsWith("event-cache") && entry.endsWith(".json")) {
-      backupOne(path.join("tmp", entry));
-    }
-  }
-}
-
 // Keyfiles — `*.keyfile.json` and `keyfile.json` at repo root.
 for (const entry of fs.readdirSync(".")) {
   if (
@@ -74,13 +65,14 @@ for (const entry of fs.readdirSync(".")) {
 }
 
 // User-configurable overrides and runtime state — everything under
-// app-config/user-configurable/ and app-data/ EXCEPT each dir's
-// tracked README.md.  These are the canonical homes for operator
-// state, and preserving them across the wipe/restore cycle mirrors the
-// tarball-upgrade story.
+// app-config/user-configurable/, app-data/ and the scan caches in
+// app-data/scan-cache/ EXCEPT each dir's tracked README.md.  These are
+// the canonical homes for operator state, and preserving them across
+// the wipe/restore cycle mirrors the tarball-upgrade story.
 const _OPERATOR_STATE_DIRS = [
   path.join("app-config", "user-configurable"),
   "app-data",
+  path.join("app-data", "scan-cache"),
 ];
 for (const dir of _OPERATOR_STATE_DIRS) {
   if (!fs.existsSync(dir)) continue;

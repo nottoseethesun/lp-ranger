@@ -10,8 +10,8 @@
  *   scripted `fetch`, passed in where startup passes the browser's own;
  *   its console lines arrive through the `warnFn` it takes for the same
  *   purpose. The server half drives the real `GET /api/chain` handler,
- *   on the testnet with a header link of the test's own, so a route
- *   naming the shipped chain outright fails.
+ *   on the testnet with a header link and a token list of the test's
+ *   own, so a route naming the shipped chain outright fails.
  */
 
 require("global-jsdom/register");
@@ -25,12 +25,15 @@ const LINK = {
   homepage: "https://example.org/chain",
   logo: "lp-ranger-star.png",
 };
+// The testnet ships with no token list, "".
+const TOKEN_LIST_URL = "https://example.org/tokens.json";
 const SETTINGS_DIR = makeTestTempFolder("chain-route-settings");
 fs.writeFileSync(
   path.join(SETTINGS_DIR, "chains.json"),
   JSON.stringify({
     "pulsechain-testnet": {
       ...LINK,
+      tokenList: { url: TOKEN_LIST_URL },
       // The testnet ships without these, and the app does not start without them.
       contracts: {
         positionManager: { address: "0x" + "11".repeat(20) },
@@ -118,7 +121,7 @@ function reports() {
 }
 
 describe("GET /api/chain", () => {
-  it("names the active chain, and what the header's chain link shows", () => {
+  it("names the active chain, what the header's chain link shows, and where its token logos are listed", () => {
     let status = null;
     let body = null;
     const routes = userConfigurableRoutes((_res, code, b) => {
@@ -127,7 +130,11 @@ describe("GET /api/chain", () => {
     });
     routes["GET /api/chain"]({}, {});
     assert.equal(status, 200);
-    assert.deepEqual(body, { chainId: "pulsechain-testnet", ...LINK });
+    assert.deepEqual(body, {
+      chainId: "pulsechain-testnet",
+      ...LINK,
+      tokenListUrl: TOKEN_LIST_URL,
+    });
   });
 });
 

@@ -161,9 +161,7 @@ async function _ensureTokenDecimals(
     return { ok: true, resolved: true, source: "force" };
   }
   try {
-    /*- getPoolState ignores its provider arg (builds its own per-RPC
-     *  providers for the retry chain); pass null explicitly. */
-    const ps = await getState(null, ethers, _poolStateOpts(position));
+    const ps = await getState(ethers, _poolStateOpts(position));
     position.decimals0 = forced0 !== null ? forced0 : ps.decimals0;
     position.decimals1 = forced1 !== null ? forced1 : ps.decimals1;
     return { ok: true, resolved: true, source: "chain" };

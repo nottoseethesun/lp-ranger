@@ -23,7 +23,7 @@ describe("_applyRebalanceResult — post-rebalance scan trigger", () => {
   const { _applyRebalanceResult } = require("../src/bot-recorder");
   const epochCache = require("../src/epoch-cache");
 
-  // An isolated cache file, outside the project's tmp/.
+  // An isolated cache file, outside the install.
   const isolatedDir = fs.mkdtempSync(path.join(os.tmpdir(), "arr-epochs-"));
   epochCache._setCachePath(path.join(isolatedDir, "pnl-epochs-cache.json"));
 

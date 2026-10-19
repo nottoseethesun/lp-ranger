@@ -134,7 +134,7 @@ function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg, deps) {
        *  stagger — one bot-loop start per CHECK_INTERVAL_SEC/N seconds
        *  in `src/server-auto-start.js`).  Echo `status: "running"` so
        *  the dashboard's readiness gate ("N of M managed positions
-       *  loaded" on the All Positions Stats button) counts this slot
+       *  loaded" on the All Stats button) counts this slot
        *  in its denominator instead of treating it as invisible.
        *  Deliberately do NOT set scan-complete flags — they stay
        *  false-ish so the gate still reports the position as "not

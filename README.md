@@ -236,9 +236,10 @@ npm run gentle-stop
 ```bash
 cd ../lp-ranger-[new-version]
 node ./util/update/migrate-app-state.js
+node ./util/migration
 ```
 
-It copies `.env`, `app-config`, `app-data` and `tmp`, and prints what it copied.
+The first command copies `.env`, `app-config`, `app-data` and `tmp`, and prints what it copied. The second brings those files up to date with the new release, for example by moving a file to where the release now keeps it, and prints each change.
 
 **Step Seven** &mdash; Install dependencies for the new release, from that same new install directory:
 
@@ -265,7 +266,7 @@ rm -rf lp-ranger-[current-version-number]
 
 **Step Ten** &mdash; Post-update tasks. A few releases need a one-time action once you are running the new version. Compare the version you noted in Step Nine against the list below. If your old version is newer than everything listed here, you are done.
 
-- **Updating from LP Ranger version 0.9.2.1 or earlier** &mdash; clear the blockchain scan caches. Step Six copies `tmp/` forward so an update normally starts warm, but this release changes how scan results and profit-and-loss periods are stored, and a figure cached by an older version can hold a value the new code no longer produces. Nothing detects that on its own: the old number simply persists and is displayed.
+- **Updating from LP Ranger version 0.9.2.1 or earlier** &mdash; clear the blockchain scan caches. Step Six carries the caches forward so an update normally starts warm, but this release changes how scan results and profit-and-loss periods are stored, and a figure cached by an older version can hold a value the new code no longer produces. Nothing detects that on its own: the old number simply persists and is displayed.
 
   Stop the bot first &mdash; the command refuses to run while a server is up &mdash; then, from your new install directory:
 
@@ -289,8 +290,8 @@ What Step Six carries forward, and all it carries forward:
 
 - `.env`
 - `app-config/user-configurable/*` (your wallet, bot config, encrypted API keys, and any operator overrides; the new install ships only a tracked `README.md` there)
-- `app-data/*` (your rebalance log; the new install ships only a tracked `README.md` there)
-- `tmp/*` (your performance caches; safe to skip if you want a fresh sync)
+- `app-data/*` (your rebalance log, and the blockchain scan caches in `app-data/scan-cache/`; the new install ships only a tracked `README.md` there)
+- `tmp/*` (where releases before this one kept the scan caches; `node ./util/migration` moves them into `app-data/scan-cache/`)
 
 What it does NOT touch in the new install: the shipped code (`src/`, `public/`, `scripts/`, `docs/`, etc.) and the shipped defaults under `app-config/app-defaults-for-user-configurable/`. It also skips `node_modules`, which Step Seven installs fresh from the new release's `package-lock.json`.
 
@@ -356,7 +357,7 @@ rm -rf lp-ranger*
 
 No special configuration is needed beyond what the app's user interface already guides you through. Read on only if you want to override one of the shipped operator-tunable defaults for your install.
 
-Shipped defaults live under [`app-config/app-defaults-for-user-configurable/`](app-config/app-defaults-for-user-configurable/) (do not edit; tarball upgrades overwrite). To override, copy the file into [`app-config/user-configurable/`](app-config/user-configurable/) and edit your copy there. The app deep-merges your overrides on top of the shipped defaults, with your values winning. Files under `user-configurable/` are gitignored and survive upgrades. Each value must be of its setting's kind and inside its range, and a copy may hold only settings LP Ranger reads: the app refuses to start otherwise, naming each problem ([Checking the Settings](docs/configuration.md#checking-the-settings)).
+Shipped defaults live under [`app-config/app-defaults-for-user-configurable/`](app-config/app-defaults-for-user-configurable/) (do not edit; tarball upgrades overwrite). To override, copy the file into [`app-config/user-configurable/`](app-config/user-configurable/) and edit your copy there. The app deep-merges your overrides on top of the shipped defaults, with your values winning. Files under `user-configurable/` are gitignored and survive upgrades. Every value is checked at startup ([Checking the Settings](docs/configuration.md#checking-the-settings)).
 
 For the full layout and rules for where new config files belong, see [The app-config Directory](docs/engineering.md#the-app-config-directory) in the engineering reference.
 
@@ -510,6 +511,8 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [Don't Let a Bookmarked Link Override a Pick Made During the Scan](docs/roadmap/nice-to-haves/project_deep_link_overrides_pick.md)  | A link to a position this browser has never stored starts a wallet scan, and a position picked during the scan is replaced by the linked one when it ends. The fix needs a signal only the operator's click produces: the dashboard rewrites the address bar itself when the wallet loads, so checking it would break such links.                                                                                                                                                                                                                                                                                                                                                         |
 | [Merge the Two Historical-Price Lookups](docs/roadmap/nice-to-haves/project_merge_historical_price_fetches.md)                      | Reconstruction prices a pool's two tokens under a block-scoped cache key, while the gas lookup prices the native token under a day-scoped one. Same token, same moment, two entries that cannot see each other — so a pool holding the native token pays for it twice. Every figure is correct; the cost is duplicated calls against a rate-limited tier. Making the single-token lookup the primitive is surgery on `price-fetcher.js`, so it wants its own branch.                                                                                                                                                                                                                      |
 | [Show a Locked Wallet After the Server Restarts](docs/roadmap/nice-to-haves/project_wallet_state_after_restart.md)                  | After a server restart without `WALLET_PASSWORD`, a page left open still treats the wallet as unlocked: Unlock Wallet stays disabled and Manage enabled, since the page reads the wallet's state only when it loads. The server refuses a Manage it cannot carry out, and reloading the page shows the unlock dialog. The fix would carry the locked state in the status answer and open the unlock dialog when it turns locked.                                                                                                                                                                                                                                                          |
+| [Retry the Start-Up's Owner Read on Another Endpoint](docs/roadmap/nice-to-haves/project_start_up_owner_read_retry.md)              | When the server starts, it asks the blockchain who owns each managed position's NFT. If an rpc endpoint answers that question with an error, the position stays on the managed list but is not started until the next launch. Asking again during the same launch, moving to the next endpoint as the app's other reads do, would start it then. Rare, and always resolved by the next restart.                                                                                                                                                                                                                                                                                           |
+| [Bring the app-data Files Under JSON Schema](docs/roadmap/nice-to-haves/project_app_data_json_schema.md)                            | The settings files and `bot-config.json` are checked against JSON Schemas at startup; the files in `app-data/` are not. The records file is held to checks written in code, and the rebalance log and the scan caches are read with no check of their shape. Give each one a schema built from the same kinds of value.                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### Possible Major New Features
 

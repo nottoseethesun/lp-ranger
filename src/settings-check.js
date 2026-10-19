@@ -5,13 +5,16 @@
  * @module settings-check
  * @description
  * Every problem with the settings an install runs on, found at once: the
- * JSON settings files with the operator's copies over them, `.env`, and
- * bot-config.json.
+ * JSON settings files with the operator's copies over them, `.env`,
+ * bot-config.json, and the bot's records beside it in
+ * app-data/position-records.json.
  *
  * Each is held to the rules the test suite holds the shipped files to:
- * src/settings-file-rules.js for the JSON settings files,
- * src/env-settings.js for `.env`, and src/bot-config-checks.js for
- * bot-config.json. A problem is a value of the wrong kind or outside its
+ * the JSON Schema of each JSON settings file (src/settings-file-rules.js),
+ * the list of variables LP Ranger reads for `.env`
+ * (src/env-settings.js), and src/bot-config-checks.js for bot-config.json,
+ * whose JSON Schema holds each setting to the rule a save is held to, and
+ * for the records. A problem is a value of the wrong kind or outside its
  * range, a setting LP Ranger does not read, a file that is not valid
  * JSON, or a copy in the operator's folder of a file the app never reads
  * from there. The `validate-config-values-with-any-user-overrides`
@@ -34,14 +37,18 @@ const {
   deepMerge,
 } = require("./load-merged-defaults");
 const {
-  SETTINGS_FILE_RULES,
+  SETTINGS_FILE_SCHEMAS,
   NEVER_OVERRIDDEN,
   settingsFileProblems,
   agreementProblems,
 } = require("./settings-file-rules");
 const { envProblems, envFileProblems } = require("./env-settings");
-const { botConfigProblems } = require("./bot-config-checks");
+const {
+  botConfigProblems,
+  positionRecordsProblems,
+} = require("./bot-config-checks");
 const { botConfigPath } = require("./bot-config-v2");
+const { positionRecordsPath } = require("./position-records");
 
 /*-
  *  Files the app keeps in the operator's folder that are not copies of a
@@ -69,7 +76,7 @@ function _read(file) {
 
 /** Whether the app reads an operator's copy of this file. */
 const _overridable = (file) =>
-  Object.hasOwn(SETTINGS_FILE_RULES, file) && !NEVER_OVERRIDDEN[file];
+  Object.hasOwn(SETTINGS_FILE_SCHEMAS, file) && !NEVER_OVERRIDDEN[file];
 
 /**
  * Every JSON file in the operator's folder that the app does not read
@@ -100,7 +107,7 @@ function _strayFiles(userDir) {
 function _resolveFiles(shippedDir, userDir, problems) {
   const shipped = {};
   const resolved = {};
-  for (const file of Object.keys(SETTINGS_FILE_RULES)) {
+  for (const file of Object.keys(SETTINGS_FILE_SCHEMAS)) {
     // A shipped file that is not JSON is a broken install, and throws.
     shipped[file] = stripDocKeys(
       JSON.parse(fs.readFileSync(path.join(shippedDir, file), "utf8")),
@@ -133,8 +140,11 @@ function _resolveFiles(shippedDir, userDir, problems) {
  * @param {object} [o.env]            The environment, over `.env`'s values
  *   as it is when the app loads `.env`.
  * @param {string} [o.botConfigFile]  bot-config.json.
+ * @param {string} [o.recordsFile]    The records file,
+ *   app-data/position-records.json (src/position-records.js).
  * @returns {{shipped: object, resolved: object, envText: (string|undefined),
- *   env: object, botText: (string|undefined), problems: string[]}}
+ *   env: object, botText: (string|undefined),
+ *   recordsText: (string|undefined), problems: string[]}}
  *   `resolved` holds each settings file by name; `problems` names each
  *   copy that is not valid JSON (the shipped file stands in for it) and
  *   each file in the operator's folder the app never reads.
@@ -145,6 +155,7 @@ function resolveSettings({
   envFile = path.resolve(".env"),
   env = process.env,
   botConfigFile = botConfigPath(),
+  recordsFile = positionRecordsPath(),
 } = {}) {
   const problems = [];
   const { shipped, resolved } = _resolveFiles(shippedDir, userDir, problems);
@@ -158,6 +169,7 @@ function resolveSettings({
     envText,
     env: { ...fileEnv, ...env },
     botText: _read(botConfigFile),
+    recordsText: _read(recordsFile),
     problems,
   };
 }
@@ -169,16 +181,11 @@ function resolveSettings({
  * @returns {string[]}
  */
 function settingsProblems(where) {
-  const { shipped, resolved, envText, env, botText, problems } =
+  const { resolved, envText, env, botText, recordsText, problems } =
     resolveSettings(where);
   const chains = resolved["chains.json"];
-  for (const file of Object.keys(SETTINGS_FILE_RULES))
-    problems.push(
-      ...settingsFileProblems(file, resolved[file], {
-        chains,
-        shipped: shipped[file],
-      }),
-    );
+  for (const file of Object.keys(SETTINGS_FILE_SCHEMAS))
+    problems.push(...settingsFileProblems(file, resolved[file]));
   problems.push(...agreementProblems((file) => resolved[file]));
   if (envText !== undefined) problems.push(...envFileProblems(envText));
   problems.push(
@@ -188,12 +195,13 @@ function settingsProblems(where) {
       botDefaults: resolved["bot-config-defaults.json"],
     }),
   );
+  const botCtx = {
+    compoundMinFeeUsd: resolved["app-runtime.json"]?.compound?.minFeeUsd,
+  };
   if (botText !== undefined)
-    problems.push(
-      ...botConfigProblems(botText, {
-        compoundMinFeeUsd: resolved["app-runtime.json"]?.compound?.minFeeUsd,
-      }),
-    );
+    problems.push(...botConfigProblems(botText, botCtx));
+  if (recordsText !== undefined)
+    problems.push(...positionRecordsProblems(recordsText));
   return problems;
 }
 

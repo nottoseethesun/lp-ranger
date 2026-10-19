@@ -26,8 +26,8 @@ const { addSpentGas } = require("./spent-gas");
  * Display label for the V3 router route: the active chain's
  * `contracts.swapRouter.name` in chains.json. Stamped onto
  * `result.swapSources` on every swap through the router, which the
- * Rebalance Events table shows, and named by the "Routing through:"
- * badge on a chain with no aggregator.
+ * Rebalance Events table shows, and named by the "Route:" badge on a
+ * chain with no aggregator.
  */
 const V3_ROUTER_LABEL = config.SWAP_ROUTER_NAME;
 

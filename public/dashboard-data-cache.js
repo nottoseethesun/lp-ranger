@@ -199,6 +199,16 @@ export function clearDirtyInputs() {
   _dirtyInputs.clear();
 }
 
+/**
+ * Forget one input's edit, so the next fill from the server writes it:
+ * a value the server refused is not kept as the operator's edit.
+ * @param {string} elementId
+ */
+export function clearInputDirty(elementId) {
+  const key = _dirtyKey(elementId);
+  if (key !== null) _dirtyInputs.delete(key);
+}
+
 // ── V2 status flattening ────────────────────────────────────────────────────
 
 /*-

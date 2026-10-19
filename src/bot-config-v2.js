@@ -19,10 +19,13 @@
  * in each browser tab).
  *
  * Storage location: `app-config/user-configurable/bot-config.json`
- * (gitignored). See the `app-config/` section of server.js for the full
- * layout. Tests pass a `dir` override to `loadConfig(dir)` /
- * `saveConfig(cfg, dir)` and write directly to `${dir}/bot-config.json`,
- * bypassing the app-config/user-configurable/ prefix.
+ * (gitignored) holds the settings and each position's status; the bot's
+ * records for each position (`RECORD_POSITION_KEYS`) are in
+ * `app-data/position-records.json` (src/position-records.js). In memory a
+ * position's slot holds both. See the `app-config/` section of server.js
+ * for the full layout. Tests pass a `dir` override to `loadConfig(dir)` /
+ * `saveConfig(cfg, dir)` and write directly to `${dir}/bot-config.json`
+ * and `${dir}/position-records.json`, bypassing those folders.
  */
 
 "use strict";
@@ -36,6 +39,14 @@ const {
   RETIRED_GLOBAL_KEYS,
 } = require("./bot-config-keys");
 const { makeTestTempFolder } = require("./test-temp-folders");
+const {
+  positionRecordsPath,
+  readPositionRecords,
+  mergePositionRecords,
+  splitPositionSlots,
+  backUpPositionRecords,
+  writePositionRecords,
+} = require("./position-records");
 
 const CONFIG_FILE = "bot-config.json";
 
@@ -108,12 +119,39 @@ function _empty() {
 }
 
 /**
- * Load bot config from disk.
+ * Load bot config from disk: the settings in bot-config.json, with each
+ * position's records from the records file merged into its slot
+ * (src/position-records.js), so a position's figures are read from one
+ * place. The records are merged before the phantom purge, since a
+ * managed position's slot in bot-config.json can hold its status alone
+ * when everything else it has is a record.
  * @param {string} [dir]  Directory override (default: cwd).
  * @returns {object}       Config object (or empty structure if no file).
  */
 function loadConfig(dir) {
-  const filePath = _configPath(dir);
+  const cfg = _loadSettingsFile(_configPath(dir));
+  const records = readPositionRecords(dir);
+  const count = Object.keys(records).length;
+  if (count > 0) {
+    log.info(
+      "[config] loadConfig: records for %d positions from %s",
+      count,
+      positionRecordsPath(dir),
+    );
+    backUpPositionRecords(dir);
+  }
+  mergePositionRecords(cfg, records);
+  _purgePhantomEntries(cfg);
+  return cfg;
+}
+
+/**
+ * Read bot-config.json, or an empty config when it is missing, empty or
+ * not JSON.
+ * @param {string} filePath
+ * @returns {{global: object, positions: object}}
+ */
+function _loadSettingsFile(filePath) {
   try {
     const text = fs.readFileSync(filePath, "utf8");
     if (!text || text.trim().length === 0) {
@@ -140,12 +178,10 @@ function loadConfig(dir) {
         /* best-effort */
       }
     }
-    const cfg = {
+    return {
       global: raw.global || {},
       positions: raw.positions || {},
     };
-    _purgePhantomEntries(cfg);
-    return cfg;
   } catch (err) {
     log.info(
       "[config] loadConfig: no file or parse error — starting empty (%s)",
@@ -322,13 +358,31 @@ function saveConfig(cfg, dir) {
       Object.keys(v).join(","),
     );
   }
-  // ── Atomic write ───────────────────────────────────────────────────────
+  _writeSplit(cfg, filePath, dir);
+}
+
+/**
+ * Write a config, each key to its own file: the records to the records
+ * file, the rest to bot-config.json (src/position-records.js), each
+ * atomically. The slots in memory keep both.
+ * @param {object} cfg
+ * @param {string} filePath  bot-config.json.
+ * @param {string} [dir]     As for `saveConfig`.
+ */
+function _writeSplit(cfg, filePath, dir) {
+  const { settings, records } = splitPositionSlots(cfg.positions || {});
+  try {
+    writePositionRecords(records, dir);
+  } catch (err) {
+    log.warn("[config] Could not save position records:", err.message);
+  }
   // Ensure the parent directory exists (e.g. app-config/user-configurable/ on first run
   // after a fresh install, or a test tmp dir that hasn't been populated).
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmpPath = filePath + ".tmp";
   try {
-    fs.writeFileSync(tmpPath, JSON.stringify(cfg, null, 2), "utf8");
+    const text = JSON.stringify({ ...cfg, positions: settings }, null, 2);
+    fs.writeFileSync(tmpPath, text, "utf8");
     fs.renameSync(tmpPath, filePath);
   } catch (err) {
     log.warn("[config] Could not save bot config:", err.message);

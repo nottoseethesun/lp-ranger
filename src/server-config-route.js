@@ -33,7 +33,7 @@ const { setServiceEnabled } = require("./api-key-holder");
 const { moralisEnabledIn } = require("./server-moralis");
 const { getOrCreatePositionConfig, saveConfig } = require("./bot-config-v2");
 const { parseCompositeKey } = require("./composite-key");
-const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
+const { GLOBAL_KEYS, SETTING_POSITION_KEYS } = require("./bot-config-keys");
 const { checkConfigValues } = require("./config-bounds");
 const { resolveLiveKey } = require("./server-key-resolver");
 const { clearIlGuardWait } = require("./il-guard");
@@ -321,7 +321,11 @@ function createConfigRouteHandler(deps) {
     const gPatch = {},
       pPatch = {};
     for (const k of GLOBAL_KEYS) if (body[k] !== undefined) gPatch[k] = body[k];
-    for (const k of POSITION_KEYS)
+    /*-
+     *  Settings only. A position's records (`RECORD_POSITION_KEYS`) are
+     *  the bot's to write, so a request naming one is not taking it.
+     */
+    for (const k of SETTING_POSITION_KEYS)
       if (body[k] !== undefined) pPatch[k] = body[k];
     /*-
      *  Every answer names the position it is about, so a dashboard that

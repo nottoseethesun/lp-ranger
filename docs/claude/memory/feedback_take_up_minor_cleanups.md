@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
+  modified: 2026-10-19T16:48:47.368Z
 ---
 
 When auditing your own work or surrounding code and you notice a minor cleanup opportunity — dead variables, redundant function parameters, stale comments referencing the old design, leftover state from a refactor-in-progress, unused imports — **take it up yourself**. Don't surface it as a question or summary item for the user to approve.
@@ -18,3 +19,5 @@ When auditing your own work or surrounding code and you notice a minor cleanup o
 **Counter-example (don't apply):** Module-boundary changes, deletion of public exports, renames that touch many files, anything where the user might have a reason for the current shape that I can't see. Those go through the user.
 
 Cross-links: [[feedback_audit_program_state]] (post-feature program-state audit), [[feedback_basic_fix_first]] (favor simple fixes), [[feedback_finish_logic]] (trace paths to completion before reporting done).
+
+**Suspended for audits from 2026-10-19:** the user asked that reviews avoid minor issues and leave them for a later release; see [[feedback_no_finding_without_a_failure]] § "Minor issues wait for a later release".

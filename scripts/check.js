@@ -63,14 +63,15 @@ const ROOT = path.resolve(__dirname, "..");
  *  below) can reference them without hitting the temporal-dead-zone. */
 const _USER_CFG_DIR = path.join("app-config", "user-configurable");
 const _APP_DATA_DIR = "app-data";
-const _OPERATOR_STATE_DIRS = [_USER_CFG_DIR, _APP_DATA_DIR];
+// The scan caches (src/scan-cache-dir.js), a folder inside app-data/.
+const _SCAN_CACHE_DIR = path.join("app-data", "scan-cache");
+const _OPERATOR_STATE_DIRS = [_USER_CFG_DIR, _APP_DATA_DIR, _SCAN_CACHE_DIR];
 
-/*- File-name predicates used by the backup/wipe/restore helpers.
+/*- The file-name predicate used by the backup/wipe/restore helpers.
  *  Hoisted up here so the top-level script body (restoreProdFiles is
  *  called from the EXIT trap, which fires anywhere below) can
- *  reference them without hitting the temporal-dead-zone. */
+ *  reference it without hitting the temporal-dead-zone. */
 const _IS_README = (n) => n === "README.md";
-const _IS_JSON = (n) => n.endsWith(".json");
 process.chdir(ROOT);
 
 const REPORT_DIR = "test/report-artifacts";
@@ -414,14 +415,12 @@ const onInterrupt = (signal) => {
 };
 const INTERRUPTS = ["SIGINT", "SIGTERM", "SIGHUP"];
 for (const signal of INTERRUPTS) process.on(signal, onInterrupt);
-const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "check-backup-"));
-log.info("[check] Operator files backed up to %s for the tests", backupDir);
-backupProdFiles(backupDir);
-wipeRuntimeFiles();
 /*-
  *  Each test process removes its temp folders as it exits, but one
  *  stopped outright (Ctrl+C, kill -9) cannot. Those folders go here,
- *  before the tests start, so none accumulates across runs.
+ *  before the operator's files are moved out for the tests: a folder
+ *  that cannot be removed then stops the run with those files still in
+ *  place, rather than after they have been moved.
  */
 const leftoverFolders = removeLeftoverTestTempFolders();
 if (leftoverFolders > 0)
@@ -430,6 +429,10 @@ if (leftoverFolders > 0)
     leftoverFolders,
     os.tmpdir(),
   );
+const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "check-backup-"));
+log.info("[check] Operator files backed up to %s for the tests", backupDir);
+backupProdFiles(backupDir);
+wipeRuntimeFiles();
 
 // ── Tests + Coverage ──────────────────────────────────────────────────────
 /**
@@ -631,10 +634,10 @@ function listTestFiles() {
   return out;
 }
 
-/** Copy every operator-state file in app-config/user-configurable/
- *  and app-data/ (except each dir's tracked README.md) plus tmp/*.json
- *  to `backup`.  Operator-state contents are protected on the same
- *  footing as `.env`: tests must not silently destroy them. */
+/** Copy every operator-state file in app-config/user-configurable/,
+ *  app-data/ and app-data/scan-cache/ (except each dir's tracked
+ *  README.md) to `backup`.  Operator-state contents are protected on
+ *  the same footing as `.env`: tests must not silently destroy them. */
 function backupProdFiles(backup) {
   for (const dir of _OPERATOR_STATE_DIRS) {
     fs.mkdirSync(path.join(backup, dir), { recursive: true });
@@ -648,30 +651,14 @@ function backupProdFiles(backup) {
       );
     }
   }
-  fs.mkdirSync(path.join(backup, "tmp"), { recursive: true });
-  if (fs.existsSync("tmp")) {
-    for (const entry of fs.readdirSync("tmp", { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-      fs.copyFileSync(
-        path.join("tmp", entry.name),
-        path.join(backup, "tmp", entry.name),
-      );
-    }
-  }
 }
 
-/** Delete operator-state files (app-config/user-configurable/ +
- *  app-data/ contents, except each dir's README.md) and tmp/*.json so
- *  tests see vanilla state. */
+/** Delete operator-state files (app-config/user-configurable/,
+ *  app-data/ and app-data/scan-cache/ contents, except each dir's
+ *  README.md) so tests see vanilla state. */
 function wipeRuntimeFiles() {
   for (const dir of _OPERATOR_STATE_DIRS) {
     _wipeDir(dir, _IS_README);
-  }
-  if (fs.existsSync("tmp")) {
-    for (const entry of fs.readdirSync("tmp", { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-      fs.unlinkSync(path.join("tmp", entry.name));
-    }
   }
 }
 
@@ -710,14 +697,12 @@ function keepTestErrorLog() {
   if (fs.existsSync(ERROR_LOG)) fs.renameSync(ERROR_LOG, CHECK_ERROR_LOG);
 }
 
-/** Restore operator-state directories (app-config/user-configurable/
- *  and app-data/) plus tmp/*.json from `backup`. */
+/** Restore operator-state directories (app-config/user-configurable/,
+ *  app-data/ and app-data/scan-cache/) from `backup`. */
 function restoreProdFiles(backup) {
   // Wipe any test-created runtime files, then copy originals back.
   for (const dir of _OPERATOR_STATE_DIRS) {
     _wipeDir(dir, _IS_README);
     _restoreDir(path.join(backup, dir), dir);
   }
-  _wipeDir("tmp", (n) => !_IS_JSON(n));
-  _restoreDir(path.join(backup, "tmp"), "tmp");
 }

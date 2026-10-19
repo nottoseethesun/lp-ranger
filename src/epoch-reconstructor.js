@@ -506,9 +506,10 @@ async function _rebuildClosedEpochs(o) {
  * It has to persist because it carries a figure nothing can rebuild.
  * Its entry value, fees and compounded coins are all re-derived on the
  * next poll, so those would cost nothing to drop. Its GAS would: gas
- * only accumulates, so a dropped charge is gone. `recordSpentGas` in
- * `spent-gas.js` is the charge that depends on this: it is offered once,
- * by the code that just spent it, and nothing re-derives it.
+ * only accumulates, so a dropped charge is gone. A compound's gas is the
+ * charge that depends on this (src/bot-cycle-compound.js): it is offered
+ * once, by the code that just spent it. A failed move's gas is kept in
+ * the position's records instead (src/spent-gas.js).
  *
  * @param {object}   pnlTracker     Tracker instance.
  * @param {object[]} closedEpochs   Sorted closed epoch array.

@@ -13,7 +13,39 @@ const {
   classifyRpcError,
   innerErrorMessage,
   getBuckets,
+  isContractRevert,
 } = require("../src/rpc-error-classifier");
+const {
+  contractReverted,
+  endpointFailedRead,
+} = require("./helpers/ethers-rpc-errors");
+const { JsonRpcProvider } = require("ethers");
+
+describe("isContractRevert", () => {
+  it("is true for a revert with a reason", () => {
+    assert.equal(isContractRevert(contractReverted("ERC721: no token")), true);
+  });
+
+  it("is true for a bare revert, whose data is empty", () => {
+    const bare = JsonRpcProvider.prototype.getRpcError(
+      { method: "eth_call", params: [{ to: "0x" + "c0".repeat(20) }] },
+      { error: { code: 3, message: "execution reverted", data: "0x" } },
+    );
+    assert.equal(bare.code, "CALL_EXCEPTION");
+    assert.equal(isContractRevert(bare), true);
+  });
+
+  it("is false for an endpoint's error answer, which ethers labels the same way", () => {
+    const failed = endpointFailedRead("rate limit exceeded");
+    assert.equal(failed.code, "CALL_EXCEPTION");
+    assert.equal(isContractRevert(failed), false);
+  });
+
+  it("is false for any other error", () => {
+    assert.equal(isContractRevert(new Error("timeout")), false);
+    assert.equal(isContractRevert(null), false);
+  });
+});
 
 describe("classifyRpcError — terminal-nonce-unused", () => {
   it("'queued sub-pool is full' → terminal-nonce-unused", () => {

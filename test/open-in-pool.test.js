@@ -16,6 +16,10 @@ const assert = require("node:assert/strict");
 const { openInPool } = require("../src/open-in-pool");
 const { createPositionManager } = require("../src/position-manager");
 const { captureWarnings } = require("./helpers/capture-warnings");
+const {
+  contractReverted,
+  endpointFailedRead,
+} = require("./helpers/ethers-rpc-errors");
 
 const A = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
 const B = "0x57fde0a71132198BBeC939B98976993d8D89D225";
@@ -97,13 +101,32 @@ describe("an open position in the pool", () => {
 
   it("counts no longer once it has been burned", async () => {
     // The contract reverts when asked about an NFT that no longer exists.
-    const reverted = Object.assign(new Error("execution reverted"), {
-      code: "CALL_EXCEPTION",
-    });
+    const reverted = contractReverted(
+      "ERC721: owner query for nonexistent token",
+    );
     const { answer } = await ask([scannedAt("111", "5000")], {
       111: { fails: reverted },
     });
     assert.equal(answer, null);
+  });
+
+  it("still counts when an endpoint answers who owns it with an error", async () => {
+    /*-
+     *  ethers labels an endpoint's error answer to a contract read as it
+     *  labels the contract's revert. Only the revert says the NFT is
+     *  gone, so this leaves the scan's answer standing.
+     */
+    const warned = captureWarnings();
+    let answer;
+    try {
+      ({ answer } = await ask([scannedAt("111", "5000")], {
+        111: { fails: endpointFailedRead("rate limit exceeded") },
+      }));
+    } finally {
+      warned.restore();
+    }
+    assert.equal(answer, "111");
+    assert.match(warned.lines.join("\n"), /who owns NFT #111 /);
   });
 
   it("still counts when the chain cannot be read", async () => {

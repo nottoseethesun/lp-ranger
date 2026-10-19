@@ -21,6 +21,10 @@ import {
 } from "./dashboard-helpers.js";
 import { setProviderLabelFor } from "./dashboard-lp-providers.js";
 import {
+  paintTokenPair,
+  paintStatTokenLogos,
+} from "./dashboard-token-logos.js";
+import {
   logStripRender,
   logLocalRender,
   logDedupRefresh,
@@ -396,25 +400,6 @@ export function _tokenName(symbol, address, maxLen = 20) {
  *  is instant. */
 const _NFT_BAR_TOKEN_MAX_LEN = 17;
 
-/*- Render the two token symbols into a container as separate spans so
- *  each can be independently truncated by CSS (text-overflow: ellipsis
- *  + max-width in `ch`, see .9mm-pos-mgr-nft-bar-tok in 9mm-pos-mgr.css).
- *  We render the FULL symbol — CSS clips it based on viewport width. */
-function _setNftBarPair(elId, t0Full, t1Full) {
-  const el = g(elId);
-  if (!el) return;
-  const mk = (txt) => {
-    const s = document.createElement("span");
-    s.className = "9mm-pos-mgr-nft-bar-tok";
-    s.textContent = txt;
-    s.title = txt;
-    return s;
-  };
-  el.replaceChildren(mk(t0Full), document.createTextNode(" / "), mk(t1Full));
-}
-
-/** Build a token label with a copy-address button. */
-
 /** Check if a position is closed (liquidity=0). */
 export function isPositionClosed(pos) {
   if (pos.liquidity === undefined || pos.liquidity === null) {
@@ -524,10 +509,12 @@ function _updateActiveStripDetails(active) {
     wsToken.textContent = isNft
       ? active.tokenId || "\u2014"
       : (active.contractAddress || "\u2014").slice(0, 10) + "\u2026";
-  _setNftBarPair(
+  paintTokenPair(
     "wsPool",
     active.token0Symbol || t0,
     active.token1Symbol || t1,
+    active.token0,
+    active.token1,
   );
   const wsFee = g("wsFee");
   if (wsFee) wsFee.textContent = (active.fee / 10000).toFixed(2) + "%";
@@ -611,6 +598,7 @@ export function _applyLocalPositionData(pos) {
   const t1Full = pos.token1Symbol || t1Sym;
   _setText("statT0Name", t0Sym);
   _setText("statT1Name", t1Sym);
+  paintStatTokenLogos(pos);
   // Set copy-to-clipboard addresses for all copy icons
   for (const [id, addr] of [
     ["copyT0", pos.token0],
@@ -641,10 +629,12 @@ export function _applyLocalPositionData(pos) {
   _setText("cl1", "\u25A0 " + t1Sym + ": 50%");
   _t("cl0", t0Full);
   _t("cl1", t1Full);
-  _setNftBarPair(
+  paintTokenPair(
     "wsPool",
     pos.token0Symbol || _tokenName(pos.token0Symbol, pos.token0) || "\u2014",
     pos.token1Symbol || _tokenName(pos.token1Symbol, pos.token1) || "\u2014",
+    pos.token0,
+    pos.token1,
   );
   _setText("wsFee", (pos.fee / 10000).toFixed(2) + "%");
   setProviderLabelFor(pos.contractAddress);

@@ -26,7 +26,7 @@
  */
 
 const validator = require("validator");
-const { SETTING_BOUNDS } = require("./setting-bounds");
+const { boundAt } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
 const { assertTimerSec } = require("./timer-bounds");
 const { isUrl, isAddress } = require("./value-kinds");
@@ -105,10 +105,10 @@ function _deadlineSec(ctx, env) {
 }
 
 /*-
- *  Every variable LP Ranger reads, by name. A Bot Setting is held to its
- *  range in setting-bounds.json (`range`), and a setting that becomes a
- *  timer delay to the timer rule (`timer`), whose ceiling is a multiple
- *  of the JSON value the variable overrides (`defaultOf`).
+ *  Every variable LP Ranger reads, by name. A setting with a range is
+ *  held to it (`range`, its path in setting-bounds.json), and a setting
+ *  that becomes a timer delay to the timer rule (`timer`), whose ceiling
+ *  is a multiple of the JSON value the variable overrides (`defaultOf`).
  */
 const ENV_SETTINGS = Object.freeze({
   CHAIN_NAME: { kind: CHAIN },
@@ -156,9 +156,20 @@ const ENV_SETTINGS = Object.freeze({
     timer: "checkIntervalSec",
     defaultOf: (ctx) => ctx.botDefaults?.checkIntervalSec,
   },
-  DEADLINE_SEC: { kind: WHOLE },
+  DEADLINE_SEC: { kind: WHOLE, range: "tx.deadlineSec" },
   REBALANCE_RETRY_SWAP_LIMIT: { kind: WHOLE },
   LOG_FILE: { kind: TEXT },
+  /*-
+   *  Read by LP Ranger's own tools rather than by the server or the bot:
+   *  the inspector port `npm run debug-attach` connects to and the
+   *  process it attaches to (scripts/_debug-attach.js), and the Moralis
+   *  key the verify-compound-usd diagnostic prices with. A process id
+   *  changes with every start, so LP_RANGER_PID suits the command line
+   *  better than `.env`.
+   */
+  INSPECTOR_PORT: { kind: PORT_NUMBER },
+  LP_RANGER_PID: { kind: WHOLE },
+  MORALIS_API_KEY: { kind: TEXT, secret: true },
   /*-
    *  Where the tests point a file the app keeps; nothing that ships sets
    *  them, and an operator has no reason to.
@@ -191,7 +202,7 @@ function _refusal(name, setting, raw) {
   const what =
     setting.range === undefined
       ? setting.kind.what
-      : boundText(SETTING_BOUNDS[setting.range]);
+      : boundText(boundAt(setting.range));
   const shown =
     setting.secret === true ? "its value is not shown" : `it is "${raw}"`;
   return `${name} in .env must be ${what}; ${shown}`;
@@ -221,7 +232,7 @@ function readEnv(name, env = process.env) {
 /** A set variable's range or timer problem, or null. */
 function _boundProblem(name, setting, value, raw, ctx, env) {
   if (setting.range !== undefined) {
-    const bound = SETTING_BOUNDS[setting.range];
+    const bound = boundAt(setting.range);
     return withinBound(value, bound)
       ? null
       : `${name} in .env must be ${boundText(bound)}; it is "${raw}"`;
