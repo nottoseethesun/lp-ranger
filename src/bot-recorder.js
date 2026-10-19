@@ -20,11 +20,14 @@ const fs = require("fs");
 const path = require("path");
 const config = require("./config");
 const rangeMath = require("./range-math");
-const { getPoolState } = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
 const { scanPoolHistory } = require("./pool-scanner");
 const { reconstructEpochs } = require("./epoch-reconstructor");
 const { clearLpPositionCache } = require("./lp-position-cache");
 const { buildUpdatePatch } = require("./bot-recorder-patch");
+const { coinDecimals } = require("./coin-decimals");
+const { updateHodlBaseline } = require("./bot-recorder-baseline");
+const { duration } = require("./help-figures");
 const {
   hasCompoundedTotal,
   isRecordedCoinTotal,
@@ -178,8 +181,11 @@ async function _closePnlEpoch(deps, result) {
       price0 = p.price0;
       price1 = p.price1;
     }
-    const rd0 = result.decimals0 ?? 18,
-      rd1 = result.decimals1 ?? 18;
+    const { d0: rd0, d1: rd1 } = coinDecimals(
+      result,
+      "the rebalance result",
+      "the closing period's exit value",
+    );
     const exitVal =
       result.exitValueUsd ||
       _toFloat(result.amount0Collected, rd0) * price0 +
@@ -400,13 +406,14 @@ async function _scanHistory(
      *  the FAQ tells them to search for. */
     const ctx = scanLogCtx(position);
     log.warn(
-      "[bot] %s/%s NFT #%s %s: Event scan error (%s): %s — lifetime figures skipped; the Sync badge stays on Syncing and the scan retries in 30 minutes",
+      "[bot] %s/%s NFT #%s %s: Event scan error (%s): %s — lifetime figures skipped; the Sync badge stays on Syncing and the scan retries in %s",
       ctx.t0Sym,
       ctx.t1Sym,
       ctx.tokenIdStr,
       ctx.tokenEmoji,
       err.name || "Error",
       err.message,
+      duration(config.LIFETIME_RESCAN_CHECK_MS / 1000),
     );
     updateState({ rebalanceScanComplete: true });
     return false;
@@ -585,36 +592,6 @@ function _notifyRebalance(deps, throttle, position, events) {
   });
 }
 
-/** Update HODL baseline from rebalance result. */
-function _updateHodlBaseline(botState, result, mintNow) {
-  const d0 = result.decimals0 ?? 18,
-    d1 = result.decimals1 ?? 18;
-  const a0 = _toFloat(result.amount0Minted, d0),
-    a1 = _toFloat(result.amount1Minted, d1),
-    p0 = result.token0UsdPrice || 0,
-    p1 = result.token1UsdPrice || 0;
-  /*- mintNow is an ISO string (used elsewhere as a position-mint label).
-      Canonical hodlBaseline.mintTimestamp is Unix seconds, so convert
-      here.  See public/dashboard-date-utils.js#toMintTsSeconds. */
-  const mintTs = Math.floor(new Date(mintNow).getTime() / 1000);
-  botState.hodlBaseline = {
-    mintDate: mintNow.slice(0, 10),
-    mintTimestamp: mintTs,
-    entryValue: a0 * p0 + a1 * p1,
-    hodlAmount0: a0,
-    hodlAmount1: a1,
-    token0UsdPrice: p0,
-    token1UsdPrice: p1,
-    /*- The new NFT's mint gas, kept on the baseline because that is
-        where the lifetime scan and `position-history` read it from: it
-        seeds `totalNftGasWei` for this NFT, which the Current panel
-        prices at today and a reconstructed period prices at its own
-        close day. */
-    mintGasWei: result.mintGasCostWei ? String(result.mintGasCostWei) : "0",
-  };
-}
-
-/** Update in-memory position + events after a successful rebalance. */
 /** Append a rebalance event to the in-memory event list. */
 function _pushRebalanceEvent(events, result) {
   if (!events) return;
@@ -627,7 +604,8 @@ function _pushRebalanceEvent(events, result) {
     newTokenId: String(result.newTokenId || "?"),
     txHash:
       (result.txHashes && result.txHashes[result.txHashes.length - 1]) || "",
-    blockNumber: 0,
+    // The mint's block, where every read of the new NFT's history starts.
+    blockNumber: result.blockNumber,
     swapSources: result.swapSources || "(no swap)",
     /*- Trigger is set in bot-cycle._executeAndRecord before rebalance
      *  runs; falls back to "out-of-range" for safety.  Historical
@@ -642,6 +620,7 @@ function _pushRebalanceEvent(events, result) {
   );
 }
 
+/** Update in-memory position + events after a successful rebalance. */
 function _applyRebalanceResult(deps, result) {
   const { position } = deps;
   if (result.newTokenId && result.newTokenId !== 0n)
@@ -682,7 +661,7 @@ function _applyRebalanceResult(deps, result) {
       ctx.tokenIdStr,
       ctx.tokenEmoji,
     );
-    _updateHodlBaseline(deps._botState, result, mintNow);
+    updateHodlBaseline(deps._botState, result, mintNow);
   }
   log.info(
     "[bot] Post-rebalance: position.tokenId=%s",
@@ -690,6 +669,7 @@ function _applyRebalanceResult(deps, result) {
   );
   if (deps._botState?.walletAddress)
     clearLpPositionCache(deps._botState.walletAddress, {
+      blockchain: config.CHAIN_NAME,
       contract: config.POSITION_MANAGER,
     });
   if (!deps.updateBotState) return;
@@ -708,7 +688,6 @@ module.exports = {
   _recordResidual,
   _activePosSummary,
   _notifyRebalance,
-  _updateHodlBaseline,
   _applyRebalanceResult,
   _collectTokenIds,
   _pushRebalanceEvent,

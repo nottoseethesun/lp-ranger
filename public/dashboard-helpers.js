@@ -5,13 +5,27 @@
  * time-formatting helpers, and the shared {@link botConfig} object used by
  * every other dashboard module.
  *
- * Root module — no imports from other dashboard files.
+ * Root module — imports no dashboard file but the logger and the chain
+ * module, neither of which imports this one, directly or otherwise.
  */
 
 import { log } from "./dashboard-log.js";
+import { activeChainId } from "./dashboard-chain.js";
 /*- The zone designator the `Date` itself emits, not a spelled-out
  *  name. See `src/utc-timestamp.js` for why "UTC" cannot be derived. */
 import { UTC_LABEL } from "../src/utc-timestamp.js";
+/*-
+ *  The security-token refresh cadence before the server has sent its
+ *  own; see `_csrfRefreshIntervalMs`.
+ */
+import CSRF_DEFAULTS from "../app-config/app-defaults-for-user-configurable/csrf.json" with { type: "json" };
+// The server's reasons for refusing a token; see `fetchWithCsrf`.
+import { CSRF_REFUSALS } from "../src/csrf-refusals.js";
+import {
+  uiSetting,
+  uiSettingsLoaded,
+  withUiSettings,
+} from "./dashboard-ui-settings.js";
 /**
  * Get a DOM element by its ID.
  * @param {string} id  The element's id attribute.
@@ -84,7 +98,8 @@ export function emojiId(str) {
 
 /**
  * Append an entry to the on-screen activity log.
- * Newest entries appear at the top; the list is capped at 50 items.
+ * Newest entries appear at the top; the list is capped at the
+ * `activityLogMaxEntries` setting the server sends.
  * @param {string} icon   Emoji icon for the entry.
  * @param {string} type   CSS class suffix for colouring (e.g. 'fee', 'alert').
  * @param {string} title  Short heading text.
@@ -93,7 +108,7 @@ export function emojiId(str) {
 /**
  * Activity-log icon references.  Each value is a relative URL to the
  * standalone SVG file under `public/icons/`.  Every icon must have a
- * matching file (see test/act-icons-files.test.js) and the whole
+ * matching file (see test/icons-files.test.js) and the whole
  * directory is XML-well-formedness-validated via `npm run lint:svg`
  * (see docs/engineering.md § "SVG Assets" for the full policy).
  * @see docs/engineering.md#svg-assets
@@ -114,8 +129,6 @@ export const ACT_ICONS = {
   acorn: "icons/act-acorn.svg",
   lasso: "icons/act-lasso.svg",
 };
-/** Maximum entries in the Activity Log. */
-const ACT_LOG_MAX = 500;
 
 /*- Per-icon render-size override.  Default is 40 (fits the 54×54
  *  `.aico` chip with ~7 px padding on each side); an entry here
@@ -230,7 +243,14 @@ export function act(icon, type, title, detail, when, txHash) {
   let ref = list.firstChild;
   while (ref && Number(ref.dataset?.ts) > ts) ref = ref.nextSibling;
   list.insertBefore(div, ref);
-  while (list.children.length > ACT_LOG_MAX) list.removeChild(list.lastChild);
+  /*-
+   *  The cap is `activityLogMaxEntries`, a setting the server sends.
+   *  Entries logged at startup, before it has, stay until the first entry
+   *  after, which trims the log to the cap.
+   */
+  if (!uiSettingsLoaded()) return;
+  const max = uiSetting("activityLogMaxEntries");
+  while (list.children.length > max) list.removeChild(list.lastChild);
 }
 
 /**
@@ -331,18 +351,17 @@ export function fmtReset(r) {
 
 /**
  * Build a composite key matching the server's format: blockchain-wallet-contract-tokenId.
- * Returns null if any component is missing.
- * @param {string} [blockchain]  Defaults to 'pulsechain'.
- * @param {string} wallet        Wallet address.
- * @param {string} contract      NFT contract address.
- * @param {string} tokenId       NFT token ID.
+ * Returns null if any component is missing, the chain included: there is
+ * no chain to assume, and a key on the wrong one reaches no position.
+ * @param {string} blockchain  The active chain's id (`activeChainId()`).
+ * @param {string} wallet      Wallet address.
+ * @param {string} contract    NFT contract address.
+ * @param {string} tokenId     NFT token ID.
  * @returns {string|null}
  */
 export function compositeKey(blockchain, wallet, contract, tokenId) {
-  if (!wallet || !contract || !tokenId) return null;
-  return (
-    (blockchain || "pulsechain") + "-" + wallet + "-" + contract + "-" + tokenId
-  );
+  if (!blockchain || !wallet || !contract || !tokenId) return null;
+  return blockchain + "-" + wallet + "-" + contract + "-" + tokenId;
 }
 
 // ── Bot configuration state ─────────────────────────────────────────────────
@@ -361,12 +380,16 @@ export function compositeKey(blockchain, wallet, contract, tokenId) {
  */
 export const botConfig = {
   oorThreshold: undefined,
+  /*-
+   *  logging.json → errorLogPath, as the operator wrote it, from each
+   *  /api/status poll; blank until the first one lands.
+   */
+  errorLogPath: "",
   price: 0,
   lower: 0,
   upper: 0,
   tL: 0,
   tU: 0,
-  triggerType: "oor",
   oorSince: null,
 };
 
@@ -377,18 +400,28 @@ export function truncName(name, max) {
 
 /**
  * Copy `text` to the clipboard and give visual feedback by swapping
- * `iconEl`'s textContent to a checkmark for 1200ms.
+ * `iconEl`'s textContent to a checkmark for `copyFeedbackMs`, a setting
+ * the server sends. A click before the server has sent it keeps the
+ * checkmark until it has, then times it as usual.
+ *
+ * A second click while the checkmark shows copies again and leaves the
+ * checkmark alone: the first click's timer puts the icon back. Taking
+ * the checkmark as the icon to restore would leave it showing for good.
+ *
  * @param {HTMLElement} iconEl  The clicked copy-icon element.
  * @param {string} text  The text to copy.
  */
 export function copyWithFeedback(iconEl, text) {
   if (!iconEl || !text) return;
   navigator.clipboard.writeText(text).catch(() => {});
+  if (iconEl.textContent === "✓") return;
   const orig = iconEl.textContent;
   iconEl.textContent = "\u2713";
-  setTimeout(() => {
-    iconEl.textContent = orig;
-  }, 1200);
+  withUiSettings((settings) =>
+    setTimeout(() => {
+      iconEl.textContent = orig;
+    }, settings.copyFeedbackMs),
+  );
 }
 
 /** Copy textContent of element `tId` via icon `bId` with checkmark feedback. */
@@ -429,17 +462,6 @@ export function isFullRangeSpread(spread) {
   return Number.isFinite(spread) && spread >= FULL_RANGE_TICK_SPREAD_THRESHOLD;
 }
 
-/**
- * Return the Unix timestamp (ms) of the next local midnight.
- * Used by the throttle module for daily counter resets.
- * @returns {number}
- */
-export function nextMidnight() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime() + 86400000;
-}
-
 // ── Disclaimer cookie helpers ───────────────────────────────────────────────
 
 /** Cookie name for the "Don't show this again" preference. */
@@ -449,18 +471,33 @@ export function nextMidnight() {
 const POS_RANGE_PREFIX = "9mm_oorThreshold_";
 
 /**
- * Build a unique storage key for a position.
- * Uses tokenId for NFTs, contractAddress for ERC-20s.
+ * Build a unique storage key for a position, on the active chain: the
+ * chain, the wallet and the position's contract, and for an NFT its
+ * number too, so no two positions share a value. The contract is the
+ * position manager for an NFT and the LP token for an ERC-20.
  * @param {object} pos  Position entry from posStore.
- * @returns {string|null}  Storage key, or null if position has no identifier.
+ * @returns {string|null}  Storage key, or null when the chain is not yet
+ *   known or the position lacks an identifying field.
  */
 function posStorageKey(pos) {
   if (!pos) return null;
-  if (pos.positionType === "nft" && pos.tokenId)
-    return POS_RANGE_PREFIX + "nft_" + pos.tokenId;
-  if (pos.contractAddress)
-    return POS_RANGE_PREFIX + "erc20_" + pos.contractAddress.toLowerCase();
-  return null;
+  const chain = activeChainId();
+  if (typeof chain !== "string") return null;
+  const { walletAddress, contractAddress } = pos;
+  for (const part of [walletAddress, contractAddress])
+    if (typeof part !== "string" || part.length === 0) return null;
+  const owner =
+    chain +
+    "_" +
+    walletAddress.toLowerCase() +
+    "_" +
+    contractAddress.toLowerCase();
+  if (pos.positionType === "nft") {
+    const id = pos.tokenId;
+    if (typeof id !== "string" || id.length === 0) return null;
+    return POS_RANGE_PREFIX + "nft_" + owner + "_" + id;
+  }
+  return POS_RANGE_PREFIX + "erc20_" + owner;
 }
 
 /**
@@ -485,7 +522,7 @@ export function savePositionOorThreshold(pos, oorPct) {
  * stored value is invalid), so the caller can fall back to the shipped
  * default sourced from the AJAX-populated
  * `_CONFIG_INPUT_DEFAULTS.rebalanceOutOfRangeThresholdPercent` (via
- * `getInputDefault()` in dashboard-data.js).  No literal fallback per
+ * `getInputDefault()` in dashboard-config-inputs.js).  No literal fallback per
  * feedback_one_literal_per_shipped_default — the shipped default lives
  * only in `bot-config-defaults.json` and nowhere else in code.
  *
@@ -607,15 +644,19 @@ export async function checkMoralisKeyStatus() {
        *  through to the "no key" text below would tell the operator
        *  their key had vanished. */
       dot.title = "Moralis API key stored but Use Moralis Key is off";
+    } else if (s === "unsupported") {
+      // A key IS configured; this chain is one Moralis is not asked about.
+      dot.title =
+        "Moralis API key stored, but Moralis does not cover this chain";
     } else {
       dot.title = "No Moralis API key configured";
     }
+    const stored = ["valid", "quota", "locked", "disabled", "unsupported"];
     const inp = g("moralisKeyInput");
     if (inp)
-      inp.placeholder =
-        s === "valid" || s === "quota" || s === "locked" || s === "disabled"
-          ? "Paste replacement key"
-          : "Paste key here";
+      inp.placeholder = stored.includes(s)
+        ? "Paste replacement key"
+        : "Paste key here";
     return s;
   } catch {
     /* network error — leave dot in default state */
@@ -654,14 +695,19 @@ export function fmtDuration(ms) {
 // ── CSRF token management ───────────────────────────────────────────────────
 
 let _csrfToken = null;
-/*- Server-driven refresh cadence from app-config/app-defaults-for-user-configurable/csrf.json
-    (delivered alongside every token). Default 5 min, giving ~11 missed
-    firings of slack against the 60 min server-side TTL — survives Chrome
-    tab discards, silent network failures, and main-thread stalls during
-    long pool scans on hardware like Raspberry Pi 5 (recommended
-    configuration: with Heat Sink and Fan, 5GB RAM, and Ethernet cable
-    Internet connection instead of Wi-Fi). */
-let _csrfRefreshIntervalMs = 5 * 60 * 1000;
+/*-
+ *  Refresh cadence, from app-config/app-defaults-for-user-configurable/csrf.json.
+ *  The server sends its own reading of that file (an operator override
+ *  included) with every token, and that replaces this one; the copy
+ *  bundled here covers only the time before the first token arrives.
+ *  The shipped 5 min gives ~11 missed firings of slack against the
+ *  60 min server-side TTL — survives Chrome tab discards, silent network
+ *  failures, and main-thread stalls during long pool scans on hardware
+ *  like Raspberry Pi 5 (recommended configuration: with Heat Sink and
+ *  Fan, 5GB RAM, and Ethernet cable Internet connection instead of
+ *  Wi-Fi).
+ */
+let _csrfRefreshIntervalMs = CSRF_DEFAULTS.refreshIntervalMs;
 
 /**
  * Fetch a fresh CSRF token from the server. Called on init and
@@ -718,34 +764,23 @@ export function csrfRefreshIntervalMs() {
 }
 
 /*-
- *  fetch wrapper that auto-attaches the CSRF token and, on a 403 whose
- *  body identifies an aged-out token, fetches a fresh token once and
- *  retries the original request.  Centralises the recovery so every
- *  dashboard POST/DELETE survives the throttled-background-timer case
- *  where Chrome's setInterval coalescing on a hidden tab let the held
- *  token age past the 60-min server TTL (see `app-config/app-defaults-for-user-configurable/csrf.json`).
+ *  fetch wrapper that attaches the CSRF token and, on a 403 refusing
+ *  that token, fetches a fresh token and sends the request once more,
+ *  at once. Every refusal the server gives (`CSRF_REFUSALS`,
+ *  src/csrf-refusals.js) means the page holds no token this server
+ *  process accepts: none yet, one signed by a secret the server no
+ *  longer has (a restart makes a new one), or one past its lifetime,
+ *  forgotten or not. A fresh token cures each, so each gets the retry.
+ *  A token can outlive its lifetime because Chrome slows a hidden tab's
+ *  timers, which can hold off the page's own refresh.
  *
- *  Two server-side reason strings are treated as the same root cause:
- *    - "Expired CSRF token"  — token still in `_issued` map, past TTL.
- *    - "Unknown CSRF token"  — token cryptographically valid but no
- *                              longer in `_issued` (server pruned it).
- *  Pruning only ever drops already-expired tokens (see `_pruneExpired`
- *  in `src/server-csrf.js`), so "Unknown" is "Expired AND forgotten" —
- *  the recovery is identical: refresh + retry once.  Treating both the
- *  same closes the gap that left `Unknown` requests dropped silently
- *  (observed in burn-in logs).
+ *  GET callers use plain `fetch`: the server checks the token only on
+ *  other methods.
  *
- *  GET-only callers can keep using plain `fetch` — the CSRF guard in
- *  `src/server-csrf.js` only runs for non-GET methods.
- *
- *  Reads body.error rather than just the status to avoid retrying on
- *  unrelated 403s (e.g. a future authz check).  Reason strings come from
- *  `verifyToken` in `src/server-csrf.js`.
+ *  The retry reads the answer's `error`, not only its status, so a 403
+ *  for any other reason is returned as it came.
  */
-const _CSRF_RETRY_REASONS = new Set([
-  "Expired CSRF token",
-  "Unknown CSRF token",
-]);
+const _CSRF_RETRY_REASONS = new Set(Object.values(CSRF_REFUSALS));
 
 export async function fetchWithCsrf(url, init = {}) {
   const initWithToken = {

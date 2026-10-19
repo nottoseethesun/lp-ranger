@@ -5,14 +5,19 @@
  * Manages rebalance timing enforcement for the 9mm v3 position manager bot.
  *
  * Rules enforced:
- *  1. A minimum interval (default 10 min) must elapse between any two rebalances.
- *  2. A daily maximum (default 20) caps total rebalances per 24-hour window.
- *  3. **Doubling mode**: if 3 rebalances occur within a window of 4× the minimum
- *     interval, every subsequent rebalance in the same day must wait twice as long
- *     as the previous wait.  The multiplier compounds — 10m → 20m → 40m → 80m…
+ *  1. A minimum interval must elapse between any two rebalances.
+ *  2. A daily maximum caps total rebalances per 24-hour window.
+ *  3. **Doubling mode**: if `TRIGGER_COUNT` rebalances occur within
+ *     `TRIGGER_WINDOW_MULTIPLE` times the minimum interval, every
+ *     subsequent rebalance in the same day must wait twice as long as the
+ *     previous wait.  The multiplier compounds — 10m → 20m → 40m → 80m…
  *  4. Doubling mode clears automatically if no rebalance trigger fires within
- *     4× the current (already-doubled) wait after the last rebalance, or at the
- *     daily midnight reset.
+ *     `QUIET_WINDOW_MULTIPLE` times the current (already-doubled) wait after
+ *     the last rebalance, or at the daily midnight reset.
+ *
+ * The three doubling numbers live in bot-config-defaults.json →
+ * `throttleDoubling`, with an operator's override applied; the
+ * dashboard is sent the same numbers to show the rule it enforces.
  *
  * @example
  * import { createThrottle } from './throttle.js';
@@ -23,18 +28,34 @@
 
 "use strict";
 
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
-/*- Single-source defaults: per feedback_one_literal_per_shipped_default,
- *  the shipped daily-rebalance cap lives only in bot-config-defaults.json
- *  (`maxRebalancesPerDay`).  Read it once at module init for the opts
- *  fallback in `createThrottle`. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+/*-
+ *  The bot defaults, read once at module init for doubling mode's rule
+ *  below: the shipped file with an operator's override on top. The
+ *  dashboard's trigger-window label and help are sent these same
+ *  numbers, so they describe the rule the bot enforces.
+ */
+const _DEFAULTS = readBotConfigDefaults();
+
+/*-
+ *  Doubling mode's three numbers: how many rebalances inside the trigger
+ *  window switch it on, the window as a multiple of the minimum
+ *  interval, and the quiet spell that clears it as a multiple of the
+ *  current wait.
+ */
+const {
+  triggerCount: TRIGGER_COUNT,
+  triggerWindowMultiple: TRIGGER_WINDOW_MULTIPLE,
+  quietWindowMultiple: QUIET_WINDOW_MULTIPLE,
+} = _DEFAULTS.throttleDoubling;
 
 /**
  * @typedef {Object} ThrottleOptions
- * @property {number} [minIntervalMs=600000]  Minimum ms between rebalances (default 10 min).
- * @property {number} [dailyMax=20]           Maximum rebalances per day.
+ * @property {number} minIntervalMs  Minimum ms between rebalances. The bot
+ *   passes `MIN_REBALANCE_INTERVAL_MIN`, which startup has checked.
+ * @property {number} dailyMax       Maximum rebalances per day. The bot
+ *   passes `MAX_REBALANCES_PER_DAY`, which startup has checked.
  * @property {Function} [nowFn]               Injectable clock — returns current ms timestamp.
  *                                            Defaults to `Date.now`. Used for testing.
  */
@@ -82,29 +103,23 @@ function nextMidnight(nowFn) {
 
 /**
  * Factory that creates a throttle controller instance.
- * @param {ThrottleOptions} [opts={}]
+ * @param {ThrottleOptions} opts
  * @returns {ThrottleHandle}
  */
-function createThrottle(opts = {}) {
+function createThrottle(opts) {
   const nowFn = opts.nowFn || Date.now;
+  const minIntervalMs = opts.minIntervalMs;
 
   /** @type {ThrottleState} */
   const state = {
-    minIntervalMs: opts.minIntervalMs ?? 600_000,
-    dailyMax: opts.dailyMax ?? _DEFAULTS.maxRebalancesPerDay,
+    minIntervalMs,
+    dailyMax: opts.dailyMax,
     dailyCount: 0,
     lastRebTime: 0,
     rebTimestamps: [],
     doublingActive: false,
     doublingCount: 0,
-    currentWaitMs: opts.minIntervalMs ?? 600_000,
-    /*- `600_000` (= 10 min) is a structural default for the throttle's
-     *  initial wait, NOT a shipped Bot Setting (the per-position
-     *  minRebalanceIntervalMin lives in bot-config-defaults.json and
-     *  always flows in via `opts.minIntervalMs`).  The bare numeric
-     *  here is the hardcoded floor when nothing arrives — keeps tests
-     *  that exercise `createThrottle({})` working without plumbing
-     *  the shipped default through every test fixture. */
+    currentWaitMs: minIntervalMs,
     dailyResetAt: nextMidnight(nowFn),
   };
 
@@ -127,10 +142,10 @@ function createThrottle(opts = {}) {
    */
   function _evaluateDoubling() {
     const now = nowFn();
-    const window4 = 4 * state.minIntervalMs;
-    const recent = state.rebTimestamps.filter((t) => now - t <= window4);
+    const triggerWindow = TRIGGER_WINDOW_MULTIPLE * state.minIntervalMs;
+    const recent = state.rebTimestamps.filter((t) => now - t <= triggerWindow);
 
-    if (!state.doublingActive && recent.length >= 3) {
+    if (!state.doublingActive && recent.length >= TRIGGER_COUNT) {
       state.doublingActive = true;
       state.doublingCount = 1;
       state.currentWaitMs = state.minIntervalMs * 2;
@@ -146,12 +161,12 @@ function createThrottle(opts = {}) {
 
   /**
    * Clear doubling mode if enough quiet time has passed since the last rebalance.
-   * "Quiet time" = 4× the current (already-doubled) wait.
+   * "Quiet time" = `QUIET_WINDOW_MULTIPLE` times the current (already-doubled) wait.
    */
   function _maybeExpireDoubling() {
     if (!state.doublingActive) return;
     const now = nowFn();
-    const expiryWindow = 4 * state.currentWaitMs;
+    const expiryWindow = QUIET_WINDOW_MULTIPLE * state.currentWaitMs;
     if (state.lastRebTime > 0 && now - state.lastRebTime > expiryWindow) {
       state.doublingActive = false;
       state.doublingCount = 0;

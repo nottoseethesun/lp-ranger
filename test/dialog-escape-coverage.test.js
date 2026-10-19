@@ -4,11 +4,10 @@
  *   not.
  *
  * The Escape handler in `dashboard-events-manage.js` works off an
- * explicit id list, so a newly added dialog is opted OUT by default and
- * nothing complains. That is not hypothetical: `telegramModal` shipped
- * unregistered, and an audit found four more (`hodlBaselineModal`,
- * `noPositionsModal`, `priceOverrideModal`,
- * `slippageOutOfRangeModal`) still missing after that.
+ * explicit id list: its own entries, and the dialogs that belong to the
+ * position on screen, spread in from `POSITION_MODALS`
+ * (`dashboard-position-dialogs.js`). A newly added dialog is therefore
+ * opted OUT by default, and nothing on screen says so.
  *
  * So the list is checked against the markup rather than against itself:
  * every `modal-overlay` in `public/index.html` must be registered, and a
@@ -42,13 +41,25 @@ function markupOverlayIds() {
   return ids;
 }
 
+/** The source of one dashboard module. */
+const source = (name) =>
+  fs.readFileSync(path.join(ROOT, "public", name), "utf8");
+
+/** The two sources the Escape handler's table is written in. */
+function escapeTableSources() {
+  return [
+    source("dashboard-events-manage.js"),
+    source("dashboard-position-dialogs.js"),
+  ].join("\n");
+}
+
 /** Ids the Escape handler's table names. */
 function registeredIds() {
-  const src = fs.readFileSync(
-    path.join(ROOT, "public", "dashboard-events-manage.js"),
-    "utf8",
+  return new Set(
+    [...escapeTableSources().matchAll(/id:\s*"([A-Za-z0-9]+)"/g)].map(
+      (m) => m[1],
+    ),
   );
-  return new Set([...src.matchAll(/id:\s*"([A-Za-z0-9]+)"/g)].map((m) => m[1]));
 }
 
 /** Dialogs that must NOT be dismissible with Escape, and why. */
@@ -58,6 +69,13 @@ const DELIBERATE_OMISSIONS = {
 };
 
 describe("Escape closes every dialog", () => {
+  it("takes in the dialogs that belong to the position on screen", () => {
+    assert.match(
+      source("dashboard-events-manage.js"),
+      /^\s*\.\.\.POSITION_MODALS,$/m,
+    );
+  });
+
   it("registers every overlay in the markup", () => {
     const missing = [...markupOverlayIds()].filter(
       (id) => !registeredIds().has(id) && !(id in DELIBERATE_OMISSIONS),
@@ -85,10 +103,7 @@ describe("Escape closes every dialog", () => {
      *  leave a pending save dangling unless their Cancel runs. Hiding
      *  the element directly would look identical on screen and silently
      *  skip that. */
-    const src = fs.readFileSync(
-      path.join(ROOT, "public", "dashboard-events-manage.js"),
-      "utf8",
-    );
+    const src = escapeTableSources();
     for (const btn of [
       "hodlBaselineClose",
       "noPositionsClose",

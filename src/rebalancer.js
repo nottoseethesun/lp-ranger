@@ -1,33 +1,33 @@
 /**
  * @file rebalancer.js
  * @description Mint, execution, and orchestration for the 9mm v3
- * Position Manager rebalancer.  Three functions are its own —
+ * Position Manager rebalancer.  It exports three functions of its own —
  * `executeRebalance`, `mintPosition` and `enrichResultUsd` — and
- * alongside them it re-exports eight names from rebalancer-pools and
- * rebalancer-swap: the pool read, liquidity removal, the two swap
- * functions and four constants, which are what its callers already
- * reached for through this module.  That is a subset and not those
- * modules' surface: `_waitOrSpeedUp`, `_ensureAllowance` and everything
- * else they export are absent here, so a consumer wanting one imports
- * it from the module that owns it, which is where a new one belongs
- * too.
+ * nothing else: a consumer wanting a helper from rebalancer-pools or
+ * rebalancer-swap imports it from the module that owns it.
  */
 
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
+const { PM_ABI } = require("./pm-abi");
 const { receiptGasWei } = require("./receipt-gas");
+const { spentGasOf, addSpentGas, carryingGas } = require("./spent-gas");
+const { coinDecimals } = require("./coin-decimals");
 const { emojiId } = require("./logger");
 const pools = require("./rebalancer-pools");
 const { _resolveMintGasFloor } = require("./rebalancer-pools");
 const sendTx = require("./send-transaction");
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
-/*- Shipped default for offsetToken0Pct.  Per
- *  feedback_one_literal_per_shipped_default, the literal lives only in
- *  bot-config-defaults.json. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
-const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
+/*-
+ *  Default for offsetToken0Pct: the shipped value, or the operator's
+ *  override of it.  Per feedback_one_literal_per_shipped_default, the
+ *  literal lives only in bot-config-defaults.json.
+ */
+const _DEFAULTS = readBotConfigDefaults();
+const { computeDesiredAmounts } = require("./rebalancer-swap");
 const {
   _swapAndAdjust,
   _verifyOwnership,
@@ -39,24 +39,17 @@ const {
 } = require("./rebalancer-execute");
 const { correctivelyRebalanceIfNeeded } = require("./rebalancer-correct");
 
-const {
-  ERC20_ABI,
-  PM_ABI,
-  _MAX_UINT128,
-  _DEADLINE_SECONDS,
-  _MIN_SWAP_THRESHOLD,
-  V3_FEE_TIERS,
-  _deadline,
-  _ensureAllowance,
-  getPoolState,
-  removeLiquidity,
-  logSwapNeeded,
-  config,
-} = pools;
+const { ERC20_ABI, _deadline, _ensureAllowance, getPoolState, logSwapNeeded } =
+  pools;
 
 // ── Mint ─────────────────────────────────────────────────────────────────────
 
-/** Mint a new V3 liquidity position via the NonfungiblePositionManager. */
+/**
+ * Mint a new V3 liquidity position via the NonfungiblePositionManager:
+ * approve each coin where its allowance falls short, then mint. A failure
+ * after an approval confirmed carries that approval's gas
+ * (src/spent-gas.js).
+ */
 async function mintPosition(
   signer,
   ethersLib,
@@ -70,7 +63,6 @@ async function mintPosition(
     amount0Desired,
     amount1Desired,
     recipient,
-    deadline,
     approvalMultiple,
   },
 ) {
@@ -90,23 +82,72 @@ async function mintPosition(
   // queued pool this causes "queued sub-pool is full" rejections, and
   // `_retrySend` then re-signs at ever-higher nonces, compounding it.
   // See docs/claude or MEMORY project_rpc_fallback_on_saturation.
-  const appGas0 = await _ensureAllowance(
-    token0Contract,
-    signerAddress,
-    positionManagerAddress,
-    amount0Desired,
-    approvalMultiple,
-  );
-  const appGas1 = await _ensureAllowance(
-    token1Contract,
-    signerAddress,
-    positionManagerAddress,
-    amount1Desired,
-    approvalMultiple,
-  );
+  /*-
+   *  An approval that confirmed was paid for, whatever happens after it,
+   *  so a failure from here on carries the approvals' gas with it
+   *  (src/spent-gas.js).
+   */
+  let approvalGasWei = 0n;
+  try {
+    approvalGasWei += await _ensureAllowance(
+      token0Contract,
+      signerAddress,
+      positionManagerAddress,
+      amount0Desired,
+      approvalMultiple,
+    );
+    approvalGasWei += await _ensureAllowance(
+      token1Contract,
+      signerAddress,
+      positionManagerAddress,
+      amount1Desired,
+      approvalMultiple,
+    );
+    return await _mintApproved(signer, ethersLib, {
+      positionManagerAddress,
+      token0,
+      token1,
+      fee,
+      tickLower,
+      tickUpper,
+      amount0Desired,
+      amount1Desired,
+      recipient,
+      approvalGasWei,
+    });
+  } catch (err) {
+    throw addSpentGas(err, approvalGasWei);
+  }
+}
 
+/**
+ * Mint the position once both coins are approved, and read what it
+ * minted from the receipt.
+ *
+ * @param {object} signer
+ * @param {object} ethersLib
+ * @param {object} p  The mint's parameters, and `approvalGasWei`, the gas
+ *   the approvals before it paid, counted into the result.
+ * @returns {Promise<{tokenId: bigint, liquidity: bigint, amount0: bigint,
+ *   amount1: bigint, txHash: string, blockNumber: number,
+ *   gasCostWei: bigint}>}
+ */
+async function _mintApproved(signer, ethersLib, p) {
+  const {
+    positionManagerAddress,
+    token0,
+    token1,
+    fee,
+    tickLower,
+    tickUpper,
+    amount0Desired,
+    amount1Desired,
+    recipient,
+    approvalGasWei,
+  } = p;
+  const { Contract } = ethersLib;
   const pm = new Contract(positionManagerAddress, PM_ABI, signer);
-  const dl = deadline ?? _deadline();
+  const dl = _deadline();
   log.info(
     "[rebalance] Step 7b: mint — fee=%d tL=%d tU=%d a0d=%s a1d=%s",
     fee,
@@ -145,10 +186,10 @@ async function mintPosition(
     String(receipt.gasUsed),
   );
 
-  const { tokenId, liquidity, amount0, amount1 } = _parseMintReceipt(
-    receipt,
-    amount0Desired,
-    amount1Desired,
+  const mintGas = receiptGasWei(receipt);
+  const { tokenId, liquidity, amount0, amount1 } = await carryingGas(
+    mintGas,
+    () => _parseMintReceipt(receipt, amount0Desired, amount1Desired),
   );
 
   log.info(
@@ -159,14 +200,15 @@ async function mintPosition(
     String(amount1),
     String(liquidity),
   );
-  const mintGas = receiptGasWei(receipt);
-  const gasCostWei = mintGas + (appGas0 || 0n) + (appGas1 || 0n);
+  const gasCostWei = mintGas + approvalGasWei;
   return {
     tokenId,
     liquidity,
     amount0,
     amount1,
     txHash: receipt.hash,
+    // The new NFT's mint block: every read of its history starts here.
+    blockNumber: receipt.blockNumber,
     gasCostWei,
   };
 }
@@ -234,7 +276,6 @@ async function executeRebalance(signer, ethersLib, opts) {
     factoryAddress,
     positionManagerAddress,
     swapRouterAddress,
-    slippagePct,
     customRangeWidthPct,
     fullRangeRebalanceEnabled,
     slippagePctToken0,
@@ -249,10 +290,16 @@ async function executeRebalance(signer, ethersLib, opts) {
       "Only V3 NFT positions are supported. V2 positions use a different contract and cannot be rebalanced by this tool.",
     );
   }
+  /*-
+   *  Gas the steps that have confirmed so far paid. A failure, or a stop
+   *  before the mint, adds it to its own figure: those transactions were
+   *  mined and paid for whatever happens after them.
+   */
+  let paidWei = 0n;
   try {
     const txHashes = [],
       signerAddress = await signer.getAddress(),
-      provider = signer.provider || signer;
+      provider = signer.provider;
 
     // 1. Get current pool state
     log.info("[rebalance] Step 1: getPoolState…");
@@ -284,6 +331,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       signerAddress,
     });
     if (removed.txHash) txHashes.push(removed.txHash);
+    paidWei += spentGasOf(removed);
 
     // 4. Compute new range — custom width if specified, else preserve existing tick spread
     const newRange = _computeRange(
@@ -372,7 +420,6 @@ async function executeRebalance(signer, ethersLib, opts) {
       position,
       poolState,
       swapRouterAddress,
-      slippagePct,
       slippagePctToken0,
       slippagePctToken1,
       signerAddress,
@@ -382,6 +429,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       gasFeePct,
     });
     if (swapped.txHash) txHashes.push(swapped.txHash);
+    paidWei += spentGasOf(swapped);
     log.info(
       "[rebalance] Step 6 done: extra0=%s extra1=%s",
       String(swapped.extra0),
@@ -408,7 +456,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       newRange,
       offset,
     );
-    if (volatileResult) return volatileResult;
+    if (volatileResult) return { ...volatileResult, gasCostWei: paidWei };
 
     // 6d. Corrective swap — see _runCorrectiveSwap.
     const corrective = await _runCorrectiveSwap(
@@ -421,7 +469,6 @@ async function executeRebalance(signer, ethersLib, opts) {
         factoryAddress,
         newRange,
         swapRouterAddress,
-        slippagePct,
         slippagePctToken0,
         slippagePctToken1,
         symbol0: opts.symbol0,
@@ -431,6 +478,7 @@ async function executeRebalance(signer, ethersLib, opts) {
       },
       txHashes,
     );
+    paidWei += spentGasOf(corrective);
 
     // 7. Mint new position with FULL wallet balance (collected + residuals + swapped)
     const [mintBal0, mintBal1] = await Promise.all([
@@ -477,7 +525,13 @@ async function executeRebalance(signer, ethersLib, opts) {
       error: err.message || String(err),
       cancelled: !!err.cancelled,
       cancelTxHash: err.cancelTxHash || null,
-      cancelGasCostWei: err.cancelGasCostWei || 0n,
+      /*-
+       *  Gas paid before the rebalance failed: what the error says its
+       *  own step paid (a cancel's, a reverted transaction's, or a failed
+       *  swap's approvals, reverted swaps and cancels), and what the steps
+       *  that confirmed before it paid. See src/spent-gas.js.
+       */
+      gasCostWei: spentGasOf(err) + paidWei,
       /*- Distinguishes "this rebalance failed" from "this rebalance failed
        *  and a swap may still mine".  The two want different handling —
        *  the second leaves the position drained until that nonce resolves,
@@ -499,8 +553,11 @@ async function executeRebalance(signer, ethersLib, opts) {
  */
 async function enrichResultUsd(result, priceFn, token0, token1) {
   const { price0, price1 } = await priceFn(token0, token1);
-  const d0 = result.decimals0 ?? 18,
-    d1 = result.decimals1 ?? 18;
+  const { d0, d1 } = coinDecimals(
+    result,
+    "the rebalance result",
+    "its USD values",
+  );
   const toFloat = (amt, dec) => Number(amt) / 10 ** dec;
   result.token0UsdPrice = price0;
   result.token1UsdPrice = price1;
@@ -513,19 +570,8 @@ async function enrichResultUsd(result, priceFn, token0, token1) {
 }
 
 // ── Module exports ───────────────────────────────────────────────────────────
-// This module's public surface, including the symbols it re-exports
-// from the helper modules it was split into.
-
 module.exports = {
   enrichResultUsd,
   executeRebalance,
-  getPoolState,
-  removeLiquidity,
-  computeDesiredAmounts,
-  swapIfNeeded,
   mintPosition,
-  _MAX_UINT128,
-  _DEADLINE_SECONDS,
-  _MIN_SWAP_THRESHOLD,
-  V3_FEE_TIERS,
 };

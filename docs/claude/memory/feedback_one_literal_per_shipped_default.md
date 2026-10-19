@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
+  modified: 2026-10-18T03:15:23.887Z
 ---
 
 For every config value the app ships with a default, there must be at
@@ -62,3 +63,81 @@ Per-install operator overrides live at
 `app-config/user-configurable/<same-name>.json` (gitignored,
 tarball-upgrade-safe) and deep-merge on top of the shipped JSON at
 runtime.  See [[project-layered-config-refactor]].
+
+## No defaults in executable code (user, 2026-10-16)
+
+The user's words: "any values must come from the static config: No
+defaults in the executable code (js, html/dom); waiting for the first
+poll is not a problem."
+
+Said while approving the removal of the dashboard's copy of the swap
+route label and the badge's pre-render text in `index.html`. It widens
+this rule from shipped defaults to any value the app shows or acts on:
+
+- No fallback value in JS for something static config or the server
+  provides: no `x || "pulsechain"`, no `|| AGGREGATOR_LABEL`, no `|| ""`
+  standing in for a missing config key. A missing key stops startup and
+  names the setting (`_chainContract`, `_routeName`, `_aggregatorUrl` in
+  `src/config.js`).
+- No values in HTML. An element the first poll fills stays empty until
+  then, and that wait is fine.
+- Display names are static config too: the swap route names live in
+  `chains.json` (`aggregator.name`, `contracts.swapRouter.name`).
+- A value the dashboard needs before the server can answer is bundled
+  from the shipped JSON at build time: `chainQueryTimeoutMs` in
+  `ui-defaults_non-layout_for-server-down-scenario.json`, imported by
+  `public/dashboard-chain.js`, as `dialogMaxHeightPx` in
+  `ui-defaults_layout.json` is baked into `ui-tokens.css`. Every other
+  dashboard setting comes from the server.
+
+## Ranges and rule constants too (user, 2026-10-17)
+
+The user's words: "if the rebalance throttle constants and the
+validation bounds are actually literal constants (a literal Number
+value) and are still in the code, they should be moved to the
+appropriate json config." So the rule covers the numbers that check a
+value as well as the values themselves. Every range is in
+`setting-bounds.json`, at the setting's own path, read through
+`src/setting-bounds.js`, and the help copy that quotes a range or a
+default reads it from the JSON rather than writing it into the
+sentence. The doubling numbers are `throttleDoubling` in
+`bot-config-defaults.json`. A number that defines a thing is not a
+tunable and stays: the 2 of "doubling", 60 seconds in a minute, the 0
+that means "off".
+
+The help copy reaches its figures through `src/help-figures.js`
+(user, 2026-10-17: "those values should be picked up from the numbers
+in the json config files"): `{{figure:name}}` tokens in
+`shared-help-content.json`, `<span data-figure="name">` in the manual's
+own prose and in `index.html`, and the `f` table `buildParamHelp`
+takes in the dialogs' copy. The figures are the install's own, resolved
+on the server (`src/resolved-settings.js`, `GET /api/help-figures`):
+the user, 2026-10-17, "All help text should just quote whatever is the
+final resolved json value, which means, of course, it should include
+overrides done by the user", and "include .env too". So help wording
+never says "shipped" of a figure it quotes. A figure the help works through as an example is
+computed there too. A sentence whose truth depends on the number itself
+("100% effectively turns it off") keeps its literal, since a token
+would make it false the day the setting moved.
+
+**How to apply:** a literal fallback in JS, or a value in HTML, is a
+finding in your own work. Pre-existing ones are swept too, as soon as
+they are found — the user, 2026-10-17: "we always sweep out hardcoded
+values when we find them, out into json file(s) in `config/`; find the
+right locations and do it." So a hard-coded tunable (a timeout, a
+count, a limit, a fallback figure) found in code goes into the right
+shipped JSON under `app-config/app-defaults-for-user-configurable/` and
+is read from there; report it, do not ask first. A fallback that can
+never fire is not moved but deleted ([[feedback_dead_code_removed]]).
+The ones found on 2026-10-16 were approved and done the same evening:
+six `"PulseChain"` chain-name fallbacks (now blank until the first poll),
+the dashboard's 3000 ms status and Reload polls and the server's copy
+(now `dashboardPollIntervalMs`, which since 2026-10-17 the server sends
+the dashboard from `ui-defaults_non-layout_for-server-up-scenario.json`,
+override applied, and reads itself from the same answer), and the CSRF
+refresh's five minutes (now csrf.json's `refreshIntervalMs`, bundled for
+the time before the first token). The user ruled the Reload dialog's
+`logs/error.log` text fine on 2026-10-16, since that path never changed.
+Once `errorLogPath` made it configurable (2026-10-17) the user ruled
+again: the dialog and `npm run clean` use the configured value, and only
+the User Manual keeps `logs/error.log`, named as the default.

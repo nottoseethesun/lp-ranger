@@ -23,6 +23,7 @@ const { getDustThresholdUsd } = require("./dust");
 const sendTx = require("./send-transaction");
 const { noteRpcResult } = require("./rpc-out-of-service");
 const { retryRead } = require("./rpc-read-retry");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
 /**
  * Error thrown when the wallet-balance + price reads for the
@@ -44,16 +45,17 @@ class WalletReadUnavailableError extends Error {
   }
 }
 
-/*- Inter-retry delay for the orchestrator below.  Mirrors the
- *  `getPoolState` configuration: 3 s is short enough to keep a Manage
- *  click feeling responsive (worst case ~10 s for 2-RPC × 2-attempt
- *  exhaustion) and long enough that a transient Moralis / RPC blip
- *  resolves before the retry.  `let` + a test-only setter so unit
- *  tests can drop the delay to zero. */
-let _RETRY_DELAY_MS = 3000;
-const _ATTEMPTS_PER_URL = 2;
+/*-
+ *  The budget of the retry below, shared with `getPoolState`:
+ *  `boundedReadAttemptsPerEndpoint` and `boundedReadRetryDelayMs` in
+ *  bot-config-defaults.json, whose comment explains them. The delay is
+ *  `let`, with a test-only setter, so unit tests can drop it to zero.
+ */
+const _BOUNDED_READ = readBotConfigDefaults();
+let _RETRY_DELAY_MS = _BOUNDED_READ.boundedReadRetryDelayMs;
+const _ATTEMPTS_PER_URL = _BOUNDED_READ.boundedReadAttemptsPerEndpoint;
 
-/** Test-only helper: override the inter-retry delay (default 3 s). */
+/** Test-only helper: override the inter-retry delay. */
 function _setRetryDelayForTests(ms) {
   _RETRY_DELAY_MS = ms;
 }

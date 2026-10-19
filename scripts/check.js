@@ -9,12 +9,21 @@
  *                              security-lint, secretlint, plus
  *                              exit-codes.json with every tool's exit
  *                              code)
+ *   raw-data/lcov.info         lcov coverage report of the test run
  *   text-reports/summary.txt          Human-readable overview (cli-table3)
  *   text-reports/tests-summary.txt    Parsed test rollup
  *   text-reports/eslint-timing.txt    ESLint TIMING=1 slowest-rule capture
  *   text-reports/markdownlint.txt     markdownlint-cli2 text output
+ *   config-values.tap          Raw TAP v14 from the shipped-config tests,
+ *                              which run before the rest of the suite
  *   tests.tap                  Raw TAP v14 from `node --test`
  *   report.pdf                 Unified PDF of all results (pdfmake)
+ *
+ * And one outside it: logs/error-npm-run-check.log, whatever the tests
+ * wrote to logs/error.log. The run deletes logs/error.log and the
+ * previous run's copy before it starts, and renames the file once the
+ * tests are done, so the operator's error log never holds a test's
+ * entries.
  *
  * After capturing raw outputs this script delegates to
  * scripts/check-report.js to parse, print the terminal summary, and
@@ -29,6 +38,10 @@
 "use strict";
 
 const { log } = require("../src/log");
+const { getErrorLogPath } = require("../src/error-log");
+const { removeLeftoverTestTempFolders } = require("../src/test-temp-folders");
+const { checkErrorLogPath } = require("./_check-error-log");
+const { runAsync } = require("./_run-async");
 const {
   JS_TARGETS,
   SECURITY_TARGETS,
@@ -63,6 +76,15 @@ process.chdir(ROOT);
 const REPORT_DIR = "test/report-artifacts";
 const RAW_DIR = path.join(REPORT_DIR, "raw-data");
 const TXT_DIR = path.join(REPORT_DIR, "text-reports");
+
+/*-
+ *  The catastrophic-failure log, at the path src/error-log.js owns, and
+ *  the name a test run's entries are kept under beside it. Resolved
+ *  after the chdir above, since the log's path is relative to the
+ *  working directory.
+ */
+const ERROR_LOG = getErrorLogPath();
+const CHECK_ERROR_LOG = checkErrorLogPath(ERROR_LOG);
 
 /** Resolve a binary in node_modules/.bin. */
 function bin(name) {
@@ -101,6 +123,15 @@ function ensureOrWrite(filePath, fallback) {
 fs.rmSync(REPORT_DIR, { recursive: true, force: true });
 fs.mkdirSync(RAW_DIR, { recursive: true });
 fs.mkdirSync(TXT_DIR, { recursive: true });
+/*-
+ *  Some tests drive code that records a failure in logs/error.log, and
+ *  that is the operator's own file. So the run starts with neither it
+ *  nor the previous run's copy, and once the tests are done whatever
+ *  they wrote is renamed (`keepTestErrorLog`). Nothing older is lost
+ *  that a server start would keep: startup deletes logs/error.log.
+ */
+fs.rmSync(ERROR_LOG, { force: true });
+fs.rmSync(CHECK_ERROR_LOG, { force: true });
 
 // ── Lint (JS) ──────────────────────────────────────────────────────────────
 // TIMING=1 writes the slowest-rules table to stdout AFTER the JSON blob
@@ -281,7 +312,7 @@ fs.writeFileSync(
  *  it can render rather than a parse error. */
 ensureOrWrite(
   path.join(RAW_DIR, "openapi-sync.json"),
-  '{"ok":false,"problems":["checker did not run"],"routeCount":0,"configKeyCount":0}',
+  '{"ok":false,"problems":["checker did not run"],"routeCount":0,"configKeyCount":0,"uiSettingCount":0}',
 );
 
 // ── Lint (GitHub Actions) — actionlint ────────────────────────────────────
@@ -361,79 +392,173 @@ const secretlintRun = run(bin("secretlint"), [
 ensureOrWrite(path.join(RAW_DIR, "secretlint.json"), "[]");
 
 // ── Backup production files before tests ──────────────────────────────────
+/*-
+ *  From the backup to the restore, an interrupt must not end this
+ *  process. With no listener, Node exits on SIGINT at once, so the
+ *  `finally` below would never run and the operator's files would be
+ *  left only in the backup directory. With one, this process survives
+ *  the signal, the test run it is waiting on (which receives the same
+ *  signal) ends, and the `finally` restores the files before this
+ *  process exits.
+ *
+ *  The test runs are awaited (`runAsync`) rather than run with
+ *  `spawnSync`, which blocks the event loop: the listener could not run
+ *  until the whole script was done, so a Ctrl+C during the first run
+ *  went unnoticed and the second started with the operator's files
+ *  still moved out. Awaited, the listener runs at once, and the run
+ *  stops after the stage it interrupted.
+ */
+let interrupted = null;
+const onInterrupt = (signal) => {
+  interrupted = signal;
+};
+const INTERRUPTS = ["SIGINT", "SIGTERM", "SIGHUP"];
+for (const signal of INTERRUPTS) process.on(signal, onInterrupt);
 const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "check-backup-"));
+log.info("[check] Operator files backed up to %s for the tests", backupDir);
 backupProdFiles(backupDir);
 wipeRuntimeFiles();
+/*-
+ *  Each test process removes its temp folders as it exits, but one
+ *  stopped outright (Ctrl+C, kill -9) cannot. Those folders go here,
+ *  before the tests start, so none accumulates across runs.
+ */
+const leftoverFolders = removeLeftoverTestTempFolders();
+if (leftoverFolders > 0)
+  log.info(
+    "[check] Removed %d test folder(s) a stopped run left in %s",
+    leftoverFolders,
+    os.tmpdir(),
+  );
 
 // ── Tests + Coverage ──────────────────────────────────────────────────────
-// Force --test-reporter=tap so the output is deterministic TAP v14
-// regardless of Node version or TTY state.
-let testsExit;
-try {
-  const testsRun = run(
-    "node",
-    [
+/**
+ * Run the config-value tests, then the rest of the suite, and put the
+ * operator's files back whatever happens, an interrupt included.
+ * Forces --test-reporter=tap so the output is deterministic TAP v14
+ * regardless of Node version or TTY state.
+ * @returns {Promise<{configValuesExit: number|undefined,
+ *   testsExit: number}>}
+ */
+async function runTestStages() {
+  let configValuesExit;
+  let testsExit;
+  try {
+    /*-
+     *  The shipped config files are checked before any other test. A
+     *  value of the wrong type, or outside its range, breaks whatever
+     *  reads it, and the rest of the suite would report each of those
+     *  breakages as a failure of its own. Run first, these tests name the
+     *  cause first, in a report row of their own. The rest of the suite
+     *  runs either way, as every other check here does.
+     */
+    const configRun = await runAsync("node", [
+      "--test",
+      "--test-reporter=tap",
+      "--test-reporter-destination=stdout",
+      ...configValueTests(),
+    ]);
+    configValuesExit = configRun.status;
+    fs.writeFileSync(
+      path.join(REPORT_DIR, "config-values.tap"),
+      configRun.stdout + configRun.stderr,
+    );
+    if (interrupted !== null) throw new Error(`interrupted by ${interrupted}`);
+    const testsRun = await runAsync("node", [
       "--test",
       "--experimental-test-coverage",
-      /*- Browser-side files (public/dashboard-*.js) are covered by their
+      /*-
+       *  Browser-side files (public/dashboard-*.js) are covered by their
        *  own test suites that jsdom-drive them.  They are excluded from
        *  the aggregate coverage figure to preserve the existing 80% floor
        *  for src/ (Node-side) code.  Adding them without a dashboard-
        *  focused coverage floor would dilute the src/ signal — a bad
        *  regression on src/ would go unnoticed if the aggregate stayed
-       *  above 80% thanks to well-covered dashboard files.  When dashboard
-       *  coverage is measured separately (see project nice-to-haves), we
-       *  can drop this exclude. */
+       *  above 80% thanks to well-covered dashboard files.  When
+       *  dashboard coverage is measured separately (see project
+       *  nice-to-haves), we can drop this exclude.
+       */
       "--test-coverage-exclude=public/**",
+      /*-
+       *  Two reporters for the one run. TAP goes to stdout, captured below
+       *  as tests.tap. The lcov report names each branch no test took,
+       *  which tests.tap does not, and that is what the files held to 95%
+       *  branch coverage are measured with (docs/claude/CLAUDE-TESTING.md
+       *  § 95% Coverage Regions). Writing it here keeps it under this
+       *  script's backup of the operator's files.
+       */
       "--test-reporter=tap",
-      ...listTestFiles(),
-    ],
-    {
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  testsExit = testsRun.status;
-  fs.writeFileSync(
-    path.join(REPORT_DIR, "tests.tap"),
-    testsRun.stdout + testsRun.stderr,
-  );
-} catch (err) {
-  testsExit = 1;
-  log.error("[check] Test runner failed:", err.message);
-} finally {
-  restoreProdFiles(backupDir);
-  fs.rmSync(backupDir, { recursive: true, force: true });
+      "--test-reporter-destination=stdout",
+      "--test-reporter=lcov",
+      `--test-reporter-destination=${path.join(RAW_DIR, "lcov.info")}`,
+      // Every other test: the config values ran above.
+      ...listTestFiles().filter((f) => !configValueTests().includes(f)),
+    ]);
+    testsExit = testsRun.status;
+    fs.writeFileSync(
+      path.join(REPORT_DIR, "tests.tap"),
+      testsRun.stdout + testsRun.stderr,
+    );
+  } catch (err) {
+    testsExit = 1;
+    log.error("[check] Test runner failed:", err.message);
+  } finally {
+    restoreProdFiles(backupDir);
+    fs.rmSync(backupDir, { recursive: true, force: true });
+    keepTestErrorLog();
+    for (const signal of INTERRUPTS) process.off(signal, onInterrupt);
+  }
+  return { configValuesExit, testsExit };
 }
 
-// ── Write exit codes + file counts for the aggregator ─────────────────────
-const exitCodes = {
-  eslint: eslintRun.status,
-  stylelint: stylelintRun.status,
-  htmlValidate: htmlValidateRun.status,
-  markdownlint: markdownlintRun.status,
-  prettierJs: prettierJsRun.status,
-  prettierJson: prettierJsonRun.status,
-  prettierYaml: prettierYamlRun.status,
-  actionlint: actionlintRun.status,
-  lintSvg: lintSvgRun.status,
-  knip: knipRun.status,
-  openapiSync: openapiSyncRun.status,
-  auditDeps: npmAuditRun.status,
-  securityLint: securityLintRun.status,
-  secretlint: secretlintRun.status,
-  tests: testsExit,
-  htmlFileCount,
-};
-fs.writeFileSync(
-  path.join(RAW_DIR, "exit-codes.json"),
-  JSON.stringify(exitCodes, null, 2) + "\n",
-);
+/**
+ * Report the run: every stage's exit code to the aggregator, which
+ * prints the summary and writes the PDF, and exit with its verdict. An
+ * interrupted run reports nothing and exits 1.
+ * @param {{configValuesExit: number|undefined, testsExit: number}} tests
+ */
+function reportRun({ configValuesExit, testsExit }) {
+  if (interrupted !== null) {
+    log.error(
+      "[check] Stopped by %s; the operator's files are restored.",
+      interrupted,
+    );
+    process.exit(1);
+  }
 
-// ── Aggregate + print summary + write PDF ─────────────────────────────────
-const aggregator = run("node", ["scripts/check-report.js"], {
-  stdio: "inherit",
-});
-process.exit(aggregator.status);
+  // ── Write exit codes + file counts for the aggregator ───────────────────
+  const exitCodes = {
+    eslint: eslintRun.status,
+    stylelint: stylelintRun.status,
+    htmlValidate: htmlValidateRun.status,
+    markdownlint: markdownlintRun.status,
+    prettierJs: prettierJsRun.status,
+    prettierJson: prettierJsonRun.status,
+    prettierYaml: prettierYamlRun.status,
+    actionlint: actionlintRun.status,
+    lintSvg: lintSvgRun.status,
+    knip: knipRun.status,
+    openapiSync: openapiSyncRun.status,
+    auditDeps: npmAuditRun.status,
+    securityLint: securityLintRun.status,
+    secretlint: secretlintRun.status,
+    configValues: configValuesExit,
+    tests: testsExit,
+    htmlFileCount,
+  };
+  fs.writeFileSync(
+    path.join(RAW_DIR, "exit-codes.json"),
+    JSON.stringify(exitCodes, null, 2) + "\n",
+  );
+
+  // ── Aggregate + print summary + write PDF ───────────────────────────────
+  const aggregator = run("node", ["scripts/check-report.js"], {
+    stdio: "inherit",
+  });
+  process.exit(aggregator.status);
+}
+
+runTestStages().then(reportRun);
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -453,6 +578,25 @@ function listWorkflowFiles() {
     .readdirSync(dir)
     .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
     .map((f) => path.join(dir, f));
+}
+
+/**
+ * The tests that check the shipped config files themselves, `.env.example`
+ * among them, which run before every other test.
+ *
+ * A function rather than a module-level `const` for the same reason as
+ * `listTestFiles` below: the tests block calls it from far above here.
+ * The paths are as `listTestFiles` spells them, so the main run can
+ * leave them out by comparing strings.
+ *
+ * @returns {string[]}
+ */
+function configValueTests() {
+  return [
+    path.join("test", "setting-bounds.test.js"),
+    path.join("test", "shipped-config-values.test.js"),
+    path.join("test", "shipped-env-example-values.test.js"),
+  ];
 }
 
 /**
@@ -555,6 +699,15 @@ function _restoreDir(srcDir, dstDir, accept) {
       path.join(dstDir, entry.name),
     );
   }
+}
+
+/**
+ * Rename what the tests wrote to the error log (logs/error.log as
+ * shipped) to error-npm-run-check.log beside it. No file means no test
+ * wrote one.
+ */
+function keepTestErrorLog() {
+  if (fs.existsSync(ERROR_LOG)) fs.renameSync(ERROR_LOG, CHECK_ERROR_LOG);
 }
 
 /** Restore operator-state directories (app-config/user-configurable/

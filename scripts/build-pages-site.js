@@ -13,10 +13,12 @@
  * remove: the same page list in YAML and in JS, free to drift.
  *
  * Why the site must be assembled at all: the published pages reference
- * their CSS absolutely (`/style.css`), which only resolves while the
- * dashboard server is running, and the gallery references images as
- * `images/…`, which sits next to the HTML rather than in `docs/images/`.
- * A static host needs everything flat and relative.
+ * their CSS absolutely and stamped (`/style.css?v=123`), which only
+ * resolves while the dashboard server is running, the manual loads a
+ * script that asks the running app, and the gallery references images
+ * as `images/…`, which sits next to the HTML rather than in
+ * `docs/images/`. A static host needs everything flat and relative, and
+ * no script that asks for an app.
  *
  * Both callers — the deploy workflow and `npm run show-gallery` — go
  * through this function, so a local preview cannot drift from what
@@ -107,21 +109,59 @@ function flattenStampedHref(html, css) {
 }
 
 /**
- * Rewrite one page's CSS hrefs and write it into the output directory.
+ * Remove each tag that loads the script at `src`, such as
+ * `<script src="/dist/manual-figures.js?v=123" defer></script>`, with its
+ * line when the tag stands alone on it, whatever stamp follows the path.
+ *
+ * String scanning, as `flattenStampedHref` does, for the same reasons;
+ * and as there, a longer path sharing the prefix is left alone.
+ *
+ * @param {string} html
+ * @param {string} src  The script's path as the page names it.
+ * @returns {string}
+ */
+function dropScriptTag(html, src) {
+  const needle = `<script src="${src}`;
+  const close = "</script>";
+  let out = html;
+  let from = 0;
+  for (;;) {
+    const at = out.indexOf(needle, from);
+    if (at === -1) return out;
+    const next = out[at + needle.length];
+    const end = out.indexOf(close, at);
+    if ((next !== '"' && next !== "?") || end === -1) {
+      from = at + needle.length;
+      continue;
+    }
+    const lineStart = out.lastIndexOf("\n", at) + 1;
+    const newline = out.indexOf("\n", end);
+    const lineEnd = newline === -1 ? out.length : newline + 1;
+    const alone =
+      out.slice(lineStart, at).trim() === "" &&
+      out.slice(end + close.length, lineEnd).trim() === "";
+    const start = alone ? lineStart : at;
+    const stop = alone ? lineEnd : end + close.length;
+    out = out.slice(0, start) + out.slice(stop);
+    from = start;
+  }
+}
+
+/**
+ * Make one page's stylesheet links relative and unstamped, drop the
+ * scripts that ask the running app, and write the page into the output
+ * directory.
  * @param {{src: string, css: string}} page
- * @param {Array<{from: string, to: string}>} sharedRewrites
+ * @param {{sharedSheets?: string[], droppedScripts?: string[]}} spec
  * @param {string} outDir
  * @returns {void}
  */
-function writePage(page, sharedRewrites, outDir) {
+function writePage(page, spec, outDir) {
   if (!fs.existsSync(page.src)) return;
   let html = fs.readFileSync(page.src, "utf8");
-  for (const rule of sharedRewrites) {
-    html = html.split(rule.from).join(rule.to);
-  }
-  /*- The page-specific sheet carries a `?v=` cache-bust stamp that a
-   *  static host has no server to strip, so flatten it too. */
-  html = flattenStampedHref(html, page.css);
+  for (const css of [...(spec.sharedSheets ?? []), page.css])
+    html = flattenStampedHref(html, css);
+  for (const src of spec.droppedScripts ?? []) html = dropScriptTag(html, src);
   fs.writeFileSync(path.join(outDir, path.basename(page.src)), html);
 }
 
@@ -154,7 +194,7 @@ function buildPagesSite(outDir) {
   fs.mkdirSync(outDir, { recursive: true });
 
   for (const page of spec.pages || []) {
-    writePage(page, spec.sharedRewrites || [], outDir);
+    writePage(page, spec, outDir);
   }
 
   for (const file of spec.flatAssets || []) {
@@ -172,7 +212,7 @@ function buildPagesSite(outDir) {
   }
 }
 
-module.exports = { buildPagesSite, readSpec, SPEC_PATH };
+module.exports = { buildPagesSite, readSpec, writePage, SPEC_PATH };
 
 /*- CLI entry point: only runs when invoked directly, so `show-gallery`
  *  can require the builder without triggering a build on import. */

@@ -48,6 +48,7 @@ function createMockFs() {
 }
 
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
+const CHAIN = "pulsechain";
 
 // ── lpPositionCachePath ─────────────────────────────────────────────────────
 
@@ -56,6 +57,18 @@ describe("lp-position-cache — lpPositionCachePath", () => {
     const result = lpPositionCachePath(WALLET, "pulsechain", "0xCC05bf");
     assert.ok(path.basename(result).startsWith("lp-position-cache-pulse"));
     assert.ok(result.includes("tmp"));
+  });
+
+  it("refuses a missing chain rather than assuming one", () => {
+    /*-
+     *  Loading too: a cache that cannot be named must not read as one
+     *  that is merely empty.
+     */
+    assert.throws(() => lpPositionCachePath(WALLET, undefined), /cacheTag/);
+    assert.throws(
+      () => loadLpPositionCache(WALLET, { fsModule: createMockFs() }),
+      /cacheTag/,
+    );
   });
 
   it("is case-insensitive", () => {
@@ -75,32 +88,50 @@ describe("lp-position-cache — save/load", () => {
 
   it("round-trips positions and lastBlock", () => {
     const positions = [{ tokenId: "100", token0: "0xAAA", fee: 3000 }];
-    saveLpPositionCache(WALLET, positions, 26100000, { fsModule: mockFs });
-    const cached = loadLpPositionCache(WALLET, { fsModule: mockFs });
+    saveLpPositionCache(WALLET, positions, 26100000, {
+      blockchain: CHAIN,
+      fsModule: mockFs,
+    });
+    const cached = loadLpPositionCache(WALLET, {
+      blockchain: CHAIN,
+      fsModule: mockFs,
+    });
     assert.deepStrictEqual(cached.positions, positions);
     assert.strictEqual(cached.lastBlock, 26100000);
   });
 
   it("returns null when no cache exists", () => {
-    assert.strictEqual(loadLpPositionCache(WALLET, { fsModule: mockFs }), null);
+    assert.strictEqual(
+      loadLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
+      null,
+    );
   });
 
   it("returns null for corrupt cache", () => {
-    const filePath = lpPositionCachePath(WALLET);
+    const filePath = lpPositionCachePath(WALLET, CHAIN);
     mockFs.files[filePath] = "NOT JSON";
-    assert.strictEqual(loadLpPositionCache(WALLET, { fsModule: mockFs }), null);
+    assert.strictEqual(
+      loadLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
+      null,
+    );
   });
 
   it("returns null when positions field is missing", () => {
-    const filePath = lpPositionCachePath(WALLET);
+    const filePath = lpPositionCachePath(WALLET, CHAIN);
     mockFs.files[filePath] = JSON.stringify({ lastBlock: 100 });
-    assert.strictEqual(loadLpPositionCache(WALLET, { fsModule: mockFs }), null);
+    assert.strictEqual(
+      loadLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
+      null,
+    );
   });
 
   it("returns null when lastBlock is missing", () => {
-    const filePath = lpPositionCachePath(WALLET);
+    const filePath = lpPositionCachePath(WALLET, CHAIN);
     mockFs.files[filePath] = JSON.stringify({ positions: [] });
-    assert.strictEqual(loadLpPositionCache(WALLET, { fsModule: mockFs }), null);
+    assert.strictEqual(
+      loadLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
+      null,
+    );
   });
 });
 
@@ -109,17 +140,25 @@ describe("lp-position-cache — save/load", () => {
 describe("lp-position-cache — clear", () => {
   it("removes the cache file", () => {
     const mockFs = createMockFs();
-    saveLpPositionCache(WALLET, [{ tokenId: "1" }], 100, { fsModule: mockFs });
-    assert.ok(loadLpPositionCache(WALLET, { fsModule: mockFs }));
-    clearLpPositionCache(WALLET, { fsModule: mockFs });
-    const after = loadLpPositionCache(WALLET, { fsModule: mockFs });
+    saveLpPositionCache(WALLET, [{ tokenId: "1" }], 100, {
+      blockchain: CHAIN,
+      fsModule: mockFs,
+    });
+    assert.ok(
+      loadLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
+    );
+    clearLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs });
+    const after = loadLpPositionCache(WALLET, {
+      blockchain: CHAIN,
+      fsModule: mockFs,
+    });
     assert.strictEqual(after, null);
   });
 
   it("does not throw when file does not exist", () => {
     const mockFs = createMockFs();
     assert.doesNotThrow(() =>
-      clearLpPositionCache(WALLET, { fsModule: mockFs }),
+      clearLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
     );
   });
 
@@ -141,7 +180,7 @@ describe("lp-position-cache — clear", () => {
     console.warn = (...args) => warns.push(args.join(" "));
     try {
       assert.doesNotThrow(() =>
-        clearLpPositionCache(WALLET, { fsModule: mockFs }),
+        clearLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
       );
       assert.ok(
         warns.some((s) => s.includes("Failed to clear cache")),

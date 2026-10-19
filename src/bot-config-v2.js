@@ -6,7 +6,7 @@
  * multi-position management.
  *
  * Structure:
- *   { global: { slippagePct, checkIntervalSec, … },
+ *   { global: { rpcUrls, moralisEnabled, approvalMultiple, … },
  *     positions: { [compositeKey]: { status, thresholdPct, … } } }
  *
  * The `positions` object is the single source of truth.
@@ -29,17 +29,21 @@
 
 const { log } = require("./log");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const { getAddress } = require("ethers");
-const { RETIRED_POSITION_KEYS } = require("./bot-config-keys");
+const {
+  RETIRED_POSITION_KEYS,
+  RETIRED_GLOBAL_KEYS,
+} = require("./bot-config-keys");
+const { makeTestTempFolder } = require("./test-temp-folders");
 
 const CONFIG_FILE = "bot-config.json";
 
 /*-
  *  Per-process sandbox standing in for the operator's config directory
  *  while tests run. Created on first use, so a run that never touches an
- *  undirected path creates nothing.
+ *  undirected path creates nothing, and removed when the process exits
+ *  (src/test-temp-folders.js).
  */
 let _testConfigDir = null;
 
@@ -64,16 +68,14 @@ let _testConfigDir = null;
 function _appConfigDir() {
   if (process.env.NODE_TEST_CONTEXT === undefined)
     return path.join(process.cwd(), "app-config", "user-configurable");
-  if (_testConfigDir === null)
-    _testConfigDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "lp-ranger-test-config-"),
-    );
+  if (_testConfigDir === null) _testConfigDir = makeTestTempFolder("config");
   return _testConfigDir;
 }
 
 /**
  * Build a composite key from URL-style components.
  * Format: `blockchain-wallet-contract-tokenId` (dash-separated).
+ * `parseCompositeKey` in `src/composite-key.js` reads one back.
  * @param {string} blockchain  e.g. 'pulsechain'
  * @param {string} wallet      Checksummed wallet address.
  * @param {string} contract    NFT contract address.
@@ -85,29 +87,6 @@ function compositeKey(blockchain, wallet, contract, tokenId) {
   const c =
     contract && contract.startsWith("0x") ? getAddress(contract) : contract;
   return `${blockchain}-${w}-${c}-${tokenId}`;
-}
-
-/**
- * Parse a composite key back into its components.
- * Returns null if the key format is invalid.
- * @param {string} key
- * @returns {{ blockchain: string, wallet: string, contract: string, tokenId: string }|null}
- */
-function parseCompositeKey(key) {
-  if (!key || typeof key !== "string") return null;
-  const parts = key.split("-");
-  if (
-    parts.length !== 4 ||
-    !parts[1].startsWith("0x") ||
-    !parts[2].startsWith("0x")
-  )
-    return null;
-  return {
-    blockchain: parts[0],
-    wallet: parts[1],
-    contract: parts[2],
-    tokenId: parts[3],
-  };
 }
 
 /**
@@ -236,7 +215,8 @@ function _readDiskConfig(filePath) {
 }
 
 /**
- * Drop every `RETIRED_POSITION_KEYS` entry from every position slot.
+ * Drop every `RETIRED_POSITION_KEYS` entry from every position slot,
+ * and every `RETIRED_GLOBAL_KEYS` entry from the global section.
  *
  * Runs on the save path rather than the load path so the file is cleaned
  * exactly once per write, and so a slot the app never touches is still
@@ -260,6 +240,8 @@ function _readDiskConfig(filePath) {
  * @param {object} cfg  Config object, mutated in place.
  */
 function _stripRetiredKeys(cfg) {
+  if (cfg.global !== undefined && cfg.global !== null)
+    for (const key of RETIRED_GLOBAL_KEYS) delete cfg.global[key];
   for (const slot of Object.values(cfg.positions || {})) {
     if (slot === undefined || slot === null) continue;
     const retired = RETIRED_POSITION_KEYS.filter((k) => k in slot);
@@ -499,9 +481,18 @@ function readConfigValue(cfg, positionKey, key) {
   return undefined;
 }
 
+/**
+ * Where bot-config.json is, for the settings check
+ * (src/settings-check.js), which reads it before the app does.
+ * @returns {string}
+ */
+function botConfigPath() {
+  return _configPath();
+}
+
 module.exports = {
   compositeKey,
-  parseCompositeKey,
+  botConfigPath,
   loadConfig,
   saveConfig,
   getPositionConfig,

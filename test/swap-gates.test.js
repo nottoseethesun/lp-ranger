@@ -15,8 +15,9 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
+// Before anything that reads a price loads: prices come from a fixed table.
+require("./helpers/price-stand-ins");
 const {
-  MAX_SWAP_GAS_RATIO,
   GAS_FEE_PCT_MIN,
   GAS_FEE_PCT_MAX,
   GAS_FEE_PCT_DEFAULT,
@@ -25,62 +26,90 @@ const {
   estimateSwapGasUsd,
 } = require("../src/swap-gates");
 
-describe("swap-gates", () => {
-  describe("MAX_SWAP_GAS_RATIO", () => {
-    it("is exposed as a module-level const set to 1%", () => {
-      assert.equal(MAX_SWAP_GAS_RATIO, 0.01);
-    });
-  });
+// The gas limit each case holds a swap to: 1% of its value.
+const LIMIT = 0.01;
 
+describe("swap-gates", () => {
   describe("shouldSkipSwap", () => {
     it("skips with reason='dust' for sub-cent swap value", async () => {
-      const res = await shouldSkipSwap({ swapUsd: 0.001, gasUsd: 0 });
+      const res = await shouldSkipSwap({
+        swapUsd: 0.001,
+        gasUsd: 0,
+        maxRatio: LIMIT,
+      });
       assert.equal(res.skip, true);
       assert.equal(res.reason, "dust");
     });
 
     it("skips with reason='gas-unfavorable' when gas exceeds 1% of value", async () => {
       // $1000 swap, $50 gas — well above dust, gas-ratio = 0.05.
-      const res = await shouldSkipSwap({ swapUsd: 1000, gasUsd: 50 });
+      const res = await shouldSkipSwap({
+        swapUsd: 1000,
+        gasUsd: 50,
+        maxRatio: LIMIT,
+      });
       assert.equal(res.skip, true);
       assert.equal(res.reason, "gas-unfavorable");
-      assert.ok(res.gasRatio > MAX_SWAP_GAS_RATIO);
+      assert.equal(res.gasRatio, 0.05);
     });
 
     it("passes when swap exceeds dust AND gas/value ≤ 1%", async () => {
-      const res = await shouldSkipSwap({ swapUsd: 1000, gasUsd: 5 });
+      const res = await shouldSkipSwap({
+        swapUsd: 1000,
+        gasUsd: 5,
+        maxRatio: LIMIT,
+      });
       assert.equal(res.skip, false);
       assert.equal(res.reason, null);
       assert.equal(res.gasRatio, 0.005);
     });
 
     it("passes when gas estimate is 0 (gas-gate degrades to no-op)", async () => {
-      const res = await shouldSkipSwap({ swapUsd: 1000, gasUsd: 0 });
+      const res = await shouldSkipSwap({
+        swapUsd: 1000,
+        gasUsd: 0,
+        maxRatio: LIMIT,
+      });
       assert.equal(res.skip, false);
     });
 
     it("dust gate runs FIRST: dust-rejected swap returns reason='dust' even when gas would also trip", async () => {
       // $0.001 swap (dust), $10 gas (gas/value = 10000× over).  Both
       // gates would skip; dust must win because it runs first.
-      const res = await shouldSkipSwap({ swapUsd: 0.001, gasUsd: 10 });
+      const res = await shouldSkipSwap({
+        swapUsd: 0.001,
+        gasUsd: 10,
+        maxRatio: LIMIT,
+      });
       assert.equal(res.reason, "dust");
     });
 
     it("gas-gate boundary: ratio exactly at 1% still passes (strict >)", async () => {
-      const res = await shouldSkipSwap({ swapUsd: 1000, gasUsd: 10 });
+      const res = await shouldSkipSwap({
+        swapUsd: 1000,
+        gasUsd: 10,
+        maxRatio: LIMIT,
+      });
       assert.equal(res.skip, false);
       assert.equal(res.gasRatio, 0.01);
     });
 
     it("returns thresholdUsd > 0 from the gold-pegged dust module", async () => {
-      const res = await shouldSkipSwap({ swapUsd: 1000, gasUsd: 0 });
+      const res = await shouldSkipSwap({
+        swapUsd: 1000,
+        gasUsd: 0,
+        maxRatio: LIMIT,
+      });
       assert.ok(res.thresholdUsd > 0);
     });
 
-    it("honors per-call maxRatio override (5% allows what 1% blocks)", async () => {
-      // $1000 swap, $30 gas → ratio 0.03.  At default (1%) → skip.
-      // At maxRatio=0.05 (5%) → pass.
-      const blocked = await shouldSkipSwap({ swapUsd: 1000, gasUsd: 30 });
+    it("holds a swap to the limit it is given (5% allows what 1% blocks)", async () => {
+      // $1000 swap, $30 gas → ratio 0.03: over 1%, under 5%.
+      const blocked = await shouldSkipSwap({
+        swapUsd: 1000,
+        gasUsd: 30,
+        maxRatio: LIMIT,
+      });
       assert.equal(blocked.skip, true);
       assert.equal(blocked.reason, "gas-unfavorable");
       const allowed = await shouldSkipSwap({
@@ -92,30 +121,19 @@ describe("swap-gates", () => {
       assert.equal(allowed.maxRatio, 0.05);
     });
 
-    it("returns the effective maxRatio in the result for logging", async () => {
-      const res = await shouldSkipSwap({ swapUsd: 1000, gasUsd: 5 });
-      assert.equal(res.maxRatio, MAX_SWAP_GAS_RATIO);
+    it("returns the limit it applied in the result for logging", async () => {
+      const res = await shouldSkipSwap({
+        swapUsd: 1000,
+        gasUsd: 5,
+        maxRatio: LIMIT,
+      });
+      assert.equal(res.maxRatio, LIMIT);
       const res2 = await shouldSkipSwap({
         swapUsd: 1000,
         gasUsd: 5,
         maxRatio: 0.1,
       });
       assert.equal(res2.maxRatio, 0.1);
-    });
-
-    it("ignores invalid maxRatio (≤0, NaN) and falls back to default", async () => {
-      const r1 = await shouldSkipSwap({
-        swapUsd: 1000,
-        gasUsd: 30,
-        maxRatio: 0,
-      });
-      assert.equal(r1.maxRatio, MAX_SWAP_GAS_RATIO);
-      const r2 = await shouldSkipSwap({
-        swapUsd: 1000,
-        gasUsd: 30,
-        maxRatio: -1,
-      });
-      assert.equal(r2.maxRatio, MAX_SWAP_GAS_RATIO);
     });
   });
 

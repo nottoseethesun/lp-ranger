@@ -200,7 +200,6 @@ async function _fetchInitialPrices({
   poolAddress,
   firstMintTimestamp,
   firstMintBlock,
-  chain,
   token0,
   token1,
   scopeKey,
@@ -210,7 +209,6 @@ async function _fetchInitialPrices({
     const { price0, price1 } = await fetchHistoricalPriceGecko(
       poolAddress,
       firstMintTimestamp,
-      chain,
       {
         token0Address: token0,
         token1Address: token1,
@@ -343,7 +341,6 @@ async function ensureInitialResidualData(args) {
     poolAddress,
     firstMintTimestamp,
     firstMintBlock,
-    chain,
     token0,
     token1,
     scopeKey,

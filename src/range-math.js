@@ -17,20 +17,23 @@
  *
  * All math follows the Uniswap v3 white-paper formulas.
  *
- * @see {@link https://uniswap.org/whitepaper-v3.pdf}
+ * @see {@link https://app.uniswap.org/whitepaper-v3.pdf}
  */
 
 "use strict";
 
 const { nearestUsableTick: _sdkNearestUsableTick } = require("@uniswap/v3-sdk");
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { CENTERED_OFFSET_PCT } = require("./centered-offset");
 
-/*- Single-source default: per feedback_one_literal_per_shipped_default,
- *  the shipped `offsetToken0Pct` value lives only in
- *  bot-config-defaults.json.  Read once at module init for the
- *  symmetric-default fallback when callers don't pass an explicit
- *  `offsetToken0Pct` in opts. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+/*-
+ *  Single-source default: per feedback_one_literal_per_shipped_default,
+ *  the `offsetToken0Pct` default lives only in bot-config-defaults.json,
+ *  and an operator's copy under app-config/user-configurable/ overrides
+ *  it.  Read once at module init for callers that pass no
+ *  `offsetToken0Pct` in opts.
+ */
+const _DEFAULTS = readBotConfigDefaults();
 
 /** 2^96 — the fixed-point denominator used by Uniswap v3. */
 const Q96 = BigInt("0x1000000000000000000000000");
@@ -220,7 +223,7 @@ function computeNewRange(
   // the offset intent is preserved.
   const currentTick =
     opts?.currentTick ?? priceToTick(currentPrice, decimals0, decimals1);
-  if (offset === 50) {
+  if (offset === CENTERED_OFFSET_PCT) {
     ({ lowerTick, upperTick } = _containTick(
       lowerTick,
       upperTick,
@@ -391,7 +394,7 @@ function preserveRange(
 
   // ── Tick containment guard (see computeNewRange for detailed explanation) ──
   // Skip when offset ≠ 50 — the user intentionally positioned the range.
-  if (offset === 50) {
+  if (offset === CENTERED_OFFSET_PCT) {
     ({ lowerTick: newLower, upperTick: newUpper } = _containTick(
       newLower,
       newUpper,

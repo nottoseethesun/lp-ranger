@@ -2,205 +2,141 @@
 
 /**
  * @file test/position-rangeW.test.js
- * @description Tests for per-position OOR threshold localStorage persistence.
- * Mirrors the logic in dashboard-helpers.js (posStorageKey, savePositionOorThreshold,
- * loadPositionOorThreshold) using a mock localStorage.
+ * @description The out-of-range threshold the dashboard keeps in the
+ *   browser for each position, saved and loaded through the real
+ *   `savePositionOorThreshold` / `loadPositionOorThreshold` in
+ *   `public/dashboard-helpers.js`, under jsdom's `localStorage`.
+ *
+ *   The value is keyed by everything that tells one position from
+ *   another: the chain, the wallet, the position's contract and, for an
+ *   NFT, its number. Two positions sharing an NFT number under another
+ *   contract, wallet or chain must not share a threshold, and until the
+ *   chain is known nothing is read or written at all, since a key built
+ *   without it would be one of those shared ones.
  */
 
-const { describe, it, beforeEach } = require("node:test");
-const assert = require("assert");
+require("global-jsdom/register");
 
-// ── Mock localStorage ───────────────────────────────────────────────────────
+const { describe, it, before, beforeEach } = require("node:test");
+const assert = require("node:assert/strict");
 
-function createMockStorage() {
-  const store = {};
-  return {
-    getItem(key) {
-      return Object.prototype.hasOwnProperty.call(store, key)
-        ? store[key]
-        : null;
-    },
-    setItem(key, value) {
-      store[key] = String(value);
-    },
-    removeItem(key) {
-      delete store[key];
-    },
-    _store: store,
-  };
+let helpers;
+let chainMod;
+
+const WALLET = "0x1111111111111111111111111111111111111111";
+const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
+const OTHER_PM = "0x2222222222222222222222222222222222222222";
+const nft = (overrides) => ({
+  positionType: "nft",
+  walletAddress: WALLET,
+  contractAddress: PM,
+  tokenId: "100",
+  ...overrides,
+});
+
+/** Every key the browser's storage holds, in order. */
+function storedKeys() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+  return keys;
 }
 
-// ── Replicate the helpers from dashboard-helpers.js ─────────────────────────
-
-const POS_RANGE_PREFIX = "9mm_oorThreshold_";
-
-function posStorageKey(pos) {
-  if (!pos) return null;
-  if (pos.positionType === "nft" && pos.tokenId)
-    return POS_RANGE_PREFIX + "nft_" + pos.tokenId;
-  if (pos.contractAddress)
-    return POS_RANGE_PREFIX + "erc20_" + pos.contractAddress.toLowerCase();
-  return null;
+/** Have the dashboard learn `chainId` the way startup does. */
+function learnChain(chainId) {
+  return chainMod.loadActiveChain({
+    fetchFn: async () => ({ ok: true, json: async () => ({ chainId }) }),
+    onUnanswered: () => {},
+    onAnswered: () => {},
+  });
 }
 
-function savePositionOorThreshold(storage, pos, rangeWPct) {
-  const key = posStorageKey(pos);
-  if (!key) return;
-  try {
-    storage.setItem(key, String(rangeWPct));
-  } catch (_) {
-    /* private browsing */
-  }
-}
+before(async () => {
+  chainMod = await import("../public/dashboard-chain.js");
+  helpers = await import("../public/dashboard-helpers.js");
+});
 
-function loadPositionOorThreshold(storage, pos, fallback) {
-  const def = fallback !== undefined ? fallback : 10;
-  const key = posStorageKey(pos);
-  if (!key) return def;
-  try {
-    const raw = storage.getItem(key);
-    if (raw === null) return def;
-    const n = parseFloat(raw);
-    return Number.isFinite(n) && n > 0 ? n : def;
-  } catch (_) {
-    return def;
-  }
-}
+beforeEach(() => localStorage.clear());
 
-// ── posStorageKey ───────────────────────────────────────────────────────────
+describe("before the server has named the chain", () => {
+  it("neither saves nor loads, so no key lacks the chain", () => {
+    assert.equal(chainMod.activeChainId(), null);
+    helpers.savePositionOorThreshold(nft(), 15);
+    assert.equal(localStorage.length, 0);
+    assert.equal(helpers.loadPositionOorThreshold(nft()), undefined);
+  });
+});
 
-describe("posStorageKey", () => {
-  it("returns null for null/undefined position", () => {
-    assert.strictEqual(posStorageKey(null), null);
-    assert.strictEqual(posStorageKey(undefined), null);
+describe("once the chain is known", () => {
+  // The testnet, not the shipped default, so a key naming that outright fails.
+  before(() => learnChain("pulsechain-testnet"));
+
+  it("saves and loads a position's threshold", () => {
+    helpers.savePositionOorThreshold(nft(), 15);
+    assert.equal(helpers.loadPositionOorThreshold(nft()), 15);
   });
 
-  it("returns NFT key for NFT positions", () => {
-    const pos = { positionType: "nft", tokenId: "12345" };
-    assert.strictEqual(posStorageKey(pos), "9mm_oorThreshold_nft_12345");
+  it("keys it by chain, wallet, contract and NFT number", () => {
+    helpers.savePositionOorThreshold(nft(), 15);
+    assert.deepEqual(storedKeys(), [
+      "9mm_oorThreshold_nft_pulsechain-testnet_" +
+        WALLET.toLowerCase() +
+        "_" +
+        PM.toLowerCase() +
+        "_100",
+    ]);
   });
 
-  it("returns ERC-20 key for ERC-20 positions (lowercased)", () => {
-    const pos = { positionType: "erc20", contractAddress: "0xABCdef1234" };
-    assert.strictEqual(
-      posStorageKey(pos),
-      "9mm_oorThreshold_erc20_0xabcdef1234",
+  it("keeps apart two positions with one NFT number under two contracts", () => {
+    helpers.savePositionOorThreshold(nft(), 10);
+    helpers.savePositionOorThreshold(nft({ contractAddress: OTHER_PM }), 30);
+    assert.equal(helpers.loadPositionOorThreshold(nft()), 10);
+    assert.equal(
+      helpers.loadPositionOorThreshold(nft({ contractAddress: OTHER_PM })),
+      30,
     );
   });
 
-  it("returns null for NFT without tokenId", () => {
-    const pos = { positionType: "nft" };
-    assert.strictEqual(posStorageKey(pos), null);
+  it("keys an ERC-20 position by its LP token, with no NFT number", () => {
+    const lp = {
+      positionType: "erc20",
+      walletAddress: WALLET,
+      contractAddress: OTHER_PM,
+    };
+    helpers.savePositionOorThreshold(lp, 12.5);
+    assert.equal(helpers.loadPositionOorThreshold(lp), 12.5);
+    assert.deepEqual(storedKeys(), [
+      "9mm_oorThreshold_erc20_pulsechain-testnet_" +
+        WALLET.toLowerCase() +
+        "_" +
+        OTHER_PM.toLowerCase(),
+    ]);
   });
 
-  it("returns null for position without contractAddress or tokenId", () => {
-    const pos = { positionType: "other" };
-    assert.strictEqual(posStorageKey(pos), null);
-  });
-});
-
-// ── savePositionOorThreshold + loadPositionOorThreshold ─────────────────────────────────
-
-describe("savePositionOorThreshold + loadPositionOorThreshold", () => {
-  let storage;
-
-  beforeEach(() => {
-    storage = createMockStorage();
+  it("saves nothing for a position missing a field of its key", () => {
+    for (const pos of [
+      null,
+      nft({ walletAddress: undefined }),
+      nft({ contractAddress: "" }),
+      nft({ tokenId: 100 }),
+    ]) {
+      helpers.savePositionOorThreshold(pos, 15);
+      assert.equal(helpers.loadPositionOorThreshold(pos), undefined);
+    }
+    assert.equal(localStorage.length, 0);
   });
 
-  it("round-trip: save then load returns saved value", () => {
-    const pos = { positionType: "nft", tokenId: "42" };
-    savePositionOorThreshold(storage, pos, 15);
-    assert.strictEqual(loadPositionOorThreshold(storage, pos), 15);
+  it("loads nothing for a stored value that is not a positive number", () => {
+    helpers.savePositionOorThreshold(nft(), 15);
+    const [key] = storedKeys();
+    for (const bad of ["not-a-number", "0", "-5"]) {
+      localStorage.setItem(key, bad);
+      assert.equal(helpers.loadPositionOorThreshold(nft()), undefined);
+    }
   });
 
-  it("returns default 10 when no value saved", () => {
-    const pos = { positionType: "nft", tokenId: "99" };
-    assert.strictEqual(loadPositionOorThreshold(storage, pos), 10);
-  });
-
-  it("returns custom fallback when specified and no value saved", () => {
-    const pos = { positionType: "nft", tokenId: "99" };
-    assert.strictEqual(loadPositionOorThreshold(storage, pos, 30), 30);
-  });
-
-  it("overwrites previous value", () => {
-    const pos = { positionType: "nft", tokenId: "42" };
-    savePositionOorThreshold(storage, pos, 10);
-    savePositionOorThreshold(storage, pos, 25);
-    assert.strictEqual(loadPositionOorThreshold(storage, pos), 25);
-  });
-
-  it("stores different values per position", () => {
-    const pos1 = { positionType: "nft", tokenId: "1" };
-    const pos2 = { positionType: "nft", tokenId: "2" };
-    savePositionOorThreshold(storage, pos1, 10);
-    savePositionOorThreshold(storage, pos2, 30);
-    assert.strictEqual(loadPositionOorThreshold(storage, pos1), 10);
-    assert.strictEqual(loadPositionOorThreshold(storage, pos2), 30);
-  });
-
-  it("handles ERC-20 positions", () => {
-    const pos = { positionType: "erc20", contractAddress: "0xABC123" };
-    savePositionOorThreshold(storage, pos, 12.5);
-    assert.strictEqual(loadPositionOorThreshold(storage, pos), 12.5);
-  });
-
-  it("returns default for invalid stored value (NaN)", () => {
-    const pos = { positionType: "nft", tokenId: "42" };
-    storage.setItem(posStorageKey(pos), "not-a-number");
-    assert.strictEqual(loadPositionOorThreshold(storage, pos), 10);
-  });
-
-  it("returns default for zero stored value", () => {
-    const pos = { positionType: "nft", tokenId: "42" };
-    storage.setItem(posStorageKey(pos), "0");
-    assert.strictEqual(loadPositionOorThreshold(storage, pos), 10);
-  });
-
-  it("returns default for negative stored value", () => {
-    const pos = { positionType: "nft", tokenId: "42" };
-    storage.setItem(posStorageKey(pos), "-5");
-    assert.strictEqual(loadPositionOorThreshold(storage, pos), 10);
-  });
-
-  it("silently returns default when position has no key", () => {
-    const pos = { positionType: "other" };
-    savePositionOorThreshold(storage, pos, 15); // should do nothing
-    assert.strictEqual(loadPositionOorThreshold(storage, pos), 10);
-  });
-
-  it("handles null position gracefully", () => {
-    savePositionOorThreshold(storage, null, 15); // should not throw
-    assert.strictEqual(loadPositionOorThreshold(storage, null), 10);
-  });
-});
-
-// ── Startup behaviour ───────────────────────────────────────────────────────
-
-describe("startup — range width restoration", () => {
-  it("loads saved value for active position on startup", () => {
-    const storage = createMockStorage();
-    const pos = { positionType: "nft", tokenId: "100" };
-    savePositionOorThreshold(storage, pos, 35);
-
-    // Simulate startup: load range width for the active position
-    const rangeW = loadPositionOorThreshold(storage, pos);
-    assert.strictEqual(rangeW, 35);
-  });
-
-  it("defaults to 10% when no saved value exists (fresh install)", () => {
-    const storage = createMockStorage();
-    const pos = { positionType: "nft", tokenId: "100" };
-
-    const rangeW = loadPositionOorThreshold(storage, pos);
-    assert.strictEqual(rangeW, 10);
-  });
-
-  it("defaults to 10% when no active position exists", () => {
-    const storage = createMockStorage();
-
-    const rangeW = loadPositionOorThreshold(storage, null);
-    assert.strictEqual(rangeW, 10);
+  it("overwrites an earlier value", () => {
+    helpers.savePositionOorThreshold(nft(), 10);
+    helpers.savePositionOorThreshold(nft(), 25);
+    assert.equal(helpers.loadPositionOorThreshold(nft()), 25);
   });
 });

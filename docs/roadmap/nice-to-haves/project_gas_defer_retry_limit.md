@@ -1,29 +1,24 @@
 # Gas-Defer Retry Limit
 
-> **Status:** Nice-to-have / polish — not a bug. The app works
-> correctly without this. Funds are never at risk. Strictly
-> optional: the retry loop consumes no gas (RPC poll + price fetch
-> only), and the user always has a clean halt path via the LP
-> Browser.
+> **Status:** Nice-to-have / polish — not a bug. Funds are never at
+> risk, and the waiting costs no gas.
 
-When a managed position's estimated gas cost exceeds 0.5% of the
-position's USD value, the bot defers the rebalance and reschedules
-itself 1 hour later (`GAS_DEFER_MS = 3600_000` in `src/bot-loop.js`).
-There is no cap on the number of retries — for very small
-positions where gas cost will never drop below the 0.5% threshold,
-the loop continues indefinitely, retrying once an hour forever.
+When a rebalance's estimated gas would cost more than
+`rebalanceGasDeferPct` of the position's value (0.5% as shipped), the
+bot waits `gasDeferRetrySec` (one hour as shipped) and looks again
+(`nextCheckDelayMs`, `src/bot-loop-scheduler.js`). Nothing caps the
+number of looks. A position too small for gas ever to fall under the
+threshold is looked at once an hour, forever.
 
 ## Why this is not required
 
-- **No gas spent.** Each retry consists of a single `provider.getFeeData()`
-  call plus a price fetch for the position's two tokens. No
-  transactions are submitted to the chain, so the loop is effectively
-  free.
-- **User has a clean escape hatch.** The LP Browser → Remove flow
-  (documented in the FAQ) terminates the bot loop for that position.
-  Re-scan + double-click re-adds it when the user wants to manage
-  it again — for example after the position grows in value or gas
-  prices drop.
+- **No gas spent.** Each look is one `getFeeData()` call and price
+  lookups for the native token and the position's two tokens. No
+  transaction is sent.
+- **The operator has a clean way out.** LP Browser → Remove (described
+  in the FAQ) ends the bot loop for that position. To manage it again
+  later, for example once it has grown or gas has dropped, scan the
+  wallet, select the position and click Manage.
 - **Symmetry with other deferral gates.** Throttle, daily cap, and
   out-of-range threshold gates also retry indefinitely — they're
   not "bugs that never give up," they're standard control-loop
@@ -31,8 +26,9 @@ the loop continues indefinitely, retrying once an hour forever.
 
 ## Possible design when prioritized
 
-- Configurable retry cap (e.g. `MAX_GAS_DEFER_RETRIES = 24` for one
-  day of attempts) read from `bot-config-defaults.json`.
+- A configurable cap on the looks, for example `gasDeferMaxRetries: 24`
+  (a day of hourly looks) in `bot-config-defaults.json`, with its range
+  in `setting-bounds.json`.
 - On cap reached: surface a one-time Telegram notification ("Position
   #X cannot rebalance under current gas conditions"), set a
   dashboard banner, and stop further polling. The user can manually

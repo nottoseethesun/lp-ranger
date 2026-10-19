@@ -22,6 +22,7 @@ require("global-jsdom/register");
 const { test, before } = require("node:test");
 const assert = require("node:assert");
 const { GUARANTEED_DASHBOARD_HAS_POLLED_MS } = require("../src/config");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 let computeManageUI;
 let MANAGE_SYNCING_HELP;
@@ -30,6 +31,8 @@ let _openInPool;
 let _poolKeyOf;
 
 before(async () => {
+  // As at startup: the dashboard knows its chain before it keys a pool.
+  await learnActiveChain();
   const mod = await import("../public/dashboard-manage-ui.js");
   computeManageUI = mod.computeManageUI;
   MANAGE_SYNCING_HELP = mod.MANAGE_SYNCING_HELP;
@@ -41,20 +44,28 @@ before(async () => {
 const RETIRE_DEBOUNCE_MS = GUARANTEED_DASHBOARD_HAS_POLLED_MS;
 const NOW = 1_700_000_000_000;
 
-/** Build a happy-path input object — override fields per-test. */
+/**
+ * Build a happy-path input object — override fields per-test. A position
+ * whose fixture status is "running" is in the managed set too, as it is
+ * once a poll for it has landed.
+ */
 function ins(overrides) {
-  return {
+  const inputs = {
     hasActive: true,
     isClosed: false,
     isNft: true,
     posState: { status: "stopped" },
     syncComplete: true,
     walletUnlocked: true,
-    manageInFlight: false,
+    manageInFlight: null,
+    managedCheckPending: false,
     nowMs: NOW,
     retireDebounceMs: RETIRE_DEBOUNCE_MS,
     ...overrides,
   };
+  if (!("positionManaged" in overrides))
+    inputs.positionManaged = inputs.posState?.status === "running";
+  return inputs;
 }
 
 // ── One-position-per-pool branch ─────────────────────────────────────

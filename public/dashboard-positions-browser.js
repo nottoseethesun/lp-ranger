@@ -11,10 +11,13 @@ import {
   act,
   ACT_ICONS,
   fetchWithCsrf,
+  compositeKey,
 } from "./dashboard-helpers.js";
+import { activeChainId } from "./dashboard-chain.js";
 import {
   posStore,
   PAGE_SIZE,
+  MAX_POS,
   isPositionManaged,
   isPositionClosed,
   checkInRange,
@@ -26,6 +29,7 @@ import {
 import { matchesPosFilter } from "./positions-filter.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
 import { resetLastFetchedId } from "./dashboard-unmanaged.js";
+import { isPrivacyModeOn } from "./dashboard-privacy-subform.js";
 
 let posBrowserPage = 0;
 let posBrowserSelected = -1;
@@ -41,7 +45,7 @@ function _setStatsTip(total, inRange, storeFull) {
   const pop = g("posStatsPopover");
   if (!tip || !pop) return;
   const lines = [`Total: ${total}`, `Open and In-Range: ${inRange}`];
-  if (storeFull) lines.push("\u26A0 Store full (300/300)");
+  if (storeFull) lines.push(`\u26A0 Store full (${MAX_POS}/${MAX_POS})`);
   pop.replaceChildren();
   for (const text of lines) {
     const row = document.createElement("div");
@@ -105,7 +109,7 @@ export function renderPosBrowser() {
     _renderEmpty(list, all.length);
   } else {
     _renderRows(list, pageItems);
-    if (localStorage.getItem("9mm_privacy_mode") === "1")
+    if (isPrivacyModeOn())
       list
         .querySelectorAll(".pos-row-title, .pos-row-meta")
         .forEach((el) => el.classList.add("9mm-pos-mgr-privacy-blur"));
@@ -163,13 +167,13 @@ export async function removeSelectedPos() {
   const entry = posStore.entries[sel];
   if (!entry) return;
   if (isPositionManaged(entry.tokenId)) {
-    const key =
-      "pulsechain-" +
-      entry.walletAddress +
-      "-" +
-      entry.contractAddress +
-      "-" +
-      entry.tokenId;
+    const chain = activeChainId();
+    const key = compositeKey(
+      chain,
+      entry.walletAddress,
+      entry.contractAddress,
+      entry.tokenId,
+    );
     try {
       const res = await fetchWithCsrf("/api/position/manage", {
         method: "DELETE",

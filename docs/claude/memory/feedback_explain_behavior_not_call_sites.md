@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-02T20:50:18.553Z
+  modified: 2026-10-17T21:30:06.438Z
 ---
 
 When reporting what was changed and why, lead with **what happens** —
@@ -53,6 +53,18 @@ The same content, as it should have been written:
   happens.
 - The test: could someone who has never opened the file follow it? If
   not, it is not an explanation yet.
+
+**Internal shorthand counts too (2026-10-17).** A report's open bugs
+read "A retried send can send a move twice" and "a cancel answered
+'already known' fails the move". The user: *"What's a 'send' - we have
+compound and rebalance. … What move? … you are just failing hard at
+explaining what you are talking about."* "Send", "move", "slot",
+"settle" are the code's words, not the operator's. Name the operator's
+action (a rebalance, a compound), the step inside it (the removal of
+liquidity, the swap, the mint, the fee collection), and what the
+operator would see. When a report needs a mechanism term such as the
+wallet's transaction sequence number or the speed-up and cancel, define
+it once, in plain words, before the first item that uses it.
 
 Related: [[feedback_no_internal_constants_in_design_talk]] (same
 instinct, about constants), [[feedback_operator_sees_ui_not_logs]] (same

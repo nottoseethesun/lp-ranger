@@ -8,6 +8,10 @@
 
 import { log } from "./dashboard-log.js";
 import { g, fetchWithCsrf } from "./dashboard-helpers.js";
+import {
+  EVENT_DEFAULTS,
+  eventTitle,
+} from "../src/telegram-notifications/telegram-events.js";
 
 /** POST JSON and return parsed response. */
 async function _post(url, body) {
@@ -19,21 +23,53 @@ async function _post(url, body) {
   return res.json();
 }
 
-const _EVENT_IDS = [
-  "oorTimeout",
-  "rebalanceSuccess",
-  "rebalanceFail",
-  "compoundSuccess",
-  "compoundFail",
-  "otherError",
-  "lowGasBalance",
-  "veryLowGas",
-  "shutdown",
-  "positionRetired",
-  "positionDataInvalid",
-  "ilGuardRejected",
-  "positionBalanced",
-];
+/*-
+ *  Every alert the server can send, by name, from the one list the
+ *  server keeps them in: the dialog has a checkbox for each.
+ */
+const _EVENT_IDS = Object.keys(EVENT_DEFAULTS);
+
+/*-
+ *  Whether the checkboxes show the server's choices: false from each
+ *  opening until its answer ticks them. Until then a save leaves the
+ *  saved choices alone, rather than send boxes nobody filled, which
+ *  would turn every alert off.
+ */
+let _eventsFromServer = false;
+
+/**
+ * Record whether the checkboxes show the server's choices, and let them
+ * be changed only when they do.
+ * @param {boolean} answered
+ */
+function _showEventsFromServer(answered) {
+  _eventsFromServer = answered;
+  for (const id of _EVENT_IDS) {
+    const el = g("tgEvt_" + id);
+    if (el) el.disabled = !answered;
+  }
+}
+
+/**
+ * Give the dialog a checkbox for each alert, the first time it opens,
+ * so the page holds no copy of the list. Each row goes before the note
+ * under the list, and its title is painted by `_paintEventTitles`.
+ */
+function _buildEventRows() {
+  const note = g("tgBalancedNote");
+  const built = g("tgEvt_" + _EVENT_IDS[0]);
+  if (note === null || built !== null) return;
+  for (const id of _EVENT_IDS) {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = "tgEvt_" + id;
+    const title = document.createElement("span");
+    title.id = "tgEvtTitle_" + id;
+    const row = document.createElement("label");
+    row.append(box, " ", title);
+    note.before(row);
+  }
+}
 
 /*- Format a millisecond duration into the most human-readable unit:
  *  seconds under a minute, minutes under an hour, otherwise hours with
@@ -41,7 +77,6 @@ const _EVENT_IDS = [
  *  next to the "Position Balanced" checkbox always reflects the actual
  *  fetch cadence (CHECK_INTERVAL_SEC × pricePauseExceptionPollWindowMultiple). */
 function _fmtCadence(ms) {
-  if (!Number.isFinite(ms) || ms <= 0) return "10 minutes";
   const sec = Math.round(ms / 1000);
   if (sec < 60) return `${sec} seconds`;
   const min = sec / 60;
@@ -53,9 +88,11 @@ function _fmtCadence(ms) {
   return `${hr.toFixed(1)} hours`;
 }
 
-/*- Pull the base poll interval and the multiplier from the server, then
- *  paint the cadence span in the modal.  Silent on failure — the static
- *  HTML default ("10 minutes") stays visible. */
+/**
+ * Pull the base poll interval and the multiplier from the server, then
+ * paint the cadence span in the modal.  Silent on failure: the span
+ * stays empty, since the page holds no value of its own.
+ */
 async function _refreshBalancedCadence() {
   const span = g("tgBalancedCadence");
   if (!span) return;
@@ -68,7 +105,7 @@ async function _refreshBalancedCadence() {
     if (!(sec > 0) || !(mult > 0)) return;
     span.textContent = _fmtCadence(sec * mult * 1000);
   } catch {
-    /* keep static default */
+    /* the span stays empty */
   }
 }
 
@@ -109,6 +146,9 @@ export async function openTelegramModal() {
     _setStatus("Values will be saved after wallet setup completes.");
   }
   _updateTestBtn(false);
+  _buildEventRows();
+  _showEventsFromServer(false);
+  _paintEventTitles("—");
   _refreshBalancedCadence();
   try {
     const res = await fetch("/api/telegram/config");
@@ -119,24 +159,38 @@ export async function openTelegramModal() {
   }
 }
 
-/*- Paint the modal from the /api/telegram/config response: event
- *  checkboxes, the dynamic balanced-band threshold percent, and the
- *  token/chatId placeholders.  Extracted from openTelegramModal to
- *  keep that function under the complexity ceiling. */
+/**
+ * Label each alert's checkbox with the title the alert is sent under,
+ * from the one list the server sends them from. Position Balanced's
+ * quotes the band.
+ * @param {string} bandPct  The band, or a dash until the server names it.
+ */
+function _paintEventTitles(bandPct) {
+  for (const id of _EVENT_IDS) {
+    const el = g("tgEvtTitle_" + id);
+    if (el) el.textContent = eventTitle(id, bandPct);
+  }
+}
+
+/**
+ * Paint the dialog from the server's Telegram settings, once
+ * `openTelegramModal` has them: tick each alert's checkbox as saved and
+ * let it be changed, title each alert with the balanced band the
+ * notifier uses, and show in the token and chat id fields whether one
+ * is saved.
+ * @param {object} data  The answer to GET /api/telegram/config.
+ */
 function _applyConfigToModal(data) {
-  if (data.enabledEvents) {
+  const events = data.enabledEvents;
+  if (events !== null && typeof events === "object") {
     for (const id of _EVENT_IDS) {
       const el = g("tgEvt_" + id);
-      if (el) el.checked = !!data.enabledEvents[id];
+      if (el) el.checked = events[id] === true;
     }
+    _showEventsFromServer(true);
   }
-  /*- Sync the balanced-band threshold (code-only constant in
-   *  src/telegram-notifications/balanced-notifier.js) into the checkbox label so the
-   *  shown percent always matches the live BALANCED_THRESHOLD. */
-  const pctEl = g("tgBalancedThresholdPct");
-  if (pctEl && Number.isFinite(Number(data.balancedThresholdPct))) {
-    pctEl.textContent = String(Number(data.balancedThresholdPct));
-  }
+  const band = Number(data.balancedThresholdPct);
+  _paintEventTitles(Number.isFinite(band) ? String(band) : "—");
   const tokenEl = g("tgBotToken");
   const chatEl = g("tgChatId");
   if (tokenEl)
@@ -182,7 +236,9 @@ function _stashCurrentFormForDeferredSave() {
   const token = tokenEl?.value.trim();
   const chatId = chatEl?.value.trim();
   if (!token && !chatId) return;
-  const body = { enabledEvents: _readEvents() };
+  const body = {};
+  const events = _readEvents();
+  if (events !== null) body.enabledEvents = events;
   if (token) body.botToken = token;
   if (chatId) body.chatId = chatId;
   _pendingConfig = body;
@@ -191,8 +247,13 @@ function _stashCurrentFormForDeferredSave() {
   );
 }
 
-/** Read the event checkboxes and return an enabledEvents map. */
+/**
+ * Read the event checkboxes into an enabledEvents map, or null while
+ * they do not show the server's choices.
+ * @returns {Object<string, boolean>|null}
+ */
 function _readEvents() {
+  if (!_eventsFromServer) return null;
   const events = {};
   for (const id of _EVENT_IDS) {
     const el = g("tgEvt_" + id);
@@ -249,7 +310,9 @@ function _applySaveSuccess(body, tokenEl, chatEl) {
 async function _save() {
   const tokenEl = g("tgBotToken");
   const chatEl = g("tgChatId");
-  const body = { enabledEvents: _readEvents() };
+  const body = {};
+  const events = _readEvents();
+  if (events !== null) body.enabledEvents = events;
   if (tokenEl?.value.trim()) body.botToken = tokenEl.value.trim();
   if (chatEl?.value.trim()) body.chatId = chatEl.value.trim();
   _setStatus("Saving...");

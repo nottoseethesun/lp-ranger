@@ -18,6 +18,7 @@ const {
   buildStatusPositions,
   getAllPositionBotStates,
 } = require("../src/server-positions");
+const { buildRebalanceOpts } = require("../src/bot-cycle-opts");
 
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
 const CONTRACT = "0xCC05BF51E2B8f0A457E8F15FD5E8e25F34f8b279";
@@ -196,4 +197,54 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
     assert.strictEqual(out[k].status, "stopped");
     assert.strictEqual(out[k].rebalanceTimeoutMin, 180);
   });
+});
+
+describe("buildStatusPositions — the offset the next rebalance uses", () => {
+  /*-
+   *  The Rebalance Now preview reads this, so it must be what the bot
+   *  builds its rebalance from, for a running position and a stopped one
+   *  alike.
+   */
+  const botOffset = (saved) =>
+    buildRebalanceOpts(
+      {
+        position: { token0: "0xA", token1: "0xB" },
+        _getConfig: (n) => saved[n],
+      },
+      {},
+    ).offsetToken0Pct;
+
+  for (const [name, saved] of [
+    ["a saved offset", { rangeOverrideEnabled: true, offsetToken0Pct: 30 }],
+    ["the install's default", { rangeOverrideEnabled: true }],
+    ["No Override", { rangeOverrideEnabled: false, offsetToken0Pct: 30 }],
+  ]) {
+    it(`publishes the bot's own figure, with ${name}`, () => {
+      resetBotStates();
+      const running = key("170001");
+      const stopped = key("170002");
+      getAllPositionBotStates().set(running, {});
+      const out = buildStatusPositions(
+        {
+          global: {},
+          positions: {
+            [running]: { status: "running", ...saved },
+            [stopped]: { status: "stopped", ...saved },
+          },
+        },
+        POS_DEFAULTS,
+        FAKE_POSITION_MGR,
+        FAKE_CFG,
+      );
+      resetBotStates();
+      assert.strictEqual(
+        out[running].rebalanceOffsetToken0Pct,
+        botOffset(saved),
+      );
+      assert.strictEqual(
+        out[stopped].rebalanceOffsetToken0Pct,
+        botOffset(saved),
+      );
+    });
+  }
 });

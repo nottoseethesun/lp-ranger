@@ -15,24 +15,55 @@
  *   both writers of `#dblWindowLabel` in a "remove-dead-throttle-UI"
  *   cleanup pass.  The `#dblWindowLabel` element was NOT removed from
  *   `public/index.html`, so it lived on as a hardcoded `"40 min"`
- *   string.  The doubling trigger window IS `4 × minIntervalMs` in
- *   `src/throttle.js` (`window4 = 4 * state.minIntervalMs`) — anyone
- *   changing Min Time Between Rebalances from the default 10 min saw
- *   a wrong window label.  Silent because the element existed (no
- *   null-ref crash), and because most users never touched the setting.
- *   These tests pin the derivation and the DOM sync so a repeat
- *   deletion trips CI.
+ *   string.  The doubling trigger window is `triggerWindowMultiple`
+ *   times the minimum interval, the rule `src/throttle.js` enforces from
+ *   bot-config-defaults.json → `throttleDoubling` — anyone changing Min
+ *   Time Between
+ *   Rebalances from the default 10 min saw a wrong window label.  Silent
+ *   because the element existed (no null-ref crash), and because most
+ *   users never touched the setting.  These tests pin the derivation and
+ *   the DOM sync so a repeat deletion trips CI.
  */
 
 require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { loadShippedDefaults } = require("../src/load-merged-defaults");
+const { learnUiSettings } = require("./helpers/ui-settings");
+
+/*-
+ *  The NEAR LIMIT threshold the server sends, moved off its shipped
+ *  value, so the badge is seen to read the setting in force.
+ */
+const NEAR_LIMIT_PCT =
+  loadShippedDefaults("ui-defaults_non-layout_for-server-up-scenario.json")
+    .throttleNearLimitPct - 15;
+
+const BOT = loadShippedDefaults("bot-config-defaults.json");
+const TRIGGER_WINDOW_MULTIPLE = BOT.throttleDoubling.triggerWindowMultiple;
 
 let mod;
 
 before(async () => {
   mod = await import("../public/dashboard-throttle.js");
+  await learnUiSettings({ throttleNearLimitPct: NEAR_LIMIT_PCT });
+  /*-
+   *  The label takes the doubling rule from the defaults the server
+   *  sends with the help's figures: the rule as the bot enforces it,
+   *  overrides included. A server running on the shipped settings
+   *  stands in for it.
+   */
+  const figures = await import("../public/dashboard-help-figures.js");
+  await figures.loadHelpFigures({
+    fetchFn: async () => ({
+      ok: true,
+      json: async () => ({ figures: {}, botDefaults: BOT }),
+    }),
+    warnFn: () => assert.fail("answered at once"),
+    onUnanswered: () => {},
+    onAnswered: () => {},
+  });
 });
 
 /*- Build the DOM structure the throttle module reads/writes and reset
@@ -52,7 +83,6 @@ beforeEach(() => {
     <span id="rangeLabel"></span>
   `;
   mod.throttle.minIntervalMs = 10 * 60 * 1000;
-  mod.throttle.rebTimestamps = [];
   mod.throttle.doublingActive = false;
   mod.throttle.doublingCount = 0;
   mod.throttle.currentWaitMs = 10 * 60 * 1000;
@@ -143,16 +173,63 @@ describe("dblWindowLabel — regression pin for e22536c", () => {
     assert.doesNotThrow(() => mod.updateThrottleUI());
   });
 
-  it("scales by exactly 4× minIntervalMs — matches src/throttle.js window4", () => {
+  it("scales by the bot's own trigger-window multiple", () => {
     for (const min of [1, 3, 7, 30, 60, 240]) {
+      const want = TRIGGER_WINDOW_MULTIPLE * min + " min";
       mod.throttle.minIntervalMs = min * 60 * 1000;
       mod.updateThrottleUI();
       assert.strictEqual(
         document.getElementById("dblWindowLabel").textContent,
-        4 * min + " min",
-        `minIntervalMs = ${min} min should give '${4 * min} min'`,
+        want,
+        `minIntervalMs = ${min} min should give '${want}'`,
       );
     }
+  });
+
+  it("follows the doubling rule the server sends, an override included", async () => {
+    const figures = await import("../public/dashboard-help-figures.js");
+    const load = (botDefaults) =>
+      figures.loadHelpFigures({
+        fetchFn: async () => ({
+          ok: true,
+          json: async () => ({ figures: {}, botDefaults }),
+        }),
+        warnFn: () => assert.fail("answered at once"),
+        onUnanswered: () => {},
+        onAnswered: () => {},
+      });
+    await load({
+      ...BOT,
+      throttleDoubling: { ...BOT.throttleDoubling, triggerWindowMultiple: 7 },
+    });
+    try {
+      mod.throttle.minIntervalMs = 10 * 60 * 1000;
+      mod.updateThrottleUI();
+      assert.strictEqual(
+        document.getElementById("dblWindowLabel").textContent,
+        "70 min",
+      );
+    } finally {
+      await load(BOT);
+    }
+  });
+
+  it("shows a dash, not a made-up window, before any interval is known", () => {
+    /*-
+     *  Nothing supplies the interval until the first status poll or a
+     *  Save, and the dashboard holds no default of its own to stand in.
+     */
+    mod.throttle.minIntervalMs = null;
+    mod.throttle.currentWaitMs = null;
+    mod.updateThrottleUI();
+    assert.strictEqual(
+      document.getElementById("dblWindowLabel").textContent,
+      "—",
+    );
+    assert.strictEqual(
+      document.getElementById("kpiCountdown").textContent,
+      "—",
+    );
   });
 });
 
@@ -184,34 +261,56 @@ describe("throttleBadge (updateThrottleUI dispatch)", () => {
     assert.strictEqual(badge.className, "warn-badge");
   });
 
-  it("NEAR LIMIT at 4/5 usage (80%) with no other state active", () => {
-    mod.throttle.dailyCount = 4; // 4 / 5 = 80%
+  it("NEAR LIMIT once usage reaches throttleNearLimitPct, with no other state active", () => {
+    mod.throttle.dailyMax = 100;
+    mod.throttle.dailyCount = NEAR_LIMIT_PCT;
     mod.updateThrottleUI();
     const badge = document.getElementById("throttleBadge");
     assert.strictEqual(badge.textContent, "NEAR LIMIT");
     assert.strictEqual(badge.className, "warn-badge");
   });
 
-  it("OK when idle and under 80% usage", () => {
+  it("OK one rebalance short of throttleNearLimitPct", () => {
+    mod.throttle.dailyMax = 100;
+    mod.throttle.dailyCount = NEAR_LIMIT_PCT - 1;
+    mod.updateThrottleUI();
+    const badge = document.getElementById("throttleBadge");
+    assert.strictEqual(badge.textContent, "OK");
+  });
+
+  it("OK when idle and under throttleNearLimitPct usage", () => {
     mod.updateThrottleUI();
     const badge = document.getElementById("throttleBadge");
     assert.strictEqual(badge.textContent, "OK");
     assert.strictEqual(badge.className, "live-badge");
   });
+
+  it("a dash, not CAPPED, before the daily cap is known", () => {
+    /*-
+     *  Nothing supplies the cap until the first status poll. A zero
+     *  standing in for it read as reached, so a managed position's badge
+     *  said CAPPED, and rebalancing looked blocked, before anything was
+     *  known.
+     */
+    mod.throttle.dailyMax = null;
+    mod.updateThrottleUI();
+    const badge = document.getElementById("throttleBadge");
+    assert.strictEqual(badge.textContent, "—");
+    assert.notStrictEqual(mod.canRebalance().reason, "daily_limit");
+  });
 });
 
-// ── Tests: onParamChange / saveMinInterval — the save-gated sync path ──────
+// ── Tests: typing and the save-gated sync path ─────────────────────────────
 
-describe("onParamChange() — typing must NOT move the saved-value displays", () => {
+describe("typing must NOT move the saved-value displays", () => {
   it(
     "typing 15 into #inMinInterval WITHOUT clicking Save leaves " +
       "throttle.minIntervalMs and #dblWindowLabel unchanged " +
       "(the user-reported contract: label updates only on Save)",
     () => {
       document.getElementById("inMinInterval").value = "15";
-      mod.onParamChange();
-      assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
       mod.updateThrottleUI();
+      assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
       assert.strictEqual(
         document.getElementById("dblWindowLabel").textContent,
         "40 min",
@@ -219,10 +318,11 @@ describe("onParamChange() — typing must NOT move the saved-value displays", ()
     },
   );
 
-  it("updating #inMaxReb propagates to throttle.dailyMax", () => {
+  it("typing into #inMaxReb leaves the badge's cap where the server put it", () => {
+    // The cap is the server's: only its status answer may move it.
     document.getElementById("inMaxReb").value = "12";
-    mod.onParamChange();
-    assert.strictEqual(mod.throttle.dailyMax, 12);
+    mod.updateThrottleUI();
+    assert.strictEqual(mod.throttle.dailyMax, 5);
   });
 });
 
@@ -276,35 +376,8 @@ describe("applySavedMinInterval() — per-position seed from saved config", () =
   });
 });
 
-describe("applyPolledMinInterval() — one-shot post-Save poll skip", () => {
-  it(
-    "the full user-reported sequence: Save 20 → first sweep carries the " +
-      "bot's stale pre-save 10 and is SKIPPED (no revert) → second sweep " +
-      "with fresh 20 applies normally",
-    () => {
-      // Save 20 (stamps the skip marker).
-      document.getElementById("inMinInterval").value = "20";
-      mod.saveMinInterval();
-      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
-      const lbl = document.getElementById("dblWindowLabel");
-      assert.strictEqual(lbl.dataset.skipNextPoll, "1");
-
-      // Sweep N: stale snapshot (10 min) — must be skipped, marker consumed.
-      mod.applyPolledMinInterval(10 * 60 * 1000);
-      assert.strictEqual(
-        mod.throttle.minIntervalMs,
-        20 * 60 * 1000,
-        "stale post-Save sweep must not revert the optimistic value",
-      );
-      assert.strictEqual(lbl.dataset.skipNextPoll, undefined);
-
-      // Sweep N+1: fresh snapshot (20 min) — applies normally.
-      mod.applyPolledMinInterval(20 * 60 * 1000);
-      assert.strictEqual(mod.throttle.minIntervalMs, 20 * 60 * 1000);
-    },
-  );
-
-  it("without the marker, a polled value applies immediately", () => {
+describe("applyPolledMinInterval() — the value a status answer carries", () => {
+  it("applies the answer's value at once", () => {
     mod.applyPolledMinInterval(15 * 60 * 1000);
     assert.strictEqual(mod.throttle.minIntervalMs, 15 * 60 * 1000);
   });
@@ -314,69 +387,58 @@ describe("applyPolledMinInterval() — one-shot post-Save poll skip", () => {
     mod.applyPolledMinInterval(null);
     assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
   });
-
-  it("missing #dblWindowLabel element → polled value still applies (defensive)", () => {
-    document.getElementById("dblWindowLabel").remove();
-    mod.applyPolledMinInterval(25 * 60 * 1000);
-    assert.strictEqual(mod.throttle.minIntervalMs, 25 * 60 * 1000);
-  });
 });
 
-describe("saveMinInterval() — Save click applies the value + label", () => {
+describe("saveMinInterval() — the server's answer, not the click, moves the display", () => {
+  /** The Doubling Trigger Window label for a minimum of `min` minutes. */
+  const windowLabel = (min) => `${min * TRIGGER_WINDOW_MULTIPLE} min`;
+
   it(
-    "saving 15 propagates to throttle.minIntervalMs AND updates " +
-      "#dblWindowLabel to '60 min' on the click itself (this would " +
-      "have caught e22536c)",
+    "a Save leaves the throttle and the Doubling Trigger Window label as " +
+      "they were, and the status answer carrying the saved value moves them",
     () => {
+      const label = document.getElementById("dblWindowLabel");
+      mod.updateThrottleUI();
       document.getElementById("inMinInterval").value = "15";
       mod.saveMinInterval();
-      assert.strictEqual(mod.throttle.minIntervalMs, 15 * 60 * 1000);
-      assert.strictEqual(
-        document.getElementById("dblWindowLabel").textContent,
-        "60 min",
-      );
+      mod.updateThrottleUI();
+      assert.strictEqual(mod.throttle.minIntervalMs, 10 * 60 * 1000);
+      assert.strictEqual(label.textContent, windowLabel(10));
+
+      mod.applyPolledMinInterval(15 * 60 * 1000);
+      mod.updateThrottleUI();
+      assert.strictEqual(label.textContent, windowLabel(15));
     },
   );
 
-  it("rejects invalid input (empty / NaN / zero) — nothing changes", () => {
-    for (const bad of ["", "abc", "0", "-3"]) {
-      document.getElementById("inMinInterval").value = bad;
-      mod.saveMinInterval();
-      assert.strictEqual(
-        mod.throttle.minIntervalMs,
-        10 * 60 * 1000,
-        `input ${JSON.stringify(bad)} must not change minIntervalMs`,
-      );
-    }
+  it("never shows a value the server's answer does not carry", () => {
+    document.getElementById("inMinInterval").value = "15";
+    mod.saveMinInterval();
+    // The answer still carries the old value: refused, or not saved yet.
+    mod.applyPolledMinInterval(10 * 60 * 1000);
+    mod.updateThrottleUI();
+    assert.strictEqual(
+      document.getElementById("dblWindowLabel").textContent,
+      windowLabel(10),
+    );
   });
-
-  it(
-    "when doubling is INACTIVE, currentWaitMs tracks the saved " +
-      "minIntervalMs — the change reflects on the Save click",
-    () => {
-      document.getElementById("inMinInterval").value = "20";
-      mod.throttle.doublingActive = false;
-      mod.saveMinInterval();
-      assert.strictEqual(mod.throttle.currentWaitMs, 20 * 60 * 1000);
-    },
-  );
-
-  it(
-    "when doubling is ACTIVE, currentWaitMs is NOT clobbered by " +
-      "the saved minIntervalMs — the already-doubled wait persists",
-    () => {
-      document.getElementById("inMinInterval").value = "20";
-      mod.throttle.doublingActive = true;
-      mod.throttle.currentWaitMs = 80 * 60 * 1000;
-      mod.saveMinInterval();
-      assert.strictEqual(mod.throttle.currentWaitMs, 80 * 60 * 1000);
-      assert.strictEqual(
-        document.getElementById("dblWindowLabel").textContent,
-        "80 min",
-      );
-    },
-  );
 });
 
 /*- A refused save is `public/dashboard-config-save.js`'s job now, and
  *  is covered by test/dashboard-config-save.test.js. */
+
+describe("the OOR timeout badge", () => {
+  it("says Turned Off for 0, the minutes otherwise, a dash before it is known", () => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<span id="activeOorTimeout"></span>',
+    );
+    const shown = (rebalanceTimeoutMin) => {
+      mod.updateTriggerDisplay({ rebalanceTimeoutMin });
+      return document.getElementById("activeOorTimeout").textContent;
+    };
+    assert.equal(shown(0), "Turned Off");
+    assert.equal(shown(120), "120");
+    assert.equal(shown(undefined), "—");
+  });
+});

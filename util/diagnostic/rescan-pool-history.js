@@ -48,11 +48,18 @@
  *     `src/server-positions.js`), which is why a restart is required.
  *   - Any other position or pool.
  *
+ * It imports nothing from `src/`, so loading it neither opens the app's
+ * log file nor reads operator settings. The cost is the default chain:
+ * it is the shipped `app-runtime.json` value, read as data, so neither
+ * `CHAIN_NAME` in `.env` nor an operator's override of that file is
+ * seen. An install running another chain passes `--blockchain`.
+ *
  * Usage:
  *   node util/diagnostic/rescan-pool-history.js <tokenId> [options]
  *
  * Options:
- *   --blockchain <name>   default: pulsechain
+ *   --blockchain <name>   default: the app's default chain
+ *                         (app-runtime.json → defaults.chain)
  *   --wallet <0x...>      required if multiple positions match tokenId
  *   --contract <0x...>    default: only-match if exactly one position
  *                         in config has that tokenId
@@ -82,6 +89,18 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 const { Command } = require("commander");
+const APP_RUNTIME = require("../../app-config/app-defaults-for-user-configurable/app-runtime.json");
+/*-
+ *  Dependency-free, so this tool can share the app's own key rule
+ *  without loading the app's modules.
+ */
+const { parseCompositeKey } = require("../../src/composite-key");
+
+/*-
+ *  The chain used when `--blockchain` is not given: the shipped default
+ *  (see the file header for what that leaves unread).
+ */
+const DEFAULT_CHAIN = APP_RUNTIME.defaults.chain;
 
 /**
  * Describe the command line, so Commander both parses it and renders
@@ -101,7 +120,7 @@ function buildProgram() {
           "start. MUTATES local cache files.",
       )
       .argument("<tokenId>", "the NFT whose pool should be rescanned")
-      .option("--blockchain <name>", "chain name", "pulsechain")
+      .option("--blockchain <name>", "chain name", DEFAULT_CHAIN)
       /*- Placeholders avoid a literal "..." — Commander reads that as a
        *  variadic option and hands back an array instead of a string. */
       .option(
@@ -167,15 +186,14 @@ function _writeJson(filePath, obj) {
 /** Find the position composite key matching the given tokenId + filters. */
 function _findPositionKey(positions, tokenId, flags) {
   const matches = Object.keys(positions).filter((k) => {
-    const parts = k.split("-");
-    if (parts.length !== 4) return false;
-    if (parts[3] !== tokenId) return false;
-    if (flags.blockchain && parts[0] !== flags.blockchain) return false;
-    if (flags.wallet && parts[1].toLowerCase() !== flags.wallet.toLowerCase())
+    const p = parseCompositeKey(k);
+    if (p === null || p.tokenId !== tokenId) return false;
+    if (flags.blockchain && p.blockchain !== flags.blockchain) return false;
+    if (flags.wallet && p.wallet.toLowerCase() !== flags.wallet.toLowerCase())
       return false;
     if (
       flags.contract &&
-      parts[2].toLowerCase() !== flags.contract.toLowerCase()
+      p.contract.toLowerCase() !== flags.contract.toLowerCase()
     )
       return false;
     return true;
@@ -228,7 +246,7 @@ function _filterDescription(flags) {
  *   none matches. Exits 1 when several match.
  */
 function _findPoolKey(epochCache, posKey, flags) {
-  const [blockchain, wallet, contract] = posKey.split("-");
+  const { blockchain, wallet, contract } = parseCompositeKey(posKey);
   const segs = [
     blockchain.toLowerCase(),
     contract.toLowerCase(),

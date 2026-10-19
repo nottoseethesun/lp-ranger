@@ -31,24 +31,43 @@
 "use strict";
 
 const { fetchDustUnitPriceUsd } = require("./price-fetcher");
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { loadMergedDefaults } = require("./load-merged-defaults");
+const { KINDS } = require("./value-kinds");
 
 const _FILENAME = "dust-threshold.json";
 
-/*- Single-source baseline: read the shipped JSON once at module init.
- *  Throws on missing/malformed file (install error, fail loudly).  All
- *  default values live in the JSON — no literal duplicates in code. */
-const _SHIPPED = Object.freeze(loadShippedDefaults(_FILENAME));
+/*-
+ *  Read once at module init: the shipped JSON, with the operator's copy
+ *  on top. A missing or malformed shipped file throws (an install error,
+ *  so it fails loudly). All default values live in the JSON, with no
+ *  literal duplicates in code.
+ */
+const _CFG = loadMergedDefaults(_FILENAME);
+
+/*-
+ *  Each figure must be a number above 0, the kind the tests hold the
+ *  shipped file to (src/value-kinds.js). Anything else stops the app
+ *  here, naming the setting: compared against text, zero or less, the
+ *  guard would call no amount dust.
+ */
+for (const key of ["thresholdUnits", "fallbackThresholdUsd"]) {
+  if (!KINDS.positive.ok(_CFG[key]))
+    throw new Error(
+      `[dust] ${_FILENAME} → ${key} must be ${KINDS.positive.what}; ` +
+        `it is ${JSON.stringify(_CFG[key])}. An operator's copy is ` +
+        `app-config/user-configurable/${_FILENAME}.`,
+    );
+}
 
 /** Universal dust size in units of the reference asset.  Single source
  *  of truth across the app for "how small is too small to act on".
  *  Consumers should read it via this export (or call
  *  `getDustThresholdUsd()` / `isDust()`) rather than re-reading the
  *  JSON or hardcoding a number elsewhere. */
-const DUST_THRESHOLD_UNITS = _SHIPPED.thresholdUnits;
+const DUST_THRESHOLD_UNITS = _CFG.thresholdUnits;
 
 /** Absolute USD floor used only when the USD/unit fetch returns 0. */
-const _FALLBACK_THRESHOLD_USD = _SHIPPED.fallbackThresholdUsd;
+const _FALLBACK_THRESHOLD_USD = _CFG.fallbackThresholdUsd;
 
 /**
  * Current dust threshold in USD.

@@ -16,10 +16,14 @@
 
 const { handleUiDefaults } = require("./ui-defaults");
 const { handleLpProviders } = require("./lp-providers");
-const { handleBotConfigDefaults } = require("./bot-config-defaults");
+const {
+  handleBotConfigDefaults,
+  handleHelpFigures,
+} = require("./resolved-settings");
 const { handleChartProviders } = require("./chart-providers");
 const { handleRpcEndpoints } = require("./rpc-endpoints");
 const { handleSettingLabels } = require("./setting-labels");
+const config = require("./config");
 
 /**
  * Build the `{ "METHOD /path": handler }` route map for all
@@ -36,12 +40,30 @@ function userConfigurableRoutes(jsonResponse) {
       handleLpProviders(req, res, jsonResponse),
     "GET /api/bot-config-defaults": (req, res) =>
       handleBotConfigDefaults(req, res, jsonResponse),
+    "GET /api/help-figures": (req, res) =>
+      handleHelpFigures(req, res, jsonResponse),
     "GET /api/chart-providers": (req, res) =>
       handleChartProviders(req, res, jsonResponse),
     "GET /api/rpc-endpoints": (req, res) =>
       handleRpcEndpoints(req, res, jsonResponse),
     "GET /api/setting-labels": (req, res) =>
       handleSettingLabels(req, res, jsonResponse),
+    /*-
+     *  The active chain — which `chains.json` entry this process runs
+     *  against. The dashboard reads it once, before it builds any
+     *  position key or url: the chain is the first segment of both, and
+     *  a dashboard that assumed "pulsechain" would file a testnet
+     *  position's settings under a mainnet key. The rest makes the
+     *  header's chain link. `src/config.js` refuses to start without any
+     *  of them, so none needs a fallback here.
+     */
+    "GET /api/chain": (_req, res) =>
+      jsonResponse(res, 200, {
+        chainId: config.CHAIN_NAME,
+        displayName: config.CHAIN.displayName,
+        homepage: config.CHAIN.homepage,
+        logo: config.CHAIN.logo,
+      }),
   };
 }
 

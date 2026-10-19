@@ -1,18 +1,19 @@
 # Avoid Edge-Case, Temporary Lag in Rebalance Data
 
-> **Status:** Nice-to-have / polish — not a bug. The app works
-> correctly without this. Funds are never at risk. The condition
-> below self-heals within 30 minutes.
+> **Status:** Nice-to-have / polish — not a bug. Funds are never at
+> risk. When this was written the condition cleared by itself within
+> half an hour; the scan's timing has changed since, so how it clears
+> now is still to be measured (see "How long the gap lasts").
 
 ## Plain language
 
-A rebalance can take about half an hour to appear in the Rebalance
+A rebalance could take up to half an hour to appear in the Rebalance
 Events table. Nothing has gone wrong when this happens: the rebalance
 itself completed normally and every figure that depends on it is
 correct. The scanner simply could not pair the new position with its
 predecessor on that pass, because the predecessor was already in the
-disk cache rather than in the blocks it had just read. The next scan
-pairs them and the row appears.
+disk cache rather than in the blocks it had just read. A later scan
+paired them and the row appeared.
 
 ## Mechanics
 
@@ -42,16 +43,25 @@ failure:
 
 ## How long the gap lasts
 
-After a rebalance the bot sets `_needsFullRescan`
-(`src/bot-recorder.js`). That flag is acted on by `lifetimeRescanTimer`
+This section described the code before a change, and the gap has not
+been re-measured since. It said: after a rebalance the bot sets
+`_needsFullRescan` (`src/bot-recorder.js`), and `lifetimeRescanTimer`
 in `src/bot-loop.js`, a `setInterval` running every **30 minutes**
-(`LIFETIME_RESCAN_CHECK_MS`), which runs the event scan and the
-lifetime scan together and repaints the missing pair.
+(`LIFETIME_RESCAN_CHECK_MS`), acts on it by running the event scan and
+the lifetime scan together, which repaints the missing pair. So the gap
+closed by itself within half an hour.
 
-So the gap closes on its own, but the window is up to half an hour
-&mdash; not one poll cycle. The dashboard's 3-second poll does not
-shorten it: that re-reads `/api/status` and re-renders what the server
-already holds, it does not re-run the scanner.
+Now a successful rebalance starts that scan at once (`_triggerScan` at
+the end of `_handleRebalanceSuccess`, `src/bot-cycle.js`), and the
+30-minute timer only retries a lifetime scan that has not finished. The
+immediate scan is still incremental, so it can meet the same pairing
+gap, and a lifetime scan that completes no longer leaves the timer
+anything to retry. Whether, and when, the row now appears has to be
+measured before this entry is acted on.
+
+The dashboard's 3-second poll does not shorten the gap either way: it
+re-reads `/api/status` and re-renders what the server already holds; it
+does not re-run the scanner.
 
 What shapes a fix: the event cache is **not** invalidated on rebalance.
 `clearPoolCache` runs only from `src/server-reload-position.js`, the

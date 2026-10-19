@@ -1,6 +1,7 @@
 /**
  * @file test/server-config-route.test.js
- * @description Unit tests for `POST /api/config` in src/server-routes.js.
+ * @description Unit tests for `POST /api/config`, built by
+ * src/server-config-route.js and served by src/server-routes.js.
  *
  * Split out of test/server-routes.test.js at the 500-line cap when the
  * route grew a value check. The route is the one place a setting an
@@ -15,6 +16,8 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const { createRouteHandlers } = require("../src/server-routes");
+const { checkIlGuard } = require("../src/il-guard");
+const { ilSnapshot } = require("./helpers/il-snapshot");
 
 /** Build a minimal deps object with stubs for createRouteHandlers. */
 function makeDeps(overrides = {}) {
@@ -68,50 +71,58 @@ function makeRes() {
 describe("POST /api/config", () => {
   it("applies global keys from body", async () => {
     const deps = makeDeps({
-      readJsonBody: async () => ({ triggerType: "oor" }),
+      readJsonBody: async () => ({ gasFeePct: 2 }),
     });
     const h = createRouteHandlers(deps);
     const res = makeRes();
     await h._handleApiConfig({}, res);
     assert.strictEqual(res._status, 200);
     assert.strictEqual(res._body.ok, true);
-    assert.strictEqual(res._body.applied.triggerType, "oor");
-    assert.strictEqual(deps.diskConfig.global.triggerType, "oor");
+    assert.strictEqual(res._body.applied.gasFeePct, 2);
+    assert.strictEqual(deps.diskConfig.global.gasFeePct, 2);
   });
 
-  it("refuses a checkIntervalSec that cannot serve as a timer delay", async () => {
-    /*- The one settable key that becomes a `setTimeout` delay. The
-     *  poll cycle re-reads it every pass, so a bad value lands on a
-     *  RUNNING bot — and past what a timer holds it does not poll
-     *  slowly, it polls with no gap at all. 400 rather than a clamp,
-     *  so the dashboard can say what was wrong instead of saving a
-     *  different number than the one entered. */
-    for (const bad of [0, -5, "abc", 1.5, 99_999_999]) {
-      const deps = makeDeps({
-        readJsonBody: async () => ({
-          positionKey: "pulsechain-0x1-0x2-100",
-          checkIntervalSec: bad,
-        }),
-      });
-      deps.diskConfig.positions = {
-        "pulsechain-0x1-0x2-100": { status: "running" },
-      };
-      const h = createRouteHandlers(deps);
-      const res = makeRes();
-      await h._handleApiConfig({}, res);
-      assert.strictEqual(res._status, 400, `${String(bad)} must be refused`);
-      assert.strictEqual(res._body.ok, false);
-      /*- The message names the setting the way the dashboard labels
-       *  it, so the operator reads the same words they typed into;
-       *  `invalidValueForKey` carries the config key for the code. */
-      assert.match(res._body.error, /Check Interval/);
-      assert.strictEqual(res._body.invalidValueForKey, "checkIntervalSec");
-      assert.strictEqual(
-        deps.diskConfig.positions["pulsechain-0x1-0x2-100"].checkIntervalSec,
-        undefined,
-        "and nothing is written",
-      );
-    }
+  it("no longer saves the retired triggerType or gasStrategy", async () => {
+    /*-
+     *  Neither is a setting any more, so neither is applied, and a
+     *  gasStrategy sent without a position key is not refused for the
+     *  missing key: it is not a position setting either.
+     */
+    const deps = makeDeps({
+      readJsonBody: async () => ({ triggerType: "oor", gasStrategy: "auto" }),
+    });
+    const res = makeRes();
+    await createRouteHandlers(deps)._handleApiConfig({}, res);
+    assert.strictEqual(res._status, 200);
+    assert.deepStrictEqual(res._body.applied, {});
+    assert.strictEqual(deps.diskConfig.global.triggerType, undefined);
+    assert.strictEqual(deps.diskConfig.global.gasStrategy, undefined);
+  });
+
+  it("stores no Check Interval for a position", async () => {
+    /*-
+     *  How often the bot checks is one global setting, in
+     *  bot-config-defaults.json or `.env`, and no position has its own.
+     *  A request naming one for a position saves nothing for it.
+     */
+    const deps = makeDeps({
+      readJsonBody: async () => ({
+        positionKey: "pulsechain-0x1-0x2-100",
+        checkIntervalSec: 600,
+      }),
+    });
+    deps.diskConfig.positions = {
+      "pulsechain-0x1-0x2-100": { status: "running" },
+    };
+    const h = createRouteHandlers(deps);
+    const res = makeRes();
+    await h._handleApiConfig({}, res);
+    assert.strictEqual(res._status, 200);
+    assert.deepStrictEqual(res._body.applied, {});
+    assert.strictEqual(
+      deps.diskConfig.positions["pulsechain-0x1-0x2-100"].checkIntervalSec,
+      undefined,
+    );
   });
 
   it("clears a GLOBAL key sent as null rather than storing the null", async () => {
@@ -133,23 +144,6 @@ describe("POST /api/config", () => {
       !("gasFeePct" in deps.diskConfig.global),
       "the key is removed, not set to null",
     );
-  });
-
-  it("accepts a checkIntervalSec inside the bounds", async () => {
-    const deps = makeDeps({
-      readJsonBody: async () => ({
-        positionKey: "pulsechain-0x1-0x2-100",
-        checkIntervalSec: 600,
-      }),
-    });
-    deps.diskConfig.positions = {
-      "pulsechain-0x1-0x2-100": { status: "running" },
-    };
-    const h = createRouteHandlers(deps);
-    const res = makeRes();
-    await h._handleApiConfig({}, res);
-    assert.strictEqual(res._status, 200);
-    assert.strictEqual(res._body.applied.checkIntervalSec, 600);
   });
 
   it("applies position keys to specific positionKey", async () => {
@@ -227,6 +221,29 @@ describe("POST /api/config", () => {
     assert.ok(res._body.error.includes("positionKey"));
   });
 
+  it("refuses a positionKey on a chain this server does not run, saving nothing", async () => {
+    /*-
+     *  A tab left open across a restart onto another chain still builds
+     *  its keys on the old one. Saved, such a slot would be read by no
+     *  bot, while the dashboard reported the setting saved.
+     */
+    const deps = makeDeps({
+      readJsonBody: async () => ({
+        slippagePctToken0: 1.5,
+        positionKey: "pulsechain-testnet-0x1-0x2-100",
+      }),
+    });
+    const h = createRouteHandlers(deps);
+    const res = makeRes();
+    await h._handleApiConfig({}, res);
+    assert.strictEqual(res._status, 400);
+    assert.match(res._body.error, /names chain "pulsechain-testnet"/);
+    assert.strictEqual(
+      deps.diskConfig.positions["pulsechain-testnet-0x1-0x2-100"],
+      undefined,
+    );
+  });
+
   it("clears rebalancePaused when a per-token slippage changes", async () => {
     /*- Either Slippage row frees a position the swap-cost gate paused,
      *  so the bot retries with the new figure. This keyed on the single
@@ -251,6 +268,114 @@ describe("POST /api/config", () => {
     await h._handleApiConfig({}, res);
     assert.strictEqual(posStates.get(pk).rebalancePaused, false);
     assert.strictEqual(posStates.get(pk).rebalanceError, null);
+  });
+
+  it("leaves another position's pause alone", async () => {
+    /*-
+     *  Another position's pause has its own cause, a volatile market or
+     *  a failed re-open among them, and this position's slippage does
+     *  nothing to answer it. Freed, it would rebalance again, or its
+     *  pending retire would be cancelled.
+     */
+    const pk = "pulsechain-0xAb5-0xCd9-42";
+    const other = "pulsechain-0xAb5-0xCd9-77";
+    const posStates = new Map([
+      [pk, { rebalancePaused: true, rebalanceError: "err" }],
+      [other, { rebalancePaused: true, rebalanceError: "volatile" }],
+    ]);
+    const deps = makeDeps({
+      readJsonBody: async () => ({ slippagePctToken1: 2, positionKey: pk }),
+      getAllPositionBotStates: () => posStates,
+    });
+    const res = makeRes();
+    await createRouteHandlers(deps)._handleApiConfig({}, res);
+    assert.strictEqual(res._status, 200);
+    assert.strictEqual(posStates.get(pk).rebalancePaused, false);
+    assert.strictEqual(posStates.get(other).rebalancePaused, true);
+    assert.strictEqual(posStates.get(other).rebalanceError, "volatile");
+  });
+
+  it("lifts the Impermanent Loss Guard's retry wait when the Guard changes", async () => {
+    /*-
+     *  A rejection under the old value started a wait of up to a week,
+     *  and the setting was not read again until it ended.
+     */
+    const pk = "pulsechain-0xAb5-0xCd9-42";
+    const other = "pulsechain-0xAb5-0xCd9-77";
+    const posStates = new Map([
+      [pk, { _ilGuardRejectedAt: Date.now(), _ilGuardRejectCount: 3 }],
+      [other, { _ilGuardRejectedAt: 1234, _ilGuardRejectCount: 2 }],
+    ]);
+    const deps = makeDeps({
+      readJsonBody: async () => ({
+        impermanentLossGuardPct: 40,
+        positionKey: pk,
+      }),
+      getAllPositionBotStates: () => posStates,
+    });
+    const res = makeRes();
+    await createRouteHandlers(deps)._handleApiConfig({}, res);
+    assert.strictEqual(res._status, 200);
+    assert.strictEqual(posStates.get(pk)._ilGuardRejectedAt, 0);
+    // A rejection on the new value starts the wait at its first rung.
+    assert.strictEqual(posStates.get(pk)._ilGuardRejectCount, 0);
+    // Another position's wait has its own rejection behind it.
+    assert.strictEqual(posStates.get(other)._ilGuardRejectedAt, 1234);
+    assert.strictEqual(posStates.get(other)._ilGuardRejectCount, 2);
+  });
+
+  it("decides on a saved Guard value at the very next check", async () => {
+    /*-
+     *  The whole contract: rejected at 15%, the position waits; a save of
+     *  40% lets the next check through, rather than one up to a week on.
+     */
+    const pk = "pulsechain-0xAb5-0xCd9-42";
+    let saved = 15;
+    const st = {};
+    const guardDeps = {
+      _botState: st,
+      _getConfig: (k) => (k === "impermanentLossGuardPct" ? saved : undefined),
+      position: { tokenId: 42 },
+      updateBotState: () => {},
+    };
+    // 30% below holding the coins the NFT was minted with.
+    const snap = ilSnapshot(700, 1000);
+    const check = () => checkIlGuard(guardDeps, false, snap, () => ({}));
+    const first = check();
+    assert.strictEqual(first?.ilGuardRejected, true, "rejected at 15%");
+    assert.notStrictEqual(first?.ilGuardCoolingDown, true);
+    saved = 40;
+    assert.strictEqual(check()?.ilGuardCoolingDown, true, "waits before Save");
+    const deps = makeDeps({
+      readJsonBody: async () => ({
+        impermanentLossGuardPct: saved,
+        positionKey: pk,
+      }),
+      getAllPositionBotStates: () => new Map([[pk, st]]),
+    });
+    await createRouteHandlers(deps)._handleApiConfig({}, makeRes());
+    assert.strictEqual(check(), null, "lets the rebalance through at 40%");
+  });
+
+  it("a request refused for its key frees no pause and applies no global key", async () => {
+    // Every refusal comes before the first change, the key's included.
+    const pk = "pulsechain-0xAb5-0xCd9-42";
+    const posStates = new Map([
+      [pk, { rebalancePaused: true, rebalanceError: "err" }],
+    ]);
+    const deps = makeDeps({
+      readJsonBody: async () => ({
+        gasFeePct: 2,
+        slippagePctToken0: 1.5,
+        positionKey: "pulsechain-testnet-0x1-0x2-100",
+      }),
+      getAllPositionBotStates: () => posStates,
+    });
+    const res = makeRes();
+    await createRouteHandlers(deps)._handleApiConfig({}, res);
+    assert.strictEqual(res._status, 400);
+    assert.strictEqual(deps.diskConfig.global.gasFeePct, undefined);
+    assert.strictEqual(posStates.get(pk).rebalancePaused, true);
   });
 
   it("ignores unknown keys", async () => {

@@ -114,8 +114,40 @@ function computeHodlIL({
   )
     return null;
   if (currentPrice0 <= 0 && currentPrice1 <= 0) return null;
-  const hodlValue = hodlAmount0 * currentPrice0 + hodlAmount1 * currentPrice1;
+  const hodlValue = hodlValueUsd({
+    hodlAmount0,
+    hodlAmount1,
+    currentPrice0,
+    currentPrice1,
+  });
   return lpValue + (residualValueUsd || 0) - hodlValue;
 }
 
-module.exports = { calcIlMultiplier, estimateLiveValue, computeHodlIL };
+/**
+ * What holding the deposited coins is worth at the given prices: the
+ * HODL side of `computeHodlIL`, on its own for a caller that needs the
+ * amount IL is measured against, such as the Impermanent Loss Guard's
+ * floor (src/il-guard.js).
+ *
+ * @param {object} opts
+ * @param {number} opts.hodlAmount0    Token0 amount originally deposited.
+ * @param {number} opts.hodlAmount1    Token1 amount originally deposited.
+ * @param {number} opts.currentPrice0  Token0 USD price now.
+ * @param {number} opts.currentPrice1  Token1 USD price now.
+ * @returns {number} USD.
+ */
+function hodlValueUsd({
+  hodlAmount0,
+  hodlAmount1,
+  currentPrice0,
+  currentPrice1,
+}) {
+  return hodlAmount0 * currentPrice0 + hodlAmount1 * currentPrice1;
+}
+
+module.exports = {
+  calcIlMultiplier,
+  estimateLiveValue,
+  computeHodlIL,
+  hodlValueUsd,
+};

@@ -111,9 +111,10 @@
  * RPC behaviour
  * ─────────────
  *   - Uses `config.RPC_URL` (chain default when the env var is unset).
- *   - Log scans are chunked at 10 000 blocks with a 250 ms throttle,
- *     matching `src/event-scanner.js` conventions.  A 30-day window is
- *     roughly 26 chunks at PulseChain's ~10 s block time.
+ *   - Log scans are chunked at the app's `getLogsChunkSize` and paced at
+ *     its `globalRPCRequestRateIntervalMS`, four requests a chunk.  A
+ *     30-day window is roughly 29 chunks at PulseChain's ~10 s block
+ *     time and the shipped 9,000-block chunk.
  *   - Never scans from block 0 — the window is always bounded by
  *     `--days` or `--from-block`.
  *
@@ -185,13 +186,16 @@ process.chdir(path.resolve(__dirname, "..", "..", ".."));
 const { ethers } = require("ethers");
 const config = require("../../../src/config");
 const { PM_ABI } = require("../../../src/pm-abi");
+const { parseCompositeKey } = require("../../../src/composite-key");
+const { _DEFAULT_CHUNK_SIZE } = require("../../../src/get-logs-chunked");
+const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
 const { setApiKey } = require("../../../src/api-key-holder");
+const { fetchTokenPriceUsd } = require("../../../src/price-fetcher");
 const {
-  fetchTokenPriceUsd,
   _fetchMoralisCurrent,
   _fetchGeckoTerminalCurrent,
   _fetchDexScreener,
-} = require("../../../src/price-fetcher");
+} = require("../../../src/price-sources-current");
 const { parseLogs: _parseLogs } = require("../../../src/nft-event-parse");
 const { topicForTokenId } = require("../../../src/nft-token-topic");
 const { Command, InvalidArgumentError } = require("commander");
@@ -211,14 +215,23 @@ const CONFIG_PATH = path.join(
   "bot-config.json",
 );
 
-/** Block time on PulseChain ≈ 10 s. */
-const BLOCK_TIME_SEC = 10;
+/** The active chain's block time (chains.json `blockTimeSec`). */
+const BLOCK_TIME_SEC = config.CHAIN.blockTimeSec;
 
 /** Default scan window in days. */
 const DEFAULT_DAYS = 30;
 
-const CHUNK_SIZE = 10000;
-const CHUNK_DELAY_MS = 250;
+// Block span per getLogs call: the app's own `getLogsChunkSize`.
+const CHUNK_SIZE = _DEFAULT_CHUNK_SIZE;
+
+/*-
+ *  Pause after each chunk, which is four requests. The app spaces every
+ *  request by `globalRPCRequestRateIntervalMS`; this tool has a provider
+ *  of its own, outside the app's queue, so it waits those four spacings
+ *  itself.
+ */
+const CHUNK_DELAY_MS =
+  4 * readBotConfigDefaults().globalRPCRequestRateIntervalMS;
 
 /** Minimal ERC-20 surface: decimals + symbol, read straight from chain. */
 const ERC20_ABI = [
@@ -322,10 +335,14 @@ function resolveKey(positions, arg) {
   return { key: matches[0], error: null, matches };
 }
 
-/** Extract the tokenId from a `blockchain-wallet-contract-tokenId` key. */
+/**
+ * Extract the tokenId from a `blockchain-wallet-contract-tokenId` key,
+ * through the app's own parser, which reads from the right so a chain
+ * name holding a dash still parses.
+ */
 function tokenIdFromKey(key) {
-  const parts = key.split("-");
-  return parts.length === 4 ? parts[3] : null;
+  const parsed = parseCompositeKey(key);
+  return parsed === null ? null : parsed.tokenId;
 }
 
 // ── chain + price I/O ───────────────────────────────────────────────────────
@@ -426,11 +443,17 @@ async function scanEvents(provider, tokenId, fromBlock, toBlock) {
  *   gecko: number, dex: number}>}
  */
 async function pricesPerSource(token, moralisKeyPresent) {
+  // Each service by its own id for the active chain (chains.json).
+  const services = config.CHAIN.priceServices;
   const cascade = await fetchTokenPriceUsd(token);
   const [moralis, gecko, dex] = await Promise.all([
-    moralisKeyPresent ? _fetchMoralisCurrent(token) : Promise.resolve(null),
-    _fetchGeckoTerminalCurrent(token).catch(() => 0),
-    _fetchDexScreener(token).catch(() => 0),
+    moralisKeyPresent
+      ? _fetchMoralisCurrent(token, services.moralisChain)
+      : Promise.resolve(null),
+    _fetchGeckoTerminalCurrent(token, services.geckoTerminalNetwork).catch(
+      () => 0,
+    ),
+    _fetchDexScreener(token, services.dexScreenerChain).catch(() => 0),
   ]);
   return { cascade, moralis, gecko, dex };
 }

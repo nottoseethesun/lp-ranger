@@ -55,9 +55,27 @@ test("_abbrevScope — abbreviates each dimension the way writers do", () => {
   assert.equal(a.fee, "2500");
 });
 
-test("_abbrevScope — tolerates missing dimensions", () => {
-  const a = cpc._abbrevScope({});
-  assert.deepEqual(a, { bc: "", pm: "", t0: "", t1: "", fee: "undefined" });
+test("_abbrevScope — tolerates missing pool dimensions", () => {
+  const a = cpc._abbrevScope({ blockchain: SCOPE.blockchain });
+  assert.deepEqual(a, {
+    bc: "pulse",
+    pm: "",
+    t0: "",
+    t1: "",
+    fee: "undefined",
+  });
+});
+
+test("_abbrevScope — a chain with no cache tag names the setting", () => {
+  /*-
+   *  There is no chain to assume: a guessed tag would match, and so
+   *  delete, another chain's caches.
+   */
+  assert.throws(() => cpc._abbrevScope({}), /cacheTag/);
+  assert.throws(
+    () => cpc._abbrevScope({ blockchain: "no-such-chain" }),
+    /no-such-chain\.cacheTag/,
+  );
 });
 
 test("findEventCacheFiles — matches every wallet for one pool only", () => {
@@ -364,6 +382,21 @@ test("_mainPaths — every key is overridable", () => {
   );
 });
 
+/*-
+ *  The V3 factory the pool-creation cache keys its entries under, and the
+ *  keys both lookup caches write, in the canonical chain-first form. The
+ *  testnet entries are the same pool address on another chain, which is
+ *  another pool: cleaning PulseChain must leave them alone, though their
+ *  chain's name begins with "pulsechain-".
+ */
+const V3_FACTORY = "0x" + "f".repeat(40);
+const PCB_KEY = `pulsechain-${V3_FACTORY}-${POOL}`.toLowerCase();
+const PCB_OTHER_POOL = `pulsechain-${V3_FACTORY}-0xotherpool`;
+const PCB_OTHER_CHAIN =
+  `pulsechain-testnet-${V3_FACTORY}-${POOL}`.toLowerCase();
+const GECKO_KEY = `pulsechain-${POOL}`.toLowerCase();
+const GECKO_OTHER_CHAIN = `pulsechain-testnet-${POOL}`.toLowerCase();
+
 /** A scratch install with a chains registry and the lookup caches. */
 function fixtureInstall() {
   const dir = scratch();
@@ -371,10 +404,14 @@ function fixtureInstall() {
     dir,
     chainsPath: writeJson(dir, "chains.json", REGISTRY),
     poolCreationPath: writeJson(dir, "pcb.json", {
-      [`pulsechain-${POOL}`]: 111,
-      "pulsechain-0xotherpool": 222,
+      [PCB_KEY]: 111,
+      [PCB_OTHER_POOL]: 222,
+      [PCB_OTHER_CHAIN]: 333,
     }),
-    geckoPath: writeJson(dir, "gecko.json", { [POOL.toLowerCase()]: "x" }),
+    geckoPath: writeJson(dir, "gecko.json", {
+      [GECKO_KEY]: "normal",
+      [GECKO_OTHER_CHAIN]: "normal",
+    }),
     epochPath: path.join(dir, "epochs.json"),
     detailsPath: path.join(dir, "pair.json"),
   };
@@ -432,9 +469,17 @@ test("main --preserve-pool-history — cleans lookup caches only", async () => {
   const out = res.out.join("\n");
   assert.match(out, /preserve-pool-history \(lookup caches only\)/);
   assert.match(out, /across 2 surface\(s\)/);
-  /*- The other pool's creation block must survive. */
+  /*-
+   *  The other pool's creation block must survive, and so must this
+   *  pool's entries on another chain.
+   */
   const pcb = JSON.parse(fs.readFileSync(f.poolCreationPath, "utf8"));
-  assert.deepEqual(Object.keys(pcb), ["pulsechain-0xotherpool"]);
+  assert.deepEqual(
+    Object.keys(pcb).sort(),
+    [PCB_OTHER_POOL, PCB_OTHER_CHAIN].sort(),
+  );
+  const gecko = JSON.parse(fs.readFileSync(f.geckoPath, "utf8"));
+  assert.deepEqual(Object.keys(gecko), [GECKO_OTHER_CHAIN]);
 });
 
 test("main — full mode sweeps every surface and totals the removals", async () => {

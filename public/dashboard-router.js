@@ -3,13 +3,15 @@
  * @description Client-side URL routing for the LP Ranger dashboard.
  * Uses Navigo v8 for pushState-based routing so that positions are bookmarkable
  * and shareable via URL paths like /pulsechain/:wallet/:contract/:tokenId.
+ * The first segment is the active chain (`activeChainId()`), so a testnet
+ * install's urls start /pulsechain-testnet/.
  *
  * ## Navigo architecture
  *
  * Navigo (root: '/') owns all URL state.  Three routes are registered:
- *   - /pulsechain/:wallet/:contract/:tokenId  — deep-link to a specific NFT position
- *   - /pulsechain/:wallet                     — wallet loaded, no position selected
- *   - /                                       — root, no URL-driven state
+ *   - /<chain>/:wallet/:contract/:tokenId  — deep-link to a specific NFT position
+ *   - /<chain>/:wallet                     — wallet loaded, no position selected
+ *   - /                                    — root, no URL-driven state
  *
  * Route handlers fire on initial resolve() and on popstate (back/forward).
  * Navigo's `navigate()` API is used for all URL updates with two modes:
@@ -41,7 +43,8 @@
  * (position selection, wallet import/clear).  Automatic flows (scan, wallet
  * status restore) use syncRouteToState, which refuses to overwrite an
  * existing deep-link URL (4+ path segments).  The router handles deep-link
- * resolution via pending route targets and retry logic (3 attempts, 2s apart).
+ * resolution via pending route targets, and a link to a position the store
+ * lacks scans the wallet and looks again once the scan finishes.
  *
  * Depends on: navigo (npm), dashboard-helpers.js (act).
  */
@@ -50,18 +53,21 @@ import { log } from "./dashboard-log.js";
 import Navigo from "navigo";
 import { ethers } from "./ethers-adapter.js";
 import { act, ACT_ICONS } from "./dashboard-helpers.js";
-import { _posLabel } from "./dashboard-data.js";
+import { _posLabel } from "./dashboard-data-status.js";
+import { activeChainId } from "./dashboard-chain.js";
 
-/*- Browsers canonicalize URL paths to lowercase before sending, so the
- *  `:wallet` / `:contract` route segments always arrive lowercase even
- *  if the link was minted with EIP-55 mixed case.  Server-side keys
- *  (composite key for /api/status, .bot-config.json) are built from
- *  on-chain reads that ALWAYS return EIP-55 checksum form, so a
- *  lowercase URL segment used as-is silently misses every server-side
- *  lookup.  Normalize on entry through `ethers.getAddress` (EIP-55
- *  checksum), and surface a clear log line on invalid input rather
- *  than propagating garbage downstream.  See
- *  [[feedback_eip55_checksum_url_segments]]. */
+/**
+ * The `:wallet` / `:contract` route segments arrive in whatever case
+ * the link was written in: the app writes them checksummed, but a
+ * bookmark made before it did, or an address typed by hand, can be all
+ * lowercase. Server-side keys (composite key for /api/status,
+ * bot-config.json) are built from on-chain reads that always return
+ * EIP-55 checksum form, so a segment used as-is could miss every
+ * server-side lookup. Normalize on entry through `ethers.getAddress`
+ * (EIP-55 checksum), and log a clear line on invalid input rather than
+ * propagating garbage downstream. See
+ * [[feedback_eip55_checksum_url_segments]].
+ */
 function _toChecksum(addr) {
   if (!addr) return addr;
   try {
@@ -75,9 +81,6 @@ function _toChecksum(addr) {
     return addr;
   }
 }
-
-/** Blockchain name used as the first URL segment. */
-const CHAIN = "pulsechain";
 
 /** @type {Navigo|null} Router instance. */
 let _router = null;
@@ -110,11 +113,16 @@ export function injectRouterDeps(deps) {
 export function initRouter() {
   _router = new Navigo("/");
 
+  /*-
+   *  Registered after startup has read the active chain from the server,
+   *  so the first segment is that chain's id.
+   */
+  const chain = activeChainId();
   _router
-    .on("/" + CHAIN + "/:wallet/:contract/:tokenId", ({ data }) => {
+    .on("/" + chain + "/:wallet/:contract/:tokenId", ({ data }) => {
       _handlePositionRoute(data.wallet, data.contract, data.tokenId);
     })
-    .on("/" + CHAIN + "/:wallet", ({ data }) => {
+    .on("/" + chain + "/:wallet", ({ data }) => {
       _handleWalletRoute(data.wallet);
     })
     .on("/", () => {
@@ -163,7 +171,7 @@ function _handlePositionRoute(walletAddr, contract, tokenId) {
     _wallet.address &&
     _wallet.address.toLowerCase() === walletAddr.toLowerCase()
   ) {
-    _tryActivatePosition(tokenId, 0);
+    _tryActivatePosition(tokenId);
     return;
   }
 
@@ -190,36 +198,39 @@ function _handleWalletRoute(walletAddr) {
   }
 }
 
-/**
- * Attempt to activate a position by tokenId, with retry logic.
- * @param {string} tokenId  Token ID to find and activate.
- * @param {number} attempt  Current attempt number (max 3).
- * @returns {boolean}  True if the position was found and activated synchronously.
- */
-function _tryActivatePosition(tokenId, attempt) {
-  if (!_posStore) return false;
-
+/** Activate the stored NFT position `tokenId`; false when the store lacks it. */
+function _activateIfStored(tokenId) {
   const idx = _posStore.entries.findIndex(
     (e) => e.positionType === "nft" && String(e.tokenId) === String(tokenId),
   );
+  if (idx < 0) return false;
+  if (_activateByTokenId) _activateByTokenId(tokenId);
+  act(
+    ACT_ICONS.link,
+    "start",
+    "Position Loaded from URL",
+    "NFT #" + tokenId + (_posLabel() ? "\n" + _posLabel() : ""),
+  );
+  return true;
+}
 
-  if (idx >= 0) {
-    if (_activateByTokenId) _activateByTokenId(tokenId);
-    act(
-      ACT_ICONS.link,
-      "start",
-      "Position Loaded from URL",
-      "NFT #" + tokenId + (_posLabel() ? "\n" + _posLabel() : ""),
-    );
-    return true;
-  }
-
-  if (attempt < 3) {
-    if (attempt === 0 && _scanPositions) {
-      _scanPositions();
-    }
-    setTimeout(() => _tryActivatePosition(tokenId, attempt + 1), 2000);
-  }
+/**
+ * Activate the position a deep link names.
+ *
+ * A link can name a position the store has never seen, such as one
+ * opened in a fresh browser. Then the wallet is scanned and the store
+ * asked once more when the scan has finished; a position that scan does
+ * not find is not in this wallet. The server answers a scan that is
+ * already running with that scan's result, so a scan started elsewhere
+ * at the same moment is waited for rather than raced.
+ *
+ * @param {string} tokenId  Token ID to find and activate.
+ * @returns {boolean}  True if the position was found and activated synchronously.
+ */
+function _tryActivatePosition(tokenId) {
+  if (!_posStore) return false;
+  if (_activateIfStored(tokenId)) return true;
+  if (_scanPositions) _scanPositions().then(() => _activateIfStored(tokenId));
   return false;
 }
 
@@ -257,7 +268,7 @@ export function resolvePendingRoute() {
   _pendingRouteTarget = null;
 
   if (target.tokenId) {
-    return _tryActivatePosition(target.tokenId, 0);
+    return _tryActivatePosition(target.tokenId);
   }
   return false;
 }
@@ -277,13 +288,17 @@ function _currentPath() {
  */
 function _buildPositionPath(active) {
   if (!active || !_wallet || !_wallet.address) return null;
-  const w = _wallet.address.toLowerCase();
-  const contract = (active.contractAddress || "").toLowerCase();
+  /*-
+   *  EIP-55 checksummed, as every address the app shows is
+   *  ([[feedback_eip55_checksum_url_segments]]).
+   */
+  const w = _toChecksum(_wallet.address);
+  const contract = _toChecksum(active.contractAddress || "");
   const tokenId = active.tokenId;
   if (active.positionType === "nft" && tokenId && contract) {
-    return CHAIN + "/" + w + "/" + contract + "/" + tokenId;
+    return activeChainId() + "/" + w + "/" + contract + "/" + tokenId;
   }
-  return CHAIN + "/" + w;
+  return activeChainId() + "/" + w;
 }
 
 /**
@@ -313,7 +328,7 @@ export function updateRouteForPosition(active) {
  */
 export function updateRouteForWallet(address) {
   if (!_router) return;
-  const target = address ? CHAIN + "/" + address.toLowerCase() : "";
+  const target = address ? activeChainId() + "/" + _toChecksum(address) : "";
   if (_currentPath().toLowerCase() === target.toLowerCase()) return;
 
   _router.navigate(target, {

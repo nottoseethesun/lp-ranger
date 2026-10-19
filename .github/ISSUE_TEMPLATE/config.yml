@@ -6,7 +6,7 @@
 blank_issues_enabled: false
 
 contact_links:
-  - name: 📖 Read the Help and User Manual
+  - name: 📖 Read the User Manual
     url: https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html
     about: |
       Most usage questions are answered in the manual. Please check there

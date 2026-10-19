@@ -22,17 +22,14 @@
 
 const { log } = require("./log");
 const config = require("./config");
-const {
-  saveConfig,
-  getPositionConfig,
-  parseCompositeKey,
-} = require("./bot-config-v2");
+const { saveConfig, getPositionConfig } = require("./bot-config-v2");
+const { parseCompositeKey } = require("./composite-key");
 const { CHAIN_DERIVED_POSITION_KEYS } = require("./bot-config-keys");
 const _epochCache = require("./epoch-cache");
 const { cancelPoolScan, clearPoolCache } = require("./pool-scanner");
 const { resolveLiveKey } = require("./server-key-resolver");
 const { logCtx } = require("./logger");
-const { getTokenSymbol } = require("./server-scan");
+const { getTokenSymbol } = require("./token-symbol-cache");
 
 /*- Bot-state fields to reset so the fresh scan's persist-conditions all
  *  re-evaluate as "no data on disk" and the readiness gates re-engage. */
@@ -96,10 +93,14 @@ function _clearDiskConfigForKey(diskConfig, positionKey) {
   return true;
 }
 
-/** Build the pool-identity key opts for cache clears. */
+/**
+ * Build the pool-identity key opts for the epoch-cache clear: the same
+ * fields every writer of that cache passes. The epoch cache supplies
+ * the active chain itself, so the clear lands on the entry the writers
+ * made, whichever chain this server runs.
+ */
 function _cacheKeyOpts(position, wallet) {
   return {
-    blockchain: "pulsechain",
     contract: config.POSITION_MANAGER,
     wallet,
     token0: position.token0,

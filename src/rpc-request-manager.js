@@ -33,7 +33,8 @@
  *
  * Interval: `globalRPCRequestRateIntervalMS` in
  * `bot-config-defaults.json` (default 222 ms).  Read once at module
- * load, so a change needs a restart.  Zero disables pacing.
+ * load, so a change needs a restart.  At least 5 ms (setting-bounds.json),
+ * so pacing cannot be turned off.
  */
 
 "use strict";
@@ -131,21 +132,20 @@ function _drain() {
 /**
  * Wait for permission to send one JSON-RPC request.
  *
- * Resolves immediately when pacing is disabled, or when the queue is
- * empty and enough time has already passed since the last release —
+ * Resolves immediately when the queue is empty and enough time has
+ * already passed since the last release —
  * so an idle bot polling every five minutes never pays a penalty.
  * Otherwise joins the queue and resolves when its turn comes.
  *
  * @returns {Promise<void>}  Resolves when the caller may send.
  */
 function acquire() {
-  /*- The halt outranks pacing, including the `0` that disables pacing:
-   *  an operator who turned pacing off still wants the process to stop
-   *  calling endpoints that have all stopped answering. Both fast paths
-   *  below are therefore gated on it. */
+  /*-
+   *  The halt outranks pacing: the fast path below is gated on it, so a
+   *  process whose endpoints have all stopped answering stops calling
+   *  them.
+   */
   const haltMs = _haltRemainingMs();
-  if (haltMs === 0 && _INTERVAL_MS <= 0) return Promise.resolve();
-
   const sinceLast = Date.now() - _lastReleaseMs;
   if (
     haltMs === 0 &&
@@ -171,8 +171,7 @@ function acquire() {
 }
 
 /**
- * Configured interval, in milliseconds.  Exposed for logging and tests;
- * zero means pacing is disabled.
+ * Configured interval, in milliseconds.  Exposed for logging and tests.
  * @returns {number}
  */
 function getIntervalMs() {

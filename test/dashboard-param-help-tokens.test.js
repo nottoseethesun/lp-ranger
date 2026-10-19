@@ -19,12 +19,30 @@ require("global-jsdom/register");
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
+const { shippedFigures } = require("../scripts/build-manual-content");
+const BOT = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
+
 let mod;
 let store;
 
 before(async () => {
   store = await import("../public/dashboard-positions-store.js");
   mod = await import("../public/dashboard-param-help.js");
+  /*-
+   *  The dialogs state the figures the server sends, so they open only
+   *  once those have arrived. A server sending the shipped ones stands
+   *  in for it.
+   */
+  const figures = await import("../public/dashboard-help-figures.js");
+  await figures.loadHelpFigures({
+    fetchFn: async () => ({
+      ok: true,
+      json: async () => ({ figures: shippedFigures(), botDefaults: BOT }),
+    }),
+    warnFn: () => assert.fail("answered at once"),
+    onUnanswered: () => {},
+    onAnswered: () => {},
+  });
 });
 
 beforeEach(() => {

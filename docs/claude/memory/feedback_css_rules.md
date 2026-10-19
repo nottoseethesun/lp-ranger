@@ -1,8 +1,11 @@
 ---
 name: feedback_css_rules
-description: CSS rules: no inline styles, no zoom, no !important, let classes do the work, name colors in comments
+description: "CSS rules: no inline styles, no zoom, no !important, let classes do the work, name colors in comments"
 metadata:
+  node_type: memory
   type: feedback
+  originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
+  modified: 2026-10-18T03:15:19.221Z
 ---
 
 # CSS rules
@@ -52,3 +55,25 @@ Whenever a hex code (`#D4AF37`) or RGB triple (`212;175;55`) appears in code, in
 - The user established this rule on 2026-04-28 specifically for `console.log` color codes; they explicitly said NOT to retrofit non-console-log color codes at that time.
 - For new color additions: name first (or alongside) the hex/RGB. When updating an existing color, also add the name comment if missing.
 - Use the standard/canonical color name (HTML/CSS named color, Pantone/common name) — capitalize the words ("Metallic Gold," not "metallic gold").
+
+## CSS values ship with the build (2026-10-17)
+
+Anything that shapes the layout, such as the dialog height, reaches the
+page either as JSON bundled at build time or written into CSS (the
+generated `ui-tokens.css`). Never from the server at runtime.
+
+**Why:** the user, 2026-10-17, when I proposed having the server write
+the dialog-height stylesheet: "Anything related to CSS such as Dialog
+Height, must either be shipped to the client as json in the build
+bundle, or in CSS", because "otherwise the u.i. will flicker and flash
+at start-up". A value that arrives after first paint makes the page
+jump when it lands.
+
+**How to apply:** non-layout UI settings come from the server like any
+other value, overrides included (`ui-defaults_non-layout_for-server-up-scenario.json`,
+`GET /api/ui-defaults`); the two the page needs while the server is down
+are built in (`…_for-server-down-scenario.json`). Layout values stay
+build-time: `npm run build` writes `ui-tokens.css` from
+`ui-defaults_layout.json`, an operator's override included, and a change
+takes effect at the next build. The split is the user's, 2026-10-17;
+docs/engineering.md § "The Dashboard's Three Settings Files".

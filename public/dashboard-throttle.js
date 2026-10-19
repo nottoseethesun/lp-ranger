@@ -8,7 +8,7 @@
  * quick succession.  The UI badge and countdown are refreshed
  * every second by {@link updateThrottleUI}.
  *
- * Depends on: dashboard-helpers.js, dashboard-positions.js (posStore).
+ * Depends on: dashboard-helpers.js, dashboard-positions-store.js (posStore).
  */
 
 import {
@@ -16,56 +16,92 @@ import {
   act,
   ACT_ICONS,
   fmtCountdown,
-  nextMidnight,
   botConfig,
   savePositionOorThreshold,
   compositeKey,
 } from "./dashboard-helpers.js";
-import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import {
-  _posLabel,
-  markInputDirty,
-  getInputDefault,
-} from "./dashboard-data.js";
+import { posStore, isPositionManaged } from "./dashboard-positions-store.js";
+import { _posLabel } from "./dashboard-data-status.js";
+import { markInputDirty } from "./dashboard-data-cache.js";
+import { CENTERED_OFFSET_PCT } from "../src/centered-offset.js";
 import { isViewingClosedPos } from "./dashboard-closed-pos.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
+import { activeChainId } from "./dashboard-chain.js";
+import { uiSetting, uiSettingsLoaded } from "./dashboard-ui-settings.js";
+/*-
+ *  The bot's own doubling rule, for the trigger-window label: as the
+ *  server resolves it, the operator's override included, since that is
+ *  the rule the bot enforces.
+ */
+import { resolvedBotDefaults } from "./dashboard-help-figures.js";
 
-// Late-bound import to avoid circular dep issues at evaluation time.
-// Populated by dashboard-init.js after all modules load.
+/*-
+ *  Late-bound imports to avoid circular dep issues at evaluation time.
+ *  Populated by dashboard-init.js after all modules load.
+ */
 let _positionRangeVisual = null;
+let _getLastStatus = null;
 
 /**
  * Inject data references after all modules are loaded.
  * Called once from dashboard-init.js.
- * @param {object} deps  { positionRangeVisual }
+ * @param {object} deps  { positionRangeVisual, getLastStatus }
  */
 export function injectThrottleDeps(deps) {
   _positionRangeVisual = deps.positionRangeVisual;
+  _getLastStatus = deps.getLastStatus;
 }
-
-// ── Trigger type ────────────────────────────────────────────────────────────
-
-/** Trigger type: out of range (only supported type). */
-export const TRIGGER_OOR = "oor";
-
-/** Active trigger configuration. */
-export const trigger = { type: TRIGGER_OOR };
 
 // ── Throttle state ──────────────────────────────────────────────────────────
 
-/** Mutable throttle state. */
-export const throttle = {
-  minIntervalMs: 10 * 60 * 1000,
-  rebTimestamps: [],
-  doublingActive: false,
-  doublingCount: 0,
-  currentWaitMs: 10 * 60 * 1000,
-  lastRebTime: 0,
-  dailyCount: 0,
-  dailyMax: 0,
-  dailyResetAt: nextMidnight(),
-};
+/**
+ * What the client throttle holds about a position's bot loop before the
+ * loop has reported: nothing. The doubling, the wait, the last
+ * rebalance, and the day's count, cap and reset come only from the
+ * throttle snapshot in the status answer for the position on screen.
+ * @returns {object}
+ */
+function _unreportedLoopState() {
+  return {
+    doublingActive: false,
+    doublingCount: 0,
+    currentWaitMs: null,
+    lastRebTime: 0,
+    dailyCount: 0,
+    dailyMax: null,
+    dailyResetAt: null,
+  };
+}
+
+/**
+ * Mutable throttle state: what the server last reported for the position
+ * on screen. The two intervals and the daily cap are null until a status
+ * poll supplies them; the displays built on them show a dash until then
+ * rather than a figure the dashboard made up.
+ */
+export const throttle = { minIntervalMs: null, ..._unreportedLoopState() };
+
+/**
+ * Forget what a bot loop reported, for a position on screen whose loop
+ * has not reported yet: one behind the startup stagger, or any position
+ * while the wallet is locked. The badge, the countdown and the banner
+ * would otherwise go on showing the previous position's.
+ */
+export function forgetLoopThrottle() {
+  Object.assign(throttle, _unreportedLoopState());
+}
+
+/**
+ * Forget everything the client throttle holds, the minimum interval
+ * included, and repaint: called when another position is put on screen,
+ * whose figures arrive with the next status answer.
+ */
+export function forgetThrottleState() {
+  forgetLoopThrottle();
+  throttle.minIntervalMs = null;
+  updateThrottleUI();
+}
 
 /**
  * Check whether a rebalance is currently allowed.
@@ -73,7 +109,7 @@ export const throttle = {
  */
 export function canRebalance() {
   const now = Date.now();
-  if (throttle.dailyCount >= throttle.dailyMax) {
+  if (throttle.dailyMax !== null && throttle.dailyCount >= throttle.dailyMax) {
     return {
       allowed: false,
       msUntilAllowed: throttle.dailyResetAt - now,
@@ -84,7 +120,7 @@ export function canRebalance() {
     ? throttle.currentWaitMs
     : throttle.minIntervalMs;
   const since = now - throttle.lastRebTime;
-  if (throttle.lastRebTime > 0 && since < wait) {
+  if (throttle.lastRebTime > 0 && wait !== null && since < wait) {
     return {
       allowed: false,
       msUntilAllowed: wait - since,
@@ -94,31 +130,13 @@ export function canRebalance() {
   return { allowed: true, msUntilAllowed: 0, reason: "ok" };
 }
 
-/**
- * Re-read UI inputs and update throttle parameters.
- *
- * Deliberately does NOT read `#inMinInterval`: `throttle.minIntervalMs`
- * feeds derived displays (the Doubling Trigger Window label, the
- * countdown KPI), which must reflect the SAVED value — not unsaved
- * typing.  It is written only by `saveMinInterval()` (Save click) and
- * by the `/api/status` poll sync in dashboard-data-status.js (server's
- * saved value).  Before this gate, each keystroke moved the label and
- * the next poll snapped it back — a flicker the user read as the
- * setting having changed without a Save.
- */
-export function onParamChange() {
-  const maxEl = g("inMaxReb");
-  throttle.dailyMax = parseInt(maxEl?.value) || throttle.dailyMax;
-  updateThrottleUI();
-}
-
 /*-
  * Rebalance-control status (badge, countdowns, daily X/Y) is only
  * meaningful for Managed positions — Unmanaged positions have no bot
  * loop, no throttle counter, no scheduling. We surface that with an
  * "N/A" render plus a machine tooltip ("Only for Managed Positions"),
- * rather than letting client-side defaults paint a misleading state
- * (e.g. dailyMax=0 paints a false CAPPED).
+ * rather than letting client-side state paint a misleading one (the
+ * counters of whichever managed position was polled last).
  */
 const _NA_TOOLTIP = "Only for Managed Positions";
 
@@ -154,13 +172,19 @@ function _clearNa(el) {
 /**
  * Render the throttle badge.  Six states, resolved as a FIRST-MATCH
  * ladder — the order is the point, since more than one can be true at
- * once and the badge shows the most binding constraint:
+ * once and the badge shows the most binding constraint. Until the first
+ * status poll supplies the daily cap it shows a dash, as every display
+ * built on a figure not yet known does:
  *
  *   1. `N/A`        — position is not managed; nothing is scheduled.
  *   2. `CAPPED`     — the pool hit Max Rebalances / Day.
  *   3. `DOUBLING ×N`— doubling mode is active (longer cooldown).
  *   4. `THROTTLED`  — inside the Min Time Between Rebalances cooldown.
- *   5. `NEAR LIMIT` — at or past 80% of the daily cap, nothing blocked.
+ *   5. `NEAR LIMIT` — at or past `throttleNearLimitPct` of the daily cap,
+ *                     nothing blocked. That figure is a setting the
+ *                     server sends. Typing in Max Rebalances can repaint
+ *                     the badge before it has, while no count is known,
+ *                     so the badge cannot be NEAR LIMIT then.
  *   6. `OK`         — free to rebalance now.
  *
  * Because the ladder short-circuits, `NEAR LIMIT` only shows when the
@@ -170,7 +194,7 @@ function _clearNa(el) {
  * Every one of these has a matching section in the `throttleBadge`
  * entry of `param-help-content.js` — a state the badge can paint with
  * no explanation behind the circle-i is a user staring at a word with
- * nowhere to look it up.  `test/dashboard-param-help-coverage.js`
+ * nowhere to look it up.  `test/dashboard-param-help-coverage.test.js`
  * pins the pairing.
  *
  * @param {number} pct  Daily usage percentage.
@@ -183,6 +207,11 @@ function _renderThrottleBadge(pct) {
     return;
   }
   _clearNa(badge);
+  if (throttle.dailyMax === null) {
+    badge.textContent = "—";
+    badge.className = "live-badge";
+    return;
+  }
   const check = canRebalance();
   if (throttle.dailyCount >= throttle.dailyMax) {
     badge.textContent = "CAPPED";
@@ -193,7 +222,7 @@ function _renderThrottleBadge(pct) {
   } else if (!check.allowed && check.reason === "min_interval") {
     badge.textContent = "THROTTLED";
     badge.className = "warn-badge";
-  } else if (pct >= 80) {
+  } else if (uiSettingsLoaded() && pct >= uiSetting("throttleNearLimitPct")) {
     badge.textContent = "NEAR LIMIT";
     badge.className = "warn-badge";
   } else {
@@ -238,14 +267,26 @@ function _checkBannerVisibility(banner) {
   return true;
 }
 
+/**
+ * The OOR timeout in force for the position on screen, in minutes, as the
+ * status answer carries it: its saved value or the install's default.
+ * Not the field in Bot Settings, which can hold unsaved typing. Null
+ * before the first answer.
+ * @returns {number|null}
+ */
+function _oorTimeoutMinInForce() {
+  const v = _getLastStatus?.()?.rebalanceTimeoutMin;
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
 /** Render OOR sub-state for a managed position (threshold, doubling, triggered). */
 function _renderManagedOor(banner, can) {
   if (botConfig.withinThreshold) {
     banner.className = "range-status-banner wait";
     g("rangeIcon").textContent = "\u26A0";
     let threshLabel = "OUT OF RANGE \u2014 WITHIN THRESHOLD";
-    const timeoutMin = parseInt(g("inOorTimeout")?.value, 10) || 0;
-    if (timeoutMin > 0 && botConfig.oorSince) {
+    const timeoutMin = _oorTimeoutMinInForce();
+    if (timeoutMin !== null && timeoutMin > 0 && botConfig.oorSince) {
       const remaining = botConfig.oorSince + timeoutMin * 60000 - Date.now();
       threshLabel += " \u00B7 Timeout: " + fmtCountdown(remaining);
     }
@@ -315,10 +356,12 @@ function _renderCountdownKpi(can) {
    *  Keeps this KPI consistent with the Doubling Trigger Window
    *  label (audit finding: the two adjacent displays disagreed
    *  while typing). */
-  const minIntervalMin = Math.round(throttle.minIntervalMs / 60000);
   if (can.allowed) {
     if (cd) {
-      cd.textContent = minIntervalMin + " min";
+      cd.textContent =
+        throttle.minIntervalMs === null
+          ? "—"
+          : Math.round(throttle.minIntervalMs / 60000) + " min";
       cd.className = "kpi-value neu";
     }
   } else {
@@ -336,19 +379,31 @@ function _renderCountdownKpi(can) {
   }
 }
 
-/*- Render the "Doubling Trigger Window" label to `4 × minIntervalMs`.
- *  Kept in sync with `src/throttle.js`'s `window4 = 4 * state.minIntervalMs`
- *  — if that multiplier ever changes there, change it here too. */
+/**
+ * Render the "Doubling Trigger Window" label: the bot's trigger window,
+ * the `throttleDoubling` group's trigger multiple times the saved minimum
+ * interval, as the bot enforces it. A dash until both have arrived.
+ */
 function _renderDoublingWindowLabel() {
   const el = g("dblWindowLabel");
   if (!el) return;
-  el.textContent = (4 * throttle.minIntervalMs) / 60000 + " min";
+  const defaults = resolvedBotDefaults();
+  el.textContent =
+    throttle.minIntervalMs === null || defaults === null
+      ? "—"
+      : (defaults.throttleDoubling.triggerWindowMultiple *
+          throttle.minIntervalMs) /
+          60000 +
+        " min";
 }
 
 /** Refresh all throttle-related UI elements (badge, countdown, banner). */
 export function updateThrottleUI() {
   const can = canRebalance();
-  const pct = Math.min(100, (throttle.dailyCount / throttle.dailyMax) * 100);
+  const pct =
+    throttle.dailyMax === null
+      ? 0
+      : Math.min(100, (throttle.dailyCount / throttle.dailyMax) * 100);
   _renderThrottleBadge(pct);
   _renderCountdownKpi(can);
   _renderRangeBanner(can);
@@ -462,14 +517,17 @@ export function _saveSingleConfig(inputId, key, parse, onSaved) {
   markInputDirty(inputId);
   const val = parse(g(inputId)?.value);
   const active = posStore.getActive();
+  const chain = activeChainId();
   const positionKey = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         active.walletAddress,
         active.contractAddress,
         active.tokenId,
       )
     : undefined;
+  // Labelled now, for the position clicked, not whichever is on screen later.
+  const pl = _posLabel();
   saveConfigValues({
     values: { [key]: val },
     positionKey,
@@ -478,7 +536,6 @@ export function _saveSingleConfig(inputId, key, parse, onSaved) {
       /*- Logged once the server has taken it, not when the request goes
        *  out: a refused save would otherwise read "Setting Saved" in the
        *  Activity Log while the dialog says it was rejected. */
-      const pl = _posLabel();
       act(
         ACT_ICONS.gear,
         "start",
@@ -493,13 +550,12 @@ export function _saveSingleConfig(inputId, key, parse, onSaved) {
 /**
  * Apply a SAVED Min Time Between Rebalances value (minutes) to the
  * client throttle so the derived displays (Doubling Trigger Window
- * label, countdown KPI) reflect it.  Two callers:
- *   - `saveMinInterval()` — optimistic apply on the Save click;
- *   - `_populateConfigInputs()` in dashboard-data.js — per-position
- *     seed from the saved config in the /api/status payload.  This
- *     covers dashboard-only mode (bots not running → no
- *     `throttleState` in the payload at all) and the window before a
- *     freshly-started bot's first poll emits a snapshot.
+ * label, countdown KPI) reflect it.  Its caller is
+ * `populateConfigInputs()` in dashboard-config-inputs.js, which seeds
+ * each position from the saved config in the /api/status payload.  This
+ * covers dashboard-only mode (bots not running → no `throttleState` in
+ * the payload at all) and the window before a freshly-started bot's
+ * first poll emits a snapshot.
  * Invalid input is ignored (no literal fallback per
  * feedback_one_literal_per_shipped_default).
  * @param {number} minutes  Saved Min Time Between Rebalances.
@@ -516,53 +572,38 @@ export function applySavedMinInterval(minutes) {
 }
 
 /**
- * Apply a polled `throttleState.minIntervalMs` to the client throttle,
- * honoring the one-shot `data-skip-next-poll` marker on
- * `#dblWindowLabel`.  `saveMinInterval` sets that marker because the
- * bot only refreshes its emitted `throttleState` snapshot on its own
- * poll cycle (`POST /api/config` does not kick the bot poll) — so the
- * first dashboard sweep after a Save still carries the PRE-save value
- * and would clobber the optimistic apply, showing a one-sweep revert.
- * The poll consumes the marker (removes it) and skips that single
- * update; subsequent sweeps apply normally.
- * @param {number} minIntervalMs  From the polled `throttleState`.
+ * Apply the Min Time Between Rebalances a status answer carries to the
+ * client throttle.  Every status answer calls this
+ * (`_syncClientThrottle`, dashboard-data-status.js), so a saved value
+ * reaches the Doubling Trigger Window label and the countdown once the
+ * server's answer carries it, and a refused one never does.
+ * @param {number} minIntervalMs  From the status answer.
  */
 export function applyPolledMinInterval(minIntervalMs) {
   if (typeof minIntervalMs !== "number") return;
-  const lbl = g("dblWindowLabel");
-  if (lbl && lbl.dataset.skipNextPoll !== undefined) {
-    delete lbl.dataset.skipNextPoll;
-    return;
-  }
   throttle.minIntervalMs = minIntervalMs;
 }
 
-/** Save Min Time Between Rebalances: validate, apply optimistically,
- *  stamp the one-shot poll-skip marker, persist to the server. */
+/**
+ * Save Min Time Between Rebalances.  The throttle, the Doubling Trigger
+ * Window label and the countdown are not touched here: they show only
+ * what the server reports, and its next status answer carries the saved
+ * value (`_syncClientThrottle`, dashboard-data-status.js).
+ */
 export function saveMinInterval() {
   const n = parseInt(g("inMinInterval")?.value, 10);
-  /*- Optimistic client apply on Save: the Doubling Trigger Window label
-   *  and countdown KPI derive from `throttle.minIntervalMs`, which is
-   *  save-gated (see `onParamChange`). Applying here makes the label
-   *  reflect the new value on the Save click itself instead of waiting
-   *  for the round-trip; the poll re-syncs it from the server every
-   *  cycle, so a refused value does not persist on screen. */
-  applySavedMinInterval(n);
-  /*- One-shot poll-skip marker — see `applyPolledMinInterval`. */
-  const lbl = g("dblWindowLabel");
-  if (lbl) lbl.dataset.skipNextPoll = "1";
   _saveSingleConfig("inMinInterval", "minRebalanceIntervalMin", () => n);
   _validateIntervalVsTimeout();
 }
-/** Save max rebalances per day. */
+/**
+ * Save max rebalances per day. The throttle badge and the day's count
+ * are not touched here: they show only what the server reports, and its
+ * next status answer carries the saved cap (`_updateThrottleKpis`,
+ * dashboard-data-status.js).
+ */
 export function saveMaxReb() {
   const n = parseInt(g("inMaxReb")?.value, 10);
   _saveSingleConfig("inMaxReb", "maxRebalancesPerDay", () => n);
-  const el = g("kpiToday");
-  if (el) {
-    const cur = parseInt(el.textContent, 10) || 0;
-    el.textContent = cur + " / " + n;
-  }
 }
 /*- `saveSlippage` (and its `_validSlip` validator) was removed when
  *  the single "Slippage Tolerance" input was replaced by two per-token
@@ -570,15 +611,6 @@ export function saveMaxReb() {
  *  dashboard-per-token-slippage.js.  The per-position `slippagePct`
  *  that row used to save is retired and dropped on load; every swap
  *  now asks `resolveSlippagePct` for the destination token's value. */
-
-/** Save check interval. */
-export function saveCheckInterval() {
-  _saveSingleConfig("inInterval", "checkIntervalSec", (v) => parseInt(v, 10));
-}
-/** Save gas strategy. */
-export function saveGasStrategy() {
-  _saveSingleConfig("inGas", "gasStrategy", (v) => v || "auto");
-}
 
 /** Update the complement offset input when one changes. */
 export function updateOffsetComplement(sourceId) {
@@ -611,24 +643,23 @@ export function saveApprovalMultiple() {
 }
 
 /**
- * "No Offset" button: put the shipped centred offset into both inputs
- * and stop there.  It does NOT persist — only Save writes config, which
- * is how every other edit row in the app behaves.  Mirrors the Price
- * Range Extension row's "Default" button: inject, mark dirty so the next
+ * "No Offset" button: put the centred offset into both inputs and stop
+ * there.  It does NOT persist — only Save writes config, which is how
+ * every other edit row in the app behaves.  Mirrors the Price Range
+ * Extension row's "Default" button: inject, mark dirty so the next
  * poll's sync can't clobber the injected value, and leave the user to
  * click Save.
  *
- * No-op until `/api/bot-config-defaults` resolves — no literal fallback
- * per feedback_one_literal_per_shipped_default; the centred value lives
- * only in bot-config-defaults.json.
+ * Centred is `CENTERED_OFFSET_PCT` (src/centered-offset.js), the value
+ * the bot pins a re-used range to, not the default `offsetToken0Pct`:
+ * an operator's defaults can set that to an offset, and No Offset still
+ * means none.
  */
 export function resetOffset() {
-  const def = getInputDefault("offsetToken0Pct");
-  if (!Number.isFinite(def)) return;
   const el0 = g("inOffsetToken0");
   const el1 = g("inOffsetToken1");
-  if (el0) el0.value = String(def);
-  if (el1) el1.value = String(100 - def);
+  if (el0) el0.value = String(CENTERED_OFFSET_PCT);
+  if (el1) el1.value = String(100 - CENTERED_OFFSET_PCT);
   markInputDirty("inOffsetToken0");
 }
 
@@ -652,6 +683,6 @@ export function updateTriggerDisplay(d) {
       d.rebalanceTimeoutMin > 0
         ? d.rebalanceTimeoutMin
         : d.rebalanceTimeoutMin === 0
-          ? "disabled"
+          ? "Turned Off"
           : "\u2014";
 }

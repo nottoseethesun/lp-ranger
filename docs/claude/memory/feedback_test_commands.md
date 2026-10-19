@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-09-19T22:08:14.421Z
+  modified: 2026-10-18T19:18:28.625Z
 ---
 
 # Running tests
@@ -122,7 +122,15 @@ time: the live config was healthy, so the copy matched it. After a
 stomp, the same copy would destroy the only good version.
 
 **How to apply:** wipe before a script that loads `src/`, restore after
-it, as separate tool calls. Check that the server is down first.
+it, as separate tool calls. Check that the server is down first. A
+one-line `node -e` counts.
+
+**Repeated 2026-10-18,** with harm: a `node -e` that required
+`src/server-positions.js` to compare key lists rewrote the backup. The
+old backup differed from the live config and no copy existed, so it was
+lost. The live config was healthy, and the next `npm start` would have
+made the same copy. Answer such a question by reading source with grep,
+or inside a wipe.
 
 ## no check in agents
 
@@ -141,8 +149,11 @@ difference is most of `tmp/`:
 - `scripts/check.js` — `backupProdFiles` copies `app-config/user-configurable/`,
   `app-data/` and **every `tmp/*.json`**, wipes them, and restores in a
   `finally`. This is why a full check leaves the caches untouched.
-- `scripts/wipe-settings.js` — `.env`, `tmp/pnl-epochs-cache.json`, and
-  `tmp/event-cache*.json`. **That is the whole list.**
+- `scripts/wipe-settings.js` — `.env`, root keyfiles, everything in
+  `app-config/user-configurable/` and `app-data/`, and of `tmp/` only
+  `pnl-epochs-cache.json` and `event-cache*.json`. (Corrected 2026-10-16,
+  read from the script: this line once said the three files were the
+  whole list, leaving out the two directories.)
 
 So a wrapped direct test run still exposes `historical-price-cache.json`,
 `block-time-cache.json`, `gecko-pool-cache.json`, `nft-mint-date-cache.json`,
@@ -175,3 +186,38 @@ is findable — filter the cache for entries newer than when the run
 started, and delete only those keys. Never clear the file to be sure
 (see [[feedback_never_clear_to_force_a_recompute]]); 322 of the 323
 entries were real.
+
+## Coverage detail comes from the gate too (2026-10-16)
+
+`npm run check` writes `test/report-artifacts/raw-data/lcov.info`, which
+names every missed branch. There is no reason to run the whole suite by
+hand with an lcov reporter.
+
+**Why:** on 2026-10-16 I did exactly that, twice, under `wipe-settings`
+alone. The runs left four pid-named test caches in `tmp/`, and, probably,
+three fixture symbols (`0xa`, `0xb`, `0x1234…5678`) in the operator's
+`token-symbol-cache.json`. That cache has no `cachedAt`, so the second
+could not be proven. The same session also ran six raw single-file runs
+with no wipe at all; re-run into an empty tree, they wrote nothing, which
+is luck rather than procedure.
+
+**How to apply:** for coverage, run `npm run check` and read the lcov
+report. For a quick single-file loop, wrap it as above, and only for
+files that write no cache.
+
+## A test file's cache redirect belongs at file level (2026-10-16)
+
+A `describe`'s `after` hook runs once that block's cases finish, before
+the next block starts. A cache path set inside one block is a module
+setting, so every later block writes there too. A block that removed
+its file in its own `after` therefore saw a later block recreate it,
+and the file stayed in the operator's `tmp/`: `epoch-reconstructor.test.js`
+did this until 2026-10-16, after a fix that same day claimed it no
+longer did.
+
+**How to apply:** set the redirect once, at the top of the file, into
+`makeTestTempFolder("<name>")` (src/test-temp-folders.js, 2026-10-18),
+which removes the folder when the process exits, failed or not, and
+which `npm run check` sweeps if a run was killed. Prove a cleanup claim
+by listing the temp directory before and after a run, not by reading
+the hook.

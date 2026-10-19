@@ -3,13 +3,11 @@
  * Rebalancer unit tests — mintPosition, balance-diff swapIfNeeded,
  * _ensureAllowance, executeRebalance.
  */
-const { describe, it } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
-const {
-  swapIfNeeded,
-  mintPosition,
-  executeRebalance,
-} = require("../src/rebalancer");
+const { startLocalAggregator } = require("./helpers/local-aggregator");
+const { mintPosition, executeRebalance } = require("../src/rebalancer");
+const { swapIfNeeded } = require("../src/rebalancer-swap");
 const {
   ADDR,
   ONE_ETH,
@@ -20,6 +18,24 @@ const {
   defaultDispatch,
   buildMockEthersLib,
 } = require("./helpers/rebalancer-mocks");
+
+/*-
+ *  These swaps are meant to reach the V3 router. The live aggregator
+ *  refuses the fixtures' made-up tokens, which sends them there; a local
+ *  one refuses them the same way, with no third party asked.
+ */
+let aggregator;
+before(async () => {
+  aggregator = await startLocalAggregator();
+});
+after(() => aggregator.stop());
+
+/** A mint transaction whose receipt names the block it was mined in. */
+function mintTxAt(hash, blockNumber) {
+  const tx = makeMintTx(hash);
+  const wait = tx.wait;
+  return { ...tx, wait: async () => ({ ...(await wait()), blockNumber }) };
+}
 
 // ── mintPosition ─────────────────────────────────────────────────────────────
 describe("mintPosition", () => {
@@ -136,6 +152,21 @@ describe("mintPosition", () => {
       mtArgs(),
     );
     assert.strictEqual(r.txHash, "0xmint");
+  });
+
+  it("returns the block the mint was mined in", async () => {
+    // Every read of the new NFT's history starts at this block.
+    const d = defaultDispatch();
+    d[ADDR.pm] = {
+      ...d[ADDR.pm],
+      mint: async () => mintTxAt("0xmint", 27_700_123),
+    };
+    const r = await mintPosition(
+      mockSigner(),
+      buildMockEthersLib({ contractDispatch: d }),
+      mtArgs(),
+    );
+    assert.strictEqual(r.blockNumber, 27_700_123);
   });
 
   it("parses IncreaseLiquidity event for tokenId and liquidity", async () => {
@@ -427,6 +458,24 @@ describe("executeRebalance", () => {
     assert.strictEqual(r.success, true);
     assert.ok(r.txHashes.length >= 2);
     assert.strictEqual(r.oldTokenId, 1n);
+  });
+  it("names the block the new NFT was minted in", async () => {
+    /*-
+     *  The bot records the new NFT at this block, and reads its history
+     *  from there after every compound.
+     */
+    const d = defaultDispatch();
+    d[ADDR.pm] = {
+      ...d[ADDR.pm],
+      mint: async () => mintTxAt("0xmint", 27_700_123),
+    };
+    const r = await executeRebalance(
+      mockSigner(),
+      buildMockEthersLib({ contractDispatch: d }),
+      rebalOpts(),
+    );
+    assert.strictEqual(r.success, true);
+    assert.strictEqual(r.blockNumber, 27_700_123);
   });
   it("returns success:false on error", async () => {
     const d = defaultDispatch();

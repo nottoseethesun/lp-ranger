@@ -76,7 +76,7 @@ before(() => {
     }
     if (id === "./bot-pnl-updater") {
       return {
-        actualGasCostUsd: async (wei, when) => {
+        pastGasCostUsd: async (wei, when) => {
           seen.gas.push({ wei: String(wei), when });
           return 0.03;
         },

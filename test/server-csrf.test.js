@@ -8,12 +8,14 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const util = require("node:util");
+const Tokens = require("csrf");
 const {
   createToken,
   verifyToken,
   readCsrfTunable,
   handleCsrf,
 } = require("../src/server-csrf");
+const { CSRF_REFUSALS } = require("../src/csrf-refusals");
 const { _setSinkForTests } = require("../src/log");
 const { UTC_TIMESTAMP_PATTERN } = require("../src/utc-timestamp");
 
@@ -48,6 +50,15 @@ describe("CSRF token module", () => {
   it("verifyToken rejects a bogus token", () => {
     const result = verifyToken("not-a-real-token");
     assert.strictEqual(result.valid, false);
+  });
+
+  it("refuses a token signed before a restart as invalid, a refusal the page retries", () => {
+    // A restarted server signs with a new secret; this stands for the old one.
+    const before = new Tokens();
+    const stale = before.create(before.secretSync());
+    const result = verifyToken(stale);
+    assert.strictEqual(result.valid, false);
+    assert.strictEqual(result.reason, CSRF_REFUSALS.invalid);
   });
 
   it("each createToken call returns a unique token", () => {

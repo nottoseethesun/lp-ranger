@@ -6,13 +6,16 @@
 
 ## Plain language
 
-The event scanner returns a list of rebalance events, and attaches two
-extra values directly to that list object:
+The event scanner returns a list of rebalance events, and attaches six
+extra values directly to that list object, among them:
 
 ```js
 merged.firstMintTimestamp = firstMintTimestamp;
 merged.firstMintBlockNumber = firstMintBlockNumber;
 ```
+
+The other four are `firstMintTokenId`, `chainFirstTokenId`,
+`chainFirstMintBlock` and `chainFirstMintTimestamp`.
 
 Those are not entries in the list. They are properties stuck on the
 list object beside the entries. That works right up until somebody
@@ -46,23 +49,24 @@ stop that NFT's history scan starting at the pool's creation block. On a
 pool that existed two years before the operator's first deposit, that is
 1,144 chunked queries for a single NFT.
 
-Any consumer of the value therefore works on the two dashboard code
-paths, which read the scanner's array directly, and does nothing at all
-on the bot's path, which is the slow one. Both paths report success, so
-the difference shows only as the bot being slower than the dashboard for
+So before the patch the value worked on the two dashboard code paths,
+which read the scanner's array directly, and did nothing at all on the
+bot's path, which is the slow one. Both paths reported success, so the
+difference showed only as the bot being slower than the dashboard for
 no stated reason.
 
-Patched at that one copy site, with `test/first-mint-block-survives.test.js`
-asserting the re-attach exists and follows the push. Every other place
-that ever copies this array is still exposed.
+That copy site now re-attaches all six values after the push, and
+`test/first-mint-block-survives.test.js` asserts the re-attach exists and
+follows it. Any other place that copies this array is still exposed.
 
 ## Fix when prioritized
 
 Two parts.
 
-**1. Return the values properly.** Have the scanner return
-`{ events, firstMintBlockNumber, firstMintTimestamp }` and have callers
-take them as ordinary values. Touches `src/event-scanner.js`,
+**1. Return the values properly.** Have the scanner return an object,
+`{ events, firstMintBlockNumber, firstMintTimestamp, … }` with all six
+values as fields, and have callers take them as ordinary values.
+Touches `src/event-scanner.js`,
 `src/pool-scanner.js`, `src/bot-recorder.js`,
 `src/bot-recorder-lifetime.js`, `src/position-details*.js` and
 `src/nft-mint-blocks.js` (`chainScanFloor`). Once done, delete the

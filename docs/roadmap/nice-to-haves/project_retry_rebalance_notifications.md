@@ -1,17 +1,19 @@
 # Mark user-notifications about rebalances that are retries, as such
 
 > **Status:** Nice-to-have / UX polish — not a bug. The app works
-> correctly without this. Telegram notifications currently say
-> "Rebalance Succeeded" for every rebalance regardless of whether
-> it was the first establish-the-position move or a follow-up retry
-> to course-correct.
+> correctly without this.
 
-For non-initial rebalances, relabel to **"Retry Rebalance Succeeded
-(reason)"** so the user can tell at a glance that the bot is
-course-correcting rather than doing fresh work. Hides the internal
-trigger distinctions (corrective swap, post-backoff retry, residual
-cleanup, out-of-range) behind a single "Retry" framing, with an
-optional parenthetical only where it adds clarity.
+Every rebalance sends the same Telegram alert, "Rebalance Succeeded". A
+normal out-of-range rebalance and the residual-cleanup rebalance that
+follows it minutes later, by design, therefore read in Telegram as the
+bot rebalancing twice for no reason. Telling the two apart is the point
+of this item.
+
+The proposal: label rebalances after the first as **"Retry Rebalance
+Succeeded (reason)"**, so the operator can tell at a glance that the bot
+is course-correcting rather than doing fresh work. The trigger
+(`manual`, `residual-cleanup` or `out-of-range`) shows as a
+parenthetical only where it adds something.
 
 ## Proposed label decision tree
 
@@ -42,14 +44,14 @@ optional parenthetical only where it adds clarity.
   dashboard stay consistent. Replaces the current `(Residual
   Cleanup)` suffix with the new framing.
 
+## Open question
+
+By the test above, every rebalance after a position's first is a
+"retry", including a routine out-of-range rebalance days later. The aim
+is only to mark follow-ups as retries, so settle what counts as one
+before building this: for example, a rebalance whose trigger is
+`residual-cleanup`, or one that comes within some window of the last.
+
 ## Scope
 
 Independent feature change; new branch.
-
-## Context
-
-A normal OOR rebalance and the residual-cleanup rebalance that follows
-it both send `Rebalance Succeeded`, with nothing in the message to tell
-them apart. The pair fires minutes apart by design, so in Telegram it
-reads as the bot rebalancing twice for no reason. Distinguishing the
-two is the point of this item.

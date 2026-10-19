@@ -3,15 +3,17 @@
  * @module balanced-notifier
  * @description
  * Optional Telegram notifier that fires when a managed LP position's USD
- * value split between token0 and token1 falls inside the ±2.5% balanced
- * band (ratio0 ∈ [0.475, 0.525]).  Pure logic module — no module-level
+ * value split between token0 and token1 falls inside the balanced band:
+ * within `positionBalancedBandPct` points of 50/50 (±2.5 as shipped, so
+ * ratio0 ∈ [0.475, 0.525]).  Pure logic module — no module-level
  * mutable state; per-position transient state lives on `botState` (set
  * up in `src/server-positions.js`).  Lives under `src/telegram-notifications/`
  * alongside the rest of the Telegram surface.
  *
  * Trigger semantics:
  *   - Edge-trigger: notify only on FALSE→TRUE entry into the band.
- *   - Cooldown: 30 min between notifications (suppresses oscillation).
+ *   - Cooldown: `positionBalancedCooldownMs` between notifications
+ *     (30 minutes as shipped), which suppresses oscillation.
  *   - Per-poll cadence guard: callers must throttle the fresh-price
  *     fetch via the `pricePauseExceptionPollWindowMultiple` global
  *     (read in `bot-pnl-updater.js`); this module only deals with the
@@ -32,6 +34,7 @@ const { withFreshPricesAllowed, isPaused } = require("../price-fetcher-gate");
 const { notify, getEnabledEvents } = require("./telegram");
 const { getTokenSymbol } = require("../token-symbol-cache");
 const rangeMath = require("../range-math");
+const { readBotConfigDefaults } = require("../bot-config-defaults");
 
 /** Max characters per token symbol in the Holdings section, where the
  *  symbol gets a full line of its own and the amount sits on the next
@@ -40,14 +43,33 @@ const rangeMath = require("../range-math");
  *  uses its own compact 12-char width. */
 const _SYM_TRUNC_HOLDINGS = 16;
 
-/** Half-width of the balanced band around 0.5 (2.5% → ratio0 ∈ [0.475, 0.525]).
- *  Easily changed in code (no config knob — see CLAUDE.md). */
-const BALANCED_THRESHOLD = 0.025;
+/*-
+ *  Both figures are settings in bot-config-defaults.json, read once at
+ *  load like the alert's other setting, so an override takes effect on
+ *  restart.
+ */
+const _DEFAULTS = readBotConfigDefaults();
 
-/** Minimum gap between successive notifications for the same position.
- *  30 min suppresses oscillation across the band edge.  Easily changed
- *  in code (no config knob — see CLAUDE.md). */
-const BALANCED_COOLDOWN_MS = 30 * 60_000;
+/**
+ * Half-width of the balanced band around 50/50, in percentage points, as
+ * configured: `positionBalancedBandPct`, 2.5 as shipped. The dashboard
+ * quotes it as it is, since a percent rebuilt from the fraction below can
+ * carry float noise (7 comes back as 7.000000000000001).
+ */
+const BALANCED_BAND_PCT = _DEFAULTS.positionBalancedBandPct;
+
+/**
+ * The same half-width as a fraction, which the notifier tests the ratio
+ * against (2.5 as shipped, so ratio0 ∈ [0.475, 0.525]).
+ */
+const BALANCED_THRESHOLD = BALANCED_BAND_PCT / 100;
+
+/**
+ * Minimum gap between successive notifications for the same position,
+ * which suppresses oscillation across the band edge:
+ * `positionBalancedCooldownMs` (30 minutes as shipped).
+ */
+const BALANCED_COOLDOWN_MS = _DEFAULTS.positionBalancedCooldownMs;
 
 /**
  * Compute the USD value ratio.
@@ -334,6 +356,7 @@ module.exports = {
   evaluateBalance,
   formatMessage,
   maybeNotifyBalanced,
+  BALANCED_BAND_PCT,
   BALANCED_THRESHOLD,
   BALANCED_COOLDOWN_MS,
 };

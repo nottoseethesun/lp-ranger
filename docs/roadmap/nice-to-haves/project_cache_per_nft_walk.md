@@ -1,20 +1,21 @@
 # Batch And Cache The Per-NFT History Walk
 
-> **Status:** Nice-to-have / optimization — not a bug. Every figure the
-> walk produces is correct today. This is about how long it takes to
-> produce them, and it is the largest repeated cost in the app.
+> **Status:** Half done. Fix 1, the batched read, has shipped; Fix 2,
+> the cache, has not. Not a bug: every figure the walk produces is
+> correct. This is about how long producing them takes on every start.
 
 ## Plain language
 
 When LP Ranger starts, it reads a position's whole history back from
 the blockchain. A position that has rebalanced many times is not one
 NFT but a chain of them — each rebalance mints a new one — and the app
-walks every NFT in that chain to work out deposits, compounds, fees and
+reads every NFT in that chain to work out deposits, compounds, fees and
 lifetime profit.
 
-It walks them **one at a time**, and it keeps the answers in memory
-only. So the work is done once per NFT on every run, over block ranges
-that overlap almost completely.
+It used to walk them one at a time. Since Fix 1 it reads the whole
+chain in one batched pass (`scanChainNftEvents`,
+`src/nft-events-batch.js`). It still keeps the answers in memory only,
+so that pass is repeated in full on every start.
 
 ## Measured, on the $eHex/$hex chain in the dev wallet
 
@@ -23,13 +24,17 @@ of 1,529,062 blocks, or 170 chunks at the 9,000-block chunk size.
 
 | | Queries | At 222 ms pacing |
 | --- | --- | --- |
-| Today — one walk per NFT | 53,268 | ~197 min |
-| One batched pass | 510 | ~1.9 min |
+| Before Fix 1 — one walk per NFT | 53,268 | ~197 min |
+| One batched pass, in one group of ids | 510 | ~1.9 min |
 | Batched + cached, next run (1 day of new blocks) | 30 | ~7 s |
 
-## Fix 1: batch the filter — the large, cheap win
+The shipped batch splits the ids into groups of up to 100, so a 133-NFT
+chain takes two groups: about 1,000 queries, a few minutes.
 
-`scanNftEvents` (`src/compounder.js`) filters one NFT per query:
+## Fix 1: batch the filter — shipped
+
+Kept as the record of why it works. `scanNftEvents` (`src/compounder.js`),
+which still serves single-NFT reads, filters one NFT per query:
 
 ```js
 topics: [_IFACE.getEvent(name).topicHash, tidHex]
@@ -48,8 +53,8 @@ That collapses 133 overlapping walks into one pass over the union
 range: three event types × 170 chunks = 510 queries instead of 53,268.
 **Verified against all three shipped endpoints** with a 132-value topic
 array over a 9,000-block window — g4mm4, pulsechain.com and
-pulsechain.box each accepted it. Keep a batch size, and fall back to
-smaller batches, in case a future endpoint caps the array.
+pulsechain.box each accepted it. The shipped batch still caps a group at
+100 ids, in case a future endpoint caps the array.
 
 This needs no cache, no new state, and no change to what the app
 promises. It is pure arithmetic on how the same logs are requested.

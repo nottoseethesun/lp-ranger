@@ -3,11 +3,13 @@
  * @description Compound execution: collect unclaimed fees from an NFT position
  * and re-deposit them as additional liquidity via `increaseLiquidity`.
  *
- * TX flow (two transactions):
+ * TX flow:
  *   1. multicall [decreaseLiquidity(0), collect] — collects fees to wallet
- *   2. approve + increaseLiquidity — re-deposits collected tokens as liquidity
+ *   2. an optional swap bringing the fees to the range's ratio
+ *      (`src/compounder-swap.js`)
+ *   3. approve + increaseLiquidity — re-deposits collected tokens as liquidity
  *
- * Same NFT is retained.  No swap, no range change.  Uses the shared
+ * Same NFT is retained, with no range change.  Uses the shared
  * rebalance lock for nonce safety and the _waitOrSpeedUp pipeline for
  * TX recovery.
  */
@@ -16,30 +18,17 @@
 
 const { logCtx } = require("./logger");
 const { receiptGasWei } = require("./receipt-gas");
+const { spentGasOf, addSpentGas, carryingGas } = require("./spent-gas");
 const { log } = require("./log");
 
 const config = require("./config");
 const sendTx = require("./send-transaction");
-const { swapForCompound } = require("./compounder-swap");
+const { swapForCompound, compoundLogCtx: _ctx } = require("./compounder-swap");
 const { scanChunked } = require("./get-logs-chunked");
 const { IFACE, parseLogs } = require("./nft-event-parse");
 const { topicForTokenId } = require("./nft-token-topic");
-
-/*- Thin wrapper around shared `logCtx` in `src/logger.js` so the 6-field
- *  compound/rebalance/swap entry-point format stays in lockstep across
- *  modules.  Handles the local `recipient` -> `wallet` field rename. */
-function _ctx(opts) {
-  return logCtx({
-    chain: config.CHAIN_NAME || "PulseChain",
-    wallet: opts.recipient,
-    factory: opts.positionManagerAddress,
-    tokenId: opts.tokenId,
-    symbol0: opts.token0Symbol,
-    symbol1: opts.token1Symbol,
-  });
-}
+const { PM_ABI } = require("./pm-abi");
 const {
-  PM_ABI,
   ERC20_ABI,
   _MAX_UINT128,
   _deadline,
@@ -62,7 +51,7 @@ const {
 async function collectFees(signer, ethersLib, opts) {
   const { Contract } = ethersLib;
   const pm = new Contract(opts.positionManagerAddress, PM_ABI, signer);
-  const provider = signer.provider ?? signer;
+  const provider = signer.provider;
 
   const t0 = new Contract(opts.token0, ERC20_ABI, provider);
   const t1 = new Contract(opts.token1, ERC20_ABI, provider);
@@ -94,10 +83,14 @@ async function collectFees(signer, ethersLib, opts) {
     label: "[compound] " + cx + " collect",
   });
 
-  const [bal0After, bal1After] = await Promise.all([
-    t0.balanceOf(opts.recipient),
-    t1.balanceOf(opts.recipient),
-  ]);
+  const gasCostWei = receiptGasWei(receipt);
+  /*-
+   *  The collect has confirmed and been paid for: a failure reading what
+   *  it collected carries its gas (src/spent-gas.js).
+   */
+  const [bal0After, bal1After] = await carryingGas(gasCostWei, () =>
+    Promise.all([t0.balanceOf(opts.recipient), t1.balanceOf(opts.recipient)]),
+  );
   const amount0 = bal0After - bal0Before;
   const amount1 = bal1After - bal1Before;
   const s0 = opts.token0Symbol || "Token0";
@@ -111,24 +104,9 @@ async function collectFees(signer, ethersLib, opts) {
     String(amount1),
   );
 
-  const gasCostWei = receiptGasWei(receipt);
   return { amount0, amount1, txHash: receipt.hash, gasCostWei };
 }
 
-/**
- * Re-deposit collected fees as additional liquidity on the same NFT.
- * @param {import('ethers').Signer} signer
- * @param {object} ethersLib  ethers module
- * @param {object} opts
- * @param {string} opts.positionManagerAddress
- * @param {string} opts.tokenId
- * @param {bigint} opts.amount0  Token0 amount to deposit
- * @param {bigint} opts.amount1  Token1 amount to deposit
- * @param {string} opts.token0   Token0 address
- * @param {string} opts.token1   Token1 address
- * @param {string} opts.recipient Wallet address (for allowance check)
- * @returns {Promise<{liquidity: bigint, amount0Deposited: bigint, amount1Deposited: bigint, txHash: string, gasCostWei: bigint}>}
- */
 /** Parse IncreaseLiquidity event from a TX receipt. */
 function _parseIncreaseLiquidity(pm, receipt) {
   for (const log of receipt.logs || []) {
@@ -153,27 +131,70 @@ function _parseIncreaseLiquidity(pm, receipt) {
   return { liquidity: 0n, amount0Deposited: 0n, amount1Deposited: 0n };
 }
 
+/**
+ * Re-deposit collected fees as additional liquidity on the same NFT:
+ * approve each coin where its allowance falls short, then deposit. A
+ * failure after an approval confirmed carries that approval's gas
+ * (src/spent-gas.js).
+ *
+ * @param {import('ethers').Signer} signer
+ * @param {object} ethersLib  ethers module
+ * @param {object} opts
+ * @param {string} opts.positionManagerAddress
+ * @param {string} opts.tokenId
+ * @param {bigint} opts.amount0  Token0 amount to deposit
+ * @param {bigint} opts.amount1  Token1 amount to deposit
+ * @param {string} opts.token0   Token0 address
+ * @param {string} opts.token1   Token1 address
+ * @param {string} opts.recipient Wallet address (for allowance check)
+ * @returns {Promise<{liquidity: bigint, amount0Deposited: bigint, amount1Deposited: bigint, txHash: string, gasCostWei: bigint}>}
+ */
 async function addLiquidity(signer, ethersLib, opts) {
   const { Contract } = ethersLib;
-  const pm = new Contract(opts.positionManagerAddress, PM_ABI, signer);
-
   const t0 = new Contract(opts.token0, ERC20_ABI, signer);
   const t1 = new Contract(opts.token1, ERC20_ABI, signer);
-  const appGas0 = await _ensureAllowance(
-    t0,
-    opts.recipient,
-    opts.positionManagerAddress,
-    opts.amount0,
-    opts.approvalMultiple,
-  );
-  const appGas1 = await _ensureAllowance(
-    t1,
-    opts.recipient,
-    opts.positionManagerAddress,
-    opts.amount1,
-    opts.approvalMultiple,
-  );
+  /*-
+   *  An approval that confirmed was paid for, whatever happens after it,
+   *  so a failure from here on carries the approvals' gas with it
+   *  (src/spent-gas.js).
+   */
+  let approvalGasWei = 0n;
+  try {
+    approvalGasWei += await _ensureAllowance(
+      t0,
+      opts.recipient,
+      opts.positionManagerAddress,
+      opts.amount0,
+      opts.approvalMultiple,
+    );
+    approvalGasWei += await _ensureAllowance(
+      t1,
+      opts.recipient,
+      opts.positionManagerAddress,
+      opts.amount1,
+      opts.approvalMultiple,
+    );
+    return await _depositApproved(signer, ethersLib, opts, approvalGasWei);
+  } catch (err) {
+    throw addSpentGas(err, approvalGasWei);
+  }
+}
 
+/**
+ * Deposit the coins once both are approved, and read what the deposit
+ * added from its receipt.
+ *
+ * @param {object} signer
+ * @param {object} ethersLib
+ * @param {object} opts  `addLiquidity`'s options.
+ * @param {bigint} approvalGasWei  Gas the approvals before it paid,
+ *   counted into the result.
+ * @returns {Promise<{liquidity: bigint, amount0Deposited: bigint,
+ *   amount1Deposited: bigint, txHash: string, gasCostWei: bigint}>}
+ */
+async function _depositApproved(signer, ethersLib, opts, approvalGasWei) {
+  const { Contract } = ethersLib;
+  const pm = new Contract(opts.positionManagerAddress, PM_ABI, signer);
   const dl = _deadline();
   const cx = _ctx(opts);
   /*- increaseLiquidity is the gas-heavy callback path that triggered
@@ -209,7 +230,7 @@ async function addLiquidity(signer, ethersLib, opts) {
   );
 
   const depositGas = receiptGasWei(receipt);
-  const gasCostWei = depositGas + (appGas0 || 0n) + (appGas1 || 0n);
+  const gasCostWei = depositGas + approvalGasWei;
   return {
     liquidity,
     amount0Deposited,
@@ -224,7 +245,7 @@ async function addLiquidity(signer, ethersLib, opts) {
  * Helper for the post-swap re-read so addLiquidity uses fresh balances.
  */
 async function _readBalance(signer, ethersLib, tokenAddr, owner) {
-  const provider = signer.provider ?? signer;
+  const provider = signer.provider;
   const c = new ethersLib.Contract(tokenAddr, ERC20_ABI, provider);
   return c.balanceOf(owner);
 }
@@ -307,39 +328,70 @@ async function executeCompound(signer, ethersLib, opts) {
       "[compound] %s No fees to compound — skipping addLiquidity",
       _ctx(opts),
     );
+    /*-
+     *  The collect was sent and paid for though it found nothing; the
+     *  caller records its gas.
+     */
     return {
       compounded: false,
       reason: "no_fees",
       collectTxHash: collected.txHash,
+      gasCostWei: collected.gasCostWei,
     };
   }
 
-  /*- Optional ratio-correcting swap.  Fires only when a swap is
-   *  actually needed AND both swap-gates pass (dust first, gas
-   *  second).  See src/swap-gates.js. */
-  const swap = await swapForCompound(
-    signer,
-    ethersLib,
-    opts,
-    collected.amount0,
-    collected.amount1,
-  );
-  const { depositAmount0, depositAmount1 } = await _resolveDepositAmounts(
-    signer,
-    ethersLib,
-    opts,
-    collected,
-    swap,
-  );
+  /*-
+   *  The collect has confirmed and been paid for, and so, once it has
+   *  run, has the swap: a failure after either carries their gas
+   *  (src/spent-gas.js).
+   */
+  let paidWei = collected.gasCostWei;
+  try {
+    /*-
+     *  Optional ratio-correcting swap.  Fires only when a swap is
+     *  actually needed AND both swap-gates pass (dust first, gas
+     *  second).  See src/swap-gates.js.
+     */
+    const swap = await swapForCompound(
+      signer,
+      ethersLib,
+      opts,
+      collected.amount0,
+      collected.amount1,
+    );
+    paidWei += spentGasOf(swap);
+    const { depositAmount0, depositAmount1 } = await _resolveDepositAmounts(
+      signer,
+      ethersLib,
+      opts,
+      collected,
+      swap,
+    );
+    const deposited = await addLiquidity(signer, ethersLib, {
+      ...opts,
+      amount0: depositAmount0,
+      amount1: depositAmount1,
+    });
+    return _compoundedResult(opts, collected, swap, deposited);
+  } catch (err) {
+    throw addSpentGas(err, paidWei);
+  }
+}
 
-  const deposited = await addLiquidity(signer, ethersLib, {
-    ...opts,
-    amount0: depositAmount0,
-    amount1: depositAmount1,
-  });
-
-  const d0 = opts.decimals0 ?? 8;
-  const d1 = opts.decimals1 ?? 8;
+/**
+ * What a completed compound reports: the transactions it sent, the coins
+ * it put back into the position and their dollar value at this moment,
+ * and the gas of every transaction it sent.
+ *
+ * @param {object} opts  `executeCompound`'s options.
+ * @param {object} collected  The collect's result.
+ * @param {object} swap  The ratio-correcting swap's result.
+ * @param {object} deposited  The deposit's result.
+ * @returns {object} The compound's result.
+ */
+function _compoundedResult(opts, collected, swap, deposited) {
+  const d0 = opts.decimals0;
+  const d1 = opts.decimals1;
   /*- The coins this compound put back into the position. The caller
    *  adds these to the saved running totals; the dollars below are for
    *  this moment's log line and the Activity Log entry. */
@@ -360,7 +412,7 @@ async function executeCompound(signer, ethersLib, opts) {
     (Number(collected.amount1) / 10 ** d1) * (opts.price1 || 0);
 
   const totalGasWei =
-    collected.gasCostWei + (swap.gasCostWei || 0n) + deposited.gasCostWei;
+    collected.gasCostWei + spentGasOf(swap) + deposited.gasCostWei;
 
   return {
     compounded: true,
@@ -386,9 +438,13 @@ async function executeCompound(signer, ethersLib, opts) {
 /**
  * Filter IncreaseLiquidity candidates: remove any that follow a
  * DecreaseLiquidity (drain) within a block window. A drain followed by
- * re-deposit is a rebalance, not a compound.
+ * re-deposit is a rebalance, not a compound. The window is
+ * `compound.repositionWindowSec` (app-runtime.json) counted in the active
+ * chain's blocks: 50,000 at PulseChain's ten seconds.
  */
-const _DRAIN_WINDOW = 50_000; // ~14 hours on PulseChain (1s blocks)
+const _DRAIN_WINDOW = Math.round(
+  config.COMPOUND_REPOSITION_WINDOW_SEC / config.CHAIN.blockTimeSec,
+);
 function _filterRebalances(candidates, dlEvents) {
   const drainBlocks = [];
   for (const e of dlEvents) {
@@ -580,14 +636,15 @@ function _logCompoundSummary(opts, parts) {
   } = parts;
   const s0 = opts.token0Symbol || "Token0";
   const s1 = opts.token1Symbol || "Token1";
-  /*- Full context per feedback-log-full-context: chain + wallet + NFT
-   *  factory + tokenId + emoji + both token symbols.  Callers must pass
-   *  `opts.positionManagerAddress` (the NFT factory); `config.POSITION_MANAGER`
-   *  is the fallback when a caller forgets so we never render `?`. */
+  /*-
+   *  Full context per feedback-log-full-context: chain + wallet + NFT
+   *  factory + tokenId + emoji + both token symbols. Every caller passes
+   *  `opts.positionManagerAddress`, the NFT factory.
+   */
   const cx = logCtx({
-    chain: config.CHAIN_NAME || "PulseChain",
+    chain: config.CHAIN_NAME,
     wallet: opts.wallet,
-    factory: opts.positionManagerAddress || config.POSITION_MANAGER,
+    factory: opts.positionManagerAddress,
     tokenId: opts.tokenId,
     symbol0: s0,
     symbol1: s1,
@@ -667,8 +724,8 @@ async function classifyCompounds(nftEvents, opts = {}) {
    *  NFT lifetime, regardless of how the fees were re-deposited.
    */
   const { fees0, fees1 } = lifetimeFeeAmounts(collectEvents, dlEvents);
-  const d0 = opts.decimals0 ?? 8,
-    d1 = opts.decimals1 ?? 8;
+  const d0 = opts.decimals0,
+    d1 = opts.decimals1;
   /*- The coins, in token units. Callers store these rather than the
    *  dollars below: a dollar total is only true at the price it was
    *  computed with, and it drifts further from the truth the longer the

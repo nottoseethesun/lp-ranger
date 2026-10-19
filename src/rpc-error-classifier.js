@@ -1,7 +1,7 @@
 /**
  * @file rpc-error-classifier.js
- * @description Classify RPC/ethers errors into three buckets for the
- * rebalancer retry logic:
+ * @description Classify RPC/ethers errors into the buckets the
+ * rebalancer retry logic acts on:
  *
  *   - "transient"               Safe to retry after a short backoff.
  *                               The TX may not have been broadcast.
@@ -17,6 +17,11 @@
  *                               or a bad param.
  *   - "terminal-nonce-consumed" The nonce is already used on-chain.
  *                               Abort without touching the NonceManager.
+ *   - "already-known"           The endpoint already holds this exact
+ *                               transaction: an earlier submission
+ *                               arrived though its reply was lost. Not a
+ *                               failure; `_retrySend` recovers the
+ *                               transaction and the caller waits on it.
  *   - "unknown"                 Unrecognised shape. Caller should treat
  *                               as terminal-nonce-consumed (the safe
  *                               default — don't retry, don't reset).
@@ -42,17 +47,19 @@ const _FILENAME = "evm-rpc-response-codes.json";
 /**
  * @typedef {object} ErrorBucket
  * @property {string}   description
- * @property {string[]} ethersCodes       ethers error code strings.
+ * @property {string[]} [ethersCodes]     ethers error code strings; absent
+ *   for a bucket ethers names by no code, such as `alreadyKnown`.
  * @property {string[]} messageSubstrings Lowercase substrings to match.
  */
 
-/** @returns {{transient: ErrorBucket, terminalNonceUnused: ErrorBucket, terminalNonceConsumed: ErrorBucket}} */
+/** @returns {{transient: ErrorBucket, terminalNonceUnused: ErrorBucket, terminalNonceConsumed: ErrorBucket, alreadyKnown: ErrorBucket}} */
 function _loadBuckets() {
   const raw = loadMergedDefaults(_FILENAME);
   return {
     transient: raw.transient,
     terminalNonceUnused: raw.terminalNonceUnused,
     terminalNonceConsumed: raw.terminalNonceConsumed,
+    alreadyKnown: raw.alreadyKnown,
     blockRangeCap: raw.blockRangeCap,
   };
 }
@@ -115,18 +122,29 @@ function _matchesAny(msg, patterns) {
 }
 
 /**
- * Classify an error into one of four buckets.
+ * Classify an error into one of five buckets.
  * @param {*} err
- * @returns {"transient"|"terminal-nonce-unused"|"terminal-nonce-consumed"|"unknown"}
+ * @returns {"transient"|"terminal-nonce-unused"|"terminal-nonce-consumed"|"already-known"|"unknown"}
  */
 function classifyRpcError(err) {
   if (!err) return "unknown";
   const code = typeof err.code === "string" ? err.code : "";
   const msg = innerErrorMessage(err).toLowerCase();
 
-  // Check nonce-consumed first — if the node says "nonce too low" we
-  // never want to retry, even if another substring (e.g. "server error")
-  // also matches.
+  /*-
+   *  First, because it is the one answer that is not a failure: the
+   *  endpoint holds the transaction already, whatever else the message
+   *  says. By message alone: ethers raises it as UNKNOWN_ERROR, so no
+   *  code names it.
+   */
+  if (_matchesAny(msg, _BUCKETS.alreadyKnown.messageSubstrings)) {
+    return "already-known";
+  }
+  /*-
+   *  Check nonce-consumed next — if the node says "nonce too low" we
+   *  never want to retry, even if another substring (e.g. "server error")
+   *  also matches.
+   */
   const nc = _BUCKETS.terminalNonceConsumed;
   if (nc.ethersCodes.includes(code) || _matchesAny(msg, nc.messageSubstrings)) {
     return "terminal-nonce-consumed";
@@ -144,7 +162,7 @@ function classifyRpcError(err) {
 
 /**
  * Expose the loaded buckets (read-only) for diagnostics and tests.
- * @returns {{transient: ErrorBucket, terminalNonceUnused: ErrorBucket, terminalNonceConsumed: ErrorBucket}}
+ * @returns {{transient: ErrorBucket, terminalNonceUnused: ErrorBucket, terminalNonceConsumed: ErrorBucket, alreadyKnown: ErrorBucket}}
  */
 function getBuckets() {
   return _BUCKETS;
@@ -153,9 +171,9 @@ function getBuckets() {
 /**
  * Does this error mean "your getLogs block range was too wide"?
  *
- * Deliberately NOT part of `classifyRpcError`'s three-bucket result:
- * those buckets answer "retry, or abort and what about the nonce?",
- * and none of the three fits.  A range-cap rejection is not transient
+ * Deliberately NOT part of `classifyRpcError`'s result: those buckets
+ * answer "what became of this transaction, and what about the nonce?",
+ * and none of them fits.  A range-cap rejection is not transient
  * (the same request fails identically every time) and has no nonce
  * implication at all — it is a malformed request, and the fix is a
  * smaller chunk size rather than a retry or a different endpoint.

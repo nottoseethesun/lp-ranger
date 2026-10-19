@@ -11,7 +11,6 @@ const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const sendTx = require("./send-transaction");
-const { composeRpcUrls } = require("./rpc-url-list");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
@@ -19,6 +18,7 @@ const {
 } = require("./api-key-store");
 const { setApiKey, setServiceEnabled } = require("./api-key-holder");
 const {
+  moralisEnabledIn,
   pingMoralis,
   validateMoralisKey,
   handleApiKeyStatus,
@@ -27,20 +27,18 @@ const {
   createTelegramHandlers,
 } = require("./telegram-notifications/server-telegram");
 const {
-  getOrCreatePositionConfig,
   saveConfig,
   compositeKey,
-  parseCompositeKey,
   readConfigValue,
 } = require("./bot-config-v2");
-const { GLOBAL_KEYS, POSITION_KEYS } = require("./bot-config-keys");
-const { checkConfigValues } = require("./config-bounds");
 const { resolveLiveKey } = require("./server-key-resolver");
 // position-detector used via server-scan.js
 const { createScanHandlers } = require("./server-scan");
 const { createReloadPositionHandler } = require("./server-reload-position");
 const { createRescanPricesHandler } = require("./server-rescan-prices");
 const { createAutoStartManagedPositions } = require("./server-auto-start");
+const { markStopping, refusalToStart } = require("./app-phase");
+const { createConfigRouteHandler } = require("./server-config-route");
 const {
   computeQuickDetails: _defaultComputeQuickDetails,
   computeLifetimeDetails: _defaultComputeLifetimeDetails,
@@ -63,56 +61,10 @@ const { emojiId } = require("./logger");
  *   deps.createPerPositionBotState
  * @param {Function} deps.attachMultiPosDeps
  * @param {Function} deps.updatePositionState
+ * @param {Function} deps.notifyShutdown  Sends the shutdown alert
+ *   (src/telegram-notifications/server-shutdown.js).
  * @returns {object} Handler function map.
  */
-/**
- * Un-pause every bot loop that stopped over excessive swap cost, when
- * the saved patch carries a new slippage.
- *
- * Operates on the in-memory bot states, not on disk — orthogonal to the
- * persist that follows it, which is why the caller runs this first: a
- * patch that fails to persist still frees a loop the operator was
- * trying to unblock.
- *
- * `_retireImmediately` is cleared alongside, for the case where
- * `bot-loop.js`'s re-open-failure path set it: without that, changing
- * Slippage on a stuck-aborted re-open would open the gates and the next
- * poll would still take `drain.js`'s retire branch instead of retrying.
- *
- * Keyed on the two per-token settings, which are what the Slippage rows
- * save. It used to key on a single `slippagePct`, and went dead the day
- * that row became two: nothing sent that key any more, so a paused
- * position could only be freed by a manual rebalance while the app went
- * on saying that changing Slippage would free it.
- *
- * @param {object} pPatch                 The position keys from the body.
- * @param {() => Iterable} getAllStates   Per-position bot states.
- * @returns {void}
- */
-function _clearSlippagePause(pPatch, getAllStates) {
-  if (
-    pPatch.slippagePctToken0 === undefined &&
-    pPatch.slippagePctToken1 === undefined
-  )
-    return;
-  for (const [, s] of getAllStates())
-    if (s.rebalancePaused) {
-      s.rebalancePaused = false;
-      s.rebalanceError = null;
-      s._retireImmediately = false;
-    }
-}
-
-/*- What the value checker needs that only this tier has read: the
- *  shipped default a timer setting is bounded against, and the fee
- *  floor the auto-compound threshold may not sit below. */
-function _valueCheckContext() {
-  return {
-    defaultsSec: { checkIntervalSec: config.CHECK_INTERVAL_SEC },
-    compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
-  };
-}
-
 function createRouteHandlers(deps) {
   const {
     diskConfig,
@@ -126,6 +78,7 @@ function createRouteHandlers(deps) {
     attachMultiPosDeps,
     updatePositionState,
     askPassword,
+    notifyShutdown,
     /*- position-details functions are overridable from tests so we
      *  don't exercise a real RPC in unit tests. */
     computeQuickDetails = _defaultComputeQuickDetails,
@@ -135,171 +88,19 @@ function createRouteHandlers(deps) {
   /** Cached wallet password for API key encryption (set on unlock). */
   let _sessionPassword = null;
 
-  /**
-   * Put newly-added RPC endpoints into service without a restart.
-   *
-   * Composed the same way `config.js` composes `RPC_URLS`: the
-   * operator's endpoints first (newest added first), the shipped ones
-   * behind them as failover, duplicates dropped. Composed from
-   * `config.RPC_URLS_BASE` — the shipped-plus-env list — rather than
-   * from `config.RPC_URLS`, which already contains previously added
-   * entries and would re-seed them on every save.
-   *
-   * `config.setRpcUrls` updates the live list as well as `sendTx`, and
-   * both halves are load-bearing:
-   *
-   *   - `GET /api/rpc-endpoints`, `rebalancer-pools` and
-   *     `server-can-reopen` read `config.RPC_URLS` directly, so without
-   *     it they keep walking the endpoints the process started with;
-   *   - `sendTx.init` THROWS when called again with a different list,
-   *     and `bot-loop.js` / `position-manager.js` call it on every
-   *     position start. Updating only `sendTx` would leave
-   *     `config.RPC_URLS` stale, so the next Manage would hand `init` a
-   *     list that no longer matches and take down the start path.
-   *
-   * Neither is optional; do not "simplify" this to one call.
-   *
-   * Failures are logged, not thrown: the value is already saved, and a
-   * bad URL must not take down the config endpoint. The next restart
-   * picks it up regardless.
-   * @param {string[]} saved  The operator-added endpoints just saved.
+  // POST /api/config, built by its own module.
+  const _handleApiConfig = createConfigRouteHandler(deps);
+
+  /*-
+   *  POST /api/wallet: import a wallet, then stop every position and
+   *  start the saved ones again under it. Refused while the start-up is
+   *  under way or the app is stopping (src/app-phase.js), since it would
+   *  start positions then.
    */
-  function _applyRpcUrls(saved) {
-    try {
-      const urls = composeRpcUrls({
-        saved,
-        chainUrls: config.RPC_URLS_BASE,
-      });
-      config.setRpcUrls(urls);
-      if (sendTx.setRpcUrls(urls))
-        log.info("[server] RPC now in use: %s", urls[0]);
-    } catch (err) {
-      log.warn("[server] Could not apply the new RPC list: %s", err.message);
-    }
-  }
-
-  async function _handleApiConfig(req, res) {
-    const body = await readJsonBody(req);
-    const gPatch = {},
-      pPatch = {};
-    for (const k of GLOBAL_KEYS) if (body[k] !== undefined) gPatch[k] = body[k];
-    for (const k of POSITION_KEYS)
-      if (body[k] !== undefined) pPatch[k] = body[k];
-    /*- Checked before anything is applied, so a refused value leaves
-     *  no trace: nothing assigned, no provider rebuilt, no paused loop
-     *  freed. */
-    const refused = checkConfigValues(
-      { ...gPatch, ...pPatch },
-      _valueCheckContext(),
-    );
-    if (refused) {
-      /*- `invalidValueForKey` names the setting whose VALUE was
-       *  refused, as against the other 400 this route returns, which
-       *  is a malformed request. The key itself is fine — an unknown
-       *  one is simply not copied into the patch above. The dashboard
-       *  shows its "that value was not accepted" dialog and restores
-       *  the field only for the former. */
-      jsonResponse(res, 400, {
-        ok: false,
-        error: refused.message,
-        invalidValueForKey: refused.key,
-      });
-      return;
-    }
-    Object.assign(diskConfig.global, gPatch);
-    /*- Same null-sweep the per-position patch gets below, and for the
-     *  same reason: `null` means "clear this setting", and assigning it
-     *  leaves a literal `null` on disk instead. Global keys reach this
-     *  now that an empty Bot Settings field is sent as `null` — Max Gas
-     *  Fee and Approval Multiple are both global. Their readers do cope
-     *  with a stored `null`, so this is about what the file says, not
-     *  about what the bot does. */
-    for (const k of Object.keys(gPatch))
-      if (gPatch[k] === null) delete diskConfig.global[k];
-    /*- Apply to the in-memory holder as well as persisting, so the
-     *  running process stops calling Moralis on the next price lookup
-     *  rather than at the next restart. */
-    if (gPatch.moralisEnabled !== undefined)
-      setServiceEnabled("moralis", gPatch.moralisEnabled !== false);
-    /*- Same for the RPC list: rebuild the providers now, not at the
-     *  next restart. */
-    if (gPatch.rpcUrls !== undefined) _applyRpcUrls(gPatch.rpcUrls);
-    const hasPosKeys = Object.keys(pPatch).length > 0;
-    /*- Runs FIRST so that even if disk persistence bails out (404
-     *  below), an in-flight paused bot loop still gets unblocked by the
-     *  user's slippage bump. */
-    _clearSlippagePause(pPatch, getAllPositionBotStates);
-    if (hasPosKeys) {
-      const parsed = parseCompositeKey(body.positionKey);
-      if (!parsed) {
-        jsonResponse(res, 400, {
-          ok: false,
-          error:
-            "positionKey required for position" +
-            "-specific config (blockchain-wallet" +
-            "-contract-tokenId)",
-        });
-        return;
-      }
-      /*- Resolve to the LIVE composite key.  The user's POST carries
-       *  body.positionKey captured from a recent dashboard poll; a
-       *  parallel rebalance may have migrated the key out from under
-       *  it.  resolveLiveKey returns the post-migration key when the
-       *  bot state's rebalanceEvents show a chain from the original
-       *  tokenId, else the original key (for stopped positions, disk
-       *  is source of truth and can't migrate). */
-      const liveKey = resolveLiveKey(positionMgr, body.positionKey, (k) =>
-        getAllPositionBotStates().get(k),
-      );
-      /*- Lazy-create the slot so per-position settings can be saved
-       *  for a position that has not yet been Manage'd.  The user's
-       *  workflow: select an unmanaged position, edit OOR threshold /
-       *  slippage / etc., Save, THEN click Manage — the live
-       *  `addManagedPosition` only flips `status` to "running" and
-       *  preserves every other field, so the user's pre-Manage edits
-       *  carry through into the running bot's config.  The earlier
-       *  phantom-slot risk (POST to a dead old key after rebalance
-       *  migrated to a new key) is mitigated by `resolveLiveKey`
-       *  above, which returns the post-migration key when a
-       *  migration chain exists. */
-      const posRef = getOrCreatePositionConfig(diskConfig, liveKey);
-      const statusBefore = posRef.status;
-      Object.assign(posRef, pPatch);
-      /*- Null-sweep: a POSITION_KEY sent as `null` means "clear this
-       *  setting" (used by the No Override button on the Bot Settings
-       *  Range Width row).  Without this, `Object.assign` above stamps
-       *  a literal `null` on disk — functionally works because
-       *  downstream `readConfigValue` returns `null` and the truthy
-       *  check in src/bot-cycle-opts.js omits the key, but it leaves
-       *  ugly `null` entries in bot-config.json.  Explicit `=== null`
-       *  check per CLAUDE-BEST-PRACTICES §"Type Checks" — deletes only
-       *  when the client explicitly sent `null`, not when the key was
-       *  absent (in which case `pPatch[k]` is `undefined`, not `null`,
-       *  and the filter at line 108 already skipped it). */
-      for (const k of Object.keys(pPatch)) {
-        if (pPatch[k] === null) delete posRef[k];
-      }
-      if (statusBefore && !posRef.status)
-        log.warn(
-          "[api/config] status WIPED for %s! pPatch keys: %s",
-          liveKey.slice(-10),
-          Object.keys(pPatch).join(", "),
-        );
-      if (pPatch.offsetToken0Pct !== undefined)
-        log.info(
-          "[offset-trace] POST /api/config key=%s offsetToken0Pct=%d",
-          liveKey.slice(-10),
-          pPatch.offsetToken0Pct,
-        );
-    }
-    saveConfig(diskConfig);
-    jsonResponse(res, 200, {
-      ok: true,
-      applied: { ...gPatch, ...pPatch },
-    });
-  }
-
   async function _handleWalletImport(req, res) {
+    const refusal = refusalToStart();
+    if (refusal !== null)
+      return jsonResponse(res, 409, { ok: false, error: refusal });
     const body = await readJsonBody(req);
     log.info(
       "[server] Wallet import for %s (running: %d)",
@@ -380,12 +181,23 @@ function createRouteHandlers(deps) {
     diskConfig,
   });
 
+  /**
+   * POST /api/shutdown: stop every position and exit. From the request
+   * on, the app is stopping for good (src/app-phase.js), so no position
+   * starts and no rebalance or compound begins. Each position's stop
+   * waits for a move already under way to finish, so none is cut off;
+   * `npm run gentle-stop` asks for this once nothing is under way. The
+   * positions saved as managed stay saved, so the next launch starts
+   * them again. The shutdown alert goes out as it does on Ctrl+C.
+   */
   async function _handleShutdown(_req, res, srv) {
+    markStopping();
     jsonResponse(res, 200, {
       ok: true,
       message: "Shutting down\u2026",
     });
     log.info("[server] Shutdown requested via API");
+    notifyShutdown();
     await positionMgr.stopAll();
     srv.close(() => process.exit(0));
   }
@@ -680,7 +492,7 @@ function createRouteHandlers(deps) {
     /*- Honour the saved toggle as soon as the key is in memory, so an
      *  operator who turned Moralis off does not get one round of calls
      *  on the next unlock before the setting is noticed. */
-    setServiceEnabled("moralis", diskConfig.global?.moralisEnabled !== false);
+    setServiceEnabled("moralis", moralisEnabledIn(diskConfig.global));
     // Validate Moralis key after decryption
     validateMoralisKey();
   }

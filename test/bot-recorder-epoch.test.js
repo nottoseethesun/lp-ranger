@@ -25,6 +25,7 @@ describe("_closePnlEpoch", () => {
           fetchTokenPrices: async () => _mockPrices,
           estimateGasCostUsd: async () => _mockGasCost,
           actualGasCostUsd: async () => _mockGasCost,
+          pastGasCostUsd: async () => _mockGasCost,
           positionValueUsd: () => 0,
           addPoolShare: async () => {},
         };

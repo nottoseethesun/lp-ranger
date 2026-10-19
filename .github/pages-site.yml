@@ -12,20 +12,24 @@
 # from what actually deploys. Add a page or an asset here and both pick
 # it up; there is nowhere else to change.
 #
-# Why the rewrites exist: the pages reference their CSS absolutely
-# (`/style.css`), which only resolves while the dashboard server is
-# running. A static host needs those relative, sitting next to the HTML.
-# The per-page stylesheet also carries a `?v=` cache-bust stamp that no
-# static host can strip, so it is flattened too.
+# Why the rewrites exist: the pages reference their CSS absolutely and
+# stamped (`/style.css?v=123`, from `npm run build`), which only resolves
+# while the dashboard server is running. A static host needs each sheet
+# relative, sitting next to the HTML, so its path is made relative and
+# its stamp dropped.
 
-# Absolute → relative CSS hrefs applied to EVERY published page.
-sharedRewrites:
-  - from: 'href="/style.css"'
-    to: 'href="style.css"'
-  - from: 'href="/9mm-pos-mgr.css"'
-    to: 'href="9mm-pos-mgr.css"'
-  - from: 'href="/fonts.css"'
-    to: 'href="fonts.css"'
+# Stylesheets EVERY published page loads, made relative and unstamped.
+sharedSheets:
+  - style.css
+  - 9mm-pos-mgr.css
+  - fonts.css
+
+# Scripts dropped from every published page, whatever stamp follows the
+# path. The manual's asks the running app for the install's own figures;
+# a static copy has no app to ask, and keeps the shipped figures the
+# build wrote.
+droppedScripts:
+  - /dist/manual-figures.js
 
 # Pages to publish. `css` names the page-specific stylesheet whose
 # cache-busted href also needs flattening.

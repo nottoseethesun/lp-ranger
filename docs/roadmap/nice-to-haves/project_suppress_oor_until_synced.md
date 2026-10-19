@@ -1,17 +1,16 @@
 # Suppress False Out-of-Range on Unmanaged View Until Synced
 
-> **Status:** Nice-to-have / polish — not a bug. The app works
-> correctly without this. Funds are never at risk. The display
-> self-heals within ~1 minute as data finishes loading.
+> **Status:** Nice-to-have / polish — not a bug. Funds are never at
+> risk.
 
-The Unmanaged view briefly shows a position as "out of range" when
-first opened, before the range bar + current price have finished
-rendering. Waiting ~1 minute self-heals (no reload needed). Managed
-view does not have this issue — it displays perfectly.
+The Unmanaged view briefly shows a position as "out of range" when it is
+first opened, before the range bar and the current price have loaded.
+About a minute later the banner corrects itself, with no reload. The
+Managed view does not do this.
 
-**Why it matters:** Low priority because Unmanaged itself is
-low-priority in this app. But a false OOR banner is misleading to
-users who glance at the view.
+**Why it matters:** Low priority, because the Unmanaged view is
+low-priority in this app. But a false out-of-range banner misleads
+anyone who glances at it.
 
 ## Fix when prioritized
 

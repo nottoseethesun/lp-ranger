@@ -1,14 +1,18 @@
 # Corrective-Swap Oscillation Guard
 
-> **Status:** Nice-to-have / polish — not a bug. The app works
-> correctly without this. Funds are never at risk: any residual
-> tokens stay safely in the user's wallet and are recoverable via
-> the manual Rebalance button.
+> **Status:** Nice-to-have / polish — not a bug. Funds are never at
+> risk: any leftover coins stay in the wallet.
 
-Corrective-swap loop can oscillate on volatile swap paths: iter 1
-overshoots, later iters fail to land below the dust threshold before
-the 3-iteration cap exhausts. Residual tokens are safe in wallet and
-recoverable via manual Rebalance — not a failure, but a UX papercut.
+After a rebalance's main swap, the bot runs up to
+`correctiveSwapMaxRounds` corrective swaps (three as shipped) to bring
+the coins to the new range's ratio, stopping once the imbalance is below
+the dust threshold. On a volatile swap path the rounds can oscillate:
+the first overshoots, and the later ones fail to get under the dust
+threshold before the rounds run out. The leftover stays in the wallet
+as a residual. If it is over five percent of the position and residual
+combined, the automatic residual cleanup rebalances once more ten
+minutes later (both figures as shipped); Rebalance Now sweeps it at
+once. A papercut, not a failure.
 
 ## Observed example
 
@@ -26,6 +30,3 @@ Rebalance #159045 → #159049:
 
 - Shrink corrective-swap size when prior iter overshot.
 - Widen the tolerance band as iterations progress.
-
-Funds are safe and the user can manually recover via the Rebalance
-button in the meantime.

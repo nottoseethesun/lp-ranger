@@ -2,8 +2,9 @@
  * @file test/bot-cycle-gas-gate-scope.test.js
  * @description The gas gate decides on fresh prices, not cached ones.
  *
- * `_isGasTooHigh` refuses a rebalance whose gas would exceed 0.5% of the
- * position's value. It defers only when BOTH figures are above zero, so
+ * `_isGasTooHigh` refuses a rebalance whose gas would exceed
+ * `rebalanceGasDeferPct` of the position's value, the share set in
+ * bot-config-defaults.json. It defers only when BOTH figures are above zero, so
  * an unresolved price makes the comparison silently pass and an
  * uneconomic rebalance proceeds.
  *
@@ -19,6 +20,19 @@
  */
 
 "use strict";
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+// The gate's share is an operator's own, 0.8%, not the 0.5% that ships.
+const DEFER_PCT = 0.8;
+const SETTINGS_DIR = makeTestTempFolder("gas-gate-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "bot-config-defaults.json"),
+  JSON.stringify({ rebalanceGasDeferPct: DEFER_PCT }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
@@ -140,5 +154,35 @@ describe("the gas gate decides inside the fresh-prices scope", () => {
     );
     assert.equal(r.gasDeferred, true);
     assert.equal(r.compounded, true);
+  });
+});
+
+describe("the gas gate's threshold is the one bot-config-defaults.json sets", () => {
+  const pct = DEFER_PCT;
+
+  it("defers a rebalance whose gas is just above that share of the position", async () => {
+    const { mod } = loadWithProbe(pct * 1.01, 100);
+    const r = await mod._runRangeAndExec(
+      deps(),
+      {},
+      poolState,
+      () => {},
+      false,
+      {},
+    );
+    assert.equal(r.gasDeferred, true);
+  });
+
+  it("lets one just below it through to the rebalance", async () => {
+    /*-
+     *  Past the gate the fixture's rebalance cannot complete, so it
+     *  may end in an error; what matters is that the gate did not
+     *  defer it.
+     */
+    const { mod } = loadWithProbe(pct * 0.99, 100);
+    const outcome = await mod
+      ._runRangeAndExec(deps(), {}, poolState, () => {}, false, {})
+      .catch((err) => ({ threw: err }));
+    assert.notEqual(outcome.gasDeferred, true);
   });
 });

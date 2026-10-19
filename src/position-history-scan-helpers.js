@@ -12,9 +12,10 @@
  *     What epoch reconstruction reads.
  *   - `scanCollectAndDrain` — the same history for one NFT, for a caller
  *     looking at a single closed position.
- *   - `resolveScanFromBlock` — returns `max(latest - 5y, poolCreationBlock)`
- *     for the tokenId's pool; falls back to the 5-year floor when the pool
- *     address can't be resolved.
+ *   - `resolveScanFromBlock` — returns the later of the history lookback's
+ *     floor (`src/history-lookback.js`) and the tokenId's pool's creation
+ *     block; the lookback's floor alone when the pool address can't be
+ *     resolved.
  *
  * Both reads go through `nft-events-batch.js` — the single-NFT one as a
  * chain of one — so they cannot disagree about how a log is decoded,
@@ -38,9 +39,7 @@ const {
   getPoolCreationBlockCached,
   resolvePoolAddressForToken,
 } = require("./pool-creation-block");
-
-/** ~5 years of PulseChain blocks (10s block time). */
-const FIVE_YEAR_BLOCKS = 15_800_000;
+const { historyFloorBlock } = require("./history-lookback");
 
 /*-
  *  The two histories a closed NFT's figures come from: the exit value
@@ -196,9 +195,10 @@ async function scanChainCollectAndDrain(tokenIds, events) {
 
 /**
  * Resolve the on-chain log-scan lower bound for a tokenId's pool.
- * Returns `max(latest - 5y, poolCreationBlock)`; falls back to the 5-year
- * floor when the pool address can't be resolved.  Mirrors the bounding
- * pattern used by `_supplementMintFromChain` in position-history.js.
+ * Returns the later of the history lookback's floor and the pool's
+ * creation block; the lookback's floor alone when the pool address can't
+ * be resolved.  Mirrors the bounding pattern used by `_mintScanWindow` in
+ * position-history-mint.js.
  *
  * @param {object} prov     ethers.js provider
  * @param {object} ethers   ethers library
@@ -206,8 +206,8 @@ async function scanChainCollectAndDrain(tokenIds, events) {
  * @returns {Promise<number>}  Block number to use as `fromBlock`.
  */
 async function resolveScanFromBlock(prov, ethers, tokenId) {
-  const latest = await prov.getBlockNumber();
-  const fiveYearFloor = Math.max(0, latest - FIVE_YEAR_BLOCKS);
+  const head = await prov.getBlockNumber();
+  const lookbackFloor = historyFloorBlock(head);
   const poolAddress = await resolvePoolAddressForToken({
     provider: prov,
     ethersLib: ethers,
@@ -222,7 +222,7 @@ async function resolveScanFromBlock(prov, ethers, tokenId) {
         poolAddress,
       })
     : 0;
-  return Math.max(fiveYearFloor, poolCreationBlock);
+  return Math.max(lookbackFloor, poolCreationBlock);
 }
 
 module.exports = {
@@ -230,5 +230,4 @@ module.exports = {
   scanChainCollectAndDrain,
   collectAndDrainOf,
   resolveScanFromBlock,
-  FIVE_YEAR_BLOCKS,
 };

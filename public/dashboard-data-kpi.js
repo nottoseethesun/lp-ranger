@@ -14,9 +14,9 @@
  *    value at most recent rebalance.  Always available but not the
  *    original deposit.
  */
-import { _fmtUsd as _fmtUsdImpl } from "./dashboard-fmt-usd.js";
+import { _fmtUsd } from "./dashboard-fmt-usd.js";
 import { g, fmtDateTime, fmtDuration } from "./dashboard-helpers.js";
-import { posStore } from "./dashboard-positions.js";
+import { posStore } from "./dashboard-positions-store.js";
 import { updateNetBreakdown as _updateNetBreakdown } from "./dashboard-data-kpi-breakdown.js";
 import { currentUnclaimedFees as _currentUnclaimedFees } from "./dashboard-data-kpi-fees.js";
 import {
@@ -26,7 +26,7 @@ import {
   loadCurDeposit,
   refreshCurDepositDisplay,
 } from "./dashboard-data-deposit.js";
-import { setLeadingText } from "./dashboard-kpi-dom.js";
+import { setLeadingText as _setLeadingText } from "./dashboard-kpi-dom.js";
 import { ltStartDate, toMintTsSeconds } from "./dashboard-date-utils.js";
 
 /** Cached P&L breakdowns for the info dialogs.
@@ -65,9 +65,6 @@ export function getCurBreakdown() {
   return _curBreakdown;
 }
 
-/*- Re-exported from dashboard-fmt-usd.js so existing importers of this
- *  module's `_fmtUsd` keep working. */
-export const _fmtUsd = _fmtUsdImpl;
 export function _isDisplayZero(val) {
   return Math.abs(val).toFixed(2) === "0.00";
 }
@@ -103,7 +100,6 @@ export function _setAprSpan(id, val, deposit, firstDate) {
   el.textContent = sign + Math.abs(apr).toFixed(2) + "%";
   el.style.color = apr > 0 ? "#0f0" : "#f44";
 }
-export const _setLeadingText = setLeadingText;
 export function resetKpis(ids) {
   for (const id of ids) {
     const el = g(id);
@@ -321,19 +317,16 @@ export function _priceChangePnl(d, deposit) {
 export function _resolveKpiTotals(d) {
   const ltRealized = loadRealizedGains(),
     curRealized = loadCurRealized();
-  /*- New lifetime-fee model: `lifetimeCompounded + currentFees`.  The old
-   *  `snap.totalFees` was the per-epoch tracker sum which only saw
-   *  bot-uptime fees and missed fees folded into rebalances — for
-   *  HEX/eHEX it was off by $100+, only ~1/3 of the on-chain figure.
-   *  The historical Σ(Collect)−Σ(DL) scan + currently-unclaimed reading
-   *  gives us the precise total. */
+  /*-
+   *  The fees still unclaimed in the position: the live reading, or the
+   *  open period's fees before the first one arrives.
+   */
   const ltCurrentFees =
     d.pnlSnapshot?.currentFeesUsd ?? d.pnlSnapshot?.liveEpoch?.fees ?? 0;
   const curDep = _resolveCurDeposit(d);
   const ltDep = _resolveLifetimeDeposit(d);
   const curPc = _priceChangePnl(d, curDep),
     ltPc = _priceChangePnl(d, ltDep);
-  const compounded = d.pnlSnapshot?.totalCompoundedUsd || 0;
   const curCompounded = d.pnlSnapshot?.currentCompoundedUsd || 0;
   const ltGas = d.pnlSnapshot?.totalGas || 0;
   /*- Wallet residual (pool tokens sitting in the wallet from prior
@@ -356,13 +349,16 @@ export function _resolveKpiTotals(d) {
      *  `currentValue`, which `curPc` measures, so adding them here would
      *  count them twice — see `_currentUnclaimedFees`. */
     curTotal: curPc + _currentUnclaimedFees(d, curCompounded) + curRealized,
-    /*- Lifetime total folds in fee earnings additively: compounded fees
-     *  (already realized, swept back into liquidity) plus currently
-     *  unclaimed fees (will be compounded next).  No subtraction term
-     *  for compounded — it IS the fee earnings figure. */
+    /*-
+     *  Lifetime, the same way: every fee the chain has collected,
+     *  compounded or re-minted at a rebalance, is already inside
+     *  `currentValue` or the wallet residual below, and Total Lifetime
+     *  Deposit counts fresh deposits only, so `ltPc` and the residual
+     *  carry them. Adding Fees Compounded as well would count them twice.
+     *  The fees still unclaimed are in neither, so they are added.
+     */
     ltTotal:
       ltPc +
-      compounded +
       ltCurrentFees +
       ltRealized -
       ltGas +
@@ -493,7 +489,6 @@ export function _updateKpis(d) {
     !histOk,
   );
 }
-export { _updateNetBreakdown };
 export function _setProfitKpi(id, fees, gas, ilg) {
   const el = g(id);
   if (!el) return;
@@ -628,12 +623,3 @@ function _setLtCurrentValue(d) {
   const cv = d.pnlSnapshot.currentValue || 0;
   el.textContent = _fmtUsd(cv);
 }
-export {
-  _showBaselineModal,
-  checkHodlBaselineDialog,
-} from "./dashboard-data-baseline.js";
-export {
-  _activeToken1Symbol,
-  positionRangeVisual,
-  updateRangePctLabels,
-} from "./dashboard-data-range.js";

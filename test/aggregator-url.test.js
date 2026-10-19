@@ -1,22 +1,18 @@
 /**
  * @file test/aggregator-url.test.js
- * @description Locks the shape of the 9mm DEX Aggregator REST URL.
+ * @description Locks the shape of the aggregator quote URL, built from the
+ * shipped config.
  *
- * Why this file exists: the aggregator quote URL shipped without its
- * chain slug segment on 2026-03-31 and stayed that way. The live API
- * answers the slug-less path with a 404 — verified directly:
+ * A wrong URL fails silently everywhere else. The quote request fails,
+ * the swap falls through to the V3 SwapRouter and completes on the worse
+ * route, and nothing reports it. The other aggregator tests stub `fetch`,
+ * so they see only how the code handles a *response*, never the URL it
+ * asked. These tests therefore assert the URL itself, with no network and
+ * no `fetch` stub in the assertion path.
  *
- *   404  https://api.9mm.pro/swap/v1/quote?…
- *   200  https://api.9mm.pro/pulsechain/swap/v1/quote?…
- *
- * Nothing caught it for months. The existing aggregator tests all stub
- * `fetch`, so they assert how the code handles a *response* and never
- * look at the URL; and in production a failed aggregator quote falls
- * through to the V3 SwapRouter, so swaps still completed — just on the
- * worse route, silently.
- *
- * These tests therefore assert the URL itself, built from the shipped
- * config, with no network and no `fetch` stub in the assertion path.
+ * Each chain names its whole aggregator base in chains.json, chain path
+ * included, because the vendor chooses that path: Watergun keys it by
+ * chain id.
  */
 
 "use strict";
@@ -25,67 +21,159 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 
 const { _aggregatorBase } = require("../src/rebalancer-aggregator");
+const { primaryRouteLabel } = require("../src/rebalancer-swap");
+const { V3_ROUTER_LABEL } = require("../src/rebalancer-router");
+const { resolvedHelpFigures } = require("../src/resolved-settings");
+const {
+  aggregatorBaseUrlOf,
+  aggregatorNameInUse,
+} = require("../src/aggregator-in-use");
 const config = require("../src/config");
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
 describe("aggregator base URL", () => {
-  it("includes the chain slug segment", () => {
-    const base = _aggregatorBase();
-    assert.strictEqual(base, `${config.AGGREGATOR_URL}/pulsechain`);
+  it("is the active chain's url, unchanged", () => {
+    assert.strictEqual(
+      _aggregatorBase(),
+      CHAINS[config.CHAIN_NAME].aggregator.url,
+    );
   });
 
-  it("produces the exact path the 9mm API answers with 200", () => {
-    /*- The slug-less form 404s. Asserting the full path, not just a
-     *  substring, so dropping the segment fails here rather than in
-     *  production. */
+  it("produces the exact PulseChain quote path, chain id included", () => {
+    /*-
+     *  Asserting the full path, not a substring, so a dropped chain
+     *  segment fails here rather than in production.
+     */
     assert.strictEqual(
       `${_aggregatorBase()}/swap/v1/quote`,
-      "https://api.9mm.pro/pulsechain/swap/v1/quote",
+      "https://swap.watergun.pro/api/aggregator/369/swap/v1/quote",
     );
   });
 
-  it("never yields the 404-ing slug-less path", () => {
-    assert.notStrictEqual(
-      `${_aggregatorBase()}/swap/v1/quote`,
-      "https://api.9mm.pro/swap/v1/quote",
-    );
+  it("does not double up slashes, even under a trailing slash", () => {
+    const saved = config.AGGREGATOR_URL;
+    config.AGGREGATOR_URL = `${saved}/`;
+    try {
+      const base = _aggregatorBase();
+      assert.ok(!base.replace("https://", "").includes("//"), base);
+      assert.strictEqual(base, saved);
+    } finally {
+      config.AGGREGATOR_URL = saved;
+    }
   });
 
-  it("does not double up slashes", () => {
-    const base = _aggregatorBase();
-    assert.ok(!base.replace("https://", "").includes("//"), base);
+  it("throws on a chain with no aggregator, naming the setting", () => {
+    /*-
+     *  The throw is how a chain without an aggregator reaches the V3
+     *  router: `swapIfNeeded` treats it as a failed quote.
+     */
+    const saved = config.AGGREGATOR_URL;
+    config.AGGREGATOR_URL = "";
+    try {
+      assert.throws(() => _aggregatorBase(), /aggregator\.url/);
+    } finally {
+      config.AGGREGATOR_URL = saved;
+    }
+  });
+
+  it("reads a url of slashes alone as no aggregator, for the swap, the badge and the help alike", () => {
+    /*-
+     *  The "Routing through:" badge, the help and the swap ask one
+     *  question, so neither the badge nor the help can name the
+     *  aggregator while every swap goes through the V3 router. A url
+     *  that is not a string never gets here: src/config.js refuses to
+     *  start on one (test/config-startup-checks.test.js).
+     */
+    const saved = config.AGGREGATOR_URL;
+    config.AGGREGATOR_URL = "/";
+    try {
+      assert.throws(() => _aggregatorBase(), /aggregator\.url/);
+      assert.strictEqual(primaryRouteLabel(), V3_ROUTER_LABEL);
+      assert.strictEqual(resolvedHelpFigures().aggregatorName, "");
+      assert.strictEqual(resolvedHelpFigures().aggregatorInUse, "none");
+    } finally {
+      config.AGGREGATOR_URL = saved;
+    }
+  });
+
+  it("lets the help name the aggregator the swap tries first", () => {
+    assert.strictEqual(
+      resolvedHelpFigures().aggregatorName,
+      config.AGGREGATOR_NAME,
+    );
   });
 });
 
-describe("aggregator slug config", () => {
-  it("every chain declares an aggregator.blockchain key", () => {
-    /*- Presence is required even when blank, so adding a chain forces
-     *  an explicit decision instead of silently inheriting a 404. */
+describe("whether a chain has an aggregator", () => {
+  it("is its url's base, without trailing slashes", () => {
+    assert.strictEqual(
+      aggregatorBaseUrlOf("https://a.example/x/"),
+      "https://a.example/x",
+    );
+    assert.strictEqual(aggregatorBaseUrlOf("/"), "");
+    assert.strictEqual(aggregatorBaseUrlOf(""), "");
+  });
+
+  it("decides whether its name is the one in use", () => {
+    assert.strictEqual(aggregatorNameInUse("https://a.example", "A"), "A");
+    assert.strictEqual(aggregatorNameInUse("//", "A"), "");
+    assert.strictEqual(aggregatorNameInUse("", ""), "");
+  });
+});
+
+describe("aggregator url config", () => {
+  it("every chain declares an aggregator.url string", () => {
+    /*-
+     *  Presence is required even when blank, so adding a chain forces an
+     *  explicit decision about its aggregator instead of a silent gap.
+     */
     for (const [name, chain] of Object.entries(CHAINS)) {
-      assert.ok(
-        Object.prototype.hasOwnProperty.call(chain.aggregator, "blockchain"),
-        `${name}.aggregator is missing the blockchain key`,
-      );
       assert.strictEqual(
-        typeof chain.aggregator.blockchain,
+        typeof chain.aggregator?.url,
         "string",
-        `${name}.aggregator.blockchain must be a string`,
+        `${name}.aggregator.url must be a string`,
       );
     }
   });
 
-  it("pulsechain carries the verified slug", () => {
-    assert.strictEqual(CHAINS.pulsechain.aggregator.blockchain, "pulsechain");
+  it("every chain names both swap routes, even when blank", () => {
+    /*-
+     *  The names are what the badge and the Rebalance Events table show,
+     *  and src/config.js supplies none of its own.
+     */
+    for (const [name, chain] of Object.entries(CHAINS)) {
+      assert.strictEqual(
+        typeof chain.aggregator?.name,
+        "string",
+        `${name}.aggregator.name must be a string`,
+      );
+      assert.strictEqual(
+        typeof chain.contracts?.swapRouter?.name,
+        "string",
+        `${name}.contracts.swapRouter.name must be a string`,
+      );
+    }
   });
 
-  it("keeps the slug distinct from the chart-provider slugs", () => {
-    /*- Same chain, three independently-configured vendor slugs. Two
-     *  now coincide on "pulsechain" and DexTools still says "pulse" —
-     *  which is exactly why they stay separate keys: coinciding values
-     *  are a coincidence, not a shared setting. */
-    const chain = CHAINS.pulsechain;
-    assert.strictEqual(chain.aggregator.blockchain, "pulsechain");
-    assert.strictEqual(chain.chartProviders.dextools.blockchain, "pulse");
-    assert.strictEqual(chain.dexPairDetailPageUrl.blockchain, "pulsechain");
+  it("PulseChain names the Watergun Aggregator", () => {
+    assert.strictEqual(
+      CHAINS.pulsechain.aggregator.url,
+      "https://swap.watergun.pro/api/aggregator/369",
+    );
+  });
+
+  it("the testnet names none, because Watergun does not serve it", () => {
+    /*-
+     *  Watergun answers chain 943 with "not served by this gateway", so
+     *  every testnet swap goes through the V3 router.
+     */
+    assert.strictEqual(CHAINS["pulsechain-testnet"].aggregator.url, "");
+  });
+
+  it("no chain still carries the retired slug or api key", () => {
+    for (const [name, chain] of Object.entries(CHAINS)) {
+      assert.ok(!("blockchain" in chain.aggregator), `${name}: blockchain`);
+      assert.ok(!("apiKey" in chain.aggregator), `${name}: apiKey`);
+    }
   });
 });

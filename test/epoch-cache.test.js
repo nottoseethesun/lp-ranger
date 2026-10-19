@@ -1,11 +1,17 @@
 "use strict";
 
-const { describe, it, before } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
-const TMP = path.join(process.cwd(), "tmp");
+/*-
+ *  The cache file lives in a directory of this process's own under the
+ *  system's temporary directory, never the project's tmp/, where the
+ *  operator's caches are.
+ */
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "epoch-cache-test-"));
 
 // Unique suffix prevents collisions when running concurrently with other suites.
 const U = `-test-${process.pid}`;
@@ -15,11 +21,12 @@ describe("epoch-cache", () => {
   const _isolatedPath = path.join(TMP, `pnl-epochs-cache${U}.json`);
 
   before(() => {
-    fs.mkdirSync(TMP, { recursive: true });
     const mod = require("../src/epoch-cache");
     ({ getCachedEpochs, setCachedEpochs } = mod);
     mod._setCachePath(_isolatedPath);
   });
+
+  after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
   it("returns null for unknown key", () => {
     assert.strictEqual(
@@ -107,6 +114,7 @@ describe("epoch-cache", () => {
       getCachedLifetimeHodl,
     } = require("../src/epoch-cache");
     const key = {
+      contract: `0xHODL${U}`,
       wallet: `0xABC${U}`,
       token0: "0xT0",
       token1: "0xT1",

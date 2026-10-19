@@ -16,12 +16,10 @@ import {
   toggleSettingsPopover,
   showDisclosure,
   copyElText,
+  copyWithFeedback,
 } from "./dashboard-helpers.js";
-import {
-  markInputDirty,
-  getLastStatus,
-  isSyncComplete,
-} from "./dashboard-data.js";
+import { getLastStatus, isSyncComplete } from "./dashboard-data.js";
+import { markInputDirty } from "./dashboard-data-cache.js";
 import {
   closeWalletModal,
   wTab,
@@ -29,6 +27,11 @@ import {
   generateWallet,
   checkPasswordMatch,
   confirmWallet,
+  openWalletModal,
+  submitUnlock,
+  dismissToViewOnly,
+} from "./dashboard-wallet.js";
+import {
   validateSeed,
   onSeedConfirmChange,
   importSeed,
@@ -41,30 +44,23 @@ import {
   clearWalletUI,
   closeClearWalletModal,
   confirmClearWallet,
-  openWalletModal,
-  submitUnlock,
-  dismissToViewOnly,
-} from "./dashboard-wallet.js";
+} from "./dashboard-wallet-import.js";
+import { scanPositions, activateSelectedPos } from "./dashboard-positions.js";
 import {
+  removeSelectedPos,
   openPosBrowser,
   closePosBrowser,
   renderPosBrowser,
-  scanPositions,
   posChangePage,
-  activateSelectedPos,
   posRowClick,
   posRowSelect,
-} from "./dashboard-positions.js";
-import { removeSelectedPos } from "./dashboard-positions-browser.js";
+} from "./dashboard-positions-browser.js";
 import {
-  onParamChange,
   saveOorThreshold,
   saveIlGuard,
   saveOorTimeout,
   saveMinInterval,
   saveMaxReb,
-  saveCheckInterval,
-  saveGasStrategy,
   saveOffset,
   resetOffset,
   saveApprovalMultiple,
@@ -99,11 +95,6 @@ import {
   saveCurRealized,
   toggleLifetimeDays,
   saveLifetimeDays,
-} from "./dashboard-data.js";
-/*- Direct import from the owning module per feedback-no-reexports —
- *  the reset handlers have no other consumer, so re-exporting them
- *  through dashboard-data.js would only pad that file's line count. */
-import {
   resetLifetimeDays,
   resetInitialDeposit,
   resetRealizedGains,
@@ -138,17 +129,6 @@ import {
 } from "./dashboard-events-manage.js";
 import { _reloadCurrentPosition } from "./dashboard-reload-flow.js";
 
-/*- Re-export only the symbols dashboard-events.js's external callers
- *  use that don't have a more specific owner.  `updateManageBadge` is
- *  imported directly from dashboard-events-manage.js by its sole caller
- *  (dashboard-data.js) — no barrel needed; closes a latent
- *  feedback_no_reexports violation. */
-export {
-  reapplyPrivacyBlur,
-  restorePrivacyMode,
-  injectPosStoreForEvents,
-} from "./dashboard-events-manage.js";
-
 /** @param {string} id  @param {Function} fn */
 function _click(id, fn) {
   const el = g(id);
@@ -177,11 +157,7 @@ function _qa(sel, evt, fn) {
   document.querySelectorAll(sel).forEach((el) => el.addEventListener(evt, fn));
 }
 
-import {
-  saveMoralisApiKey,
-  saveMoralisKeyFromSettings as _saveMoralisKey,
-} from "./dashboard-moralis-key.js";
-export { saveMoralisApiKey };
+import { saveMoralisKeyFromSettings as _saveMoralisKey } from "./dashboard-moralis-key.js";
 
 import { checkForUpdate as _checkForUpdate } from "./dashboard-update-check.js";
 import {
@@ -375,17 +351,9 @@ export function bindAllEvents() {
   if (mgd) mgd.addEventListener("change", () => renderPosBrowser());
   const cld = g("posClosedToggle");
   if (cld) cld.addEventListener("change", () => renderPosBrowser());
-  const ntb = g("posNewTabToggle");
-  if (ntb) ntb.addEventListener("change", () => {});
 
   /* ── Header buttons ───────────────────── */
-  document.querySelectorAll("header .pos-browser-btn").forEach((b) => {
-    const t = b.textContent;
-    if (t.includes("\u{1F4C2}") || t.includes("Position"))
-      b.addEventListener("click", openPosBrowser);
-    else if (t.includes("\u27F3") || t.includes("Scan"))
-      b.addEventListener("click", scanPositions);
-  });
+  _click("posBrowserBtn", openPosBrowser);
   _qa(".hwbtn", "click", openWalletModal);
   _click("settingsBtn", toggleSettingsPopover);
   _click("donateBtn", () => _show("donateOverlay"));
@@ -423,8 +391,6 @@ export function bindAllEvents() {
   /* ── Wallet strip ─────────────────────── */
   _click("wsRevealBtn", openRevealModal);
   _click("wsClearBtn", clearWalletUI);
-  const ps = document.querySelector(".ws-pos-summary");
-  if (ps) ps.addEventListener("click", openPosBrowser);
 
   /* ── Privacy toggle ───────────────────── */
   const priv = g("privacySwitch");
@@ -477,11 +443,14 @@ export function bindAllEvents() {
   _click("curRealizedSaveBtn", saveCurRealized);
 
   /* ── Bot configuration ────────────────── */
-  _input("inMaxReb", onParamChange);
+  /*-
+   *  No input handler on Max Rebalances / Day: typing changes nothing
+   *  until Save, since the throttle badge shows only what the server
+   *  reports.
+   */
   /*- The RPC list is read-only; adding one goes through its own dialog,
    *  which wires itself. */
   bindRpcAddEvents();
-  _change("inGas", saveGasStrategy);
 
   /*- Bound by id like every other Save button, not by a
    *  `.save-range-btn` sweep with a `:not(...)` blocklist.  That class
@@ -494,7 +463,6 @@ export function bindAllEvents() {
   _click("saveIlGuardBtn", saveIlGuard);
   _click("saveMinIntervalBtn", saveMinInterval);
   _click("saveMaxRebBtn", saveMaxReb);
-  _click("saveIntervalBtn", saveCheckInterval);
   _click("saveOffsetBtn", saveOffset);
   _click("resetOffsetBtn", resetOffset);
   wirePriceRangeExtensionEvents(_click, _input, _change);
@@ -512,12 +480,7 @@ export function bindAllEvents() {
     offsetRow.addEventListener("click", (e) => {
       const b = e.target.closest("[data-copy-addr]");
       if (!b || !b.dataset.copyAddr) return;
-      navigator.clipboard.writeText(b.dataset.copyAddr).catch(() => {});
-      const orig = b.textContent;
-      b.textContent = "\u2713";
-      setTimeout(() => {
-        b.textContent = orig;
-      }, 1200);
+      copyWithFeedback(b, b.dataset.copyAddr);
     });
 
   /* ── Dirty-flag: mark config inputs as edited so poll skips overwrite ── */
@@ -526,7 +489,6 @@ export function bindAllEvents() {
     "inOorTimeout",
     "inSlipToken0",
     "inSlipToken1",
-    "inInterval",
     "inMinInterval",
     "inMaxReb",
     "autoCompoundThreshold",
@@ -564,7 +526,6 @@ export function bindAllEvents() {
     posBrowser: closePosBrowser,
     revealModal: closeRevealModal,
     clearWallet: closeClearWalletModal,
-    rebalanceIlWarning: closeRebalanceConfirm,
     ilDebug: dismissILDebug,
     donate: () => _hide("donateOverlay"),
     about: () => _hide("aboutOverlay"),

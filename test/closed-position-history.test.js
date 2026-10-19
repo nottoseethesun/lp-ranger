@@ -255,14 +255,59 @@ describe("getPositionHistory", () => {
     fs.writeFileSync(LOG_PATH, "[]", "utf8");
   });
 
-  it("returns fallback prices when provided", async () => {
-    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+  it("fills today's prices for an open and a close that are today", async () => {
+    const now = new Date().toISOString();
+    fs.writeFileSync(
+      LOG_PATH,
+      JSON.stringify([
+        { newTokenId: "888", loggedAt: now },
+        { oldTokenId: "888", loggedAt: now },
+      ]),
+      "utf8",
+    );
     const body = await getPositionHistory("888", {
       fallbackPrices: { price0: 1.5, price1: 0.8 },
     });
     assert.strictEqual(body.tokenId, "888");
     assert.strictEqual(body.token0UsdPriceAtOpen, 1.5);
     assert.strictEqual(body.token1UsdPriceAtOpen, 0.8);
+    assert.strictEqual(body.token0UsdPriceAtClose, 1.5);
+    assert.strictEqual(body.token1UsdPriceAtClose, 0.8);
+    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+  });
+
+  it("leaves an earlier day's prices unread rather than filling today's", async () => {
+    /*-
+     *  Valued at today's prices, the period would show figures that look
+     *  real and are wrong, kept until Re-scan Prices. Unread, the period
+     *  is marked as missing a price and the Per-Day table shows a dash.
+     */
+    fs.writeFileSync(
+      LOG_PATH,
+      JSON.stringify([
+        { newTokenId: "889", loggedAt: "2026-09-01T12:00:00.000Z" },
+        { oldTokenId: "889", loggedAt: "2026-09-03T12:00:00.000Z" },
+      ]),
+      "utf8",
+    );
+    const body = await getPositionHistory("889", {
+      fallbackPrices: { price0: 1.5, price1: 0.8 },
+    });
+    assert.strictEqual(body.token0UsdPriceAtOpen, null);
+    assert.strictEqual(body.token1UsdPriceAtOpen, null);
+    assert.strictEqual(body.token0UsdPriceAtClose, null);
+    assert.strictEqual(body.token1UsdPriceAtClose, null);
+    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+  });
+
+  it("does not guess a price for a day it does not know", async () => {
+    // No date at all cannot be today, so nothing is filled.
+    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+    const body = await getPositionHistory("890", {
+      fallbackPrices: { price0: 1.5, price1: 0.8 },
+    });
+    assert.strictEqual(body.token0UsdPriceAtOpen, null);
+    assert.strictEqual(body.token0UsdPriceAtClose, null);
   });
 
   it("returns complete result shape", async () => {

@@ -13,9 +13,13 @@
  *
  * Persistence model mirrors `dashboard-sounds.js`:
  *   • Each control persists to its own localStorage key.
- *   • When a key is absent, the value comes from the cached server
- *     default fetched via `GET /api/ui-defaults` (backed by
- *     `app-config/app-defaults-for-user-configurable/ui-defaults.json`).
+ *   • When a key is absent, the value is the first-visit default the
+ *     server sends (`privacyBlurWalletAddresses`, `privacyBlurUsdAmounts`,
+ *     `privacyUsdAmountThreshold`; `dashboard-ui-settings.js`).
+ *   • Until the server has sent those, a control with no saved value
+ *     blurs: wallet addresses and every USD amount. Privacy errs toward
+ *     hiding, and the page-load restore applies the state again once
+ *     they land.
  *
  * This module only owns the sub-form state. Wiring the settings into the
  * actual blur-application path lives in `dashboard-events-manage.js`.
@@ -25,6 +29,12 @@
 
 import { log } from "./dashboard-log.js";
 import { g } from "./dashboard-helpers.js";
+import {
+  uiSetting,
+  uiSettingsLoaded,
+  uiSettingsReady,
+  withUiSettings,
+} from "./dashboard-ui-settings.js";
 
 /** localStorage keys. Values: "0" / "1" for booleans; decimal string for threshold. */
 const _LS_BLUR_WALLET = "9mm_privacy_blur_wallet";
@@ -74,9 +84,7 @@ const _USD_SELECTORS = [".kpi-value", '[data-privacy="usd"]'];
 
 /*-
  * Coin-category selectors. These elements display token-count amounts
- * (no `
-
- prefix, just a bare number). When "Hide $USD Values Above
+ * (no `$` prefix, just a bare number). When "Hide $USD Values Above
  * Threshold" is on, they are blurred unconditionally — the threshold is
  * a USD value and doesn't directly apply to token counts, but the
  * tooltip ("Where possible, includes the value of token (coin) amounts.")
@@ -103,17 +111,19 @@ const _USD_RAW_SELECTORS = ['[data-privacy="usd-raw"]'];
  */
 const _USD_RE = /\$\s*(?:usd\s*)?-?([\d,]+(?:\.\d+)?)/i;
 
-/** Built-in fallbacks used when both localStorage and the server fetch fail. */
-const _BUILTIN_DEFAULTS = Object.freeze({
-  blurWallet: true,
-  blurUsd: true,
-  usdThreshold: 99,
-});
-
-/*- Cached server defaults. Populated by `restorePrivacySubform()`; used
- *  when the corresponding localStorage key is absent. Matches the
- *  fallback shape so consumers never see `undefined`. */
-const _serverDefaults = { ..._BUILTIN_DEFAULTS };
+/**
+ * A switch's saved choice, or null when the browser has none.
+ * @param {string} lsKey  Its localStorage key.
+ * @returns {boolean|null}
+ */
+function _savedSwitch(lsKey) {
+  try {
+    const v = localStorage.getItem(lsKey);
+    return v === null ? null : v === "1";
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Clamp a numeric string to the 5-digit input range (0..99999). Returns
@@ -131,35 +141,57 @@ function _parseThreshold(v) {
   return floored;
 }
 
-/** @returns {boolean} Whether wallet-address blur is enabled. */
+/**
+ * Whether privacy mode is on: the choice saved in this browser, else the
+ * operator's first-visit default (`privacyModeEnabled`), which the
+ * server sends; off until it has. The switch, the blur and the LP
+ * Position Browser's rows all follow this one answer, so the switch
+ * cannot read on while nothing is blurred.
+ * @returns {boolean}
+ */
+export function isPrivacyModeOn() {
+  const saved = _savedSwitch(_LS_MASTER);
+  if (saved !== null) return saved;
+  return uiSettingsLoaded() ? uiSetting("privacyModeEnabled") : false;
+}
+
+/**
+ * Whether wallet-address blur is enabled: the saved choice, else the
+ * server's first-visit default; blurred until the server has sent it.
+ * @returns {boolean}
+ */
 export function isPrivacyBlurWalletEnabled() {
-  try {
-    const v = localStorage.getItem(_LS_BLUR_WALLET);
-    return v === null ? _serverDefaults.blurWallet : v === "1";
-  } catch {
-    return _serverDefaults.blurWallet;
-  }
+  const saved = _savedSwitch(_LS_BLUR_WALLET);
+  if (saved !== null) return saved;
+  return uiSettingsLoaded() ? uiSetting("privacyBlurWalletAddresses") : true;
 }
 
-/** @returns {boolean} Whether USD-amount blur is enabled. */
+/**
+ * Whether USD-amount blur is enabled: the saved choice, else the
+ * server's first-visit default; blurred until the server has sent it.
+ * @returns {boolean}
+ */
 export function isPrivacyBlurUsdEnabled() {
-  try {
-    const v = localStorage.getItem(_LS_BLUR_USD);
-    return v === null ? _serverDefaults.blurUsd : v === "1";
-  } catch {
-    return _serverDefaults.blurUsd;
-  }
+  const saved = _savedSwitch(_LS_BLUR_USD);
+  if (saved !== null) return saved;
+  return uiSettingsLoaded() ? uiSetting("privacyBlurUsdAmounts") : true;
 }
 
-/** @returns {number} USD threshold; amounts at or below this are not blurred. */
+/**
+ * The USD threshold; amounts at or below it are not blurred. The saved
+ * choice, else the server's first-visit default; until the server has
+ * sent it, 0, so every amount is blurred.
+ * @returns {number}
+ */
 export function getPrivacyUsdThreshold() {
+  let parsed = null;
   try {
-    const raw = localStorage.getItem(_LS_USD_THRESHOLD);
-    const parsed = _parseThreshold(raw);
-    return parsed === null ? _serverDefaults.usdThreshold : parsed;
+    parsed = _parseThreshold(localStorage.getItem(_LS_USD_THRESHOLD));
   } catch {
-    return _serverDefaults.usdThreshold;
+    /* storage unavailable: no saved choice */
   }
+  if (parsed !== null) return parsed;
+  return uiSettingsLoaded() ? uiSetting("privacyUsdAmountThreshold") : 0;
 }
 
 /**
@@ -243,15 +275,20 @@ function _onThresholdChange() {
   _sanitizeThresholdInput(input);
   const parsed = _parseThreshold(input.value);
   if (parsed === null) {
-    /*- Empty or out-of-range: restore the default into the input so the
-     *  UI never shows a blank field, and clear the localStorage override
-     *  so the server default re-applies. */
-    input.value = String(_serverDefaults.usdThreshold);
+    /*-
+     *  Empty or out-of-range: clear the localStorage override so the
+     *  server default applies again, and put that default into the
+     *  input so the UI never shows a blank field, once the server has
+     *  sent it.
+     */
     try {
       localStorage.removeItem(_LS_USD_THRESHOLD);
     } catch {
       /* */
     }
+    withUiSettings(() => {
+      input.value = String(getPrivacyUsdThreshold());
+    });
     return;
   }
   try {
@@ -388,7 +425,7 @@ function _parseBareUsdFromText(s) {
  */
 export function applyPrivacyState() {
   _clearAllPrivacyBlur();
-  const masterOn = localStorage.getItem(_LS_MASTER) === "1";
+  const masterOn = isPrivacyModeOn();
   const icon = g("privacyIcon");
   if (icon) icon.classList.toggle("9mm-pos-mgr-privacy-active", masterOn);
   if (!masterOn) return;
@@ -415,28 +452,13 @@ export function bindPrivacySubform() {
 }
 
 /**
- * Restore the sub-form control states on page load. Fetches server
- * defaults from `/api/ui-defaults` first so a fresh browser (no
- * localStorage yet) reflects the operator-configured values from
- * `ui-defaults.json`. Fetch failures leave the built-in defaults
- * in effect.
+ * Restore the sub-form control states on page load, once the server has
+ * sent the dashboard's settings, so a fresh browser (no saved choices)
+ * shows the operator-configured defaults.
  * @returns {Promise<void>}
  */
 export async function restorePrivacySubform() {
-  try {
-    const res = await fetch("/api/ui-defaults");
-    if (res.ok) {
-      const data = await res.json();
-      if (typeof data.privacyBlurWalletAddresses === "boolean")
-        _serverDefaults.blurWallet = data.privacyBlurWalletAddresses;
-      if (typeof data.privacyBlurUsdAmounts === "boolean")
-        _serverDefaults.blurUsd = data.privacyBlurUsdAmounts;
-      const t = _parseThreshold(data.privacyUsdAmountThreshold);
-      if (t !== null) _serverDefaults.usdThreshold = t;
-    }
-  } catch {
-    /* keep built-in defaults */
-  }
+  await uiSettingsReady;
   const bw = g("privacyBlurWalletSwitch");
   if (bw) bw.checked = isPrivacyBlurWalletEnabled();
   const bu = g("privacyBlurUsdSwitch");

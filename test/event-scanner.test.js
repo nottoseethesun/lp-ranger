@@ -3,10 +3,22 @@
 /**
  * @file test/event-scanner.test.js
  * @description Unit tests for the event-scanner module.
+ *
+ * The pairing window and the history lookback are an operator's own here,
+ * not the figures that ship, so a scanner using a figure of its own fails.
  */
 
+const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const SETTINGS_DIR = makeTestTempFolder("event-scanner-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "bot-config-defaults.json"),
+  JSON.stringify({ rebalancePairingWindowSec: 420, historyLookbackYears: 3 }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 /*- Scope the pool-creation-block disk cache to this test run so the
     integration test below ("pool-age optimisation skips blocks before
@@ -22,9 +34,9 @@ const assert = require("assert");
 const {
   scanRebalanceHistory,
   buildCacheKey,
-  _BLOCKS_PER_YEAR,
   _PAIRING_WINDOW_SEC,
 } = require("../src/event-scanner");
+const { BLOCKS_PER_YEAR } = require("../src/history-lookback");
 const { _DEFAULT_CHUNK_SIZE } = require("../src/get-logs-chunked");
 const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 const poolCreationBlock = require("../src/pool-creation-block");
@@ -96,11 +108,8 @@ const wIn = (id, block, tx) =>
 // ── Constants ────────────────────────────────────────────────────────────────
 
 describe("Constants", () => {
-  it("_BLOCKS_PER_YEAR ≈ 3,155,760", () => {
-    assert.ok(Math.abs(_BLOCKS_PER_YEAR - 3_155_760) < 10);
-  });
-  it("_PAIRING_WINDOW_SEC is 300", () =>
-    assert.strictEqual(_PAIRING_WINDOW_SEC, 300));
+  it("pairing window is the configured rebalancePairingWindowSec", () =>
+    assert.strictEqual(_PAIRING_WINDOW_SEC, 420));
   /*- Asserts the WIRING, not the number.  The chunk size has exactly
    *  one literal — getLogsChunkSize in the shipped defaults — so a test
    *  repeating that figure would be a second copy to drift.  What is
@@ -141,10 +150,18 @@ describe("scanRebalanceHistory", () => {
     assert.deepStrictEqual(r, []);
   });
 
-  it("pairs transfer-out + transfer-in within 5 min", async () => {
+  /*-
+   *  The provider stub stamps block n with BASE_TS + n, so a gap of n
+   *  blocks is a gap of n seconds and the pairing window can be spent
+   *  exactly.
+   */
+  it("pairs transfer-out + transfer-in as far apart as the window", async () => {
     const r = await scanRebalanceHistory(
       mkProvider(5000, BASE_TS),
-      mkEthers([wIn("43", 110, "0xbbb")], [wOut("42", 100, "0xaaa")]),
+      mkEthers(
+        [wIn("43", 100 + _PAIRING_WINDOW_SEC, "0xbbb")],
+        [wOut("42", 100, "0xaaa")],
+      ),
       scanOpts(),
     );
     assert.strictEqual(r.length, 1);
@@ -153,10 +170,13 @@ describe("scanRebalanceHistory", () => {
     assert.strictEqual(r[0].txHash, "0xbbb");
   });
 
-  it("does not pair events beyond 5 min window", async () => {
+  it("does not pair events a second past the window", async () => {
     const r = await scanRebalanceHistory(
       mkProvider(5000, BASE_TS),
-      mkEthers([wIn("43", 401, "0xbbb")], [wOut("42", 100, "0xaaa")]),
+      mkEthers(
+        [wIn("43", 101 + _PAIRING_WINDOW_SEC, "0xbbb")],
+        [wOut("42", 100, "0xaaa")],
+      ),
       scanOpts(),
     );
     assert.strictEqual(r.length, 0);
@@ -189,12 +209,9 @@ describe("scanRebalanceHistory", () => {
     assert.strictEqual(r[1].index, 2);
   });
 
-  it("computes correct fromBlock based on maxYears", async () => {
-    const currentBlock = 20_000_000;
-    const maxYears = 2;
-    const expected = currentBlock - Math.round(maxYears * _BLOCKS_PER_YEAR);
-    const ranges = [];
-    const ethers = {
+  /** First block each queryFilter call asks for, through `ranges`. */
+  function rangeRecordingEthers(ranges) {
+    return {
       Contract: class {
         constructor() {
           this.filters = {
@@ -207,10 +224,29 @@ describe("scanRebalanceHistory", () => {
         }
       },
     };
+  }
+
+  it("computes correct fromBlock based on maxYears", async () => {
+    const currentBlock = 20_000_000;
+    const maxYears = 2;
+    const expected = currentBlock - Math.round(maxYears * BLOCKS_PER_YEAR);
+    const ranges = [];
     await scanRebalanceHistory(
       mkProvider(currentBlock),
-      ethers,
+      rangeRecordingEthers(ranges),
       scanOpts({ maxYears, chunkSize: _DEFAULT_CHUNK_SIZE }),
+    );
+    assert.strictEqual(ranges[0], expected);
+  });
+
+  it("reaches back the configured historyLookbackYears when maxYears is omitted", async () => {
+    const currentBlock = 20_000_000;
+    const expected = currentBlock - Math.round(3 * BLOCKS_PER_YEAR);
+    const ranges = [];
+    await scanRebalanceHistory(
+      mkProvider(currentBlock),
+      rangeRecordingEthers(ranges),
+      scanOpts({ maxYears: undefined, chunkSize: _DEFAULT_CHUNK_SIZE }),
     );
     assert.strictEqual(ranges[0], expected);
   });

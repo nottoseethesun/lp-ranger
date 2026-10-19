@@ -9,6 +9,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
 
 describe("compounder", () => {
   describe("compound P&L math consistency", () => {
@@ -147,10 +148,7 @@ describe("compounder", () => {
   });
 
   describe("_persistPositionConfig with compound fields", () => {
-    const _fs = require("fs"),
-      _os = require("os"),
-      _p = require("path");
-    const _dir = _fs.mkdtempSync(_p.join(_os.tmpdir(), "comp-persist-"));
+    const _dir = makeTestTempFolder("comp-persist");
     it("persists compound fields to in-memory config", () => {
       const { getOrCreatePositionConfig } = require("../src/bot-config-v2");
       const { updatePositionState } = require("../src/server-positions");

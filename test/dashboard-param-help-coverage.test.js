@@ -24,8 +24,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { indexHtmlDocument } = require("./helpers/index-html");
+const { shippedFigures } = require("../scripts/build-manual-content");
 
 const ROOT = path.join(__dirname, "..");
+const SHIPPED_FIGURES = shippedFigures();
 const INDEX_HTML = path.join(ROOT, "public", "index.html");
 
 /** Every `data-param-help="…"` key used in the markup. */
@@ -39,15 +41,17 @@ function markupKeys() {
 }
 
 /**
- * PARAM_HELP, read from the ES module.
+ * The dialogs' help, built by the ES module from the shipped figures.
  *
  * `param-help-content.js` is browser ES-module source with no runtime
- * dependencies, so a dynamic import reads the real object rather than a
- * re-parsed copy that could drift from what the dashboard bundles.
+ * dependencies, so a dynamic import builds the real object rather than a
+ * re-parsed copy that could drift from what the dashboard bundles. The
+ * dashboard builds it from the figures the server sends; the shipped
+ * figures stand in for them here.
  */
 async function paramHelp() {
   const mod = await import("../public/param-help-content.js");
-  return mod.PARAM_HELP;
+  return mod.buildParamHelp(SHIPPED_FIGURES);
 }
 
 test("every data-param-help key in the markup has help content", async () => {
@@ -126,13 +130,23 @@ test("curFees says compounded fees are NOT included, and where they are", async 
   assert.match(text, /line directly below/i, "points at where to find them");
 });
 
-test("both Current fee dialogs offer Re-scan Prices as the remedy", async () => {
+test("each Current fee dialog names the remedy that applies, and where it is", async () => {
+  /*-
+   *  Fees Earned is the unclaimed coins at this poll's prices, so a bad
+   *  price is fixed by the price override; Re-scan Prices re-values only
+   *  stored figures (src/server-rescan-prices.js) and leaves it alone.
+   *  Fees Compounded is a count of coins Re-scan Prices takes again.
+   */
   const help = await paramHelp();
-  for (const key of ["curFees", "curCompounded"]) {
-    const text = help[key].sections.map((s) => s.body).join(" ");
-    assert.match(text, /Re-scan Prices/, `${key}: names the remedy`);
-    assert.match(text, /gear\s+icon at top right/i, `${key}: says where`);
-  }
+  const text = (key) => help[key].sections.map((s) => s.body).join(" ");
+  assert.match(text("curFees"), /<strong>Edit<\/strong> beside Current Value/);
+  assert.match(text("curFees"), /tick its box/);
+  assert.match(text("curCompounded"), /Re-scan Prices/, "names the remedy");
+  assert.match(
+    text("curCompounded"),
+    /gear\s+icon at top right/i,
+    "says where",
+  );
 });
 
 test("curCompounded scopes itself to this NFT, not the whole chain", async () => {
@@ -307,7 +321,8 @@ test("the throttle copy survived the move verbatim in substance", async () => {
   const body = help.throttleBadge.sections.map((s) => s.body).join(" ");
   assert.match(body, /free to rebalance/);
   assert.match(body, /Min Time Between Rebalances/);
-  assert.match(body, /10m &rarr; 20m &rarr; 40m &rarr; 80m/);
+  // The doubling ladder, worked out once for the dialogs and the manual.
+  assert.ok(body.includes(SHIPPED_FIGURES.doublingLadder), body);
   assert.match(body, /Max Rebalances \/ Day/);
   assert.match(body, /midnight UTC/);
 });

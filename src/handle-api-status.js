@@ -14,6 +14,22 @@
 
 "use strict";
 
+const path = require("path");
+const { configuredErrorLogPath } = require("./error-log");
+const { getActiveLogFilePath } = require("./log-file");
+const { managedPositionList } = require("./position-state-routes");
+const { startUpProgress } = require("./app-phase");
+
+/**
+ * The file the server is logging to, relative to where it runs, or null
+ * while logging to a file is off: the Manage tooltip of a failed re-open
+ * points there for the details, and to the terminal otherwise.
+ */
+function _logFileForDisplay() {
+  const abs = getActiveLogFilePath();
+  return abs === null ? null : path.relative(process.cwd(), abs);
+}
+
 /**
  * Build the `GET /api/status` route handler.
  *
@@ -28,6 +44,8 @@
  * @param {Function} deps.actualGasCostUsd       Converter passed to gas-status.
  * @param {Function} deps.getLpProviderDisplayName  LP-provider label lookup by (factory, PM).
  * @param {Function} deps.managedKeys            Disk-config → running-keys helper.
+ * @param {Function} deps.primaryRouteLabel      Label of the active chain's first swap route.
+ * @param {Function} deps.moralisEnabledIn       Whether the stored Moralis key is used, from `global`.
  * @param {Function} deps.jsonResponse           HTTP JSON responder.
  * @returns {(req, res) => Promise<void>}  The bound route handler.
  */
@@ -43,6 +61,8 @@ function createApiStatusHandler(deps) {
     actualGasCostUsd,
     getLpProviderDisplayName,
     managedKeys,
+    primaryRouteLabel,
+    moralisEnabledIn,
     jsonResponse,
   } = deps;
 
@@ -50,12 +70,9 @@ function createApiStatusHandler(deps) {
     const posDefaults = {
       rebalanceOutOfRangeThresholdPercent: config.REBALANCE_OOR_THRESHOLD_PCT,
       rebalanceTimeoutMin: config.REBALANCE_TIMEOUT_MIN,
-      slippagePct: config.SLIPPAGE_PCT,
-      checkIntervalSec: config.CHECK_INTERVAL_SEC,
       minRebalanceIntervalMin: config.MIN_REBALANCE_INTERVAL_MIN,
       maxRebalancesPerDay: config.MAX_REBALANCES_PER_DAY,
       impermanentLossGuardPct: config.IMPERMANENT_LOSS_GUARD_PCT,
-      gasStrategy: "auto",
     };
     const positions = buildStatusPositions(
       diskConfig,
@@ -74,7 +91,6 @@ function createApiStatusHandler(deps) {
         port: config.PORT,
         host: config.HOST,
         rpcUrl: config.RPC_URLS[0],
-        positionManager: config.POSITION_MANAGER,
         /*- Single source of truth for the LP-provider label is
          *  app-config/app-defaults-for-user-configurable/lp-providers.json
          *  (composite factory+positionManager-keyed map, also served
@@ -88,44 +104,55 @@ function createApiStatusHandler(deps) {
         positionManagerName:
           getLpProviderDisplayName(config.FACTORY, config.POSITION_MANAGER) ||
           "",
-        chainDisplayName: config.CHAIN.displayName || config.CHAIN_NAME,
+        chainDisplayName: config.CHAIN.displayName,
         /*- Canonical chain id (KEY of chains.json, e.g. "pulsechain").
          *  Distinct from chainDisplayName ("PulseChain") — clients use
          *  the id for URL slugs, lookups, and comparisons; the display
          *  name is user-facing text only (locale-dependent).  See
          *  feedback in lp-providers about ID-vs-displayName. */
         chainId: config.CHAIN_NAME,
-        defaultSlippagePct: config.DEFAULT_SLIPPAGE_PCT,
+        /*-
+         *  The "Routing through:" badge's text between rebalances: the
+         *  aggregator's label, or the V3 router's on a chain that names
+         *  no aggregator.
+         */
+        swapRouteLabel: primaryRouteLabel(),
         compoundMinFeeUsd: config.COMPOUND_MIN_FEE_USD,
         compoundDefaultThresholdUsd: config.COMPOUND_DEFAULT_THRESHOLD_USD,
-        factory: config.FACTORY,
         rescanPricesTimeoutMs: config.RESCAN_PRICES_TIMEOUT_MS,
-        /*- Dashboard poll cadence + retire-debounce window are config
-         *  values so the dashboard reads them from /api/status instead
-         *  of duplicating the literal.  GUARANTEED_DASHBOARD_HAS_POLLED_MS
-         *  is derived from DASHBOARD_POLL_INTERVAL_MS * 2.5 in
-         *  src/config.js — single source of truth.  Dashboard's post-
-         *  retire Manage-button debounce reads guaranteedDashboardHasPolledMs
-         *  to gate the disable window. */
+        // logging.json → errorLogPath, for the Reload Current Position dialog.
+        errorLogPath: configuredErrorLogPath(),
+        logFilePath: _logFileForDisplay(),
+        /*-
+         *  Dashboard poll cadence + retire-debounce window. The cadence
+         *  is ui-defaults_non-layout_for-server-up-scenario.json →
+         *  dashboardPollIntervalMs, which the dashboard is sent at
+         *  startup by GET /api/ui-defaults, before its first poll.
+         *  GUARANTEED_DASHBOARD_HAS_POLLED_MS is derived from it in
+         *  src/config.js (times app-runtime.json →
+         *  dashboard.pollsBeforeAssumedSeen), and the dashboard's
+         *  post-retire Manage-button debounce reads
+         *  guaranteedDashboardHasPolledMs from here to gate the disable
+         *  window.
+         */
         dashboardPollIntervalMs: config.DASHBOARD_POLL_INTERVAL_MS,
         guaranteedDashboardHasPolledMs:
           config.GUARANTEED_DASHBOARD_HAS_POLLED_MS,
         ...posDefaults,
         ...diskConfig.global,
-        managedPositions: (() => {
-          const r = positionMgr.getAll();
-          const rk = new Set(r.map((p) => p.key));
-          return [
-            ...r,
-            ...managedKeys(diskConfig)
-              .filter((k) => !rk.has(k))
-              .map((k) => ({
-                key: k,
-                tokenId: k.split("-").pop(),
-                status: diskConfig.positions[k]?.status || "running",
-              })),
-          ];
-        })(),
+        // What the server does with the key, the default included.
+        moralisEnabled: moralisEnabledIn(diskConfig.global),
+        managedPositions: managedPositionList({
+          positionMgr,
+          diskConfig,
+          managedKeys,
+        }),
+        /*-
+         *  While the start-up is starting the positions saved as managed:
+         *  how many it has dealt with and how many there are, which holds
+         *  the dashboard's badge at Syncing. Null at any other time.
+         */
+        startingManagedPositions: startUpProgress(),
         poolDailyCounts: positionMgr.getPoolDailyCounts(),
         gasStatus,
       },

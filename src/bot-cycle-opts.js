@@ -12,9 +12,13 @@
 "use strict";
 
 const config = require("./config");
-const { getTokenSymbol } = require("./server-scan");
-const { loadShippedDefaults } = require("./load-merged-defaults");
-const { resolveRangeOverrideEnabled } = require("./range-override");
+const { getTokenSymbol } = require("./token-symbol-cache");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+const {
+  resolveRangeOverrideEnabled,
+  resolveRebalanceOffsetPct,
+  fullRangeSetting,
+} = require("./range-override");
 
 /** Return `{[key]: value}` if the config value is a finite number,
  *  else `{}`.  Used for optional per-position overrides, so the opts
@@ -28,10 +32,15 @@ function _optionalConfig(deps, key) {
   return typeof v === "number" && Number.isFinite(v) ? { [key]: v } : {};
 }
 
-/*- Shipped defaults for the per-position config fallbacks below.  Per
- *  feedback_one_literal_per_shipped_default, the literals live only
- *  in bot-config-defaults.json. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+/*-
+ *  Defaults for the per-position config fallbacks below: the shipped
+ *  bot-config-defaults.json, with an operator's copy under
+ *  app-config/user-configurable/ on top, which is also what Bot
+ *  Settings shows for a setting the position has not saved.  Per
+ *  feedback_one_literal_per_shipped_default, the literals live only in
+ *  the JSON.
+ */
+const _DEFAULTS = readBotConfigDefaults();
 
 /**
  * Build the opts bag for `executeRebalance`.
@@ -64,24 +73,29 @@ function buildRebalanceOpts(deps, _state) {
   const crw = rangeOverrideEnabled
     ? rangeCfg.rebalanceRangeWidthPct
     : undefined;
+  // Saved, or else the install's default.
   const fullRangeRebalanceEnabled =
-    rangeOverrideEnabled && rangeCfg.fullRangeRebalanceEnabled === true;
-  /*- With the toggle ON the offset is pinned to the shipped default so
+    rangeOverrideEnabled && fullRangeSetting(rangeCfg) === true;
+  /*-
+   *  With the toggle ON the offset is pinned to centred, so
    *  `rangeMath.preserveRange()` re-centres the existing spread on the
-   *  current tick.  A saved non-centred offset otherwise leaks through
-   *  preserveRange and shifts a range the user asked us to re-use. */
-  const offsetToken0Pct = rangeOverrideEnabled
-    ? (rangeCfg.offsetToken0Pct ?? _DEFAULTS.offsetToken0Pct)
-    : _DEFAULTS.offsetToken0Pct;
+   *  current tick.  Neither a saved offset nor a default one may apply
+   *  there: either would shift a range the user asked us to re-use. The
+   *  rule is shared with `GET /api/status`, which publishes its answer
+   *  for the Rebalance Now preview.
+   */
+  const offsetToken0Pct = resolveRebalanceOffsetPct(rangeCfg);
   return {
     position,
     factoryAddress: config.FACTORY,
     positionManagerAddress: config.POSITION_MANAGER,
     swapRouterAddress: config.SWAP_ROUTER,
-    /*- Slippage is two settings, one per token, and nothing else.
+    /*-
+     *  Slippage is two settings, one per token, and nothing else.
      *  Passed through only when actually set; `resolveSlippagePct`
-     *  picks the destination token's and falls back to the shipped
-     *  default when that one is unset. */
+     *  picks the destination token's and falls back to the default
+     *  `slippagePct` when that one is unset.
+     */
     ..._optionalConfig(deps, "slippagePctToken0"),
     ..._optionalConfig(deps, "slippagePctToken1"),
     symbol0: getTokenSymbol(position.token0),

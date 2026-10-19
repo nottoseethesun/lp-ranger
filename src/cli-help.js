@@ -6,15 +6,23 @@
 "use strict";
 
 const { log } = require("./log");
+const { loadMergedDefaults } = require("./load-merged-defaults");
+
+/*-
+ *  The defaults the text quotes are read from the files that set them,
+ *  so the help states what this install will actually do.
+ */
+const _LOG_PATH = loadMergedDefaults("logging.json").path;
+const _PORT = loadMergedDefaults("app-runtime.json").server.port;
+
 const COMMON = `
 Options:
   --verbose, -v   Show detailed per-cycle logs (fee details,
-                  OOR poll diagnostics). Also: VERBOSE=1 in .env.
+                  OOR poll diagnostics). Also: VERBOSE=true in .env.
   --log-file [PATH]
                   Tee all console output to a file (ANSI escapes
-                  stripped).  PATH is optional — defaults to
-                  logs/lp-ranger.log (or the path set in
-                  app-config/app-defaults-for-user-configurable/logging.json).  File is
+                  stripped).  PATH is optional — defaults to the
+                  path set in logging.json, here ${_LOG_PATH}.  File is
                   opened in append mode; rotate externally if it
                   grows.  Operators can enable persistently by
                   setting "enabled": true in the JSON.
@@ -32,11 +40,11 @@ Environment:
   Bot tunables (slippage, poll interval, OOR threshold, daily cap, …)
   live in the dashboard's Bot Settings panel — not the .env file.
 
-  PORT              Dashboard port (default: 5555)
+  PORT              Dashboard port (default: ${_PORT})
   PRIVATE_KEY       Wallet private key (or import via dashboard / CLI)
   WALLET_PASSWORD   Auto-unlock encrypted wallet at startup (optional)
   DRY_RUN           Read-only mode, no transactions (default: false)
-  RPC_URL           PulseChain RPC endpoint
+  RPC_URL           First RPC endpoint for the active chain
 
   See .env.example for the complete list of runtime flags.`;
 

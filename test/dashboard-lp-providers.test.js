@@ -24,6 +24,7 @@ require("global-jsdom/register");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const { ethers } = require("ethers");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -164,25 +165,68 @@ describe("isChainSupported()", () => {
   });
 });
 
-// ── getProviderLabel + setFactoryContext (legacy single-arg wrapper) ───────
+// ── getProviderLabel / getProviderFor: from the position's own key ─────────
 
-describe("getProviderLabel() + setFactoryContext()", () => {
-  it(
-    "setFactoryContext ignores non-string / empty input (defensive) — " +
-      "any later getProviderLabel call still returns 9mm Pro V3 once a real " +
-      "factory has been set",
-    () => {
-      mod.setFactoryContext(null);
-      mod.setFactoryContext("");
-      mod.setFactoryContext(undefined);
-      // Now set a real factory and confirm subsequent lookup works.
-      mod.setFactoryContext(FACTORY_9MM);
-      assert.strictEqual(mod.getProviderLabel(PM_9MM), "9mm Pro V3");
-    },
-  );
-
-  it("returns the displayName once factory context is set", () => {
-    mod.setFactoryContext(FACTORY_9MM);
+describe("getProviderLabel() — from the position's contract and the chain", () => {
+  /*-
+   *  The position manager in a position's key, and the chain the
+   *  dashboard learned at startup, name the provider. No address the
+   *  status answer carries outside a position's key is read, so an old
+   *  address an earlier release saved changes nothing on screen.
+   */
+  it("names the provider with nothing from the status answer", async () => {
+    await learnActiveChain("pulsechain");
     assert.strictEqual(mod.getProviderLabel(PM_9MM), "9mm Pro V3");
+    assert.strictEqual(
+      mod.getProviderLabel(PM_9MM.toLowerCase()),
+      "9mm Pro V3",
+    );
+  });
+
+  it("names none for a contract the list does not hold", async () => {
+    await learnActiveChain("pulsechain");
+    const { pm } = _unknownPair("ff0003");
+    assert.strictEqual(mod.getProviderLabel(pm), undefined);
+  });
+
+  it("names none on a chain the entry is not verified for", async () => {
+    await learnActiveChain("some-other-chain");
+    try {
+      assert.strictEqual(mod.getProviderLabel(PM_9MM), undefined);
+    } finally {
+      await learnActiveChain("pulsechain");
+    }
+  });
+
+  it("returns the whole entry, for the Dex Detail Page", async () => {
+    await learnActiveChain("pulsechain");
+    assert.strictEqual(mod.getProviderFor(PM_9MM).displayName, "9mm Pro V3");
+  });
+});
+
+describe("a lookup made before the provider list arrives", () => {
+  /*-
+   *  The position strip's first paint asks for the label before the
+   *  list has arrived. That finds nothing and warns of nothing, since
+   *  nothing is yet known to be missing, and a contract the list truly
+   *  lacks is still reported once the list is in. A fresh instance of
+   *  the module, by its own url, is one whose list has not arrived.
+   */
+  it("finds nothing and warns of nothing, and a real miss is reported after", async (t) => {
+    await learnActiveChain("pulsechain");
+    const fresh =
+      await import("../public/dashboard-lp-providers.js?before-the-list");
+    const logMod = await import("../public/dashboard-log.js");
+    const warned = [];
+    t.mock.method(logMod.log, "warn", (...args) => warned.push(args));
+    const { pm } = _unknownPair("ff0004");
+    assert.strictEqual(fresh.getProviderLabel(PM_9MM), undefined);
+    assert.strictEqual(fresh.getProviderLabel(pm), undefined);
+    assert.equal(warned.length, 0, "nothing is known missing yet");
+    await fresh.loadLpProviders();
+    assert.strictEqual(fresh.getProviderLabel(PM_9MM), "9mm Pro V3");
+    assert.strictEqual(fresh.getProviderLabel(pm), undefined);
+    assert.equal(warned.length, 1, "the real miss is reported");
+    assert.match(warned[0][0], /entries for position manager/);
   });
 });

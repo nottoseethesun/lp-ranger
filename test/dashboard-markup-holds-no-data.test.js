@@ -47,7 +47,6 @@ before(() => {
  *  no input. The third test below fails if this list falls behind the
  *  checker. */
 const INPUT_BY_KEY = {
-  checkIntervalSec: "inInterval",
   rebalanceTimeoutMin: "inOorTimeout",
   minRebalanceIntervalMin: "inMinInterval",
   maxRebalancesPerDay: "inMaxReb",
@@ -65,9 +64,23 @@ const INPUT_BY_KEY = {
   priceOverride1: "priceOverrideInput1",
   decimalsOverride0: "pdDecimals0",
   decimalsOverride1: "pdDecimals1",
+  // Saved through the api only; the dashboard has no field for them.
+  priceCacheTtlMs: null,
+  dustUnitPriceCacheMultiplier: null,
+  moveCacheTtlMs: null,
+  pricePauseExceptionPollWindowMultiple: null,
 };
 
 describe("public/index.html holds no data", () => {
+  it("has no Check Interval field: how often the bot checks is global", () => {
+    /*-
+     *  One value for every position, in bot-config-defaults.json or
+     *  `.env`: the dashboard's idle and wake timing are built on it.
+     */
+    assert.equal(doc.getElementById("inInterval"), null);
+    assert.equal(doc.getElementById("saveIntervalBtn"), null);
+  });
+
   it("gives no number input a hard-coded value", () => {
     /*- Every shipped default lives in the JSON under app-config/ and
      *  reaches the input through `/api/bot-config-defaults` or

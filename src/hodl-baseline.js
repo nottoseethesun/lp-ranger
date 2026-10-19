@@ -16,7 +16,7 @@ const { scanChunked } = require("./get-logs-chunked");
 const { PM_ABI } = require("./pm-abi");
 const { topicForTokenId } = require("./nft-token-topic");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
-const { getPoolState } = require("./rebalancer");
+const { getPoolState } = require("./rebalancer-pools");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 
 /**
@@ -412,7 +412,6 @@ async function initHodlBaseline(
     const { price0, price1 } = await fetchHistoricalPriceGecko(
       poolAddress,
       mintTimestamp,
-      "pulsechain",
       {
         token0Address: position.token0,
         token1Address: position.token1,
@@ -490,7 +489,6 @@ async function getPositionBaseline(provider, ethersLib, position) {
     const { price0, price1 } = await fetchHistoricalPriceGecko(
       poolAddress,
       mintTimestamp,
-      "pulsechain",
       {
         token0Address: position.token0,
         token1Address: position.token1,

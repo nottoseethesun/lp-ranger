@@ -7,9 +7,9 @@
  *
  * Modes
  * ─────
- *   node bot.js           Headless bot (requires PRIVATE_KEY or app-config/user-configurable/wallet.json)
- *   DRY_RUN=1 node bot.js Read-only mode — connects, detects, polls, but
- *                          never signs or sends transactions.
+ *   node bot.js              Headless bot (requires PRIVATE_KEY or app-config/user-configurable/wallet.json)
+ *   DRY_RUN=true node bot.js Read-only mode — connects, detects, polls, but
+ *                             never signs or sends transactions.
  *
  * Usage: node bot.js   (or: npm run bot)
  */
@@ -33,6 +33,14 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
  *  startup banner.  No-op when neither source opts in.  See
  *  src/boot-log-file.js + src/log-file.js. */
 require("./src/boot-log-file").bootLogFile();
+
+/*-
+ *  Every setting is checked before any is read: the JSON settings files
+ *  with the operator's copies, `.env` and bot-config.json. A wrong one
+ *  stops the bot here, each named, rather than leaving it to run on a
+ *  value nobody chose. See src/settings-check.js.
+ */
+require("./src/settings-check").refuseToStartOnBadSettings();
 
 const { log } = require("./src/log");
 // First statement of a real run — bot-banner prints on require (side
@@ -65,17 +73,18 @@ const { createPositionManager } = require("./src/position-manager");
 const {
   loadConfig,
   managedKeys,
-  getPositionConfig,
   readConfigValue,
 } = require("./src/bot-config-v2");
 const {
   createPerPositionBotState,
   attachMultiPosDeps,
   updatePositionState,
-  createOnRetire,
+  getAllPositionBotStates,
 } = require("./src/server-positions");
+const { createAutoStartManagedPositions } = require("./src/server-auto-start");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { askPassword: _askPassword } = require("./src/ask-password");
+const { readShutdownTimings } = require("./src/shutdown-timing");
 
 // One-time migration of legacy root-level config files into app-config/.
 // Idempotent: a no-op after the first successful run.
@@ -84,6 +93,8 @@ migrateAppConfig();
 // ── Main entry ───────────────────────────────────────────────────────────────
 
 async function main() {
+  // Read before anything starts, so an unusable value stops startup.
+  const { exitTimeoutMs } = readShutdownTimings();
   const dryRun = config.DRY_RUN;
   if (!dryRun) config.assertLiveModeReady();
 
@@ -135,63 +146,47 @@ async function main() {
     _awaitShutdown(() => {
       handle.stop();
       positionMgr.stopAll();
-    });
+    }, exitTimeoutMs);
     return;
   }
 
-  // Auto-start all managed positions with status 'running' (staggered)
-  const keys = managedKeys(diskConfig);
-  const count = keys.length;
-  const staggerMs =
-    count > 1 ? Math.floor((config.CHECK_INTERVAL_SEC * 1000) / count) : 0;
-  let started = 0,
-    i = 0;
-  for (const key of keys) {
-    const posConfig = getPositionConfig(diskConfig, key);
-    if (i > 0 && staggerMs > 0)
-      await new Promise((r) => setTimeout(r, staggerMs));
-    const tokenId = key.split("-").pop();
-    const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
-    attachMultiPosDeps(posBotState, positionMgr);
-    try {
-      const keyRef = { current: key };
-      await positionMgr.startPosition(key, {
-        tokenId,
-        startLoop: () =>
-          startBotLoop({
-            privateKey,
-            provider: shared.provider,
-            signer: shared.signer,
-            address: shared.address,
-            dryRun,
-            updateBotState: (patch) =>
-              updatePositionState(keyRef, patch, diskConfig, positionMgr),
-            botState: posBotState,
-            positionId: tokenId,
-            getConfig: (k) => readConfigValue(diskConfig, keyRef.current, k),
-            onRetire: createOnRetire({ keyRef, diskConfig, positionMgr }),
-          }),
-        savedConfig: posConfig,
-      });
-      started++;
-    } catch (err) {
-      log.error("[bot] Failed to start position %s: %s", key, err.message);
-    }
-    i++;
-  }
-  log.info("[bot] Started %d of %d managed positions", started, keys.length);
+  /*-
+   *  Start the positions saved as managed the way the server does
+   *  (src/server-auto-start.js), so the same rules hold headless: one
+   *  active position per pool, and a position that cannot be managed comes
+   *  off the list. The wallet is the signer's, or any wallet's in a dry run
+   *  with no key, whose signer is a random wallet.
+   */
+  const wallet = privateKey === null ? null : shared.address;
+  await createAutoStartManagedPositions({
+    diskConfig,
+    positionMgr,
+    privateKeyRef: { current: privateKey },
+    walletManager: { getAddress: () => wallet },
+    getAllPositionBotStates,
+    createPerPositionBotState,
+    attachMultiPosDeps,
+    updatePositionState,
+    readConfigValue,
+  })();
 
-  _awaitShutdown(() => positionMgr.stopAll());
+  _awaitShutdown(() => positionMgr.stopAll(), exitTimeoutMs);
 }
 
-/** Register SIGINT/SIGTERM handlers for graceful shutdown. */
-function _awaitShutdown(stopFn) {
+/**
+ * Register SIGINT/SIGTERM handlers for graceful shutdown.
+ * @param {() => *} stopFn  Stops the running positions.
+ * @param {number} exitTimeoutMs  How long a stop may take before the
+ *   process exits anyway: `shutdown.exitTimeoutMs` in app-runtime.json,
+ *   the figure the server uses.
+ */
+function _awaitShutdown(stopFn, exitTimeoutMs) {
   const shutdown = () => {
     log.info("\n[bot] Shutting down…");
     Promise.resolve(stopFn())
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
-    setTimeout(() => process.exit(0), 3000);
+    setTimeout(() => process.exit(0), exitTimeoutMs);
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

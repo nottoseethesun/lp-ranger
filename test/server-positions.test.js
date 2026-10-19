@@ -17,6 +17,9 @@ const {
   getAllPositionBotStates,
   createPositionRoutes,
 } = require("../src/server-positions");
+const config = require("../src/config");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
 
 // Valid EIP-55 checksummed addresses for composite key tests.
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
@@ -77,6 +80,7 @@ function makeRouteDeps(overrides = {}) {
       res._body = body;
     },
     readJsonBody: async () => ({}),
+    ...poolReadStandIn(),
     ...overrides,
   };
 }
@@ -155,10 +159,7 @@ describe("attachMultiPosDeps", () => {
 // ── updatePositionState ─────────────────────────────────────────────────────
 
 describe("updatePositionState", () => {
-  const fs = require("fs");
-  const os = require("os");
-  const path = require("path");
-  const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pos-state-"));
+  const _tmpDir = makeTestTempFolder("pos-state");
 
   it("creates state entry if not exists and applies patch", () => {
     const key = "pulsechain-0xW-0xC-999";
@@ -408,6 +409,35 @@ describe("createPositionRoutes", () => {
       assert.strictEqual(dc.positions[startedKey].status, "running");
 
       // Cleanup
+      getAllPositionBotStates().delete(startedKey);
+    });
+
+    it("keys the position on the server's own chain, whatever the request names", async () => {
+      /*-
+       *  The server runs one chain. A key naming another would file the
+       *  position's settings where no bot of this server reads them.
+       *  This server runs the testnet, not the shipped default, so a key
+       *  naming that outright fails.
+       */
+      let startedKey = null;
+      const deps = makeRouteDeps({
+        readJsonBody: async () => ({ tokenId: "43", blockchain: "othernet" }),
+        positionMgr: makePositionMgr({
+          startPosition: async (key) => {
+            startedKey = key;
+          },
+          count: () => 1,
+        }),
+      });
+      const routes = createPositionRoutes(deps);
+      const shipped = config.CHAIN_NAME;
+      config.CHAIN_NAME = "pulsechain-testnet";
+      try {
+        await routes["POST /api/position/manage"]({}, makeRes());
+      } finally {
+        config.CHAIN_NAME = shipped;
+      }
+      assert.ok(startedKey.startsWith("pulsechain-testnet-0x"), startedKey);
       getAllPositionBotStates().delete(startedKey);
     });
 

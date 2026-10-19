@@ -28,8 +28,10 @@ const assert = require("node:assert/strict");
 
 const {
   resolveRangeOverrideEnabled,
+  resolveRebalanceOffsetPct,
   RANGE_OVERRIDE_KEYS,
 } = require("../src/range-override");
+const { CENTERED_OFFSET_PCT } = require("../src/centered-offset");
 const { loadShippedDefaults } = require("../src/load-merged-defaults");
 
 /*- The shipped default read the same way the SUT reads it, so this
@@ -168,6 +170,41 @@ describe("resolveRangeOverrideEnabled — new positions", () => {
   it("handles a missing slot without throwing", () => {
     assert.equal(resolveRangeOverrideEnabled(undefined), SHIPPED_DEFAULT);
     assert.equal(resolveRangeOverrideEnabled(null), SHIPPED_DEFAULT);
+  });
+});
+
+describe("resolveRebalanceOffsetPct — the offset the next rebalance uses", () => {
+  /*-
+   *  An operator's default of 70, off the shipped centre, so a rule that
+   *  centred whenever nothing was saved could not pass.
+   */
+  const DEFAULTS = { offsetToken0Pct: 70 };
+
+  it("is the install's default when the position saved none", () => {
+    assert.equal(
+      resolveRebalanceOffsetPct({ rangeOverrideEnabled: true }, DEFAULTS),
+      70,
+    );
+  });
+
+  it("is the position's own when it saved one", () => {
+    assert.equal(
+      resolveRebalanceOffsetPct(
+        { rangeOverrideEnabled: true, offsetToken0Pct: 30 },
+        DEFAULTS,
+      ),
+      30,
+    );
+  });
+
+  it("is centred under No Override, whatever is saved or defaulted", () => {
+    assert.equal(
+      resolveRebalanceOffsetPct(
+        { rangeOverrideEnabled: false, offsetToken0Pct: 30 },
+        DEFAULTS,
+      ),
+      CENTERED_OFFSET_PCT,
+    );
   });
 });
 

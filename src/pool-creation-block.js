@@ -9,7 +9,8 @@
  *
  * The lookup is `pool-creation-finder.js`, a binary search on
  * `eth_getCode` — about 25 calls.  Results are memoised in-process and
- * persisted to disk keyed by `factoryAddress|poolAddress` (lower-cased).
+ * persisted to disk under the canonical key `chain-factory-pool`
+ * (`cacheKey` in `src/cache-store.js`).
  *
  * Failure returns `0`, which the callers' `creationBlock > fromBlock` test
  * discards in favour of their own floor.  That widens a scan rather than
@@ -25,25 +26,26 @@ const ethers = require("ethers");
 const sendTx = require("./send-transaction");
 const config = require("./config");
 const { findPoolCreationBlock } = require("./pool-creation-finder");
+const { cacheKey } = require("./cache-store");
 
 /** Disk-cache file path (overridable via env for tests). */
 const _CACHE_PATH =
   process.env.POOL_CREATION_BLOCK_CACHE_PATH ||
   path.join(process.cwd(), "tmp", "pool-creation-blocks-cache.json");
 
-/** In-memory cache: `factoryLower|poolLower` -> blockNumber. */
+/*-
+ *  In-memory cache: canonical key -> blockNumber. Every chain's entries
+ *  are loaded and saved back, so a run on one chain keeps another's; only
+ *  this chain's are ever read.
+ */
 const _memCache = new Map();
 /** In-flight resolver promises, deduped by cache key. */
 const _pending = new Map();
 let _diskLoaded = false;
 
-/** Build the canonical cache key. */
+/** The active chain's key for one pool. */
 function _key(factoryAddress, poolAddress) {
-  return (
-    String(factoryAddress).toLowerCase() +
-    "|" +
-    String(poolAddress).toLowerCase()
-  );
+  return cacheKey(config.CHAIN_NAME, factoryAddress, poolAddress);
 }
 
 /** Load disk cache into memory on first use (best-effort). */

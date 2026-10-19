@@ -85,7 +85,7 @@ function load(mode) {
   };
   let failures = mode.failReads || 0;
   const stubs = {
-    "./rebalancer": {
+    "./rebalancer-pools": {
       getPoolState: async () => ({ poolAddress: "0xPOOL" }),
     },
     "./pool-scanner": {

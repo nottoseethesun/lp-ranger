@@ -1,56 +1,35 @@
 # Consolidate the RPC Retry Pattern
 
-> **Status:** Nice-to-have / internal cleanup &mdash; not a bug. Both
-> retry paths work correctly. Funds are never at risk.
+> **Status:** Done. Kept as the record of what was merged and of what
+> deliberately stays separate.
 
 ## Plain language
 
-Two places in the code retry a blockchain read the same way &mdash; try
-each configured RPC endpoint twice in turn, pausing between attempts
-&mdash; and each has its own copy of that logic. They differ only in what
-they call and which error they raise when everything fails.
+Two blockchain reads used to carry their own copies of one retry rule:
+the pool's state, which every poll needs, and the wallet's two coin
+balances, which the check before re-opening a closed position reads.
+Each tried every rpc endpoint in turn, pausing between attempts, and
+neither logged which endpoint finally answered.
 
-One visible consequence today: when these retries move to another
-endpoint, nothing says so in the log. The app's other endpoint changes
-announce themselves, so a log can show a failed read with no sign of what
-served it afterward. The read is never lost; it is only harder to follow
-after the fact.
+Both now go through one loop, `retryRead` (`src/rpc-read-retry.js`).
+When a retried read succeeds, the loop logs one line naming the endpoint
+that served it and whether that is the endpoint that had been failing.
 
-## Detail
+## What each caller passes
 
-The duplicated shape is in `src/rebalancer-pools.js` (`getPoolState`) and
-`src/server-can-reopen.js` (`_readBothBalancesWithRetry`). As of
-2026-10-01 the two are the same line for line: same rotated endpoint
-list, same two attempts per endpoint, same three-second delay, same
-paced provider construction, same reporting of every outcome &mdash;
-success included &mdash; to the failover rate, same test override hook.
+`getPoolState` (`src/rebalancer-pools.js`) and
+`_readBothBalancesWithRetry` (`src/server-can-reopen.js`) each hand the
+loop their own read, as `run(provider)`, so a read made of several calls
+keeps all of them on one endpoint. Each also passes its log tag and the
+error to raise once every attempt has failed; callers check those errors
+by class. The bound is shared: `boundedReadAttemptsPerEndpoint` tries
+per endpoint, `boundedReadRetryDelayMs` apart, both in
+`bot-config-defaults.json`.
 
-They differ in exactly four things, which are therefore the whole
-parameter list of a shared `withRpcRetry` helper:
+## Still separate, deliberately
 
-1. the read being performed,
-2. the log tag it writes under,
-3. the error class raised once every endpoint is spent,
-4. the provider to fall back to when the test mock has no constructor.
-
-Both call sites then collapse to a few lines. The work is finished when
-both copies are gone, the two error classes keep their names and
-signatures (callers check them by instance), the existing tests for both
-paths pass unchanged, and the success path logs the endpoint and attempt
-that served the read.
-
-Deliberately out of scope: the write path in `src/send-transaction.js`,
-which carries nonce considerations, and the price-source cascade in
-`src/price-fetcher.js`, which falls back between *data sources* rather
-than endpoints. Those are different concerns and should stay separate.
-
-## Fix when prioritized
-
-Deferred by the project owner until the current round of transaction-path
-fixes is confirmed stable in the field. Until then the rule is: when a new
-feature needs RPC retry, copy the closer of the two existing orchestrators
-rather than inventing a third variant &mdash; that keeps the eventual
-consolidation a two-file change.
-
-The shared helper is also the right home for a line naming the endpoint
-and attempt that succeeded, rather than adding one to each copy now.
+The write path in `src/send-transaction.js` carries nonce
+considerations. The price-source cascade in `src/price-fetcher.js` falls
+back between *data sources* rather than endpoints. Neither belongs in
+this loop. A new read that needs a retry calls `retryRead` rather than
+writing a third copy.

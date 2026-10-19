@@ -6,26 +6,37 @@
  *   Uses jsdom (via `global-jsdom/register`) to populate browser globals,
  *   then imports the module directly and asserts against its real exports.
  *
- *   Scope: pins the pure, load-bearing helpers.  DOM-touching exports
- *   (`g`, `cloneTpl`, `act`, `copyWithFeedback`, `copyElText`) and
+ *   Scope: pins the pure, load-bearing helpers, and the one rule of
+ *   `copyWithFeedback` that a quick second click depends on.  The other
+ *   DOM-touching exports (`g`, `cloneTpl`, `act`, `copyElText`) and
  *   timezone-dependent formatters (`fmtDateTime`, `fmtReset`, `tzCode`)
  *   are intentionally out of scope — the former belong to a fuller
  *   DOM-driving suite, the latter would need timezone mocking to
  *   assert exact strings without becoming environment-sensitive.
  *
  *   Covered exports: emojiId, fmtMs, fmtCountdown, compositeKey,
- *   truncName, fmtNum, isFullRange, isFullRangeSpread, nextMidnight.
+ *   truncName, fmtNum, isFullRange, isFullRangeSpread, copyWithFeedback.
  */
 
 require("global-jsdom/register");
 
-const { describe, it, before } = require("node:test");
+const {
+  describe,
+  it,
+  before,
+  beforeEach,
+  afterEach,
+  mock,
+} = require("node:test");
 const assert = require("node:assert/strict");
+const { learnUiSettings } = require("./helpers/ui-settings");
 
 let helpers;
 
 before(async () => {
   helpers = await import("../public/dashboard-helpers.js");
+  // As at startup: the copy tick's length is a setting the server sends.
+  await learnUiSettings();
 });
 
 // ── emojiId ────────────────────────────────────────────────────────────────
@@ -95,10 +106,18 @@ describe("fmtCountdown()", () => {
 // ── compositeKey ───────────────────────────────────────────────────────────
 
 describe("compositeKey()", () => {
-  it("uses 'pulsechain' when blockchain is omitted", () => {
+  it("returns null when the chain is missing, rather than assuming one", () => {
+    /*-
+     *  A key on an assumed chain reaches no position on any other, so
+     *  the chain is required like every other component.
+     */
     assert.strictEqual(
       helpers.compositeKey(undefined, "0xWALLET", "0xCONTRACT", "157149"),
-      "pulsechain-0xWALLET-0xCONTRACT-157149",
+      null,
+    );
+    assert.strictEqual(
+      helpers.compositeKey(null, "0xWALLET", "0xCONTRACT", "157149"),
+      null,
     );
   });
 
@@ -206,16 +225,43 @@ describe("isFullRangeSpread()", () => {
   });
 });
 
-// ── nextMidnight ───────────────────────────────────────────────────────────
+// ── copyWithFeedback ───────────────────────────────────────────────────────
 
-describe("nextMidnight()", () => {
-  it("returns a future timestamp within the next 24 h", () => {
-    const now = Date.now();
-    const nm = helpers.nextMidnight();
-    assert.ok(nm > now, "nextMidnight must be in the future");
-    assert.ok(
-      nm <= now + 24 * 60 * 60 * 1000 + 1,
-      "nextMidnight must be within 24 h + 1 ms of now",
-    );
+describe("copyWithFeedback()", () => {
+  let copied;
+
+  beforeEach(() => {
+    copied = [];
+    // jsdom has no clipboard; this stands in for the browser's.
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: async (t) => copied.push(t) },
+      configurable: true,
+    });
+    /*-
+     *  TEST-ONLY global swap: the feedback puts its icon back on a timer
+     *  of its own, with no clock to hand it. Reset pristine after each
+     *  case.
+     */
+    mock.timers.enable({ apis: ["setTimeout"] });
+  });
+  afterEach(() => {
+    mock.timers.reset();
+    delete navigator.clipboard;
+  });
+
+  it("puts the icon back after a second click inside the feedback window", () => {
+    /*-
+     *  The second click finds the checkmark showing. Taken as the icon
+     *  to restore, it would be put back by the second timer after the
+     *  first had restored the real icon, and stay for good.
+     */
+    const icon = document.createElement("span");
+    icon.textContent = "⧉";
+    helpers.copyWithFeedback(icon, "0xabc");
+    assert.strictEqual(icon.textContent, "✓");
+    helpers.copyWithFeedback(icon, "0xabc");
+    mock.timers.tick(60_000);
+    assert.strictEqual(icon.textContent, "⧉");
+    assert.deepStrictEqual(copied, ["0xabc", "0xabc"], "both clicks copy");
   });
 });

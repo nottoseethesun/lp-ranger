@@ -8,10 +8,21 @@
  *   trigger fired last.
  *
  * Architecture:
- *   - `computeManageUI(inputs)` — pure: state -> UISpec (or null to skip)
+ *   - `computeManageUI(inputs)` — pure: state -> UISpec
  *   - `applyManageUI(spec)`     — DOM writer with no decision logic
  *   - `paintManageUI()`         — gather inputs + apply; every trigger calls it
- *   - `setManageInFlight(key, on)` — per-position click-in-flight Map
+ *   - `setManageInFlight(key, button)` — per-position click-in-flight Map,
+ *     holding the label the button shows while the click's request runs
+ *   - `setManagedCheckPending(key, on)` — the position whose "is it
+ *     managed?" question to the server is still unanswered
+ *
+ * Whether a position is managed comes from the browser's managed set
+ * (`isPositionManaged`), not from the last status poll. That poll was
+ * read for whichever position was on screen when it was answered, so
+ * right after a switch it describes the previous one. The set is keyed
+ * by position, every poll replaces it, and `dashboard-manage-check.js`
+ * updates it from the server's answer each time a position is put on
+ * screen. Until that answer arrives the button is drawn disabled.
  *
  * Post-retire debounce uses the server-stamped `lastRetiredAt`
  * (epoch ms) field that flows through `/api/status`. This is
@@ -20,13 +31,18 @@
  */
 
 import { g } from "./dashboard-helpers.js";
-import { isPositionClosed } from "./dashboard-positions-store.js";
+import {
+  isPositionClosed,
+  isPositionManaged,
+} from "./dashboard-positions-store.js";
 import { isWalletUnlocked } from "./dashboard-wallet.js";
 /*- The SAME pair-normalisation the server decides with, not a copy of
  *  it.  src/pool-key.js is deliberately dependency-free so esbuild can
  *  bundle it into this browser build; src/position-manager.js, which
  *  builds the scoped key on top, cannot cross that line. */
 import { poolKey } from "../src/pool-key.js";
+import { activeChainId } from "./dashboard-chain.js";
+import { abortReasonSummary } from "./dashboard-abort-reason.js";
 
 export const MANAGE_SYNCING_HELP =
   'This button will be clickable once the "Syncing…" badge above is finished.';
@@ -41,8 +57,6 @@ const _MANAGE_REBALANCING_HELP =
   "Re-open in progress — bot is submitting the rebalance. Wait for completion.";
 const _MANAGE_RECOVERY_HELP =
   "Re-open recovering — bot is retrying mint from wallet balances. Wait for completion.";
-const _MANAGE_PAUSED_HELP =
-  "Re-open just failed — the bot will auto-retire shortly. Watch for the alert above.";
 const _MANAGE_DEBOUNCE_HELP =
   "Re-open just retired — wait a moment so the alert above can render.";
 const _MANAGE_LOCKED_HELP = "Unlock wallet to manage positions";
@@ -52,12 +66,24 @@ const _MANAGE_REBALANCE_OPEN_HELP =
   "Rebalance in progress — wait for completion before clicking again.";
 const _NO_ACTIVE_HELP = "Select a position first";
 const _PD_VIEW_HELP = "View pool and contract details";
+const _MANAGE_CHECKING_HELP =
+  "Asking the server whether this position is managed…";
 
-/*- Per-position click-in-flight Map, keyed by
- *  walletAddress-contractAddress-tokenId.  A single page-scoped boolean
+/*-
+ *  Per-position click-in-flight Map, keyed by
+ *  walletAddress-contractAddress-tokenId, holding the label each click's
+ *  button shows until its request finishes. A single page-scoped boolean
  *  cannot serve: click Manage on A, switch to B, and B's button paints
- *  A's "Managing…" optimistic label. */
+ *  A's "Managing…" label.
+ */
 const _manageInFlight = new Map();
+
+/*-
+ *  The position whose "is it managed?" question to the server is still
+ *  unanswered, by the same key. Only the position on screen is asked
+ *  about, so one key serves.
+ */
+let _managedCheckKey = null;
 
 /** Build the in-flight Map key for an active position.  Exported so
  *  click handlers in other modules use the SAME key shape as the
@@ -70,14 +96,33 @@ export function manageKey(active) {
 }
 
 /**
- * Mark a position as click-in-flight (`on=true`) or clear it
- * (`on=false`).  Click handler calls this before fetch and again in
- * `finally` so the optimistic UI window is bounded.
+ * Mark a position's click as in flight, with the label its button shows
+ * meanwhile, or clear it with `null`. A click handler sets it before its
+ * request and clears it in `finally`. While it is set, the button is
+ * drawn disabled with `button.title`, and with `button.text` when the
+ * handler gives one, otherwise with the text it would have anyway.
+ *
+ * @param {string|null} positionKey  `manageKey(active)`.
+ * @param {{text?: string, title: string}|null} button
  */
-export function setManageInFlight(positionKey, on) {
+export function setManageInFlight(positionKey, button) {
   if (!positionKey) return;
-  if (on) _manageInFlight.set(positionKey, true);
-  else _manageInFlight.delete(positionKey);
+  if (button === null) _manageInFlight.delete(positionKey);
+  else _manageInFlight.set(positionKey, button);
+}
+
+/**
+ * Mark the question asking the server whether a position is managed as
+ * sent (`on=true`) or answered (`on=false`). An answer about a position
+ * the operator has since switched away from leaves the newer question
+ * standing.
+ *
+ * @param {string|null} positionKey  `manageKey(active)`.
+ * @param {boolean} on
+ */
+export function setManagedCheckPending(positionKey, on) {
+  if (on) _managedCheckKey = positionKey;
+  else if (_managedCheckKey === positionKey) _managedCheckKey = null;
 }
 
 let _posStoreRef = null;
@@ -105,9 +150,12 @@ export function injectManageUIDeps(deps) {
 
 /**
  * Pure decision tree.  Returns a UISpec describing how the button,
- * badge, Lifetime panel, and pool-details button should render, OR
- * `null` to mean "skip apply" (used when the click handler owns the
- * optimistic "Managing…" / "Stopping…" label transiently).
+ * badge, Lifetime panel, and pool-details button should render.
+ *
+ * A click whose request is still running, and a position whose managed
+ * check is unanswered, both draw the button disabled over the spec the
+ * rest of the inputs give. The click's label comes first, since it says
+ * what the button is waiting for.
  *
  * Fully pure — all inputs are primitives or plain objects; no DOM
  * access, no module-level state reads, no external function calls.
@@ -131,25 +179,53 @@ export function injectManageUIDeps(deps) {
  * @param {boolean}     inputs.isNft            Active position is an NFT (V3).
  * @param {object|null} inputs.posState         Per-position /api/status slice;
  *   null when no poll has landed yet for this position.
+ * @param {boolean}     inputs.positionManaged  Whether the server manages
+ *   the active position, from the managed set.
  * @param {boolean}     inputs.syncComplete     Sync-done DOM class state.
  * @param {boolean}     inputs.walletUnlocked
- * @param {boolean}     inputs.manageInFlight   Click in flight for active.
+ * @param {{text?: string, title: string}|null} inputs.manageInFlight
+ *   The label of the active position's click in flight, or null.
+ * @param {boolean}     inputs.managedCheckPending  The server has not yet
+ *   answered whether the active position is managed.
  * @param {number}      inputs.nowMs            Date.now() — injected for tests.
  * @param {number}      inputs.retireDebounceMs Post-retire debounce window;
- *   reads `guaranteedDashboardHasPolledMs` from /api/status (which is
- *   DASHBOARD_POLL_INTERVAL_MS * 2.5 in src/config.js — single source
- *   of truth).  When 0 or unset, the debounce branch never fires.
- * @returns {UISpec|null}
+ *   reads `guaranteedDashboardHasPolledMs` from /api/status (worked out
+ *   in src/config.js from the poll interval and app-runtime.json →
+ *   dashboard.pollsBeforeAssumedSeen — single source of truth).  When 0
+ *   or unset, the debounce branch never fires.
+ * @returns {UISpec}
  */
 export function computeManageUI(inputs) {
+  const spec = _specFromState(inputs);
+  const busy = inputs.manageInFlight;
+  if (busy !== null && busy !== undefined) {
+    return {
+      ...spec,
+      buttonText: busy.text === undefined ? spec.buttonText : busy.text,
+      buttonDisabled: true,
+      buttonTitle: busy.title,
+    };
+  }
+  if (inputs.managedCheckPending === true) {
+    return {
+      ...spec,
+      buttonDisabled: true,
+      buttonTitle: _MANAGE_CHECKING_HELP,
+    };
+  }
+  return spec;
+}
+
+/** The UISpec the position's state gives, before any wait is drawn over it. */
+function _specFromState(inputs) {
   const {
     hasActive,
     isClosed,
     isNft,
     posState,
+    positionManaged,
     syncComplete,
     walletUnlocked,
-    manageInFlight,
     nowMs,
     retireDebounceMs,
     poolManagedBy,
@@ -170,8 +246,6 @@ export function computeManageUI(inputs) {
     };
   }
 
-  if (manageInFlight) return null;
-
   if (!posState) {
     return {
       buttonText: "Manage",
@@ -185,7 +259,7 @@ export function computeManageUI(inputs) {
     };
   }
 
-  const isRunning = posState.status === "running" && !isClosed;
+  const isRunning = positionManaged === true && !isClosed;
   const badgeText = _deriveBadgeText(isClosed, isRunning);
   const _currentText = isRunning ? "Stop Managing" : "Manage";
   const _common = {
@@ -263,7 +337,7 @@ export function computeManageUI(inputs) {
  *     which is always the newest one; an older drained NFT is settled
  *     history the app has already accounted for.
  *
- * Extracted from `computeManageUI` to keep that function under the
+ * Extracted from `_specFromState` to keep that function under the
  * complexity cap, and because the three read as one policy.
  *
  * @param {object} o
@@ -311,6 +385,31 @@ function _deriveBadgeText(isClosed, isRunning) {
   return "Not Actively Managed";
 }
 
+/**
+ * The Manage tooltip for a closed position whose re-open just failed:
+ * the main reason, what happens next, and where the details are logged.
+ * The log is the file the server says it writes, when logging to a file
+ * is on (`logFilePath` in the status answer), and otherwise the terminal
+ * the server runs in.
+ * @param {object} posState  The position's status answer.
+ * @returns {string}
+ */
+function _pausedHelp(posState) {
+  const file = posState.logFilePath;
+  const where =
+    typeof file === "string" && file !== ""
+      ? file
+      : "the terminal LP Ranger runs in";
+  return (
+    "Re-open just failed: " +
+    abortReasonSummary(posState.rebalanceError) +
+    ". The bot will auto-retire shortly; watch for the alert above. " +
+    "Details are in " +
+    where +
+    "."
+  );
+}
+
 /** Closed + synced sub-tree.  Decision order matters — see the
  *  "Branch-precedence audit" in the plan file. */
 function _computeClosedSynced(posState, nowMs, retireDebounceMs) {
@@ -324,7 +423,7 @@ function _computeClosedSynced(posState, nowMs, retireDebounceMs) {
     title = _MANAGE_RECOVERY_HELP;
   } else if (posState.rebalancePaused) {
     disabled = true;
-    title = _MANAGE_PAUSED_HELP;
+    title = _pausedHelp(posState);
   } else if (
     posState.lastRetiredAt &&
     retireDebounceMs &&
@@ -387,7 +486,6 @@ function _computeOpenSynced(posState, isRunning, currentText) {
 
 /** Apply a UISpec to the DOM.  No decisions, just writes. */
 export function applyManageUI(spec) {
-  if (spec === null) return;
   _paintBadge(spec);
   const btn = g("manageToggleBtn");
   if (btn) {
@@ -446,29 +544,33 @@ function _paintBadge(spec) {
  * wallet as well as the pair and fee, matching what `attachPoolKeys`
  * publishes on `GET /api/status`.
  *
- * The chain defaults to "pulsechain" exactly as `compositeKey` in
- * dashboard-helpers.js does; entries do not carry one. On a chain whose
- * name differs, keys built here stop matching the server's and every
- * gate below simply goes quiet — the button is offered and the server
- * refuses it, which is the safe direction for an advisory check.
+ * The chain is the active one (`activeChainId()`, read from the server at
+ * startup), the same chain every position key names; entries do not carry
+ * one. Were the two ever to disagree, keys built here would stop matching
+ * the server's and every gate below would simply go quiet — the button is
+ * offered and the server refuses it, which is the safe direction for an
+ * advisory check.
  *
  * Null for an incomplete identity rather than a partial key:
  * `poolKey` stringifies whatever it is given, so an entry missing its
  * wallet would yield "…-undefined-…" and two such entries would compare
- * equal.
+ * equal. A chain the server has not yet named is incomplete in the same
+ * way.
  *
  * @param {object|null|undefined} e  posStore entry.
  * @returns {string|null}
  */
 export function _poolKeyOf(e) {
   if (e === undefined || e === null) return null;
+  const chain = activeChainId();
+  if (chain === null) return null;
   const parts = [e.walletAddress, e.contractAddress, e.token0, e.token1];
   for (const v of parts) {
     if (typeof v !== "string" || v.length === 0) return null;
   }
   if (e.fee === undefined || e.fee === null || e.fee === "") return null;
   return poolKey(
-    e.blockchain || "pulsechain",
+    chain,
     e.contractAddress,
     e.walletAddress,
     e.token0,
@@ -584,6 +686,21 @@ export function _newerClosedInPool(active, entries) {
   return newest === null ? null : String(newest);
 }
 
+/**
+ * The two waits that can be drawn over the active position's button: the
+ * label of its click in flight, and its unanswered managed check.
+ *
+ * @param {object|null} active  posStore entry.
+ * @returns {{manageInFlight: object|null, managedCheckPending: boolean}}
+ */
+function _waitsFor(active) {
+  const key = manageKey(active);
+  return {
+    manageInFlight: _manageInFlight.has(key) ? _manageInFlight.get(key) : null,
+    managedCheckPending: key !== null && key === _managedCheckKey,
+  };
+}
+
 export function paintManageUI() {
   const active = _posStoreRef?.getActive?.() || null;
   const status = _getLastStatusRef ? _getLastStatusRef() : null;
@@ -597,7 +714,8 @@ export function paintManageUI() {
     ? _isSyncCompleteRef() === true
     : false;
   const walletUnlocked = isWalletUnlocked();
-  const manageInFlight = _manageInFlight.has(manageKey(active));
+  const { manageInFlight, managedCheckPending } = _waitsFor(active);
+  const positionManaged = !!active && isPositionManaged(active.tokenId);
   const isClosedActive = !!active && isPositionClosed(active);
   applyManageUI(
     computeManageUI({
@@ -605,9 +723,11 @@ export function paintManageUI() {
       isClosed: isClosedActive,
       isNft: !!active && active.positionType === "nft",
       posState: status,
+      positionManaged,
       syncComplete,
       walletUnlocked,
       manageInFlight,
+      managedCheckPending,
       poolManagedBy: _poolHeldBy(active, status?._allPositionStates),
       poolHasOpen: isClosedActive
         ? _openInPool(active, _posStoreRef?.entries)
@@ -616,12 +736,14 @@ export function paintManageUI() {
         ? _newerClosedInPool(active, _posStoreRef?.entries)
         : null,
       nowMs: Date.now(),
-      /*- Server's GUARANTEED_DASHBOARD_HAS_POLLED_MS (=
-       *  DASHBOARD_POLL_INTERVAL_MS * 2.5 in src/config.js) flows
-       *  through /api/status's global block as
-       *  guaranteedDashboardHasPolledMs.  When the first poll hasn't
+      /*-
+       *  Server's GUARANTEED_DASHBOARD_HAS_POLLED_MS (the poll interval
+       *  times app-runtime.json → dashboard.pollsBeforeAssumedSeen, in
+       *  src/config.js) flows through /api/status's global block as
+       *  guaranteedDashboardHasPolledMs. When the first poll hasn't
        *  landed (status is null), the closed+synced branch can't run
-       *  anyway — the posState=null branch fires first. */
+       *  anyway — the posState=null branch fires first.
+       */
       retireDebounceMs: status?.guaranteedDashboardHasPolledMs || 0,
     }),
   );

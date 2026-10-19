@@ -7,7 +7,7 @@
  *   the real browser module.
  *
  *   `dashboard-mission-badge` imports `posStore` from
- *   `dashboard-positions.js`, which has a heavy transitive graph.  We
+ *   `dashboard-positions-store.js`.  We
  *   test-drive the module's state through the ONLY external surface it
  *   uses in these functions: `posStore.entries`.  Rather than importing
  *   the transitive `dashboard-positions` module directly (which pulls

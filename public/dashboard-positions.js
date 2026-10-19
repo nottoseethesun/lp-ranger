@@ -2,17 +2,10 @@
  * @file dashboard-positions.js
  * @description Position browser UI, scanning,
  *   routing, and activation for the 9mm v3
- *   Position Manager dashboard. Re-exports the
- *   position store from dashboard-positions-store.
+ *   Position Manager dashboard.
  *
  * Depends on: dashboard-helpers.js, dashboard-wallet.js,
  *             dashboard-positions-store.js.
- *
- * NOTE: Import of positionRangeVisual from data.js
- * creates a circular reference (data imports posStore
- * from here). This is safe because positionRangeVisual
- * is only called inside function bodies, not at module
- * evaluation time.
  */
 
 import { log } from "./dashboard-log.js";
@@ -24,65 +17,38 @@ import {
   emojiId,
   fetchWithCsrf,
 } from "./dashboard-helpers.js";
-import { _posLabel, applySyncBlur } from "./dashboard-data.js";
-import { _setLeadingText } from "./dashboard-data-kpi.js";
+import { applySyncBlur } from "./dashboard-data.js";
+import { _posLabel } from "./dashboard-data-status.js";
+import { setLeadingText as _setLeadingText } from "./dashboard-kpi-dom.js";
 import { LT_BD_IDS } from "./dashboard-data-kpi-breakdown.js";
 import { wallet } from "./dashboard-wallet.js";
 import {
   posStore,
-  MAX_POS,
-  PAGE_SIZE,
-  _loadPosStore,
   _applyLocalPositionData,
   _applyPositionConfig,
   _setText,
   updatePosStripUI,
-  updateManagedPositions,
   isPositionManaged,
   isPositionClosed,
-  formatPosLabel,
-  restoreManagedPositions,
   bestAutoSelectIdx,
   setSyncRouteToState,
   setExitClosedPosView,
   setFetchUnmanagedDetails,
 } from "./dashboard-positions-store.js";
-
-// ── Re-exports from store ────────────────────────
-// All external importers continue to import from
-// this module — these re-exports keep them working.
-export {
-  posStore,
-  MAX_POS,
-  PAGE_SIZE,
-  _loadPosStore,
-  _applyLocalPositionData,
-  _applyPositionConfig,
-  updatePosStripUI,
-  updateManagedPositions,
-  restoreManagedPositions,
-  isPositionManaged,
-  isPositionClosed,
-  formatPosLabel,
-};
 import {
-  openPosBrowser,
+  readLastPosition,
+  rememberLastPosition,
+} from "./dashboard-chain-storage.js";
+import {
   closePosBrowser,
   renderPosBrowser,
-  posRowClick,
-  posRowSelect,
-  posChangePage,
   getPosBrowserSelected,
 } from "./dashboard-positions-browser.js";
-import { paintManageUI } from "./dashboard-manage-ui.js";
-export {
-  openPosBrowser,
-  closePosBrowser,
-  renderPosBrowser,
-  posRowClick,
-  posRowSelect,
-  posChangePage,
-};
+import { paintManageUI, manageKey } from "./dashboard-manage-ui.js";
+import { checkManagedOnSwitch } from "./dashboard-manage-check.js";
+import { forgetThrottleState } from "./dashboard-throttle.js";
+import { emptyPositionInputs } from "./dashboard-config-inputs.js";
+import { closePositionDialogs } from "./dashboard-position-dialogs.js";
 
 // ── Late-bound deps ──────────────────────────────
 
@@ -162,6 +128,20 @@ function _exitClosedViewIfActive() {
 }
 
 /**
+ * Close the dialogs of the position on screen when another comes on
+ * screen. A dialog open for the position on screen would save to, or
+ * tell of, the one coming on screen instead. They close while the old
+ * position is still on screen, so what a dialog records as it closes is
+ * recorded for its own. Choosing the same position again leaves them
+ * open.
+ * @param {number} idx  Position store index of the position coming on screen.
+ */
+function _closeDialogsOfPositionLeaving(idx) {
+  if (manageKey(posStore.entries?.[idx]) !== manageKey(posStore.getActive()))
+    closePositionDialogs();
+}
+
+/**
  * Core position activation — shared by all switch paths.
  * @param {number} idx  Position store index.
  * @param {object} [opts]
@@ -183,12 +163,20 @@ function _activateCore(idx, opts) {
     _entryTid,
     isPositionManaged(_entryTid),
   );
+  _closeDialogsOfPositionLeaving(idx);
   _exitClosedViewIfActive();
   if (_clearHistory) _clearHistory();
   if (_resetHistoryFlag) _resetHistoryFlag();
+  emptyPositionInputs();
   if (_resetCurrentKpis) _resetCurrentKpis();
   applySyncBlur(true);
   posStore.select(idx);
+  /*-
+   *  The throttle badge, countdown and banner show only what the server
+   *  reported for the position on screen, so the previous one's go now;
+   *  the new one's arrive with the status answer the switch asks for.
+   */
+  forgetThrottleState();
   updatePosStripUI();
   const active = posStore.getActive();
   if (!active) return null;
@@ -197,12 +185,17 @@ function _activateCore(idx, opts) {
   if (_refreshLifetimeDaysLabel) _refreshLifetimeDaysLabel();
   _applyPositionConfig(active);
   if (_positionRangeVisual) _positionRangeVisual();
-  /*- Repaint the Manage button + badge + Lifetime panel for the new
+  /*-
+   *  Repaint the Manage button + badge + Lifetime panel for the new
    *  active position.  paintManageUI() is the single owner — it reads
    *  posStore.getActive() + getLastStatus() + DOM, so we don't need
    *  to thread state through here.  Runs BEFORE the closed-position
    *  early-return below so closed switches also repaint (the historic
-   *  bug). */
+   *  bug).  The server is asked first whether the new position is
+   *  managed, which marks the question as sent, so this paint draws the
+   *  button disabled until the answer repaints it.
+   */
+  checkManagedOnSwitch(active);
   paintManageUI();
   if (isPositionClosed(active) && _enterClosedPosView) {
     _enterClosedPosView(active);
@@ -211,7 +204,7 @@ function _activateCore(idx, opts) {
   }
   _updateRoute(active, updateRoute, syncRoute);
   try {
-    localStorage.setItem("9mm_last_position", String(active.tokenId));
+    rememberLastPosition(active.tokenId);
   } catch {
     /* */
   }
@@ -289,7 +282,7 @@ function _fetchUnmanagedIfNeeded(active) {
 /** Restore last-viewed position from localStorage, preferring open positions. */
 export function restoreLastPosition() {
   try {
-    const t = localStorage.getItem("9mm_last_position");
+    const t = readLastPosition();
     if (t) {
       const idx = posStore.entries.findIndex(
         (e) => e.positionType === "nft" && String(e.tokenId) === String(t),
@@ -397,31 +390,7 @@ function _showNoPositionsDialog() {
 
 // ── Scanning ─────────────────────────────────────
 
-/** Select bot's active position after manual scan. */
-async function _syncAfterManualScan() {
-  try {
-    const st = await (await fetch("/api/status")).json();
-    const tid = st.activePosition?.tokenId;
-    if (!tid) return;
-    const i = posStore.entries.findIndex(
-      (e) => e.positionType === "nft" && String(e.tokenId) === String(tid),
-    );
-    if (i >= 0 && i !== posStore.activeIdx)
-      _activateCore(i, {
-        updateRoute: false,
-        syncRoute: true,
-      });
-  } catch {
-    /* next poll will sync */
-  }
-}
-
-/**
- * Scan the current wallet for LP positions via the server API.
- * @param {object} [opts]  Options.
- * @param {boolean} [opts.navigate=true]  After scan, select bot's
- *   active position. Pass false for automatic scans.
- */
+/** Ask the server to scan the wallet, and add what it finds to the store. */
 async function _fetchAndApplyScan() {
   /*- No rpcUrl in the body.  The server scans with its own configured
    *  provider and always ignored this field, so sending it only made it
@@ -476,17 +445,22 @@ async function _fetchAndApplyScan() {
   return { data, added, nftCount };
 }
 /**
+ * Scan the current wallet for LP positions via the server API.
+ *
+ * A silent scan reports nothing in the Activity Log and leaves the Scan
+ * Wallet button alone; the scans the dashboard starts by itself use it.
+ *
+ * @param {object} [opts]  Options.
+ * @param {boolean} [opts.silent=false]  Scan without a word to the user.
  * @returns {Promise<{ok: boolean, added?: number, nftCount?: number, error?: string}>}
  *   `ok:true` means the scan reached the server, returned a valid
  *   response, and `_addScannedPositions` ran.  `ok:false` covers any
- *   failure path \u2014 used by `dashboard-data-events.js` to decide
- *   whether to advance the rebalance tracker so a transient failure
- *   (network, CSRF, RPC) is retried on the next 3 s poll instead of
- *   being silently swallowed (the `lp-browser stale after idle
- *   rebalance` bug observed in burn-in).
+ *   failure path; `dashboard-data-events.js` advances its rebalance
+ *   tracker only on `ok:true`, so a transient failure (network, CSRF,
+ *   rpc) is retried on its next poll rather than lost.
  */
 export async function scanPositions(opts) {
-  const silent = opts?.silent || false;
+  const silent = opts?.silent === true;
   if (!wallet.address) {
     if (!silent)
       act(
@@ -513,7 +487,6 @@ export async function scanPositions(opts) {
         `Found ${nftCount} NFT positions. Added ${added} new.`,
       );
       if (nftCount === 0) _showNoPositionsDialog();
-      if (!opts || opts.navigate !== false) await _syncAfterManualScan();
     }
     return { ok: true, added, nftCount };
   } catch (e) {

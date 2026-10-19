@@ -14,15 +14,17 @@
 "use strict";
 
 const { log } = require("./log");
-const { getTokenSymbol } = require("./server-scan");
+const config = require("./config");
+const { getTokenSymbol } = require("./token-symbol-cache");
 const { notify } = require("./telegram-notifications/telegram");
 
-/**
- * How long a managed position may sit at 0 liquidity (with no rebalance
- * in flight) before auto-retirement.  Time-based (not poll-count-based)
- * so it stays predictable regardless of CHECK_INTERVAL_SEC overrides.
+/*-
+ *  How long a managed position may sit at 0 liquidity (with no rebalance
+ *  in flight) before auto-retirement: app-runtime.json →
+ *  retire.drainedAfterMs. Time-based (not poll-count-based) so it stays
+ *  predictable whatever CHECK_INTERVAL_SEC is.
  */
-const DRAINED_RETIRE_MS = 30 * 60_000;
+const { DRAINED_RETIRE_MS } = config;
 
 /** Build a position descriptor for Telegram notifications. */
 function _notifyPos(position) {
@@ -66,14 +68,16 @@ function checkZeroLiquidity(deps) {
    *  depth flag was fired by drain.js BEFORE the setTimeout could elapse
    *  (drain.js runs from the scan-completion pollCycle, within ~2 s of
    *  the failure), preempting the dashboard-poll window.  Removed.  */
-  /*- `rebalanceFailedMidway` flags a "needs mint retry from wallet"
+  /*-
+   *  `rebalanceFailedMidway` flags a "needs mint retry from wallet"
    *  state.  When the bot is also `rebalancePaused` (slippage abort —
    *  the rebalance has been ABORTED, not "paused" per the user-facing
    *  taxonomy; see [[feedback_paused_vs_aborted]]), no automatic retry
    *  will fire (the gate in `_checkRebalanceGates` blocks at paused).
    *  Treat aborted-drained as equivalent to pristine-drained for drain-
-   *  timer purposes so the 30-min auto-retire safety net still fires;
-   *  user must adjust Slippage or click Manage to retry before then. */
+   *  timer purposes so the drained auto-retire safety net still fires;
+   *  user must adjust Slippage or click Manage to retry before then.
+   */
   const midwayFail = !!state.rebalanceFailedMidway && !state.rebalancePaused;
   const now = Date.now();
   if (!drained && state.drainedSince) state.drainedSince = null;
@@ -178,5 +182,4 @@ module.exports = {
   checkZeroLiquidity,
   checkRetireRequest,
   isAbortedDrained,
-  DRAINED_RETIRE_MS,
 };

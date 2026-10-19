@@ -2,20 +2,27 @@
  * @file src/il-guard.js
  * @module il-guard
  * @description
- * The Impermanent Loss Guard (ILG): a ceiling on how much value a
- * position may have lost before the bot stops rebalancing it.
+ * The Impermanent Loss Guard (ILG): a ceiling on how much impermanent
+ * loss a position may carry before the bot stops rebalancing it, since a
+ * rebalance locks that loss in.
  *
  * The comparison is between the **hypothetical post-rebalance position**
- * and the **original USD value of the NFT currently being held** — that
- * NFT's own worth on the day it was minted, not a lifetime or
- * chain-wide figure.  Reject when the projection falls more than
- * `impermanentLossGuardPct` below that original value.
+ * and **holding the coins the NFT currently held was minted with**, both
+ * at today's prices: the Current panel's IL/G for that NFT
+ * (`snap.totalIL`), read rather than recomputed. Reject when the
+ * projection falls more than `impermanentLossGuardPct` below holding.
+ * Valuing the minted coins at the mint day's prices instead would count
+ * a move both coins' dollar prices share, which a rebalance does not
+ * lock in: it blocked a position whose coins had both fallen, and
+ * passed a deep loss hidden inside a shared rise.
  *
  * Slippage is deliberately excluded from the projection.  A rebalance
  * moves the same dollars from one tick range to another, so with swap
  * costs left out the hypothetical new position is worth what the
  * current one is worth: its LP value plus the pool-scoped wallet
- * residual that the rebalance would fold back in.
+ * residual that the rebalance would fold back in. As in IL/G, the fees
+ * this NFT has compounded are left out of it: they are earnings, and
+ * counting them would let them hide a loss.
  *
  * **This module never touches the chain.**  Both inputs are already
  * computed by the poll cycle before the gate runs, so evaluating the
@@ -28,19 +35,24 @@
  * Two consequences worth understanding, both documented for the user in
  * the `inIlGuard` help dialog:
  *
- *   1. **A rejection is self-clearing only by price.**  The baseline is
- *      reset by `_updateHodlBaseline` when a rebalance mints a new NFT.
- *      A position rejected by the Impermanent Loss Guard cannot
- *      rebalance, so it cannot mint, so it
- *      cannot get a new baseline — it stays blocked until the market
- *      brings its value back above the floor.
+ *   1. **A rejection clears only at a retry check.**  The minted coins
+ *      are reset by `updateHodlBaseline` when a rebalance mints a new
+ *      NFT. A position rejected by the Impermanent Loss Guard cannot
+ *      rebalance, so it cannot mint, so it keeps measuring against the
+ *      same coins — it stays blocked until the two coins' prices move
+ *      back enough to bring it within the Guard of holding, seen at the
+ *      next retry check, or the operator saves a higher guard
+ *      percentage, which lifts the wait (`clearIlGuardWait`) so the
+ *      next poll reads it.
  *   2. **It bites while the position is idle.**  The guard only comes
  *      up when a rebalance was going to happen, which usually means the
  *      position is out of range and earning nothing.  A tight setting
  *      therefore stops the bot from restarting fee income.
  *
- * Hence the shipped default of 50 rather than something tighter: a
- * catastrophe brake, not a routine one.
+ * The shipped default is tight all the same, because the two sides are
+ * not alike: a rebalance crystallizes the loss by re-minting around the
+ * current price, while declining costs only fees an out-of-range
+ * position is largely not earning.
  */
 
 "use strict";
@@ -51,6 +63,10 @@ const fs = require("fs");
 const path = require("path");
 const config = require("./config");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { SETTING_BOUNDS } = require("./setting-bounds");
+const { withinBound } = require("./range-check");
+const { duration } = require("./help-figures");
+const { hodlValueUsd } = require("./il-calculator");
 
 /*- Retry backoff tunables.  Read through `readBotConfigDefaults` — NOT
  *  `loadShippedDefaults` — so a per-install override at
@@ -59,6 +75,14 @@ const { readBotConfigDefaults } = require("./bot-config-defaults");
  *  bot-cycle-residual read their own tunable groups.  Read once at
  *  module init like those two: a live edit needs a restart. */
 const _DEFAULTS = readBotConfigDefaults();
+
+/*-
+ *  The retry wait's ceiling and the gas share a rebalance waits behind,
+ *  worded for the rejection message from the values the bot acts on, so
+ *  an operator's override reaches the message too.
+ */
+const _RETRY_CEILING = duration(_DEFAULTS.ilGuardRetry.maxMs / 1000);
+const _GAS_DEFER_PCT = _DEFAULTS.rebalanceGasDeferPct;
 
 /*- The effective guard percentage for a position with nothing saved.
  *  Taken from `config` rather than the JSON directly, because config is
@@ -72,27 +96,29 @@ const _DEFAULT_GUARD_PCT = config.IMPERMANENT_LOSS_GUARD_PCT;
 /**
  * Decide whether the Impermanent Loss Guard rejects a rebalance.
  *
- * Fails OPEN.  When either input is unusable — no baseline resolved
- * yet on a freshly-managed position, a guard percentage that is not a
- * sane number — the rebalance is allowed and `evaluated` is false.  The
- * guard is a brake on a losing position, not a safety interlock, and
+ * Fails OPEN.  When either input is unusable — the minted coins not
+ * resolved yet on a freshly-managed position, a guard percentage that is
+ * not a sane number — the rebalance is allowed and `evaluated` is false.
+ * The guard is a brake on a losing position, not a safety interlock, and
  * freezing the bot because a figure has not finished loading would do
  * more harm than the case it protects against.
  *
- * An impermanent GAIN can never reject: a projection at or above the
- * original value is necessarily at or above the floor, which sits below
- * the original value for any guard percentage in [1, 100].
+ * An impermanent GAIN can never reject: a projection at or above
+ * holding is necessarily at or above the floor, which sits below
+ * holding for any guard percentage in [1, 100].
  *
  * @param {object} args
  * @param {number} args.projectedValueUsd  Hypothetical post-rebalance
- *   position value: LP value plus the pool residual it would absorb.
- * @param {number} args.originalValueUsd   The held NFT's USD value at
- *   its own mint (`hodlBaseline.entryValue`).
- * @param {number} args.guardPct           Percent, 1..100.
+ *   position value: LP value plus the pool residual it would absorb,
+ *   this NFT's compounded fees left out.
+ * @param {number} args.holdValueUsd       What holding the coins the held
+ *   NFT was minted with is worth at today's prices.
+ * @param {number} args.guardPct           Percent, inside its range in
+ *   setting-bounds.json.
  * @returns {{evaluated: boolean, rejected: boolean, floorUsd: number|null,
  *            lossPct: number|null, reason: string|null}}
  */
-function evaluateIlGuard({ projectedValueUsd, originalValueUsd, guardPct }) {
+function evaluateIlGuard({ projectedValueUsd, holdValueUsd, guardPct }) {
   const allow = (reason) => ({
     evaluated: false,
     rejected: false,
@@ -100,18 +126,23 @@ function evaluateIlGuard({ projectedValueUsd, originalValueUsd, guardPct }) {
     lossPct: null,
     reason,
   });
-  if (!Number.isFinite(guardPct) || guardPct <= 0 || guardPct > 100)
+  /*-
+   *  The same range a saved value is held to, from setting-bounds.json:
+   *  outside it there is no guard to apply.
+   */
+  if (!withinBound(guardPct, SETTING_BOUNDS.impermanentLossGuardPct))
     return allow("guard-not-set");
-  /*- A zero or negative original value means the mint-transaction scan
-   *  has not resolved the baseline yet (or could not price it).  There
-   *  is nothing to measure against. */
-  if (!Number.isFinite(originalValueUsd) || originalValueUsd <= 0)
-    return allow("no-original-value");
+  /*-
+   *  A zero or negative holding value means the mint-transaction scan
+   *  has not resolved the minted coins yet, or today's prices are
+   *  missing.  There is nothing to measure against.
+   */
+  if (!Number.isFinite(holdValueUsd) || holdValueUsd <= 0)
+    return allow("no-hold-value");
   if (!Number.isFinite(projectedValueUsd) || projectedValueUsd < 0)
     return allow("no-projected-value");
-  const floorUsd = originalValueUsd * (1 - guardPct / 100);
-  const lossPct =
-    ((originalValueUsd - projectedValueUsd) / originalValueUsd) * 100;
+  const floorUsd = holdValueUsd * (1 - guardPct / 100);
+  const lossPct = ((holdValueUsd - projectedValueUsd) / holdValueUsd) * 100;
   return {
     evaluated: true,
     rejected: projectedValueUsd < floorUsd,
@@ -122,29 +153,35 @@ function evaluateIlGuard({ projectedValueUsd, originalValueUsd, guardPct }) {
 }
 
 /**
- * Build the guard's inputs from the poll cycle's own state.  Extracted
+ * Build the guard's inputs from the poll cycle's own snapshot.  Extracted
  * so the arithmetic above stays free of the snapshot's shape.
  *
- * The projected value folds in `residualValueUsd` — the pool-scoped
- * coins sitting on the wallet — because a rebalance sweeps those into
- * the new position.  Leaving them out would understate what the
- * rebalance would actually mint.
+ * Both come from the Current panel's IL/G for the NFT held, which
+ * `_computeIL` (src/bot-pnl-il.js) has already put on the snapshot:
+ * `totalIL` and the minted coins and prices it was measured with, in
+ * `ilInputs`. Holding is those coins at those prices; the projection is
+ * holding plus IL/G, which is the LP value plus the pool-scoped coins on
+ * the wallet a rebalance would sweep in, less what this NFT compounded.
+ * Read rather than recomputed, so the Guard and the panel cannot differ.
  *
- * @param {object|null|undefined} snap      P&L snapshot for this poll.
- * @param {object|null|undefined} baseline  `hodlBaseline` for the held NFT.
- * @returns {{projectedValueUsd: number|null, originalValueUsd: number|null}}
+ * @param {object|null|undefined} snap  P&L snapshot for this poll.
+ * @returns {{projectedValueUsd: number|null, holdValueUsd: number|null}}
+ *   Nulls when the snapshot carries no IL/G yet, as before the minted
+ *   coins have been read.
  */
-function ilGuardInputs(snap, baseline) {
-  const lp = snap?.currentValue;
-  const residual = snap?.residualValueUsd;
-  const projectedValueUsd = Number.isFinite(lp)
-    ? lp + (Number.isFinite(residual) ? residual : 0)
-    : null;
-  const entry = baseline?.entryValue;
-  return {
-    projectedValueUsd,
-    originalValueUsd: Number.isFinite(entry) ? entry : null,
-  };
+function ilGuardInputs(snap) {
+  const none = { projectedValueUsd: null, holdValueUsd: null };
+  const il = snap?.totalIL;
+  const inputs = snap?.ilInputs;
+  if (!Number.isFinite(il) || !inputs?.cur) return none;
+  const holdValueUsd = hodlValueUsd({
+    hodlAmount0: inputs.cur.hodlAmount0,
+    hodlAmount1: inputs.cur.hodlAmount1,
+    currentPrice0: inputs.price0,
+    currentPrice1: inputs.price1,
+  });
+  if (!Number.isFinite(holdValueUsd)) return none;
+  return { projectedValueUsd: holdValueUsd + il, holdValueUsd };
 }
 
 /*- Deep link to the published User Manual section carrying the full
@@ -218,22 +255,27 @@ const _MANUAL_URL = _resolveManualUrl();
 function _ilGuardMessage(v, { link } = {}) {
   const usd = (n) => "$usd " + n.toFixed(2);
   return [
-    `This position is worth ${usd(v.projectedValueUsd)} — ` +
-      `${v.lossPct.toFixed(1)}% below the ${usd(v.originalValueUsd)} ` +
-      `it was worth when this NFT was minted.`,
+    `This position is worth ${usd(v.projectedValueUsd)}, counting the ` +
+      `coins in the wallet a rebalance would add and leaving out fees ` +
+      `compounded into it. Holding the coins this NFT was minted with ` +
+      `would be worth ${usd(v.holdValueUsd)} at today's prices, so its ` +
+      `impermanent loss is ${v.lossPct.toFixed(1)}%.`,
     "",
     `Your Impermanent Loss Guard is set to ${v.guardPct}%, so rebalancing ` +
       `stops below ${usd(v.floorUsd)}. No rebalance was attempted. ` +
       `The position was not touched.`,
     "",
-    "The Guard refuses to re-centre a position that has fallen too far, " +
-      "rather than locking the loss in at a new price range.",
+    "The Guard refuses to re-centre a position whose impermanent loss is " +
+      "that deep, because a rebalance would lock the loss in.",
     "",
     `Next check in about ${v.nextCheckHours} hours; each further rejection ` +
-      `doubles that wait, up to a week. The bot cannot clear this itself — ` +
-      `it lifts when the position recovers above the floor, or when you ` +
-      `lower the Guard in Bot Settings \u2192 Execution. A manual Rebalance ` +
-      `Now always works and ignores the Guard.`,
+      `doubles that wait, up to ${_RETRY_CEILING}. The block lifts at a ` +
+      `check that finds the position's value back above the floor. Raising ` +
+      `the Guard in Bot Configuration \u2192 Execution lowers the floor; a ` +
+      `change you save is read at the bot's next check. A manual ` +
+      `Rebalance Now ignores the Guard, but like any rebalance waits while ` +
+      `its gas would cost more than ${_GAS_DEFER_PCT}% of the position's ` +
+      `value.`,
     "",
     "While blocked and out of range, the position earns no fees.",
     ...(link && _MANUAL_URL ? ["", `Full explanation: ${_MANUAL_URL}`] : []),
@@ -247,12 +289,36 @@ function _clearRetryState(st) {
   st._ilGuardRejectCount = 0;
 }
 
+/**
+ * Start the Guard afresh for a position whose Guard setting was just
+ * saved, so its next check decides on the new value at once rather than
+ * after the wait a rejection under the old value started. A rejection on
+ * the new value then begins the wait again at its first rung. Called by
+ * `POST /api/config` (src/server-config-route.js), the way a Slippage
+ * save frees a slippage pause. The block the dashboard shows stays until
+ * that check, which lifts it or words it again.
+ *
+ * @param {object|null|undefined} st  Per-position bot state; absent for
+ *   a position with no running loop, which has no wait to clear.
+ * @returns {void}
+ */
+function clearIlGuardWait(st) {
+  if (st === undefined || st === null) return;
+  _clearRetryState(st);
+}
+
 /*- End a blocked episode and tell the dashboard.  Emitted on the
- *  TRANSITION only — a position that was never blocked emits nothing, so
- *  the common path adds no per-poll churn to `/api/status`. */
+ *  TRANSITION only — a position with no block published emits nothing,
+ *  so the common path adds no per-poll churn to `/api/status`.
+ *
+ *  Whether a block is published is read from the block itself, the
+ *  state the dashboard shows, not from the wait's clock: a Guard save
+ *  zeroes the clock (`clearIlGuardWait`) and leaves the block standing
+ *  for this check to lift. */
 function _clearBlocked(deps, st) {
   if (!st) return;
-  const wasBlocked = (st._ilGuardRejectedAt || 0) > 0;
+  const wasBlocked =
+    st.ilGuardBlocked !== undefined && st.ilGuardBlocked !== null;
   _clearRetryState(st);
   if (wasBlocked) deps.updateBotState?.({ ilGuardBlocked: null });
 }
@@ -325,8 +391,8 @@ function _stampRejection(st) {
 /**
  * The gate itself.  Returns an early poll-cycle result when the hypothetical
  * post-rebalance position would sit more than `impermanentLossGuardPct`
- * below the held NFT's own value at mint; null to let the rebalance
- * proceed.
+ * below holding the coins the held NFT was minted with, at today's
+ * prices; null to let the rebalance proceed.
  *
  * Read-only by construction: both inputs were computed earlier in this
  * poll cycle, and this runs BEFORE `executeRebalance`, so a rejection
@@ -335,8 +401,8 @@ function _stampRejection(st) {
  *
  * Skipped for user-forced rebalances, like every other gate in
  * `_checkRebalanceGates` — a
- * Rebalance Now click always works, and it has already shown its own
- * impermanent-loss confirmation.
+ * Rebalance Now click is held by none of them, and it has already shown
+ * its own impermanent-loss confirmation.
  */
 function checkIlGuard(deps, forced, snap, notifyPos) {
   /*- Manual rebalances return here, so a Rebalance Now is held by
@@ -358,11 +424,8 @@ function checkIlGuard(deps, forced, snap, notifyPos) {
    *  is the opposite of shipping it on by default. */
   const guardPct =
     deps._getConfig?.("impermanentLossGuardPct") ?? _DEFAULT_GUARD_PCT;
-  const { projectedValueUsd, originalValueUsd } = ilGuardInputs(
-    snap,
-    st?.hodlBaseline,
-  );
-  const r = evaluateIlGuard({ projectedValueUsd, originalValueUsd, guardPct });
+  const { projectedValueUsd, holdValueUsd } = ilGuardInputs(snap);
+  const r = evaluateIlGuard({ projectedValueUsd, holdValueUsd, guardPct });
   if (!r.evaluated) {
     if (r.reason !== "guard-not-set")
       log.info("[bot] ILG not evaluated (%s) — allowing rebalance", r.reason);
@@ -382,21 +445,23 @@ function checkIlGuard(deps, forced, snap, notifyPos) {
   ).toFixed(0);
   log.info(
     "[bot] ILG rejected rebalance for #%s: projected $%s is %s%% below the " +
-      "$%s this NFT was worth at mint (floor $%s at %d%% as set by the Bot " +
-      'Configuration setting, "Impermanent Loss Guard (%%)"). Position ' +
-      "untouched; next check in %sh.",
+      "$%s its minted coins are worth at today's prices (floor $%s at %d%% " +
+      'as set by the Bot Configuration setting, "Impermanent Loss Guard ' +
+      '(%%)"). Position untouched; next check in %sh.',
     deps.position?.tokenId,
     projectedValueUsd.toFixed(2),
     r.lossPct.toFixed(1),
-    originalValueUsd.toFixed(2),
+    holdValueUsd.toFixed(2),
     r.floorUsd.toFixed(2),
     guardPct,
     nextCheckHours,
   );
-  /*- The operator needs to know: the position is out of range, earning
+  /*-
+   *  The operator needs to know: the position is out of range, earning
    *  nothing, and the bot has decided not to act.  Nothing the bot does
-   *  can clear it — only a price recovery can — so the message explains
-   *  the setting rather than just reporting the event.
+   *  can clear it — a price recovery or a higher guard percentage can, at
+   *  the next check — so the message explains the setting rather than
+   *  just reporting the event.
    *
    *  One stamp paces both concerns.  The backoff stops the gate
    *  re-deciding every poll, and because the alert sits behind the same
@@ -404,13 +469,14 @@ function checkIlGuard(deps, forced, snap, notifyPos) {
    *  that persists for days would send a message every
    *  CHECK_INTERVAL_SEC, hundreds a day per position.  No separate
    *  "already alerted" flag: one observation serves both
-   *  (feedback_no_extra_state). */
+   *  (feedback_no_extra_state).
+   */
   _stampRejection(st);
   /*- One set of figures, both channels — built here rather than twice
    *  over, so the modal and the phone alert cannot disagree. */
   const v = {
     projectedValueUsd,
-    originalValueUsd,
+    holdValueUsd,
     floorUsd: r.floorUsd,
     lossPct: r.lossPct,
     guardPct,
@@ -434,4 +500,5 @@ module.exports = {
   ilGuardInputs,
   ilGuardRetryWaitMs,
   checkIlGuard,
+  clearIlGuardWait,
 };

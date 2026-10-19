@@ -12,18 +12,28 @@
  * position scans; readers fall back to `null` when the address has not
  * been seen yet and the caller can degrade gracefully (e.g. show the
  * address only).
+ *
+ * Entries are keyed by the active chain and the address (`cacheKey`), so
+ * a token at the same address on another chain never borrows this
+ * chain's symbol.
  */
 
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
+const config = require("./config");
+const { cacheKey } = require("./cache-store");
 
-const _SYM_CACHE_PATH = path.join(
-  process.cwd(),
-  "tmp",
-  "token-symbol-cache.json",
-);
+/*-
+ *  `TOKEN_SYMBOL_CACHE_PATH` moves the file, so a test that resolves
+ *  symbols through the real path writes its fixture tokens somewhere of
+ *  its own. Nothing expires an entry here, so a fixture written into the
+ *  operator's file would stay.
+ */
+const _SYM_CACHE_PATH =
+  process.env.TOKEN_SYMBOL_CACHE_PATH ||
+  path.join(process.cwd(), "tmp", "token-symbol-cache.json");
 
 /** Lazy-loaded in-memory mirror of the JSON file on disk. */
 let _symCache = null;
@@ -58,8 +68,9 @@ function flushSymbolCache() {
  * @returns {string|null} Symbol if cached, otherwise null.
  */
 function getTokenSymbol(addr) {
+  if (!addr) return null;
   _loadSymCache();
-  return _symCache[(addr || "").toLowerCase()] || null;
+  return _symCache[cacheKey(config.CHAIN_NAME, addr)] || null;
 }
 
 /**
@@ -70,7 +81,7 @@ function getTokenSymbol(addr) {
 function setTokenSymbol(addr, symbol) {
   if (!addr || !symbol) return;
   _loadSymCache();
-  _symCache[addr.toLowerCase()] = symbol;
+  _symCache[cacheKey(config.CHAIN_NAME, addr)] = symbol;
 }
 
 /** Reset the in-memory cache (tests only). */

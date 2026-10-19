@@ -5,8 +5,9 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs");
 const {
   getPoolScanLock,
   clearPoolCache,
@@ -166,7 +167,7 @@ describe("appendToPoolCache", () => {
     await appendToPoolCache(position, "0xWallet2222", {
       oldTokenId: "200",
       newTokenId: "201",
-      blockNumber: 0,
+      blockNumber: 6100,
     });
 
     /*- "Gracefully" has to mean something observable: the event lands,
@@ -175,9 +176,140 @@ describe("appendToPoolCache", () => {
     const ev = (cached?.events || []).find((e) => e.newTokenId === "201");
     assert.ok(ev, "an event without txHashes must still be stored");
     assert.equal(ev.oldTokenId, "200");
-    assert.equal(ev.blockNumber, 0);
+    assert.equal(ev.blockNumber, 6100);
     /*- An empty string, not undefined: the dashboard renders this field
      *  and a missing one would print "undefined" in the events table. */
     assert.equal(ev.txHash, "");
+  });
+});
+
+describe("appendToPoolCache — beside a scan of the same pool", () => {
+  const position = {
+    token0: "0x8888888888888888888888888888888888888888",
+    token1: "0x9999999999999999999999999999999999999999",
+    fee: 3000,
+  };
+  const wallet = "0xWallet3333";
+  const filePath = eventCachePath(
+    position,
+    "pulsechain",
+    config.POSITION_MANAGER,
+    wallet,
+  );
+  const key = buildCacheKey(
+    wallet,
+    config.POSITION_MANAGER,
+    position.token0,
+    position.token1,
+    position.fee,
+  );
+  // Written the way a scan writes it: a store of its own, whole.
+  const writeAsScan = (value) =>
+    createCacheStore({ filePath, defaultTtlMs: 60_000 }).set(key, value);
+
+  afterEach(() => {
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      /* the case wrote nothing */
+    }
+  });
+
+  it("lands after a running scan writes, not under it", async () => {
+    /*-
+     *  A scan writes back what it read when it started plus what it
+     *  found. One that started before the rebalance mined and finishes
+     *  after the append would write the cache back without it. Held to
+     *  the pool's lock, the append waits for that write and adds to it.
+     */
+    const release = await getPoolScanLock(
+      position.token0,
+      position.token1,
+      position.fee,
+    ).acquire();
+    const appended = appendToPoolCache(position, wallet, {
+      oldTokenId: "400",
+      newTokenId: "401",
+      txHashes: ["0xhash4"],
+      blockNumber: 5000,
+    });
+    // Long enough for an append that does not wait to finish.
+    await new Promise((resolve) => setImmediate(resolve));
+    await writeAsScan({ events: [], lastBlock: 4000, mintSchemaVersion: 2 });
+    release();
+    await appended;
+    const cached = await readPoolCache(position, wallet);
+    assert.ok(
+      cached.events.some((e) => e.newTokenId === "401"),
+      "the scan's write must not erase the appended rebalance",
+    );
+    /*-
+     *  The scan read to block 4000 and the rebalance minted at 5000. The
+     *  blocks between were never read, so the next scan must start after
+     *  4000, not after 5000.
+     */
+    assert.equal(cached.lastBlock, 4000);
+  });
+
+  it("keeps what a scan stored beside the events", async () => {
+    /*-
+     *  A scan stores the chain's first mint beside its events. Lost, the
+     *  next scan records the newest NFT as the chain's first, and the
+     *  closed-position history falls back to walking the chain for it.
+     */
+    const scanned = {
+      events: [],
+      lastBlock: 7000,
+      firstMintTimestamp: 1_760_000_000,
+      firstMintBlockNumber: 6500,
+      firstMintTokenId: "600",
+      chainFirstTokenId: "590",
+      chainFirstMintBlock: 6400,
+      chainFirstMintTimestamp: 1_759_000_000,
+      mintSchemaVersion: 2,
+    };
+    await writeAsScan(scanned);
+    await appendToPoolCache(position, wallet, {
+      oldTokenId: "600",
+      newTokenId: "601",
+      txHashes: ["0xhash6"],
+      blockNumber: 7200,
+    });
+    const cached = await readPoolCache(position, wallet);
+    for (const field of Object.keys(scanned).filter((k) => k !== "events"))
+      assert.equal(cached[field], scanned[field], field);
+    assert.equal(cached.events.length, 1);
+    assert.equal(cached.events[0].blockNumber, 7200);
+  });
+
+  it("adds no second entry for a rebalance a scan already read", async () => {
+    /*-
+     *  A scan that held the lock first may have read the rebalance from
+     *  the chain already, with a later block than this one: it read up
+     *  to the head.
+     */
+    await writeAsScan({
+      events: [
+        {
+          index: 1,
+          timestamp: 1_771_200_000,
+          oldTokenId: "500",
+          newTokenId: "501",
+          txHash: "0xhash5",
+          blockNumber: 5000,
+        },
+      ],
+      lastBlock: 9000,
+      mintSchemaVersion: 2,
+    });
+    await appendToPoolCache(position, wallet, {
+      oldTokenId: "500",
+      newTokenId: "501",
+      txHashes: ["0xremove5", "0xhash5"],
+      blockNumber: 5000,
+    });
+    const cached = await readPoolCache(position, wallet);
+    assert.equal(cached.events.length, 1);
+    assert.equal(cached.lastBlock, 9000, "the last block read never goes back");
   });
 });

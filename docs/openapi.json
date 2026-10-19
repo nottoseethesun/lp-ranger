@@ -117,13 +117,23 @@
                           "type": "string",
                           "description": "The endpoint currently in use — the live primary, which changes the moment an operator adds or promotes one. Not the value resolved at startup."
                         },
-                        "positionManager": {
-                          "type": "string"
-                        },
                         "managedPositions": {
                           "type": "array",
                           "items": {
                             "type": "object"
+                          }
+                        },
+                        "startingManagedPositions": {
+                          "type": "object",
+                          "nullable": true,
+                          "description": "While the server starts the positions saved as managed, one at a time after a launch: how many it has dealt with (`done`) and how many there are (`total`). Null at any other time. The dashboard's badge reads Syncing while it is set.",
+                          "properties": {
+                            "done": {
+                              "type": "integer"
+                            },
+                            "total": {
+                              "type": "integer"
+                            }
                           }
                         }
                       }
@@ -163,7 +173,7 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 100,
-                    "description": "Impermanent Loss Guard, percent. Per position. Bounds come from impermanentLossGuardPctMin/Max in bot-config-defaults.json."
+                    "description": "Impermanent Loss Guard, percent. Per position. Range: impermanentLossGuardPct in setting-bounds.json."
                   },
                   "rebalanceOutOfRangeThresholdPercent": {
                     "type": "number",
@@ -175,12 +185,6 @@
                     "minimum": 0,
                     "maximum": 1440
                   },
-                  "checkIntervalSec": {
-                    "type": "integer",
-                    "minimum": 10,
-                    "maximum": 3600,
-                    "description": "On-chain poll frequency, seconds. Per position. A value outside the range is refused with 400 and nothing is saved; bounds come from src/timer-bounds.js, which every road into this setting shares."
-                  },
                   "minRebalanceIntervalMin": {
                     "type": "integer",
                     "minimum": 1,
@@ -190,10 +194,6 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 12
-                  },
-                  "gasStrategy": {
-                    "type": "string",
-                    "enum": ["auto"]
                   },
                   "initialDepositUsd": {
                     "type": "number",
@@ -217,7 +217,7 @@
                   },
                   "rangeOverrideEnabled": {
                     "type": "boolean",
-                    "description": "Bot Settings > Range \"No Override\" toggle. false = re-use the position's existing on-chain range on the next rebalance and ignore the three Range settings below."
+                    "description": "Bot Configuration > Range \"No Override\" toggle. false = re-use the position's existing on-chain range on the next rebalance and ignore the three Range settings below."
                   },
                   "rebalanceRangeWidthPct": {
                     "type": "number",
@@ -397,10 +397,6 @@
                       }
                     }
                   },
-                  "triggerType": {
-                    "type": "string",
-                    "description": "GLOBAL. Rebalance trigger mode."
-                  },
                   "rpcUrls": {
                     "type": "array",
                     "items": {
@@ -416,7 +412,7 @@
                   },
                   "gasFeePct": {
                     "type": "number",
-                    "description": "GLOBAL. Gas-cost ceiling as a percent of position value. Bounds: gasFeePctMin/Max in bot-config-defaults.json.",
+                    "description": "GLOBAL. The swap gas gate: a swap whose gas would cost more than this percent of the swap's own value is skipped, in a rebalance or a compound. Range: gasFeePct in setting-bounds.json.",
                     "minimum": 0.1,
                     "maximum": 15
                   },
@@ -447,10 +443,10 @@
         },
         "responses": {
           "200": {
-            "description": "Config saved"
+            "description": "Config saved. An answer to a request that named a position names it too: positionKey is the key the request named, and livePositionKey the key the values were saved under when a rebalance had moved it, so a dashboard that has moved to another position since it asked can keep the answer off its screen."
           },
           "400": {
-            "description": "Missing or invalid positionKey for position-specific keys, or a dashboard-settable value outside its range. The two are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Ranges are declared in src/config-bounds.js; null clears a setting rather than being checked."
+            "description": "Missing or invalid positionKey for position-specific keys, a dashboard-settable value outside its range, or a value of the wrong kind for one of the bot's own records (hodlBaseline, residuals, compoundHistory and the rest), which are held to the shapes the bot writes. The two are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Ranges are declared in src/config-bounds.js; null clears a setting rather than being checked. Names the position as the 200 does."
           }
         }
       }
@@ -554,6 +550,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "409": {
+            "description": "Refused, with nothing imported: an import stops every position and starts the saved ones again, so it waits while the server is still starting the positions saved as managed, and is refused once the server is stopping. `error` says which, in the operator's words."
           }
         }
       },
@@ -680,6 +679,82 @@
         }
       }
     },
+    "/api/is-position-managed": {
+      "get": {
+        "tags": ["Positions"],
+        "summary": "Whether a position is managed",
+        "description": "True when the server manages the position the key names: its bot loop runs, or its saved status is running and the loop has not started yet. False for a position a shutdown has just stopped. The dashboard asks on every position switch and draws the Manage/Stop button from it.",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "description": "The position's composite key, chain-wallet-contract-tokenId, addresses EIP-55 checksummed.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "managed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The key is missing or names no position"
+          }
+        }
+      }
+    },
+    "/api/is-position-being-adjusted": {
+      "get": {
+        "tags": ["Positions"],
+        "summary": "Whether a rebalance or compound is under way",
+        "description": "True while a rebalance or compound is under way, for the position the key names or, with no key, for any. These are the flags Mission Control shows. `npm run gentle-stop` asks before stopping the server.",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "description": "The position's composite key, chain-wallet-contract-tokenId. Without it, every position is asked about.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "adjusting": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The key names no position"
+          }
+        }
+      }
+    },
     "/api/position/manage": {
       "post": {
         "tags": ["Positions"],
@@ -704,13 +779,13 @@
         },
         "responses": {
           "200": {
-            "description": "Position started"
+            "description": "Position started. Names it by positionKey, and by livePositionKey too when a re-open's first rebalance minted it a new NFT before the answer; a refusal after the key is known names it by positionKey."
           },
           "400": {
             "description": "Missing tokenId or no private key"
           },
           "409": {
-            "description": "Another position already manages this pool. LP Ranger manages one position per liquidity pool so that profit and loss stays attributable to it. The body names the position holding the pool.",
+            "description": "Nothing was started, for one of three reasons. LP Ranger manages one active position per liquidity pool, so that profit and loss stays attributable to it. `pool-already-managed`: another position already manages this pool, and the body names it. `pool-has-open-position`: the position is closed, so its Manage would re-open it, and the wallet already holds an open position in its pool, which the body names; the wallet's positions are those the last wallet scan saw open, each still open unless the chain answers otherwise. Or nothing may start now: the server is still starting the positions saved as managed, one of which may be in the same pool, or it is stopping; the body then carries only `ok` and `error`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -721,15 +796,54 @@
                     },
                     "error": {
                       "type": "string",
-                      "enum": ["pool-already-managed"]
+                      "description": "`pool-already-managed`, `pool-has-open-position`, or, in the operator's words, why nothing may start now, naming the start-up's progress while it runs."
+                    },
+                    "openTokenId": {
+                      "type": "string",
+                      "description": "With `pool-has-open-position`: NFT id of the open position the wallet holds in the pool."
                     },
                     "conflictTokenId": {
                       "type": "string",
-                      "description": "NFT id of the running position holding the pool."
+                      "description": "With `pool-already-managed`: NFT id of the running position holding the pool."
                     },
                     "conflictKey": {
                       "type": "string",
                       "description": "Composite key (blockchain-wallet-contract-tokenId) of that position."
+                    },
+                    "positionKey": {
+                      "type": "string",
+                      "description": "Composite key of the position refused, as every answer about a position names it."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Nothing was started, since the chain could not be read: `pool-info-unavailable`. Either the position's pool, without which LP Ranger cannot check that no other position is managed in it, or the pool's state, which the bot reads as it starts. `message` says which. Try again in a moment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "`pool-info-unavailable`."
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "What could not be read, in the operator's words."
+                    },
+                    "tokenId": {
+                      "type": "string",
+                      "description": "NFT id of the position refused."
+                    },
+                    "positionKey": {
+                      "type": "string",
+                      "description": "Composite key of the position refused, as every answer about a position names it."
                     }
                   }
                 }
@@ -761,7 +875,7 @@
         },
         "responses": {
           "200": {
-            "description": "Position stopped"
+            "description": "Position stopped. Names it by positionKey, the key sent, and by livePositionKey too when a rebalance moved it during the stop."
           },
           "400": {
             "description": "Missing key"
@@ -900,7 +1014,7 @@
       "post": {
         "tags": ["Rebalance"],
         "summary": "Force rebalance",
-        "description": "Trigger a manual rebalance for a managed position. Range width comes from the position's saved rebalanceRangeWidthPct config (Bot Settings > Range); no width is accepted on this endpoint.",
+        "description": "Trigger a manual rebalance for a managed position. Its range comes from the position's saved Range settings (Bot Configuration > Range) while rangeOverrideEnabled is true; otherwise the existing range is re-used, re-centred on the price. No width is accepted on this endpoint.",
         "requestBody": {
           "required": true,
           "content": {
@@ -920,13 +1034,13 @@
         },
         "responses": {
           "200": {
-            "description": "Rebalance requested"
+            "description": "Rebalance requested. Names the position by positionKey."
           },
           "400": {
             "description": "Missing positionKey"
           },
           "409": {
-            "description": "Position not running"
+            "description": "Position not running. Names the position by positionKey."
           }
         }
       }
@@ -970,7 +1084,7 @@
       "post": {
         "tags": ["System"],
         "summary": "Graceful shutdown",
-        "description": "Stop all managed positions and shut down the server.",
+        "description": "Stop all managed positions and shut down the server. A rebalance or compound under way finishes first, however long it takes, and no position starts another check; then the server exits. Ctrl+C and `npm stop` exit within three seconds, cutting one off. `npm run gentle-stop`, the recommended stop, asks GET /api/is-position-being-adjusted until nothing is under way, then asks this route to stop the server and waits until it has exited. The shutdown alert goes out as it does on Ctrl+C.",
         "responses": {
           "200": {
             "description": "Shutdown initiated"
@@ -981,15 +1095,85 @@
     "/api/ui-defaults": {
       "get": {
         "tags": ["UI"],
-        "summary": "Dashboard UI defaults",
-        "description": "Returns the contents of app-config/app-defaults-for-user-configurable/ui-defaults.json (e.g. soundsEnabled). Used by the dashboard at init for fresh-profile defaults.",
+        "summary": "Dashboard settings",
+        "description": "The dashboard settings the server sends: app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-up-scenario.json, with the operator's copy in app-config/user-configurable/ on top. Read once at startup, which stops on a value outside its range in setting-bounds.json or outside the timer rule. The dashboard asks for them after the blockchain and before its first poll. Defaults are in docs/configuration.md.",
         "responses": {
           "200": {
-            "description": "UI defaults JSON",
+            "description": "Every setting the file holds, with its value in force",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "dashboardPollIntervalMs": {
+                      "type": "integer",
+                      "description": "How often the dashboard asks for fresh figures, in milliseconds."
+                    },
+                    "staleDataCheckIntervalMs": {
+                      "type": "integer",
+                      "description": "How often the dashboard checks whether the figures it shows are still another position's, in milliseconds."
+                    },
+                    "reloadMaxWaitMs": {
+                      "type": "integer",
+                      "description": "How long Reload Current Position waits for its scan before reloading the page anyway, in milliseconds."
+                    },
+                    "slippageConfirmAbovePct": {
+                      "type": "number",
+                      "description": "A per-token slippage saved above this percentage asks for a click on Confirm."
+                    },
+                    "slippageTypedConfirmFromPct": {
+                      "type": "number",
+                      "description": "A per-token slippage saved at or above this percentage asks for Confirm to be typed."
+                    },
+                    "pollSkipLogEvery": {
+                      "type": "integer",
+                      "description": "While a slow server holds a poll, the console gets one line per this many skipped polls."
+                    },
+                    "lastCheckJustNowSec": {
+                      "type": "integer",
+                      "description": "How long Mission Control's last-check tag reads \"just now\", in seconds."
+                    },
+                    "autoCompoundSyncHoldMs": {
+                      "type": "integer",
+                      "description": "How long after Stop Managing the status polls leave the Auto-Compound toggle alone, in milliseconds."
+                    },
+                    "throttleNearLimitPct": {
+                      "type": "integer",
+                      "description": "The share of Max Rebalances / Day, in percent, at which the throttle badge reads NEAR LIMIT."
+                    },
+                    "activityLogMaxEntries": {
+                      "type": "integer",
+                      "description": "How many entries the Activity Log keeps."
+                    },
+                    "copyFeedbackMs": {
+                      "type": "integer",
+                      "description": "How long a copy icon shows that it copied, in milliseconds."
+                    },
+                    "heapLogIntervalMs": {
+                      "type": "integer",
+                      "description": "How often the dashboard logs its heap size to the browser console, in milliseconds."
+                    },
+                    "soundsEnabled": {
+                      "type": "boolean",
+                      "description": "Whether sounds play, for a browser with no saved choice."
+                    },
+                    "privacyModeEnabled": {
+                      "type": "boolean",
+                      "description": "Whether Privacy Mode is on, for a browser with no saved choice."
+                    },
+                    "privacyBlurWalletAddresses": {
+                      "type": "boolean",
+                      "description": "Whether Privacy Mode blurs wallet addresses, for a browser with no saved choice."
+                    },
+                    "privacyBlurUsdAmounts": {
+                      "type": "boolean",
+                      "description": "Whether Privacy Mode blurs USD amounts above the threshold, and coin amounts, for a browser with no saved choice."
+                    },
+                    "privacyUsdAmountThreshold": {
+                      "type": "integer",
+                      "description": "The USD amount Privacy Mode blurs above, for a browser with no saved choice."
+                    }
+                  }
                 }
               }
             }
@@ -1019,8 +1203,8 @@
     "/api/bot-config-defaults": {
       "get": {
         "tags": ["UI"],
-        "summary": "Bot Settings defaults",
-        "description": "Returns the contents of app-config/app-defaults-for-user-configurable/bot-config-defaults.json — single source of truth for default values of every Bot Settings input plus server-internal nested groups (lowGasThresholds, residualCleanup). Per-user overrides live in app-config/user-configurable/bot-config.json.",
+        "summary": "Bot Configuration defaults",
+        "description": "The Bot Configuration defaults, resolved as the bot resolves them: the shipped app-config/app-defaults-for-user-configurable/bot-config-defaults.json, the operator's copy in app-config/user-configurable/ on top, and `.env` on top of both for the settings it can set. It covers every Bot Configuration input and the server-internal groups. A position's own values, which these stand in for, live in app-config/user-configurable/bot-config.json. Always 200.",
         "responses": {
           "200": {
             "description": "Bot config defaults JSON",
@@ -1028,6 +1212,38 @@
               "application/json": {
                 "schema": {
                   "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/help-figures": {
+      "get": {
+        "tags": ["UI"],
+        "summary": "The figures the help quotes",
+        "description": "The configured numbers and names the help and User Manual quote, worded for a sentence (\"15\", \"4 hours\"), from the values this install runs on: the shipped settings, with the operator's overrides and then `.env` on top. The names are the chain's and its aggregator's, from chains.json; `aggregatorName` is empty on a chain with no aggregator, and `aggregatorInUse` reads \"none\" there. Ranges come from the shipped setting-bounds.json alone. Also returns the Bot Configuration defaults behind them. The dashboard asks at startup until answered; the User Manual the app serves asks on load. Always 200.",
+        "responses": {
+          "200": {
+            "description": "The figures and the defaults behind them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "figures": {
+                      "type": "object",
+                      "description": "Figure name to wording, plain text, no markup.",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "botDefaults": {
+                      "type": "object",
+                      "description": "The same object GET /api/bot-config-defaults returns."
+                    }
+                  }
                 }
               }
             }
@@ -1056,6 +1272,43 @@
                       "unit": {
                         "type": "string"
                       }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chain": {
+      "get": {
+        "summary": "The active chain",
+        "tags": ["Config"],
+        "description": "Names the chains.json entry this process runs against — `CHAIN_NAME`, or `defaults.chain` in app-runtime.json. The dashboard reads it once at startup, before it builds any position key or url, because the chain is the first segment of both. Always 200.",
+        "responses": {
+          "200": {
+            "description": "The active chain's id and display name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chainId": {
+                      "type": "string",
+                      "description": "Key of the chains.json entry, e.g. `pulsechain` or `pulsechain-testnet`."
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "description": "Human-readable chain name, e.g. `PulseChain`."
+                    },
+                    "homepage": {
+                      "type": "string",
+                      "description": "The chain's website, which the dashboard header's chain link opens."
+                    },
+                    "logo": {
+                      "type": "string",
+                      "description": "File name under public/ of the chain's logo, shown in the dashboard header."
                     }
                   }
                 }
@@ -1225,7 +1478,7 @@
       "get": {
         "summary": "Third-party API key status",
         "tags": ["API Keys"],
-        "description": "Reports whether a Moralis key is present and usable. \"none\" = no key stored; \"locked\" = stored but the wallet has not been unlocked this session, so it cannot be decrypted; \"invalid\" = the live ping failed. Always 200, including on ping failure.",
+        "description": "Reports whether a Moralis key is present and usable. \"none\" = no key stored; \"locked\" = stored but the wallet has not been unlocked this session, so it cannot be decrypted; \"disabled\" = stored but Use Moralis Key is off, so it is not checked; \"unsupported\" = stored, but the active chain has no Moralis id or wrapped native token in chains.json, so Moralis is not asked about it; \"valid\" = the live ping succeeded; \"quota\" = the key is valid but its daily quota is spent; \"invalid\" = the live ping failed. Always 200, including on ping failure.",
         "responses": {
           "200": {
             "description": "Key status.",
@@ -1236,7 +1489,15 @@
                   "properties": {
                     "moralis": {
                       "type": "string",
-                      "enum": ["none", "locked", "invalid", "ok"]
+                      "enum": [
+                        "none",
+                        "locked",
+                        "disabled",
+                        "unsupported",
+                        "valid",
+                        "quota",
+                        "invalid"
+                      ]
                     }
                   }
                 }
@@ -1292,7 +1553,7 @@
       "post": {
         "summary": "Save Telegram configuration",
         "tags": ["Telegram"],
-        "description": "Each field is optional and saved independently. botToken and chatId are encrypted at rest and require a password (or an unlocked wallet session); enabledEvents is written to the bot-config global section and needs neither.",
+        "description": "Each field is optional. botToken and chatId are encrypted at rest and require a password (or an unlocked wallet session); enabledEvents is written to the bot-config global section and needs neither. enabledEvents may name only alerts LP Ranger sends, each true or false, and leaving it out keeps the saved choices. A request refused for either reason saves nothing.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1338,7 +1599,7 @@
             }
           },
           "400": {
-            "description": "Password required for credential fields.",
+            "description": "Password required for credential fields, or enabledEvents names an alert LP Ranger does not send or holds a value other than true or false. Nothing is saved.",
             "content": {
               "application/json": {
                 "schema": {

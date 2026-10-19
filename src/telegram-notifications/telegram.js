@@ -18,7 +18,9 @@ const os = require("os");
 const config = require("../config");
 const { getLpProviderDisplayName } = require("../lp-providers");
 const { getTokenSymbol } = require("../token-symbol-cache");
+const { readBotConfigDefaults } = require("../bot-config-defaults");
 const { escapeValue, escapeCode, sendMessage } = require("./telegram-message");
+const { EVENT_DEFAULTS, eventTitle } = require("./telegram-events");
 
 /*- Every send in this file goes through `sendMessage`, which is also
  *  what the detached `scripts/telegram-send.js` calls. One sender means
@@ -47,52 +49,17 @@ const _SYM_TRUNC_HEADER = 22;
 let _botToken = null;
 let _chatId = null;
 
-/** Event types and their default enabled state. */
-const EVENT_DEFAULTS = {
-  oorTimeout: true,
-  rebalanceSuccess: false,
-  rebalanceFail: true,
-  compoundSuccess: false,
-  compoundFail: true,
-  otherError: true,
-  lowGasBalance: true,
-  veryLowGas: true,
-  shutdown: true,
-  positionRetired: true,
-  positionDataInvalid: true,
-  /*- Impermanent Loss Guard rejection.  Default ON: the bot has
-   *  declined to act on a position that is out of range and earning
-   *  nothing, and the block can only clear when price recovers, so the
-   *  operator needs to know it is happening. */
-  ilGuardRejected: true,
-  /*- Balanced-band notifier (src/telegram-notifications/balanced-notifier.js).  Default OFF —
-   *  enabling it bypasses the idle-driven price-lookup pause for these
-   *  positions, so price-source quota is consumed even when the
-   *  dashboard is closed. */
-  positionBalanced: false,
-};
-
-/** Human-readable labels for each event type. */
-const EVENT_LABELS = {
-  oorTimeout: "OOR Timeout Triggered",
-  rebalanceSuccess: "Rebalance Succeeded",
-  rebalanceFail: "Rebalance Failed",
-  compoundSuccess: "Compound Succeeded",
-  compoundFail: "Compound Failed",
-  otherError: "Other Error",
-  lowGasBalance: "Low Gas Balance",
-  veryLowGas: "Very Low Gas",
-  shutdown: "Server and Bot Shutdown/Exit",
-  positionRetired: "Drained Position Auto-Retired",
-  positionDataInvalid: "Position Auto-Stopped: Invalid Token Data",
-  ilGuardRejected: "Rebalance Rejected Due to Excessive Impermanent Loss",
-  /*- Static string that must track BALANCED_THRESHOLD in
-   *  src/telegram-notifications/balanced-notifier.js.  The dashboard checkbox label reads the
-   *  live percent from /api/telegram/config; this server-side label is
-   *  only used as the Telegram message header and is updated by hand
-   *  whenever the threshold changes. */
-  positionBalanced: "Position Balanced (\u00b12.5% of 50/50)",
-};
+/*-
+ *  The title each alert is sent under, Position Balanced's quoting this
+ *  install's band. The dashboard's checkbox labels come from the same
+ *  `eventTitle`, the band from /api/telegram/config.
+ */
+const _BAND_PCT = readBotConfigDefaults().positionBalancedBandPct;
+const EVENT_LABELS = Object.freeze(
+  Object.fromEntries(
+    Object.keys(EVENT_DEFAULTS).map((id) => [id, eventTitle(id, _BAND_PCT)]),
+  ),
+);
 
 /** Currently enabled events (mutated in place by setEnabledEvents). */
 const _enabledEvents = { ...EVENT_DEFAULTS };
@@ -302,7 +269,6 @@ module.exports = {
   buildHeader,
   notify,
   testConnection,
-  EVENT_DEFAULTS,
   EVENT_LABELS,
   _send,
 };

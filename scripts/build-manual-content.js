@@ -29,6 +29,16 @@
  * that combination means someone added shared copy expecting it to
  * appear in the manual and it never would.
  *
+ * The configured numbers and names the manual quotes are written by the
+ * same build.  `src/help-figures.js` works them out from the shipped JSON;
+ * the shared copy's `{{figure:name}}` tokens are filled before it is
+ * rendered, each inside a `<span data-figure="name">`, and every such
+ * span in the manual's own prose has its text rewritten.  A name the
+ * table lacks stops the build.  Every figure being in a span is what lets
+ * the copy the app serves be filled again in the browser with the
+ * install's own figures, by `public/dashboard-manual-figures.js`; the copy
+ * GitHub Pages publishes keeps the shipped ones.
+ *
  * Idempotent: running twice produces the same file.
  */
 
@@ -37,6 +47,14 @@
 const fs = require("fs");
 const path = require("path");
 const { log } = require("../src/log");
+const { loadShippedDefaults } = require("../src/load-merged-defaults");
+const { aggregatorNameInUse } = require("../src/aggregator-in-use");
+const {
+  helpFigures,
+  fillEntryFigures,
+  spanFigureTokens,
+  fillFigureSpans,
+} = require("../src/help-figures");
 
 const JSON_SRC = path.join(
   __dirname,
@@ -112,15 +130,66 @@ function helpKeys(data) {
   );
 }
 
-/** Render every shared entry into the manual.  Returns the entry count. */
+/**
+ * The figures the help quotes, from the shipped JSON: what an install
+ * runs on before any override or `.env` value, on the chain it ships
+ * set to (`defaults.chain`). They are what the copy GitHub Pages
+ * publishes states. The copy the app serves is filled again in the
+ * browser with the install's own (`public/dashboard-manual-figures.js`).
+ * @returns {Readonly<Record<string, string>>}
+ */
+function shippedFigures() {
+  const runtime = loadShippedDefaults("app-runtime.json");
+  const chainKey = runtime.defaults.chain;
+  const chain = loadShippedDefaults("chains.json")[chainKey];
+  return helpFigures({
+    botDefaults: loadShippedDefaults("bot-config-defaults.json"),
+    settingBounds: loadShippedDefaults("setting-bounds.json"),
+    uiDefaults: loadShippedDefaults(
+      "ui-defaults_non-layout_for-server-up-scenario.json",
+    ),
+    appRuntime: runtime,
+    txSpeedupSec: runtime.tx.speedupSec,
+    // As src/config.js derives it when TX_CANCEL_SEC is not set.
+    txCancelSec: runtime.tx.deadlineSec * runtime.tx.cancelToDeadlineMultiple,
+    compoundMinFeeUsd: runtime.compound.minFeeUsd,
+    chainKey,
+    chainName: chain.displayName,
+    aggregatorName: aggregatorNameInUse(
+      chain.aggregator.url,
+      chain.aggregator.name,
+    ),
+  });
+}
+
+/**
+ * The manual as the build leaves it, worked out in memory: every shared
+ * entry rendered into its region with its figures filled, and every
+ * figure span in the manual's own prose rewritten.  Pure, so a test can
+ * compare the file against it without writing a tracked file.
+ * @param {string} html  The manual as it stands.
+ * @param {object} data  Parsed shared-help-content.json.
+ * @param {Record<string, string>} figures  From `helpFigures`.
+ * @returns {string}
+ */
+function render(html, data, figures) {
+  let out = html;
+  for (const key of helpKeys(data)) {
+    const entry = fillEntryFigures(data[key], figures, spanFigureTokens);
+    out = replaceRegion(out, key, renderEntry(entry));
+  }
+  return fillFigureSpans(out, figures);
+}
+
+/**
+ * Render every shared entry into the manual, and write the figures the
+ * manual quotes.  Returns the entry count.
+ */
 function build() {
   const data = JSON.parse(fs.readFileSync(JSON_SRC, "utf8"));
-  let html = fs.readFileSync(HTML, "utf8");
-  const keys = helpKeys(data);
-  for (const key of keys)
-    html = replaceRegion(html, key, renderEntry(data[key]));
-  fs.writeFileSync(HTML, html);
-  return keys.length;
+  const html = fs.readFileSync(HTML, "utf8");
+  fs.writeFileSync(HTML, render(html, data, shippedFigures()));
+  return helpKeys(data).length;
 }
 
 if (require.main === module) {
@@ -133,4 +202,11 @@ if (require.main === module) {
   );
 }
 
-module.exports = { build, helpKeys, renderEntry, replaceRegion };
+module.exports = {
+  build,
+  helpKeys,
+  render,
+  renderEntry,
+  replaceRegion,
+  shippedFigures,
+};

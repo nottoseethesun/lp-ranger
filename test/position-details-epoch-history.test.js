@@ -72,7 +72,10 @@ function loadSnapshot() {
         return { ...HISTORY };
       },
     },
-    "./bot-pnl-updater": { actualGasCostUsd: async () => 0 },
+    "./bot-pnl-updater": {
+      actualGasCostUsd: async () => 0,
+      pastGasCostUsd: async () => 0,
+    },
     "./price-fetcher": {
       fetchTokenPriceUsd: async () => 1,
       withFreshPricesAllowed: (fn) => fn(),
@@ -85,7 +88,7 @@ function loadSnapshot() {
       },
     },
     // Not used by the history path; replaced so they load nothing heavy.
-    "./rebalancer": {},
+    "./rebalancer-pools": {},
     "./position-details-quick": {},
     "./position-details-compound": {},
     "./resolve-position-symbols": {},

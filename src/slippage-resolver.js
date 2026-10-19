@@ -6,8 +6,9 @@
  *
  * Slippage is two settings, one per token, and nothing else. The rule
  * is simple: use the DESTINATION-token's value if set, otherwise the
- * shipped `slippagePct` default (currently 0.75%) — a default in
- * `bot-config-defaults.json`, not a per-position setting.
+ * `slippagePct` default — a default in `bot-config-defaults.json`,
+ * which an operator's copy under `app-config/user-configurable/`
+ * overrides, and not a per-position setting.
  *
  * **Every swap asks this, rebalance and compound alike.** The single
  * per-position `slippagePct` that the old Slippage row saved is
@@ -24,11 +25,15 @@
 
 "use strict";
 
-const { loadShippedDefaults } = require("./load-merged-defaults");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
-/*- Shipped default read once at module init.  Used whenever the
- *  destination-side per-token value is unset. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
+/*-
+ *  The default, read once at module init: the shipped value, or the
+ *  operator's override of it, which is also the figure Bot Settings
+ *  shows.  Used whenever the destination-side per-token value is
+ *  unset.
+ */
+const _DEFAULTS = readBotConfigDefaults();
 
 /** Is the given value a legal, finite number? */
 function _isSet(v) {
@@ -36,8 +41,9 @@ function _isSet(v) {
 }
 
 /**
- * Resolve the slippage percent (0–5, human-readable percentage) to
- * apply to a specific swap direction, given the rebalance opts.
+ * Resolve the slippage percent (a human-readable percentage, inside its
+ * range in setting-bounds.json) to apply to a specific swap direction,
+ * given the rebalance opts.
  *
  * @param {object} opts
  * @param {number} [opts.slippagePctToken0]  Per-token override, token 0 side.

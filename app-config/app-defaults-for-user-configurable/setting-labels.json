@@ -23,13 +23,11 @@
   "rebalanceTimeoutMin": { "label": "OOR Timeout", "unit": " min" },
   "slippagePctToken0": { "label": "Slippage (Token 0)", "unit": "%" },
   "slippagePctToken1": { "label": "Slippage (Token 1)", "unit": "%" },
-  "checkIntervalSec": { "label": "Check Interval", "unit": " sec" },
   "minRebalanceIntervalMin": {
     "label": "Min Time Between Rebalances",
     "unit": " min"
   },
   "maxRebalancesPerDay": { "label": "Max Rebalances per Day", "unit": "" },
-  "gasStrategy": { "label": "Gas Strategy", "unit": "" },
   "offsetToken0Pct": {
     "label": "Position Offset (Token 0 share)",
     "unit": "%"

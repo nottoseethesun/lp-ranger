@@ -10,9 +10,10 @@
  * accumulates, so a charge that is not written down is gone.
  *
  * Three guarantees, one per defect these were written against:
- *   1. Cancel-TX gas reaches the cache when it is charged. Nothing else
- *      saves it — a cancel means the rebalance did NOT happen, so no
- *      epoch closes behind it.
+ *   1. Gas a failed move paid (a cancel, or a failed swap's approvals,
+ *      reverted swaps and cancels) reaches the cache when it is charged.
+ *      Nothing else saves it — the move did NOT happen, so no epoch
+ *      closes behind it.
  *   2. A reconstruction does not erase the live epoch on its way past.
  *   3. The chain's past compound gas, which the lifetime scan re-offers
  *      on every restart, is written rather than added — and stays out
@@ -25,9 +26,9 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const Module = require("module");
 
 const { createPnlTracker } = require("../src/pnl-tracker");
+const { recordSpentGas } = require("../src/spent-gas");
 
 const TMP = path.join(process.cwd(), "tmp");
 /*- Unique per process: the suite runs concurrently with others that
@@ -46,43 +47,24 @@ function openLive(tracker, over = {}) {
   return tracker;
 }
 
-describe("cancel-TX gas reaches the cache", () => {
-  const _origRequire = Module.prototype.require;
-  let _recordCancelGas;
-
-  before(() => {
-    /*- `actualGasCostUsd` is destructured into bot-cycle at require
-     *  time, so the only seam is the require itself. Same approach as
-     *  test/gas-historical-price-fallback.test.js. */
-    Module.prototype.require = function (id) {
-      if (id === "./bot-pnl-updater") {
-        const real = _origRequire.call(this, id);
-        return { ...real, actualGasCostUsd: async () => 0.25 };
-      }
-      return _origRequire.apply(this, arguments);
-    };
-    delete require.cache[require.resolve("../src/bot-cycle")];
-    ({ _recordCancelGas } = require("../src/bot-cycle"));
-  });
-
-  after(() => {
-    Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/bot-cycle")];
-  });
+describe("a failed move's gas reaches the cache", () => {
+  // Prices any amount of wei at a quarter of a dollar.
+  const toUsd = async () => 0.25;
 
   it("writes the tracker out when it charges the gas", async () => {
     const tracker = openLive(createPnlTracker());
     const writes = [];
-    await _recordCancelGas(
-      { cancelGasCostWei: 21_000_000_000_000_000n },
+    await recordSpentGas(
+      21_000_000_000_000_000n,
       { _pnlTracker: tracker, updateBotState: (p) => writes.push(p) },
+      toUsd,
     );
 
     const saved = writes.filter((w) => w.pnlEpochs);
     assert.equal(
       saved.length,
       1,
-      "the charge must be written out — nothing else saves it, because no epoch closes behind a cancel",
+      "the charge must be written out — nothing else saves it, because no epoch closes behind a failed move",
     );
     assert.ok(
       saved[0].pnlEpochs.liveEpoch.gas > 0,
@@ -90,12 +72,13 @@ describe("cancel-TX gas reaches the cache", () => {
     );
   });
 
-  it("writes nothing when there was no cancel charge", async () => {
+  it("writes nothing when the failed move paid no gas", async () => {
     const tracker = openLive(createPnlTracker());
     const writes = [];
-    await _recordCancelGas(
-      { cancelGasCostWei: 0n },
+    await recordSpentGas(
+      0n,
       { _pnlTracker: tracker, updateBotState: (p) => writes.push(p) },
+      toUsd,
     );
     assert.equal(writes.length, 0, "no charge, no write");
   });

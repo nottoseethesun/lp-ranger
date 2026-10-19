@@ -9,14 +9,15 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const ethers = require("ethers");
 const {
-  getTokenSymbol,
   resolveTokenSymbol,
   formatNftResponse,
   poolKey,
   fetchPoolTicks,
   createScanHandlers,
 } = require("../src/server-scan");
+const { getTokenSymbol } = require("../src/token-symbol-cache");
 
 // ── getTokenSymbol ──────────────────────────────────────────────────
 
@@ -216,5 +217,34 @@ describe("createScanHandlers — scan status function", () => {
     createScanHandlers(deps);
     assert.strictEqual(status, "idle");
     assert.strictEqual(progress, null);
+  });
+});
+
+// ── resolveTokenSymbol — what the chain answers ─────────────────────
+
+describe("resolveTokenSymbol — what the chain answers", () => {
+  /**
+   * A chain that answers the token's `name()` and `symbol()` from
+   * `answers`, keyed by the call's selector; a missing answer reverts.
+   */
+  const chainAnswering = (answers) => ({
+    call: async (tx) => {
+      const answer = answers[tx.data.slice(0, 10)];
+      if (answer === undefined) throw new Error("execution reverted");
+      return ethers.AbiCoder.defaultAbiCoder().encode(["string"], [answer]);
+    },
+  });
+  const NAME = "0x06fdde03";
+  const SYMBOL = "0x95d89b41";
+  const TOKEN = "0x1234567890abcdef1234567890abcdef12345678";
+
+  it("prefers the token's name", async () => {
+    const prov = chainAnswering({ [NAME]: "Wrapped Pulse", [SYMBOL]: "WPLS" });
+    assert.equal(await resolveTokenSymbol(prov, TOKEN), "Wrapped Pulse");
+  });
+
+  it("takes its symbol when it has no name", async () => {
+    const prov = chainAnswering({ [SYMBOL]: "WPLS" });
+    assert.equal(await resolveTokenSymbol(prov, TOKEN), "WPLS");
   });
 });

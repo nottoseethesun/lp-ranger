@@ -34,18 +34,17 @@
 "use strict";
 
 import { g, act, ACT_ICONS, compositeKey } from "./dashboard-helpers.js";
-import { posStore } from "./dashboard-positions.js";
-import {
-  _posLabel,
-  markInputDirty,
-  getInputDefault,
-} from "./dashboard-data.js";
+import { posStore } from "./dashboard-positions-store.js";
+import { _posLabel } from "./dashboard-data-status.js";
+import { markInputDirty } from "./dashboard-data-cache.js";
+import { getInputDefault } from "./dashboard-config-inputs.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
 import { saveConfigValues } from "./dashboard-config-save.js";
 import {
   applyRangeFieldState,
   isRangeOverrideActive,
 } from "./dashboard-range-override.js";
+import { activeChainId } from "./dashboard-chain.js";
 
 /**
  * Decide what a Save click on the Price Range Extension row should
@@ -91,16 +90,18 @@ export function saveRangeWidth() {
   markInputDirty("inRangeWidth");
   markInputDirty("chkFullRange");
   const active = posStore.getActive();
+  const chain = activeChainId();
   const positionKey = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         active.walletAddress,
         active.contractAddress,
         active.tokenId,
       )
     : undefined;
+  // Labelled now, for the position clicked, not whichever is on screen later.
+  const pl = _posLabel();
   const announce = () => {
-    const pl = _posLabel();
     const detail = patch.fullRangeRebalanceEnabled
       ? "Full-Range Rebalance enabled — Price Range Extension ignored"
       : formatSettingChange(

@@ -28,11 +28,6 @@ import {
   checkWalletLocked,
 } from "./dashboard-wallet.js";
 import {
-  posStore,
-  updatePosStripUI,
-  _loadPosStore,
-  _applyLocalPositionData,
-  restoreManagedPositions,
   injectPositionDeps,
   scanPositions,
   activateByTokenId,
@@ -40,29 +35,32 @@ import {
   restoreLastPosition,
 } from "./dashboard-positions.js";
 import {
-  onParamChange,
-  updateThrottleUI,
-  injectThrottleDeps,
-} from "./dashboard-throttle.js";
+  posStore,
+  updatePosStripUI,
+  _loadPosStore,
+  _applyLocalPositionData,
+  restoreManagedPositions,
+} from "./dashboard-positions-store.js";
+import { updateThrottleUI, injectThrottleDeps } from "./dashboard-throttle.js";
 import {
-  startDataPolling,
-  loadRealizedGains,
-  loadInitialDeposit,
-  _fmtUsd,
-  positionRangeVisual,
-  refreshCurDepositDisplay,
   resetPollingState,
   resetHistoryFlag,
-  pollNow,
-  injectDataDeps,
-  refreshDepositLabel,
-  refreshLifetimeDaysLabel,
-  loadLifetimeStartDateOverride,
-  setConfigInputDefault,
   getLastStatus,
   isSyncComplete,
   initDataDepositWiring,
 } from "./dashboard-data.js";
+import {
+  loadRealizedGains,
+  loadInitialDeposit,
+  refreshCurDepositDisplay,
+  injectDataDeps,
+  refreshDepositLabel,
+  refreshLifetimeDaysLabel,
+  loadLifetimeStartDateOverride,
+} from "./dashboard-data-deposit.js";
+import { _fmtUsd } from "./dashboard-fmt-usd.js";
+import { positionRangeVisual } from "./dashboard-data-range.js";
+import { setConfigInputDefault } from "./dashboard-config-inputs.js";
 import { injectManageUIDeps, paintManageUI } from "./dashboard-manage-ui.js";
 import {
   fetchUnmanagedDetails,
@@ -72,17 +70,20 @@ import {
 import { injectPriceOverrideDeps } from "./dashboard-price-override.js";
 import { initTelegram } from "./dashboard-telegram.js";
 import { startBrowserIdleTracker } from "./dashboard-idle.js";
+import { loadUiSettings, uiSetting } from "./dashboard-ui-settings.js";
+import { startStaleDataWatch } from "./dashboard-stale-data.js";
 import { bindParamHelpButtons } from "./dashboard-param-help.js";
 import { _resetCurrentKpis } from "./dashboard-data-kpi.js";
 import { loadLpProviders } from "./dashboard-lp-providers.js";
 import { loadChartProviders } from "./dashboard-chart-providers.js";
 import { initRpcEndpoints } from "./dashboard-rpc-endpoints.js";
 import { loadSettingLabels } from "./dashboard-setting-labels.js";
+import { bindAllEvents } from "./dashboard-events.js";
+import { loadHelpFigures } from "./dashboard-help-figures.js";
 import {
-  bindAllEvents,
   restorePrivacyMode,
   injectPosStoreForEvents,
-} from "./dashboard-events.js";
+} from "./dashboard-events-manage.js";
 import { injectPosStoreForReload } from "./dashboard-reload-flow.js";
 import {
   restoreSoundsToggle,
@@ -115,6 +116,17 @@ import {
   BUILD_RELEASE_TAG,
   BUILD_PACKAGE_VERSION,
 } from "./build-info.js";
+import {
+  activeChainId,
+  loadActiveChain,
+  paintChainLink,
+} from "./dashboard-chain.js";
+import {
+  countAnsweredQuestion,
+  countUnansweredQuestion,
+  pollNow,
+  startDataPolling,
+} from "./dashboard-data-poll.js";
 
 /*- Very first statement of the browser app — light gray text on black,
  *  rocket emoji before and after "Started."  Mirrors the server-side
@@ -191,7 +203,7 @@ injectPositionDeps({
   pollNow,
   resetCurrentKpis: _resetCurrentKpis,
 });
-injectThrottleDeps({ positionRangeVisual });
+injectThrottleDeps({ positionRangeVisual, getLastStatus });
 injectPosStoreForEvents(posStore);
 injectPosStoreForReload(posStore);
 /*- Wire the Manage-UI single owner with read access to posStore and
@@ -247,17 +259,47 @@ initDisclaimer().then(async () => {
     if (document.visibilityState === "visible") refreshCsrfToken();
   });
   window.addEventListener("focus", () => refreshCsrfToken());
+  /*-
+   *  Before anything builds a position key or registers a route: the
+   *  active chain is the first segment of both, so startup waits here
+   *  until the server names it. Each request that ends without naming it
+   *  counts toward the HALTED pill, as an unanswered status poll does.
+   */
+  await loadActiveChain({
+    onUnanswered: countUnansweredQuestion,
+    onAnswered: countAnsweredQuestion,
+  });
+  paintChainLink();
+  /*-
+   *  The dashboard settings the server sends, the poll interval among
+   *  them: waited for, because everything started below reads them. Each
+   *  request that ends without them counts toward the HALTED pill, as
+   *  the chain's does.
+   */
+  await loadUiSettings({
+    onUnanswered: countUnansweredQuestion,
+    onAnswered: countAnsweredQuestion,
+  });
+  /*-
+   *  The figures the help quotes, as this install runs: not waited for,
+   *  because only the help and the Doubling Trigger Window label read
+   *  them, and the page's figure spans stay empty until they land.
+   */
+  loadHelpFigures({
+    onUnanswered: countUnansweredQuestion,
+    onAnswered: countAnsweredQuestion,
+  });
   _afterDisclaimer();
 });
 
 /** All dashboard init runs after the disclaimer is accepted. */
 function _afterDisclaimer() {
-  // Fetch LP-provider label map so the Fee Tier row can render the
-  // short provider label (e.g. "9mm v3").  When it resolves we re-paint
-  // the strip so a late-arriving map still shows up without waiting for
-  // the next user-driven render.  Note: the composite lookup also needs
-  // the pool-factory address, which arrives via the first /api/status
-  // poll — dashboard-data.js calls setFactoryContext at that point.
+  /*-
+   *  Fetch the LP-provider label map so the Fee Tier row can render the
+   *  short provider label (e.g. "9mm v3").  When it resolves we re-paint
+   *  the strip so a late-arriving map still shows up without waiting for
+   *  the next user-driven render.
+   */
   loadLpProviders().then(() => updatePosStripUI());
 
   /*- Fetch the per-chain Chart Links list (DexScreener / GeckoTerminal /
@@ -282,7 +324,6 @@ function _afterDisclaimer() {
     impermanentLossGuardPct: "inIlGuard",
     rebalanceOutOfRangeThresholdPercent: "inOorThreshold",
     rebalanceTimeoutMin: "inOorTimeout",
-    checkIntervalSec: "inInterval",
     minRebalanceIntervalMin: "inMinInterval",
     maxRebalancesPerDay: "inMaxReb",
     offsetToken0Pct: "inOffsetToken0",
@@ -327,7 +368,7 @@ function _afterDisclaimer() {
         if (typeof v !== "number") continue;
         setConfigInputDefault(key, v);
         const el = g(elId);
-        if (el && !el.dataset.userDirty) el.value = v;
+        if (el) el.value = v;
       }
       for (const key of _STORE_ONLY_DEFAULT_KEYS) {
         const v = d[key];
@@ -337,7 +378,7 @@ function _afterDisclaimer() {
        *  default so the row reads correctly on first paint. */
       if (typeof d.offsetToken0Pct === "number") {
         const el1 = g("inOffsetToken1");
-        if (el1 && !el1.dataset.userDirty) el1.value = 100 - d.offsetToken0Pct;
+        if (el1) el1.value = 100 - d.offsetToken0Pct;
       }
     })
     .catch(() => {});
@@ -354,13 +395,15 @@ function _afterDisclaimer() {
   (function restoreActivePosition() {
     const active = posStore.getActive();
     const saved = loadPositionOorThreshold(active);
-    /*- If no per-position value is stored, leave botConfig.oorThreshold
+    /*-
+     *  If no per-position value is stored, leave botConfig.oorThreshold
      *  and the input/display blank until either (a) the user enters a
      *  value or (b) the server's /api/bot-config-defaults AJAX populates
      *  _CONFIG_INPUT_DEFAULTS, after which _syncConfigFromServer +
-     *  _populateConfigInputs fills the input from the shipped JSON
-     *  default.  No literal fallback per
-     *  feedback_one_literal_per_shipped_default. */
+     *  populateConfigInputs fills the input from the default in force.
+     *  No literal fallback per
+     *  feedback_one_literal_per_shipped_default.
+     */
     if (saved !== undefined) {
       botConfig.oorThreshold = saved;
       const el = g("inOorThreshold");
@@ -423,7 +466,7 @@ function _afterDisclaimer() {
   paintManageUI();
 
   // Check if the server already has a wallet loaded (e.g. from a previous page load)
-  checkServerWalletStatus();
+  const walletStatusChecked = checkServerWalletStatus();
   checkWalletLocked();
 
   // Initialise client-side URL routing (must run after wallet status check starts)
@@ -452,13 +495,9 @@ function _afterDisclaimer() {
     // Re-sync localStorage deposit to server (survives npm run clean)
     if (dep > 0) {
       const a = posStore.getActive(),
+        chain = activeChainId(),
         pk = a
-          ? compositeKey(
-              "pulsechain",
-              a.walletAddress,
-              a.contractAddress,
-              a.tokenId,
-            )
+          ? compositeKey(chain, a.walletAddress, a.contractAddress, a.tokenId)
           : undefined;
       fetchWithCsrf("/api/config", {
         method: "POST",
@@ -471,13 +510,9 @@ function _afterDisclaimer() {
     const ltStart = loadLifetimeStartDateOverride();
     if (ltStart) {
       const a = posStore.getActive(),
+        chain = activeChainId(),
         pk = a
-          ? compositeKey(
-              "pulsechain",
-              a.walletAddress,
-              a.contractAddress,
-              a.tokenId,
-            )
+          ? compositeKey(chain, a.walletAddress, a.contractAddress, a.tokenId)
           : undefined;
       if (pk) {
         fetchWithCsrf("/api/config", {
@@ -501,9 +536,15 @@ function _afterDisclaimer() {
    *  under the esbuild bundle. */
   initDataDepositWiring();
 
-  onParamChange();
+  updateThrottleUI();
   setInterval(updateThrottleUI, 1000);
   startDataPolling();
+  /*-
+   *  From here on, while the figures on screen may still be another
+   *  position's, they show as dashes and nothing but the disclaimer and
+   *  the wallet unlock can be used. See dashboard-stale-data.js.
+   */
+  startStaleDataWatch(uiSetting("staleDataCheckIntervalMs"));
 
   /*- Browser-side idle detection for the idle-driven price-lookup pause
    *  (component 4 of 4).  Posts /api/pause-price-lookups after 2-min
@@ -512,11 +553,13 @@ function _afterDisclaimer() {
    *  "Idle-Driven Price-Lookup Pause". */
   startBrowserIdleTracker();
 
-  /*- Every 10 minutes, log the JS heap size.  The dashboard is designed to
-      stay open indefinitely, so a steadily-rising `used` line across hours
-      indicates a leak (event listeners, closures, cached arrays held in
-      JS).  Chrome-only (`performance.memory` is non-standard); silent on
-      other browsers. */
+  /*-
+   *  Every `heapLogIntervalMs`, log the JS heap size.  The dashboard is
+   *  designed to stay open indefinitely, so a steadily-rising `used` line
+   *  across hours indicates a leak (event listeners, closures, cached
+   *  arrays held in JS).  Chrome-only (`performance.memory` is
+   *  non-standard); silent on other browsers.
+   */
   if (performance && performance.memory) {
     const _logHeap = () => {
       const m = performance.memory;
@@ -527,18 +570,17 @@ function _afterDisclaimer() {
       );
     };
     _logHeap();
-    setInterval(_logHeap, 10 * 60 * 1000);
+    setInterval(_logHeap, uiSetting("heapLogIntervalMs"));
   }
 
-  // One-shot: auto-scan on wallet load to populate symbols + fresh data from LP cache.
-  // Navigate to the bot's active position only on fresh starts (no position selected yet).
-  let _initScanDone = false;
-  setTimeout(() => {
-    if (_initScanDone) return;
-    _initScanDone = true;
-    if (wallet.address) {
-      const fresh = posStore.activeIdx < 0;
-      scanPositions({ navigate: fresh, silent: !fresh });
-    }
-  }, 5000);
+  /*-
+   *  Once the server has said whether it holds a wallet, scan that
+   *  wallet, to fill in token symbols and fresh data from the LP cache.
+   *  The scan reports itself only when no position is selected yet,
+   *  which is when the operator is waiting on it. A wallet imported
+   *  later is scanned by the import flow instead.
+   */
+  walletStatusChecked.then(() => {
+    if (wallet.address) scanPositions({ silent: posStore.activeIdx >= 0 });
+  });
 } // end _afterDisclaimer

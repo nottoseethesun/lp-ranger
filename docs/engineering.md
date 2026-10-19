@@ -214,8 +214,9 @@ the app is doing.
 
 **Synced also means the state is on disk.** Setting the flag writes the
 position's config, so a position showing Synced has its baseline and
-totals persisted and is safe to shut down — by Ctrl+C or `npm stop`,
-which share a shutdown handler.
+totals persisted and is safe to shut down, best with
+`npm run gentle-stop`, which waits out any rebalance or compound under
+way. Ctrl+C and `npm stop`, which share a shutdown handler, do not wait.
 
 #### Start from Fresh Installation
 
@@ -281,21 +282,24 @@ Each poll re-reads the pool price and the position's liquidity,
 recomputes value, unclaimed fees and IL/G against the HODL baseline, and
 checks whether any wallet residual is large enough to be worth sweeping
 back in. Token prices are cached briefly, and are not fetched at all
-while both the dashboard and the server are idle — those lookups are
-quota-limited and there is nobody watching.
+once the dashboard has had no input, or the server no dashboard request,
+for 15 minutes — those lookups are quota-limited and there is nobody
+watching. A rebalance or compound fetches fresh prices regardless.
 
 Then the price decides which of two things can happen.
 
 **In range — compound.** If auto-compound is on and unclaimed fees have
 grown past the configured threshold, the fees are collected and added
-back to the same NFT. No new NFT, no change of range. A minimum spacing
-between compounds stops small positions burning gas on dust.
+back to the same NFT. No new NFT, no change of range. The same check runs
+while the price is out of range but still inside the OOR threshold, with
+the OOR timeout not yet expired. A minimum spacing between compounds
+stops small positions burning gas on dust.
 
 **Out of range — rebalance.** A series of gates run first: recent
 rebalance frequency, the pool's daily cap, the Impermanent Loss Guard,
 and a gas check that defers the move if it would cost too much relative
-to the position. A manual **Rebalance Now** skips the gates but still
-counts against the daily cap.
+to the position. A manual **Rebalance Now** skips every gate but the gas
+check, and still counts against the daily cap.
 
 Past the gates, the position is drained, the tokens swapped to the ratio
 the new range needs, and a new NFT minted around the current price. Only
@@ -322,15 +326,31 @@ The server finds the stored wallet rather than starting empty. With a
 wallet password configured it unlocks immediately; otherwise it waits for
 the browser unlock and continues from there.
 
-It then starts each position whose saved status is **running**,
-confirming the wallet still owns each NFT first — one sold or transferred
-since the last run is dropped from management rather than started against
-an NFT that is gone.
+It then starts each position whose saved status is **running**: the list
+Manage adds to and Stop Managing removes from, which a stop of the app
+leaves alone. Only the positions of the chain it runs and the wallet it
+holds are started; one saved under another wallet or chain waits for
+that wallet's or chain's own launch. With no wallet loaded, every
+wallet's listed positions on this chain are taken, no owner is checked,
+and each wallet keeps its own position in a pool, as a Manage keys it.
+Before any starts, it reads every listed position's owner and pool, and
+takes off the list each one that cannot be managed: its NFT was sold,
+transferred or burned since the last run, or another listed position
+keeps its pool. LP Ranger manages
+one active position per pool, so each pool keeps its open position, or
+the first listed if none is open. One whose owner or pool could not be
+read is not started, since nothing then shows its pool free; it stays on
+the list for the next launch, as does one that merely fails to start.
+The headless bot (`bot.js`) starts its listed positions through the
+same start-up.
 
 Positions start staggered rather than together. With the default poll
 interval and two positions, the second waits 150 seconds. That spreads
 both their polling and their scans instead of firing every request at
-once.
+once. While the start-up runs, the dashboard's badge reads Syncing for
+every position and the server refuses a Manage or a wallet import, since
+either would start positions alongside the ones still waiting their
+turn (`src/app-phase.js`).
 
 Each position then runs the same sequence as a fresh one, with two
 differences that account for the speed:
@@ -369,30 +389,33 @@ polling throughout, and the result survives a restart.
 
 ## USD Pricing
 
-Token prices (for P&L display) are resolved through three sources tried in
-priority order, with an in-memory 60-second cache at the top. Implementation
-lives in [`src/price-fetcher.js`](../src/price-fetcher.js).
+Every USD figure is a token amount times a token price. Current prices
+come from up to three services, tried in priority order behind an
+in-memory cache (two minutes as shipped). Historical prices, a token's
+price at a past block, come from Moralis or GeckoTerminal. Implementation
+lives in [`src/price-fetcher.js`](../src/price-fetcher.js), with the
+services in [`src/price-sources-current.js`](../src/price-sources-current.js).
 
 ### Current Prices
 
 `fetchTokenPriceUsd()` tries each source in order and returns the first
-non-zero result:
+non-zero result. A service the chain's `priceServices` entry in
+`chains.json` gives no id for is not asked.
 
-1. **Moralis** (primary) — **the API key is free** (sign up at
-   <https://moralis.io>); paste it into the dashboard Settings dialog and
+1. **Moralis** (primary), asked only when a key is stored and Moralis is
+   switched on in Settings. **The API key is free** (sign up at
+   <https://moralis.com/>); paste it into the dashboard Settings dialog and
    it's encrypted at rest in `app-config/user-configurable/api-keys.json`. Most reliable for
    meme tokens that the free aggregators drop.
 
-   **Free-tier quota caveat:** the free Moralis plan has a daily compute
-   quota. Very large position sets, repeated cache clears (`npm run clean`,
-   `dev-clean`, or manually deleting `tmp/`), or a rapid sequence of
-   "scan a fresh wallet" operations can burn through the daily budget in
-   one session. Once the quota is exhausted the key returns a
-   usage-exceeded error and **nothing else can be done with that key
-   until the next 24-hour cycle rolls over** — the only workarounds are
-   to wait it out, upgrade to a paid plan, or rely on the GeckoTerminal /
-   DexScreener fallbacks below (which don't give as complete coverage on
-   meme tokens).
+   **Free-tier quota caveat:** the free plan has a daily compute quota.
+   Very large position sets, repeated cache clears (`npm run clean`,
+   `dev-clean`, or manually deleting `tmp/`), or several fresh wallet
+   scans in a row can spend it in one session. Once it is spent, Moralis
+   refuses the key until the quota resets, and prices come from the
+   GeckoTerminal and DexScreener fallbacks below, which cover meme tokens
+   less completely. Waiting or a paid plan are the only ways back to
+   Moralis.
 
    Quota-exhaustion errors are parsed separately from invalid-key errors
    so the dashboard shows an **orange** Moralis indicator while you're
@@ -405,9 +428,12 @@ non-zero result:
 
 ### Historical Prices
 
-`fetchHistoricalPriceGecko()` (and the Moralis equivalent) resolves the USD
-price of a token at a specific block number. This is how the HODL baseline,
-P&L epoch reconstruction, and closed-position history are populated.
+A historical lookup resolves a token's USD price at a specific block.
+This is how the HODL baseline, P&L epoch reconstruction, and
+closed-position history are populated. Both services are reached through
+`fetchHistoricalPriceGecko()`, despite its name: Moralis is asked first
+when a key is stored and the caller has a block number, and GeckoTerminal
+answers for any token still at zero.
 
 The historical flow is substantially more complex than current-price
 fetching because GeckoTerminal's OHLCV endpoint requires a **pool address**
@@ -445,11 +471,13 @@ If the window is full the caller automatically waits until a slot opens.
 ### In-Memory Cache
 
 Current-price results are cached with a configurable TTL (default 120 s,
-see `priceCacheTtlMs` below), keyed by `{chain}:{tokenAddress}`
-(lower-cased). Historical prices have their own disk-backed cache in
-`tmp/historical-price-cache.json`, keyed by block number so the cache
-survives across restarts and always corresponds to a deterministic
-on-chain moment.
+see `priceCacheTtlMs` below), keyed by the canonical `chain-token`
+(`cacheKey` in `src/cache-store.js`). Historical prices have their own
+disk-backed cache in `tmp/historical-price-cache.json`, with no TTL since
+a past price never changes. It is keyed by chain, token, and the block
+(`@<block>`) or, for a caller without one, the UTC day
+(`src/price-cache.js`), so it survives restarts and serves every pool
+that holds the token.
 
 ---
 
@@ -462,11 +490,12 @@ is never gated.
 
 **Pause sources** (each can pause on its own):
 
-- **Server idle** — `POST /api/*` traffic resets the countdown; after 15 min
-  of silence the server pauses itself.
-- **Browser idle** — `public/dashboard-idle.js` posts pause after 2 min of
-  blur or 15 min of no input; activity (focus / click / keydown / touch /
-  pointer / scroll) posts unpause via the throttled (500 ms) handler.
+- **Server idle** — every `/api/*` request except `/health` resets the
+  countdown; after 15 min without one the server pauses itself.
+- **Browser idle** — `public/dashboard-idle.js` posts pause after 15 min
+  of no input; the next activity (focus, a click, mouse movement, the
+  wheel, a key, a touch or a pointer press) posts unpause through a
+  handler throttled to once per 500 ms.
 - **Move scope** — every auto- and manual-triggered rebalance and compound
   runs inside `withFreshPricesAllowed(...)`, which bypasses both the pause
   flag and cache TTL for the duration and restores prior state on exit
@@ -485,7 +514,7 @@ browser-issued pause.
 | `priceCacheTtlMs` | `120000` | Current-price in-memory cache TTL (ms). |
 | `dustUnitPriceCacheMultiplier` | `30` | Dust-unit-price TTL = `priceCacheTtlMs × multiplier`; runtime asserts integer multiple. |
 
-**Two new endpoints** (idempotent, no body required):
+**Two endpoints** (idempotent, no body required):
 
 - `POST /api/pause-price-lookups` → `{ paused: true }`
 - `POST /api/unpause-price-lookups` → `{ paused: false }`
@@ -542,17 +571,28 @@ whose server timestamp predates that wake moment.
 
 ## Impermanent Loss Guard
 
-A ceiling on how much value a position may have lost before the bot
-stops rebalancing it. Before every **automatic** rebalance the guard
-compares the hypothetical post-rebalance position against the USD value
-of the NFT currently held, measured at that NFT's own mint, and rejects
-the rebalance when the projection falls more than
-`impermanentLossGuardPct` below it.
+A ceiling on how much impermanent loss a position may carry before the
+bot stops rebalancing it, since a rebalance locks that loss in. Before
+every **automatic** rebalance the guard compares the hypothetical
+post-rebalance position against holding the coins the NFT currently
+held was minted with, valued at today's prices, and rejects the
+rebalance when the projection falls more than `impermanentLossGuardPct`
+below holding. That comparison is the Current panel's IL/G for the NFT,
+and the guard reads it rather than working it out again. Holding is
+valued at today's prices, not at the minted coins' value on the mint
+day, because a move both coins' dollar prices share is not impermanent
+loss and a rebalance does not lock it in. Measured against the mint day,
+the guard would block a position whose coins had both fallen though its
+impermanent loss was small, and let a deep loss through inside a rise
+both coins shared.
 
 **Read-only by construction.** Both inputs are already computed earlier
-in the same poll cycle — `snap.currentValue` plus `snap.residualValueUsd`
-from `updatePnlAndStats`, and `hodlBaseline.entryValue` — so evaluating
-the guard performs no chain read and sends no transaction. The gate runs
+in the same poll cycle — `snap.totalIL` and the minted coins and prices
+it was measured with, `snap.ilInputs`, both from `_computeIL`
+(`src/bot-pnl-il.js`) inside `updatePnlAndStats` — so evaluating the
+guard performs no chain read and sends no transaction. Holding is
+`hodlValueUsd` (`src/il-calculator.js`), the same expression IL/G uses;
+the projection is holding plus `totalIL`. The gate runs
 inside `_checkRebalanceGates` (`src/bot-cycle.js`), which returns before
 `executeRebalance` is called, so there is no path from a rejection to
 `decreaseLiquidity` or `collect`. A rejected position is left exactly as
@@ -563,30 +603,38 @@ here fails the suite rather than shipping.
 **Slippage is excluded.** A rebalance moves the same dollars from one
 tick range to another, so the projection is the position's present worth:
 its LP value plus the pool-scoped wallet residual that the rebalance
-would fold back in. `entryValue` is likewise the minted position alone,
-so the comparison is like for like.
+would fold back in. The fees this NFT has compounded come off it, as they
+do in IL/G: compounding raises the liquidity while holding stays at the
+minted coins, so counting them would let earnings hide a loss.
 
-**Two consequences.** A rejection can only clear on price — the baseline
-is reset by `_updateHodlBaseline` when a rebalance mints a new NFT, so a
-rejected position cannot rebalance, cannot mint, and cannot get a new
-baseline. And it bites while the position is idle, since the guard only
-comes up when a rebalance was due, which usually means the position is
-out of range and earning nothing. Hence the loose shipped default of 50.
+**Two consequences.** First, the bot cannot clear a rejection itself.
+The minted coins are reset by `updateHodlBaseline` only when a rebalance
+mints a new NFT, and a rejected position cannot rebalance, so it cannot
+mint. The block lifts at a retry check (below) that finds the position's
+value back above the floor, or above a floor the operator has lowered by
+raising the Guard's percentage. Second, it bites while the position is
+idle: the guard only comes up when a rebalance was due, which usually
+means the position is out of range and earning nothing.
 
 **Skipped for manual rebalances.** Like every other gate in
 `_checkRebalanceGates`, a user-forced **Rebalance Now** bypasses it — and
 that path already shows its own impermanent-loss confirmation.
 
 **Fails open.** A guard percentage outside its bounds, a projection that
-cannot be computed, or a baseline the mint scan has not resolved yet all
+cannot be computed, or minted coins the mint scan has not read yet all
 allow the rebalance and log why. Freezing the bot because a figure has
 not finished loading would do more harm than the case being guarded
 against.
 
 **Retry backoff.** After a rejection the position is left alone rather
 than re-decided every poll: 4 h, then doubling on each consecutive
-rejection — 8 h, 16 h, 32 h — held at one week. The ladder resets the
-moment the guard lets a rebalance through. The `ilGuardRejected` Telegram
+rejection — 8 h, 16 h, 32 h — held at one week, as shipped
+(`ilGuardRetry`). While a wait runs the guard is not evaluated at all,
+except that saving a position's Guard percentage lifts that position's
+wait (`clearIlGuardWait`, called by `POST /api/config`), so the next poll
+decides on the new value, the way a Slippage save frees a slippage
+pause. The ladder resets the moment the guard lets a rebalance through,
+and on such a save. The `ilGuardRejected` Telegram
 alert rides the same timestamp, so a position blocked for a long stretch
 reports on a widening interval instead of every `CHECK_INTERVAL_SEC`. The
 backoff state (`_ilGuardRejectedAt`, `_ilGuardRejectCount`) is transient
@@ -615,38 +663,28 @@ Telegram alert with a manual link appended and
 moment either was copy-edited.
 
 **Config.** `impermanentLossGuardPct` (default 15) is a `POSITION_KEYS`
-entry — per position, settable in Bot Settings → Execution, and shown as
-a badge in Auto-Rebalance Settings. The default is deliberately tight.
-Rebalancing crystallizes the loss — the position is re-minted around the
-current price, so a paper loss that a recovery would have undone becomes
-permanent — whereas declining forgoes fees the position is largely not
-earning, since the guard is only consulted when a rebalance was due and
-that usually means out of range. Fees are also the only thing that earns
-such a loss back, and a low-volume pool may not produce them faster than
-the position is held. What tightness costs is that a rejection clears
-only on price: a blocked position cannot mint a new NFT, so it cannot
-take a new baseline. Its input bounds live beside it in
-`bot-config-defaults.json` as `impermanentLossGuardPctMin` /
-`impermanentLossGuardPctMax` (1 / 100), which are the single source for
-the input's `min`/`max` (stamped on by `dashboard-init.js`), the Save
-handler's clamp, and the server-side clamp — the same arrangement
-`gasFeePctMin` / `gasFeePctMax` uses. `saveIlGuard` clamps to those
-bounds and writes the clamped figure back into the field, matching
-`saveOorThreshold`: a Save click always saves something and always shows
-what it saved.
+entry: per position, settable in Bot Configuration → Execution, and shown
+as a badge in Auto-Rebalance Settings. The default is deliberately tight,
+because the two sides are not alike. Rebalancing crystallizes the loss:
+the position is re-minted around the current price, so a paper loss a
+recovery would have undone becomes permanent. Declining forgoes only fees
+the position is largely not earning, since the guard is consulted only
+when a rebalance was due. Fees are also the only thing that earns such a
+loss back, and a low-volume pool may not produce them faster than the
+position is held. Its range is in `setting-bounds.json`: the server
+refuses a save outside it, putting the field back to the value last
+accepted; the shipped file is held to it; and `evaluateIlGuard` applies
+no guard to a figure outside it.
 
 The shipped default layers env-over-JSON like every tunable around it
 (see the `src/config.js` header): shipped default, operator override,
 then `IMPERMANENT_LOSS_GUARD_PCT` on top. That layer is what makes the
-setting reachable on a headless install, where there is no Bot Settings
-panel to press Save in. `src/il-guard.js` reads the same
+setting reachable on a headless install, where there is no Bot
+Configuration panel to press Save in. `src/il-guard.js` reads the same
 `config.IMPERMANENT_LOSS_GUARD_PCT` export for its own fallback, so the
-badge and the enforced threshold resolve through one expression —
-reading `bot-config-defaults.json` directly there is what made
-`IMPERMANENT_LOSS_GUARD_PCT=30` display 30 while the bot went on
-enforcing the shipped default.
+badge and the enforced threshold resolve through one expression.
 
-The Bot Settings input is not a third resolution path, despite prefilling
+The Bot Configuration input is not a third resolution path, despite prefilling
 from `/api/bot-config-defaults`: `buildStatusPositions` spreads
 `posDefaults` into every position payload, so the first `/api/status`
 poll overwrites the box with the same `config.*` figure the badge and the
@@ -664,17 +702,16 @@ position until the user pressed Save.
 ## Poll-Result Recovery Signal
 
 When a rebalance fails, the position enters a degraded state: the error
-is recorded, polling backs off to a longer interval, and the dashboard
-shows the position as stuck. Nothing about that state expires on its
-own. Something has to notice when the position is healthy again, clear
-it, and tell the operator.
+is recorded and the dashboard shows the position as stuck. Nothing about
+that state expires on its own. Something has to notice when the position
+is healthy again, clear it, and tell the operator.
 
 This section is how the app decides that a poll means **recovered**. The
 decision is one predicate, and both ways of getting it wrong cost
 something real:
 
-- **Missing a recovery** leaves a working position flagged as broken and
-  polling at the backed-off interval, so it reacts late to the next move.
+- **Missing a recovery** leaves a working position flagged as broken,
+  with its error still on screen.
 - **Declaring one falsely** discards the error explaining why the
   position is stuck, and announces a still-blocked position as
   recovered.
@@ -688,7 +725,6 @@ normal operation in one step:
 | ------------------- | ------ |
 | `rebalanceError`, `rebalancePaused`, `rebalanceFailedMidway` | The dashboard stops showing the position as stuck |
 | `firstFailureAt`, `midwayRetryCount` | The failure streak is forgotten, so the next failure starts a fresh one |
-| `currentIntervalMs` | Back to the configured poll interval, undoing the failure backoff |
 | `oorRecoveredMin` | Set to the minutes spent failing, which raises the **Position Recovered** modal; cleared five seconds later |
 
 ### When it can fire
@@ -759,15 +795,15 @@ extracted from the `startBotLoop` closure for the same reason
 ## Balanced-Band Telegram Notification
 
 Optional Telegram alert that fires when a managed position drifts into
-the **±2.5% USD-balanced band** (`token0_value / total ∈ [0.475, 0.525]`).
-Useful as a "good time to manually rebalance" signal on positions where
-50/50 composition is preferred. Edge-triggered — one notification per
-FALSE→TRUE crossing, with a 30-min cooldown so a position oscillating
-across the band edge cannot spam the channel.
+the **USD-balanced band**: within 2.5 percentage points of an even split
+as shipped (`token0_value / total ∈ [0.475, 0.525]`). A cue to rebalance
+by hand where a 50/50 split is preferred. Edge-triggered: one alert per
+FALSE→TRUE crossing, then a quiet period (30 minutes as shipped), so a
+position wavering across the edge cannot spam the channel.
 
 **Enable it.** Settings → Telegram → check **Position Balanced (±2.5% of
-50/50)**. Default OFF. The checkbox shows a warning + the dynamically-
-computed price-fetch cadence.
+50/50)**; the label quotes the band in force. Default OFF. The checkbox
+shows a warning and the computed price-fetch cadence.
 
 **Cost.** When enabled, the notifier bypasses the
 [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause) so it
@@ -782,29 +818,26 @@ falling back to `bot-config-defaults.json`):
 | --- | --- | --- |
 | `pricePauseExceptionPollWindowMultiple` | `10` | Multiplier on `CHECK_INTERVAL_SEC`. Effective fetch cadence = `CHECK_INTERVAL_SEC × multiplier` seconds. Default 10 → 50 min at the default 300 s poll. Higher = lighter load, slower band detection. Positive integer ≥ 1. |
 
-The threshold (±2.5%) and cooldown (30 min) are code-only constants in
-`src/telegram-notifications/balanced-notifier.js` (`BALANCED_THRESHOLD`, `BALANCED_COOLDOWN_MS`)
-— change in code if needed.
+The band and the quiet period are in `bot-config-defaults.json`, and an
+override of either takes effect on restart; one outside its range in
+`setting-bounds.json` stops startup:
 
-**Notification payload.** Header lines list the blockchain
-(`CHAIN.displayName`), the user-friendly LP-provider name resolved by
-looking up the configured (pool-factory + position-manager) pair in
-`app-config/app-defaults-for-user-configurable/lp-providers.json` (e.g.
-`"9mm v3"`) — the same single source of truth the dashboard NFT panel
-reads via `GET /api/lp-providers`. Then the two token symbols
-(truncated to 12 chars each, second line indented 4 spaces) and the
-fee tier. The `lp-providers` map is keyed by
-`<poolFactoryAddress>_<positionManagerAddress>` in EIP-55 checksum
-casing so future v3+v4 coexistence on the same chain — and the same
-factory+PM hash deployed on multiple chains via v3-fork clones —
-resolve the correct name per position without restructuring.  Each
-entry also carries a `supportedBlockchainsByLpRangerAndLpProvider`
-array of canonical chain IDs (KEY of chains.json, e.g. `"pulsechain"`)
-so the app can gate the label to the deployments we've verified. Range info, ticks, current price and the ratio
-split are intentionally omitted — the alert is about the value-balance
-state, not the range. Body shows both token holdings with USD values
-(using human token names, not T0/T1), total value, plus unclaimed fees
-and lifetime P&L when the P&L snapshot is available.
+| Key | Default | Notes |
+| --- | --- | --- |
+| `positionBalancedBandPct` | `2.5` | Percentage points either side of 50/50 that count as balanced. 0.1 to 25. The alert's header and the checkbox label quote it. |
+| `positionBalancedCooldownMs` | `1800000` | Least time between two alerts for one position: 30 minutes. One minute to a day. |
+
+**Notification payload.** The header lists the blockchain
+(`CHAIN.displayName`), the LP provider's name (e.g. `"9mm v3"`), the two
+token symbols (up to 22 characters each, the second line indented four
+spaces) and the fee tier. The provider's name comes from
+`app-config/app-defaults-for-user-configurable/lp-providers.json`, keyed
+by the configured pool factory and position manager, the same map the
+dashboard's NFT panel reads through `GET /api/lp-providers`. Range,
+ticks, price and the ratio split are left out: the alert is about value
+balance, not the range. The body shows each token's holding, by name,
+with its USD value, the total, and, once the P&L snapshot exists,
+unclaimed fees and lifetime P&L.
 
 ---
 
@@ -858,15 +891,22 @@ during a single rebalance don't hammer the price APIs.
 
 The guard is designed to never silently disable itself:
 
-- If the JSON config is missing or malformed, `dust.js` falls back to
-  `_DEFAULT_UNITS = 1/4800` and logs a warning.
-- If every price source returns zero, `getDustThresholdUsd()` falls back to
-  `_FALLBACK_THRESHOLD_USD = $1.00` — a conservative fixed floor rather
-  than an open gate — and flags `usedFallback: true` so callers can log
-  the condition.
+- A missing or malformed shipped `dust-threshold.json` stops the app as
+  it loads: `dust.js` reads the file at module init, and the loader
+  throws on an install error rather than guessing a threshold.
+- So does a `thresholdUnits` or `fallbackThresholdUsd` that is not a
+  number above 0, in the shipped file or the operator's copy: the
+  message names the setting. A threshold that is text, zero or less
+  would let no amount compare below it, so the guard would call nothing
+  dust. The rule is the one the shipped-values test holds the file to
+  (`src/value-kinds.js`).
+- If every price source returns zero, `getDustThresholdUsd()` falls back
+  to the file's `fallbackThresholdUsd` ($1.00 as shipped) — a fixed floor
+  rather than an open gate — and flags `usedFallback: true` so callers
+  can log the condition.
 
-Both paths prefer a closed door over an open one: even with no config and
-no network, `isDust($0.50)` still returns `true`.
+Both prefer a closed door over an open one: with no network,
+`isDust($0.50)` still returns `true`.
 
 ---
 
@@ -878,19 +918,22 @@ history of the wallet's position NFTs. The question of **how far back to
 scan** is answered by three layered bounds, resolved in order by
 [`src/event-scanner.js`](../src/event-scanner.js):
 
-1. **5-year maximum** (hard upper bound)
+1. **The lookback** (the outer bound)
 
-   The default `maxYears` parameter is `5`. Block depth is derived from
-   PulseChain's 10-second target block time:
+   `historyLookbackYears` in `bot-config-defaults.json` (5 as shipped),
+   turned into blocks at the active chain's `blockTimeSec` in
+   `chains.json` by [`src/history-lookback.js`](../src/history-lookback.js):
 
    ```text
-   _BLOCKS_PER_YEAR = round((365.25 * 24 * 3600) / 10)  =  3,155,760
-   baseFrom         = max(0, currentBlock - maxYears * _BLOCKS_PER_YEAR)
+   BLOCKS_PER_YEAR = round((365.25 * 24 * 3600) / blockTimeSec)  (3,155,760 at 10 s)
+   baseFrom        = max(0, currentBlock - years * BLOCKS_PER_YEAR)
    ```
 
-   That's the oldest block the scanner will ever touch. Positions older
-   than five years are ignored — if you need a longer window, pass a
-   larger `maxYears` to `scanRebalanceHistory()`.
+   That is the oldest block a history scan touches. Every scan that walks
+   back from the chain head asks the same module, so the rebalance scan
+   and the closed-position reads agree on where a pool's history starts.
+   History older than the lookback is not read; raise
+   `historyLookbackYears` for a longer window.
 
 2. **Pool-creation block** (tightens the window for young pools)
 
@@ -931,7 +974,8 @@ scan** is answered by three layered bounds, resolved in order by
 3. **Disk cache** (subsequent runs resume from the last scanned block)
 
    Results from a completed scan are persisted to
-   `tmp/event-cache-{blockchain}-{contract}-{wallet}-{token0}-{token1}-{fee}.json`
+   `tmp/event-cache-{cacheTag}-{contract}-{wallet}-{token0}-{token1}-{fee}.json`
+   (`cacheTag` is the chain's tag in `chains.json`, `pulse` on PulseChain)
    via `cache-store.js`. On the next run `loadCache()` reads the cached
    events and sets `scanFrom = lastScannedBlock + 1`, so only blocks
    produced since the previous scan are queried. A 5-year first-time
@@ -941,16 +985,18 @@ scan** is answered by three layered bounds, resolved in order by
    a warm-cache rescan on the same wallet issues a handful.
 
    The cache is **not** invalidated on rebalance. A successful
-   rebalance sets `_needsFullRescan` (`src/bot-recorder.js`), and the
-   30-minute `lifetimeRescanTimer` in `src/bot-loop.js` runs the event
-   and lifetime scans together to pick up the newly-minted NFT's mint
-   event. `clearPoolCache()` exists but runs only from the Reload
-   Current Position handler (`src/server-reload-position.js`).
+   rebalance sets `_needsFullRescan` (`src/bot-recorder.js`) and starts
+   the scan at once (`src/bot-cycle.js`), running the event and lifetime
+   scans together to pick up the newly minted NFT's mint event. The
+   30-minute `lifetimeRescanTimer` in `src/bot-loop.js` retries a scan
+   that did not finish. `clearPoolCache()` exists but runs only from the
+   Reload Current Position handler (`src/server-reload-position.js`).
 
-In short: **we start as far back as 5 years ago, but never before the
-pool itself was created, and never before the last cached scan.** The
-three bounds compose, so the actual `fromBlock` on any given call is
-`max(now - 5y, poolCreationBlock, lastCachedBlock + 1)`.
+In short: **we start as far back as the lookback (five years as
+shipped), but never before the pool itself was created, and never before
+the last cached scan.** The three bounds compose, so the actual
+`fromBlock` on any given call is
+`max(now - lookback, poolCreationBlock, lastCachedBlock + 1)`.
 
 See also:
 
@@ -1006,7 +1052,7 @@ directions it can land:
 | `nftScanFromBlock({mintBlock, sharedFloor})` | the same, for a caller holding the block rather than the events |
 | `chainScanFloor(events, poolFloor)` | the floor for the chain's oldest NFT |
 
-Two rules within that module decide correctness:
+Three rules within that module decide correctness:
 
 - **A repeated id resolves to the *earliest* block.** A floor above an
   NFT's first event drops those events from the scan, and the caller
@@ -1054,8 +1100,9 @@ Two rules within that module decide correctness:
 Every RPC request in the process is released by the global request queue
 (see
 [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking)),
-so a scan's wall-clock time is its request count divided by four per
-second. Chunk width is 9,000 blocks.
+so a scan's wall-clock time is its request count times the queue's
+interval: 222 ms as shipped, about four and a half requests a second.
+Chunk width is `getLogsChunkSize`, 9,000 blocks as shipped.
 
 For a 132-rebalance chain in a pool created two years before the first
 deposit, reading all three event types, as the lifetime scan does:
@@ -1080,15 +1127,18 @@ it.
 
 ### Batched chain reads
 
-Every read of a whole chain is one pass, not one pass per NFT. Three
-places read a chain, all through `scanChainNftEvents`
+Every read of a whole chain is one pass, not one pass per NFT. Two
+places read a chain, both through `scanChainNftEvents`
 (`src/nft-events-batch.js`):
 
 | Reader | Events | NFTs | Serves |
 | --- | --- | --- | --- |
 | `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`), prepared by `prepareLifetimeRead` | all three | the whole chain | the bot's lifetime scan — Fees Compounded, lifetime HODL, deposit — and epoch reconstruction in the same pass |
 | `scanChainCollectAndDrain` (`src/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, when nothing else in its pass reads the chain |
-| `_detectCurrentNftValues` (`src/position-details-compound.js`) | all three | the one NFT being looked at | the unmanaged view's Current-panel Fees Compounded and Gas |
+
+The unmanaged view's `_detectCurrentNftValues`
+(`src/position-details-compound.js`) is not a chain reader: it scans the
+one NFT being looked at (see [Call sites](#call-sites)).
 
 The filter OR-matches every token id in the chain — `tokenId` is the
 first indexed parameter on all three events, and a topic slot accepts an
@@ -1190,7 +1240,7 @@ closed NFT's Collect and DecreaseLiquidity history.
 
 ### Call sites
 
-The three chain readers in the table above each hand the batch the
+The two chain readers in the table above each hand the batch the
 chain's mint blocks, so every NFT is floored at its own mint.
 
 Three places read a single NFT, floored at that NFT's own mint:
@@ -1198,7 +1248,7 @@ Three places read a single NFT, floored at that NFT's own mint:
 `src/position-details-compound.js` read the current NFT, and
 `src/position-history.js` reads a closed position looked at on its own.
 The last takes its floor from `result.mintBlockNumber`, which
-`_supplementFromEvents` fills from the rebalance events before any scan
+`supplementFromEvents` fills from the rebalance events before any scan
 runs.
 
 `test/nft-scan-floor-coverage.test.js` enforces this. It identifies a
@@ -1275,8 +1325,9 @@ allows Navigo to handle routing on the client side after page load.
    → activate if found.
 3. If the wallet is not yet loaded → store as a pending route target,
    resolved after wallet import or server restore.
-4. If the position is not in the store → trigger `scanPositions()` and retry
-   lookup (up to 3 retries at 2-second intervals).
+4. If the position is not in the store → trigger `scanPositions()` and look
+   again when it finishes. A scan asked for while one runs gets that
+   scan's result, so the running scan is waited for, not raced.
 
 ### URL Updates
 
@@ -1291,7 +1342,7 @@ Source: [`public/dashboard-router.js`](../public/dashboard-router.js)
 ## Shared Help Copy
 
 Some help text has to appear in two places at once: the circle-i dialog
-beside a setting in Bot Settings, and the corresponding section of the
+beside a setting in Bot Configuration, and the corresponding section of the
 User Manual that GitHub Pages publishes. Written twice, the two drift on
 the first copy-edit — and the Telegram alert links readers to the
 published page, so a stale manual is what the operator reads when
@@ -1331,9 +1382,8 @@ Two deliberate failure choices:
   expecting it in the manual, and it would never appear.
 - Help entries are selected by **shape** — an object carrying a
   `sections` array — not by a naming convention. The file also holds
-  `_comment` keys and `manualBaseUrl`, and an earlier
-  "everything not underscore-prefixed" filter swept `manualBaseUrl` in
-  and crashed the build the moment it was added.
+  `_comment` keys and `manualBaseUrl`, which a filter on names would
+  sweep in and crash the build on.
 
 `manualBaseUrl` plus an entry's `manualAnchor` is also where
 [`src/il-guard.js`](../src/il-guard.js) builds the deep link its Telegram
@@ -1342,6 +1392,59 @@ guarded: an unguarded `require` of a file under `public/` would let a
 malformed help file take `bot-cycle` down with it and stop the bot from
 starting at all. A missing or broken file degrades to an alert without a
 link.
+
+### Figures the help quotes
+
+Help quoting a setting's default, range or timing reads the number the
+install runs on rather than repeating it, so the copy follows the
+setting whether a release or the operator changes it.
+[`src/help-figures.js`](../src/help-figures.js) works out one table of
+named figures, plain text worded for a sentence ("15", "4 hours",
+"10m → 20m → 40m → 80m"), and the copy's worked examples, such as the
+Impermanent Loss Guard's and the NEAR LIMIT badge's, so those stay true
+when their values change. The chain and its aggregator are named the
+same way, from chains.json, so no help names a chain or aggregator it
+was written for. A chain with no aggregator is worded apart: the
+dialogs branch on an empty `aggregatorName`, and the manual's prose,
+which cannot, quotes `aggregatorInUse`, which reads "none" there.
+Whether a chain has one is
+[`src/aggregator-in-use.js`](../src/aggregator-in-use.js)'s answer,
+the same one the swap and the "Routing through:" badge act on.
+
+[`src/resolved-settings.js`](../src/resolved-settings.js) resolves the
+values on the server in the bot's order: the shipped file, the
+operator's copy in `app-config/user-configurable/`, then `.env` (from
+`src/config.js`) where it can set one. Ranges come from the shipped
+`setting-bounds.json` alone, since a range an override could widen would
+bound nothing. The slippage confirmation tiers and the NEAR LIMIT
+threshold are the values the server sends the page (see
+[The Dashboard's Three Settings Files](#the-dashboards-three-settings-files)).
+`GET /api/help-figures` returns the table with the Bot Configuration defaults
+behind it, the same ones `GET /api/bot-config-defaults` returns, so the
+inputs and their Default buttons agree with the help.
+
+The figures reach the copy three ways:
+
+- **Shared copy** in `shared-help-content.json` writes
+  `{{figure:name}}`, which both consumers fill; the manual's build puts
+  it inside a `<span data-figure="name">`.
+- **The manual's own prose** wraps each figure in
+  `<span data-figure="name">…</span>`. The manual build writes the
+  shipped figures in, and the GitHub Pages copy keeps them. The copy the
+  app serves loads the build's stamped bundle of
+  [`public/dashboard-manual-figures.js`](../public/dashboard-manual-figures.js),
+  `public/dist/manual-figures.js`, which rewrites the spans from
+  `GET /api/help-figures`; the Pages build drops that tag.
+- **The dashboard's static help** in `index.html` holds empty
+  `<span data-figure="name"></span>` elements, filled by
+  [`public/dashboard-help-figures.js`](../public/dashboard-help-figures.js)
+  once the server answers. It asks at startup, again until answered,
+  without holding startup up. A dialog builds its copy from the same
+  table when it opens, and does not open before the answer. The Doubling
+  Trigger Window label reads the defaults that came with it.
+
+A name the table lacks stops the manual build, and a test checks every
+name in the dashboard's markup.
 
 ---
 
@@ -1385,8 +1488,9 @@ Opening `public/screenshot-gallery.html` in a browser therefore shows a
 page with no images whatsoever.
 
 [`scripts/build-pages-site.js`](../scripts/build-pages-site.js) assembles
-those pieces into a target directory, rewriting the absolute CSS hrefs
-(`/style.css`) to relative ones.
+those pieces into a target directory, rewriting the absolute, stamped CSS
+hrefs (`/style.css?v=…`) to relative ones and dropping the manual's
+script, which asks the running app.
 [`scripts/show-gallery.js`](../scripts/show-gallery.js) calls it with
 `tmp/gallery-preview/` (gitignored) and serves the result. What you see
 locally is what Pages will show — literally, because the deploy runs the
@@ -1422,13 +1526,11 @@ The deploy workflow calls the same builder:
     node scripts/build-pages-site.js _site
 ```
 
-This replaced a block of `sed` and `cp` inside the workflow that the
-preview script mirrored in JS — the same page list in two languages,
-free to drift, which is the one failure a preview exists to prevent.
-Only the two genuinely-CI steps remain in YAML: `npm ci` and
-`copy-fonts` populate `public/fonts/`, which the builder then copies. A
-preview must not run those, because `npm ci` wipes and reinstalls
-`node_modules`.
+With one builder behind the local preview (`npm run show-gallery`) and
+the deploy, the preview cannot drift from what deploys.
+Only the two CI-only steps remain in YAML: `npm ci` and `copy-fonts`
+populate `public/fonts/`, which the builder then copies. A preview must
+not run those, because `npm ci` wipes and reinstalls `node_modules`.
 
 `readSpec()` throws on a missing or malformed spec rather than falling
 back to a default. A silent partial build would publish a site with pages
@@ -1439,9 +1541,9 @@ assemble both ways into two directories and `diff -r` them. The failure
 this catches is a page silently paired with the wrong stylesheet, which
 renders without erroring and looks plausible until someone opens it.
 
-The builder covers all three published pages — the gallery, the help and
-user manual, and the disclosure — so the preview surfaces breakage in any
-of them, not just the gallery.
+The builder covers all three published pages — the gallery, the User
+Manual, and the disclosure — so the preview surfaces breakage in any of
+them, not just the gallery.
 
 **Filenames follow one convention:**
 `dashboard-screenshot-<section>-<subject>[-<n>].png`, where `<section>`
@@ -1466,12 +1568,9 @@ security passes cover: `JS_TARGETS`, `SECURITY_TARGETS`, and
 `SECRET_TARGETS`. Both the npm scripts (via `scripts/format.js` and
 `scripts/audit.js`) and `scripts/check.js` import from it, and the
 husky pre-commit hook runs `npm run lint` rather than defining its own
-checks. This is not cosmetic — every one of these lists had already
-drifted: `check.js` omitted `util/` from the ESLint, security-lint, and
-secretlint passes, so `npm run check` (the gate CI runs) covered 23
-fewer files than the standalone commands, and the pre-commit hook
-formatted JS that no gate ever verified. `test/lint-targets.test.js`
-fails if a parallel list reappears.
+checks. Separate lists drift: one gate quietly checks fewer files than
+another, and a file no gate covers looks verified.
+`test/lint-targets.test.js` fails if a parallel list reappears.
 
 **One file per utility, or a directory per utility.** A single-file
 tool sits directly in its category directory (`util/diagnostic/
@@ -1492,10 +1591,11 @@ to, since `npm run test:util` globs `util/test/*.test.js`.
 
 #### Diagnostic Utilities
 
-`util/diagnostic/` holds read-only Node.js tools for investigating
-on-chain state and bot data. End users run these when something looks
-wrong. All six tools take CLI args, never mutate state, and write only
-to stdout (redirect to `tmp/` for logs).
+`util/diagnostic/` holds Node.js tools for investigating on-chain state
+and bot data. End users run these when something looks wrong. All eight
+take CLI args and write to stdout (redirect to `tmp/` for logs). Seven
+are read-only; `rescan-pool-history.js` changes saved state, and asks
+first.
 
 **Arguments are parsed by `commander`, never by hand**, and every tool
 answers `--help` and `-h`. A new tool is not finished until it does.
@@ -1528,7 +1628,7 @@ What that buys, and what still needs care:
   can parse several argument lists without options accumulating between
   them.
 
-All seven tools here parse this way. The hand-written `USAGE` strings
+All eight tools here parse this way. The hand-written `USAGE` strings
 and each tool's own `argv` scanner are gone.
 
 - `inspect-pool.js` — Pretty-prints `app-config/user-configurable/bot-config.json` and
@@ -1549,6 +1649,31 @@ and each tool's own `argv` scanner are gone.
   that it has a latest block and can describe it, that it is not still
   syncing, that the chain is advancing, and that its transaction pool
   answers. See [Checking One RPC Endpoint](#checking-one-rpc-endpoint).
+- `rescan-pool-history.js` — Makes the next restart rebuild one managed
+  position's lifetime compound and deposit history from the pool's
+  creation block, for when those saved figures are wrong. The lifetime
+  scan keeps a saved figure rather than recompute it, so the tool
+  removes them from the position's config (`--clear-hodl` also drops the
+  pool's lifetime HODL amounts from `tmp/pnl-epochs-cache.json`). It
+  prints what will change, asks y/N, and writes a timestamped backup of
+  each file first. The running bot keeps its in-memory copy, so restart
+  afterwards.
+- `validate-config-values-with-any-user-overrides.js` — Checks every
+  setting the install runs on and lists each problem: the JSON settings
+  files with the operator's copies over them, `.env`, and
+  `bot-config.json`. Its verdict is the server's and the bot's at
+  startup, which refuse to start on any problem: both ask
+  `src/settings-check.js`, over the rules the shipped-values tests use.
+  It reads files only, so it is safe while the server runs; run it from
+  the install's folder. Exit status 0 when every setting passes, 1
+  otherwise. See [Checking the Settings](configuration.md#checking-the-settings).
+- `print-resolved-settings.js` — Prints the settings the install runs
+  on: the `.env` variables LP Ranger reads, with the environment over
+  them, then each JSON settings file by name, the operator's copy over
+  the shipped one, as raw JSON. A secret is named as set, never shown.
+  It reads them through `resolveSettings` in `src/settings-check.js`,
+  the reading the validator above checks. Reads files only; run it from
+  the install's folder.
 
 Audited under `npm run audit:security` and `npm run audit:secrets` —
 same bar as `src/`. Tests live in **`util/test/`** — one directory for
@@ -1755,9 +1880,9 @@ being read from `config.RPC_URLS`.
 
 Companion shell scripts (also under `util/diagnostic/`) that
 **deliberately mutate local state** to put the app into a specific
-recovery path on demand. Distinct from the read-only Node tools above:
-each script backs the original up to a timestamped sibling first and
-prints the exact restore command.
+recovery path on demand, for testing that path. Each script backs the
+original up to a timestamped sibling first and prints the exact restore
+command.
 
 - `inject-stuck-lifetime-state.sh` — Sets every pool entry in
   `tmp/pnl-epochs-cache.json` to `freshDeposits: null` and
@@ -1769,6 +1894,14 @@ prints the exact restore command.
   `lifetimeScanComplete` flag and the Syncing badge. A cache built by a
   normal run never has that shape, so the path is otherwise unreachable
   locally.
+- `inject-short-epoch-history.sh` — Drops the last N closed epochs from
+  every pool entry in `tmp/pnl-epochs-cache.json`, leaving the live epoch
+  and the lifetime figures alone. On the next start the app still knows
+  from the rebalance events how many closed positions the chain has, so
+  its stored history is short: the state a reconstruction that gave up
+  part-way leaves, which `isEpochHistoryComplete` detects. Entries with N
+  epochs or fewer are skipped, since emptying them tests the cold start
+  instead.
 
 #### Update Utilities
 
@@ -1795,10 +1928,8 @@ procedure documented in README.md &sect; Update.
 
   **Node built-ins only.** It runs before `npm ci` in the update
   procedure, so `node_modules` may not exist yet and this tool must not
-  require anything from it. Tests live in `test/migrate-app-state.test.js`,
-  following `util/cache/`'s placement rather than a category `test/`
-  directory, so `npm test` and the coverage gate pick them up without a
-  new glob.
+  require anything from it. Its tests are in
+  `util/test/migrate-app-state.test.js`, with every other `util/` test.
 
 #### Cache Utilities
 
@@ -1873,14 +2004,20 @@ lp-ranger/
 ├── app-config/
 │   ├── app-defaults-for-user-configurable/  ← tracked, shipped defaults
 │   │   ├── README.md         ← do-not-edit warning + override instructions
+│   │   ├── app-runtime.json  ← app tunables not on the dashboard (server, shutdown, tx timing, compound spacing, log)
 │   │   ├── chains.json       ← per-blockchain tunables (RPC, contracts, gas)
-│   │   ├── bot-config-defaults.json  ← Bot Settings defaults + nested groups
+│   │   ├── bot-config-defaults.json  ← Bot Configuration defaults + nested groups
 │   │   ├── csrf.json         ← CSRF token TTL + refresh cadence
 │   │   ├── dust-threshold.json  ← universal dust threshold (gold-pegged)
 │   │   ├── evm-rpc-response-codes.json  ← RPC error-classifier substrings
-│   │   ├── logging.json      ← log-to-file always-on toggle + path
-│   │   ├── lp-providers.json   ← LP-provider metadata keyed by <factory>_<positionManager>
-│   │   ├── ui-defaults.json  ← dashboard first-visit defaults
+│   │   ├── logging.json      ← log-to-file toggle + path, error-log path
+│   │   ├── lp-providers.json   ← LP-provider name keyed by <factory>_<positionManager> (EIP-55), with the chains each is verified on
+│   │   ├── price-services.json ← each price service's base url
+│   │   ├── setting-bounds.json ← the range each checked setting must fall in
+│   │   ├── setting-labels.json ← names the Activity Log's "Setting Saved" lines use for config keys
+│   │   ├── ui-defaults_layout.json  ← dashboard layout settings, built into its CSS
+│   │   ├── ui-defaults_non-layout_for-server-down-scenario.json  ← dashboard settings built into the page
+│   │   ├── ui-defaults_non-layout_for-server-up-scenario.json    ← dashboard settings the server sends
 │   │   └── api-keys.example.json ← tracked format template (documentation)
 │   └── user-configurable/    ← dir tracked (via README.md), CONTENTS gitignored
 │       ├── README.md         ← survives tarball upgrade — operators drop
@@ -1907,8 +2044,9 @@ regenerate it.
 
 - **`app-defaults-for-user-configurable/chains.json`** — Tracked
   shipped default. Per-blockchain config: RPC endpoints, contract
-  addresses (PositionManager, Factory, SwapRouter), gas multipliers,
-  aggregator cancel timeout, wait window, retry count. Read once at
+  addresses (PositionManager, Factory, SwapRouter), gas multipliers, the
+  aggregator (url, name, wait window, quote time limit, retry count), and
+  each price service's id for the chain. Read once at
   module load by `src/config.js` via the layered defaults+user-
   override loader. **To customize:** copy this file to
   `app-config/user-configurable/chains.json` and edit the copy
@@ -1916,8 +2054,9 @@ regenerate it.
   Do NOT edit the file in `app-defaults-for-user-configurable/` —
   tarball upgrades overwrite it.
 - **`app-defaults-for-user-configurable/bot-config-defaults.json`** — Tracked. Default values
-  for every user-editable Bot Settings input plus two server-internal nested
-  groups (`lowGasThresholds`, `residualCleanup`). See
+  for every user-editable Bot Configuration input, plus settings with no
+  input and four nested groups (`throttleDoubling`, `lowGasThresholds`,
+  `ilGuardRetry`, `residualCleanup`). See
   [Bot Config Defaults](#bot-config-defaults) for the full key inventory.
 - **`app-defaults-for-user-configurable/dust-threshold.json`** —
   Tracked shipped default. Universal dust threshold (in abstract
@@ -1930,6 +2069,26 @@ regenerate it.
   `app-config/user-configurable/dust-threshold.json` and edit the
   copy. Do NOT edit the file in `app-defaults-for-user-configurable/`
   — tarball upgrades overwrite it.
+- **`app-defaults-for-user-configurable/price-services.json`** —
+  Tracked shipped default. The base url of each price service's api
+  (DexScreener, GeckoTerminal, Moralis), version included where the url
+  carries one. Read once at module load by `src/price-service-urls.js`,
+  which every price request is built through and which stops startup
+  on a value that is not an https url. Which tokens a service can price
+  on a chain is per chain instead, in `chains.json` → `priceServices`.
+  `geckoTerminal.topPoolsConsidered`, read by `src/gecko-pool-cache.js`,
+  is how many of a token's pools are weighed when its historical price is
+  looked up.
+- **`app-defaults-for-user-configurable/setting-bounds.json`** —
+  Tracked. The range every checked setting must fall in, at the setting's
+  own path; `timers` holds the timer rule. Read through
+  `src/setting-bounds.js`: a Bot Configuration save outside a range is refused
+  (`src/config-bounds.js`), and a value outside one stops startup, naming
+  the setting (`src/config.js`, through `src/bot-config-defaults.js`,
+  `src/ui-defaults.js`, `src/runtime-flags.js` and
+  `src/timer-bounds.js`). The dashboard bundles it for the figures its
+  help quotes and for its token-decimals check. **Not overridable:** a
+  range an override could widen would bound nothing.
 - **`app-defaults-for-user-configurable/api-keys.example.json`** —
   Tracked. Format template showing the structure of the encrypted
   `api-keys.json`. NOT a tunable, NOT a runtime file — pure
@@ -1945,9 +2104,8 @@ regenerate it.
   write is logged with the caller's stack for config-stomp debugging.
 - **`user-configurable/bot-config.backup.json`** — Runtime, gitignored.
   Automatic snapshot created by bot-config-v2 on every successful load.
-  Safety net for the ongoing config-stomp investigation — if
-  `bot-config.json` is ever accidentally truncated, copy this file back
-  over it:
+  A safety net: if `bot-config.json` is ever accidentally truncated,
+  copy this file back over it:
 
   ```sh
   cp app-config/user-configurable/bot-config.backup.json app-config/user-configurable/bot-config.json
@@ -1975,6 +2133,52 @@ regenerate it.
   closed-position P&L display. Configurable via the `LOG_FILE`
   environment variable. Lives outside `app-config/` because it's
   per-install runtime DATA, not config.
+
+### The Dashboard's Three Settings Files
+
+The dashboard's settings are split by when the page first needs each
+one, and whether it can ask the server then. Each lives in one of three
+files under `app-config/app-defaults-for-user-configurable/`.
+
+| File | What it holds | How the page gets it | An operator's copy takes effect |
+| ---- | ------------- | -------------------- | ------------------------------- |
+| `ui-defaults_layout.json` | Layout: the dialog height. | `npm run build` writes it into `public/ui-tokens.css` (`scripts/build-ui-tokens.js`). | At the next `npm run build`. |
+| `ui-defaults_non-layout_for-server-down-scenario.json` | The two settings the page uses while it cannot reach the server: how long it gives each startup question (`chainQueryTimeoutMs`), and how many unanswered questions turn the status pill to HALTED (`pollFailuresBeforeHalted`). | `npm run build` bundles the shipped copy into the page's script. | Never. |
+| `ui-defaults_non-layout_for-server-up-scenario.json` | Every other dashboard setting, listed in [Configuration](configuration.md#dashboard-settings-the-server-sends). | The server sends it at `GET /api/ui-defaults`. | After a restart and a page reload. |
+
+**Why the first two are built in.** A layout value that arrived after
+the first paint would make the page jump. The server-down settings are
+needed exactly when the server cannot be asked.
+
+**How the server sends the rest.** `src/ui-defaults.js` reads the
+server-up file once, at startup, with the operator's copy on top. An
+on/off setting must be true or false. A setting the page turns into a
+timer delay must meet the timer rule (`src/timer-bounds.js`). Any other
+must fall in its range in `setting-bounds.json`. A value outside its
+rule stops startup, naming it. The answer is kept for the life of the
+process, so the server's own copy of the poll interval
+(`src/config.js`, which times "the dashboard has had a chance to poll")
+and the figures the help quotes (`src/resolved-settings.js`) are the
+values the page is sent.
+
+**How the page uses them.** At startup the page asks the server for its
+blockchain, then for these settings (`public/dashboard-ui-settings.js`),
+and starts polling and its timers only once they arrive. Each request
+that ends unanswered counts toward HALTED, as the blockchain's does.
+Code reads a setting through `uiSetting(key)`, which refuses a read made
+before the answer, naming the setting.
+
+A few things can run before the answer. Each takes the cautious side
+until it lands: privacy options blur wallet addresses and every USD
+amount, sounds stay off, a copy icon keeps its tick, and the Activity
+Log keeps every entry. A choice saved in the browser's Settings popover
+always wins over a first-visit default.
+
+**Where a new dashboard setting goes.** A layout value goes in the
+layout file. A value needed while the server cannot be reached goes in
+the server-down file. Anything else goes in the server-up file, with a
+range in `setting-bounds.json` or a place under the timer rule, and the
+page reads it through `uiSetting`.
 
 ### Rules for Where Future Config Files Should Live
 
@@ -2044,59 +2248,54 @@ environment variables to a temp path before require-ing the module.
 ## Bot Config Defaults
 
 [`app-config/app-defaults-for-user-configurable/bot-config-defaults.json`](../app-config/app-defaults-for-user-configurable/bot-config-defaults.json)
-holds the default values for every Bot Settings input the dashboard
-exposes, eight more keys with no input of their own, and three nested
-groups. The dashboard fetches it at init via
-`GET /api/bot-config-defaults`; the server falls back to it when
-`getConfig` is asked for a value the user has not overridden. Per-user
-overrides live in `app-config/user-configurable/bot-config.json`.
+holds the default values for every Bot Configuration input the dashboard
+exposes, more keys with no input of their own, and nested groups. Where
+a position has no value of its own, the bot reads this file, an
+operator's copy on top, through `readBotConfigDefaults`. The dashboard
+fetches the same defaults from `GET /api/bot-config-defaults`, with
+`.env` on top ([`src/resolved-settings.js`](../src/resolved-settings.js)),
+so its inputs, Default buttons and help show what the bot runs on. A
+position's own values live in `app-config/user-configurable/bot-config.json`.
 
-**User-editable (top-level keys, exposed in the Bot Settings panel):**
+**Top-level keys with an input in the Bot Configuration panel:**
 
 | Key | Default | Description |
 | --- | --- | --- |
 | `approvalMultiple` | `20` | ERC-20 approval multiplier for swap allowances |
 | `rebalanceOutOfRangeThresholdPercent` | `5` | % move past the position boundary before a rebalance triggers |
 | `rebalanceTimeoutMin` | `180` | Minutes continuously OOR before forcing a rebalance (`0` = disabled) |
-| `slippagePct` | `0.75` | Per-swap slippage tolerance applied to the quoted output |
-| `checkIntervalSec` | `300` | On-chain poll cadence |
+| `slippagePct` | `0.75` | The default for both Slippage rows (`slippagePctToken0`, `slippagePctToken1`): a token with no figure of its own uses it. Not saved per position |
 | `minRebalanceIntervalMin` | `10` | Minimum gap between back-to-back rebalances on the same pool |
 | `maxRebalancesPerDay` | `5` | Per-pool daily rebalance cap (UTC reset; every successful rebalance counts) |
 | `offsetToken0Pct` | `50` | Position offset bias toward token0 (50 = balanced) |
 | `impermanentLossGuardPct` | `15` | Most a position may have lost before the bot stops rebalancing it — see [Impermanent Loss Guard](#impermanent-loss-guard) |
-| `gasFeePct` | `1` | Gas-cost ceiling as a percent of position value |
-| `rangeOverrideEnabled` | `false` | Bot Settings → Range "No Override" toggle. `false` re-uses the position's existing on-chain range |
+| `gasFeePct` | `1` | A swap, in a rebalance or a compound, is skipped when its gas would cost more than this percent of its value |
+| `rangeOverrideEnabled` | `false` | Bot Configuration → Range "No Override" toggle. `false` re-uses the position's existing on-chain range |
 | `rebalanceRangeWidthPct` | `80` | Value the Price Range Extension row's "Default" button applies. Not auto-populated into the input |
-| `fullRangeRebalanceEnabled` | `false` | Mint the next rebalance across the full tick range |
+| `fullRangeRebalanceEnabled` | `false` | Mint the next rebalance across the full tick range, for a position with no Full-Range choice saved, while its Range settings apply. `GET /api/status` publishes it for the checkbox (`fullRangeSetting`, [`src/range-override.js`](../src/range-override.js)) |
 
-**Validation bounds.** These are not settings — each pair is the single
-source for one input's `min`/`max`, the dashboard Save handler's clamp,
-and the server-side normalizer in
-[`src/bot-config-defaults.js`](../src/bot-config-defaults.js). The
-dashboard reads them from `GET /api/bot-config-defaults` and stamps them
-onto the input at init, which is why no `min`/`max` literals appear in
-`public/index.html`.
+**Validation bounds.** None live here: every range is in
+`setting-bounds.json`, at the setting's own key (see the file inventory
+above).
 
-| Key | Default | Bounds for |
-| --- | --- | --- |
-| `impermanentLossGuardPctMin` / `Max` | `1` / `100` | `impermanentLossGuardPct` |
-| `gasFeePctMin` / `Max` | `0.1` / `15` | `gasFeePct` |
-
-**No Bot Settings input.** These have no field in the Bot Settings panel.
+**No Bot Configuration input.** These have no field in the panel.
 Whether they can be changed at runtime at all depends on membership of
-`GLOBAL_KEYS` in [`src/bot-config-v2.js`](../src/bot-config-v2.js): a key
+`GLOBAL_KEYS` in [`src/bot-config-keys.js`](../src/bot-config-keys.js): a key
 in that list is accepted by `POST /api/config`, and one that is not can
 only be changed by editing
 `app-config/user-configurable/bot-config-defaults.json` and restarting.
 
 | Key | Default | Changed by | Description |
 | --- | --- | --- | --- |
-| `moralisEnabled` | `true` | the Moralis API Key dialog | Whether the stored Moralis key is used for price lookups. Separate from whether a key exists, so switching it off stops the calls without discarding the key — which is what an operator wants when a quota runs out. The control is disabled when no key is configured |
+| `checkIntervalSec` | `300` | the JSON file or `CHECK_INTERVAL_SEC` in `.env`, then restart | Seconds between the bot's checks of every position. One global value, since the dashboard's idle and wake timing are built on it |
+| `rebalanceGasDeferPct` | `0.5` | the JSON file, then restart | A rebalance waits when its gas would cost more than this percent of the position's value |
+| `gasDeferRetrySec` | `3600` | the JSON file, then restart | How long a waiting rebalance waits before the bot looks again, in place of the poll interval |
+| `moralisEnabled` | `true` | the Moralis API Key dialog | Whether the stored Moralis key is used for price lookups. Separate from whether a key exists, so switching it off stops the calls without discarding the key — which is what an operator wants when a quota runs out. The control is disabled when no key is configured. This default, an operator's copy on top, decides until the switch is saved (`moralisEnabledIn`, [`src/server-moralis.js`](../src/server-moralis.js)) |
 | `priceCacheTtlMs` | `120000` | `POST /api/config` | In-memory token-price cache TTL — see [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause) |
 | `dustUnitPriceCacheMultiplier` | `30` | `POST /api/config` | Dust-unit-price TTL as a multiple of `priceCacheTtlMs` |
 | `moveCacheTtlMs` | `4000` | `POST /api/config` | Cache TTL for the fresh-price window around a rebalance or compound |
 | `pricePauseExceptionPollWindowMultiple` | `10` | `POST /api/config` | Poll cycles between the balanced-band notifier's fresh-price probes. The dashboard reads it to label the resulting cadence next to the checkbox, but offers no field to set it |
-| `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request. Clamped to 10,000 by [`src/bot-config-defaults.js`](../src/bot-config-defaults.js) — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
+| `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request. Its range in `setting-bounds.json` stops at 10,000, and an override outside it stops startup — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
 | `globalRPCRequestRateIntervalMS` | `222` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process. `0` disables pacing, which is only sensible against a local node |
 
 **`lowGasThresholds`** — drives the Mission Control "Gas Running Low" /
@@ -2120,13 +2319,20 @@ in the UI.
 
 **`ilGuardRetry`** — paces retries of a rebalance the Impermanent Loss
 Guard has rejected, in [`src/il-guard.js`](../src/il-guard.js). Not
-exposed in the UI. Both ends are clamped to a one-minute floor, so a
-mistyped value cannot turn the guard into a per-poll retry.
+exposed in the UI. Each has a range in `setting-bounds.json`, a minute
+to thirty days, so a mistyped value cannot turn the guard into a
+per-poll retry; an override outside it stops startup.
 
 | Key | Default | Description |
 | --- | --- | --- |
 | `baseMs` | `14400000` | First retry delay (4 h) |
 | `maxMs` | `604800000` | Ceiling the doubling ladder holds at (7 days) |
+
+**`throttleDoubling`** — the three numbers behind doubling mode, read by
+[`src/throttle.js`](../src/throttle.js): how many rebalances in how wide
+a window switch it on, and how long a quiet spell clears it. No input;
+the dashboard's Doubling Trigger Window label shows the numbers in force.
+Defaults and ranges are in [Configuration](configuration.md).
 
 ---
 
@@ -2163,6 +2369,7 @@ machine-specific data are noisy and not worth committing.
 ```text
 test/report-artifacts/
 ├── report.pdf                Unified PDF of all results (pdfmake + Roboto)
+├── config-values.tap         Raw TAP v14 from the shipped-config tests, run first
 ├── tests.tap                 Raw TAP v14 from `node --test`
 ├── text-reports/             Human-readable text outputs
 │   ├── summary.txt               Overall overview (cli-table3, no ANSI)
@@ -2178,8 +2385,19 @@ test/report-artifacts/
     ├── npm-audit.json            npm audit --json
     ├── security-lint.json        eslint -c eslint-security.config.js --format json
     ├── secretlint.json           secretlint --format json
+    ├── lcov.info                 lcov coverage report of the test run
     └── exit-codes.json           Per-tool exit codes captured by check.js
 ```
+
+### The shipped config values are tested first
+
+The gate first runs the tests of the shipped config files,
+`test/shipped-config-values.test.js` and `test/setting-bounds.test.js`
+(`configValueTests()` in `scripts/check.js`). A bad value breaks
+whatever reads it, and the suite reports each breakage as its own
+failure; run first, these tests name the cause in their own Config
+values row, at the head of every failure list. The rest of the suite
+runs either way.
 
 ### What's in the Summary / PDF
 
@@ -2277,9 +2495,9 @@ runtime.
 
 The spec is a single hand-maintained file at
 [`docs/openapi.json`](openapi.json). There's **no code generation** —
-route handlers do not auto-publish their schemas — so any route change
-in `src/server-routes.js`, `src/server-positions.js`, or
-`src/server-scan.js` must be mirrored by hand into `openapi.json`.
+route handlers do not auto-publish their schemas — so any route change,
+in `server.js` or any `src/` module that registers a route, must be
+mirrored by hand into `openapi.json`.
 
 Hand-maintenance drifts on its own, so
 [`scripts/check-openapi-sync.js`](../scripts/check-openapi-sync.js) runs
@@ -2347,8 +2565,11 @@ Typical workflow when you add, rename, or change an API route:
      route is documented, every documented route still exists, every
      key `POST /api/config` accepts appears in its schema (read from
      the real `POSITION_KEYS` / `GLOBAL_KEYS` allowlists), every
-     operation has a summary and at least one response, and every tag
-     is both declared and used. On failure it names each mismatch.
+     dashboard setting `GET /api/ui-defaults` sends appears in its
+     response schema and no other (read from `UI_SETTING_KEYS` in
+     `src/ui-defaults.js`), every operation has a summary and at least
+     one response, and every tag is both declared and used. On failure
+     it names each mismatch.
    - [`test/openapi-coverage.test.js`](../test/openapi-coverage.test.js)
      — drives that same checker against mutated in-memory copies of the
      spec, so a rule that gets quietly dropped fails a test instead of
@@ -2359,16 +2580,16 @@ Typical workflow when you add, rename, or change an API route:
 
 Routes matched by URL pattern rather than by a `"METHOD /path"` handler
 entry — today only `GET /api/position/{tokenId}/history` — are invisible
-to the coverage test's scan, so they are allowlisted by name in
-`DYNAMIC_ROUTES` at the top of that test. A second dynamic route has to
-be added there deliberately.
+to the checker's scan, so they are allowlisted by name in
+`DYNAMIC_ROUTES` at the top of `scripts/check-openapi-sync.js`. A second
+dynamic route has to be added there deliberately.
 
 ### Reference
 
 - `info.title` / `info.version` — bump `info.version` when you ship a
   breaking API change.
 - `servers[]` — the local dev server URL. Not exercised in production
-  (there's no hosted instance), but the value matters for Swagger UI's
+  (there's no hosted instance), but the value matters for Scalar's
   "Try it out" feature: requests go to whatever URL is listed here.
 - `components.schemas` — shared request/response shapes.
 - `tags[]` — category labels that group routes in the UI sidebar. Add
@@ -2397,7 +2618,9 @@ What happens when the process starts, in order:
    `position-history`, `rebalance-lock`, `position-manager`,
    `bot-config-v2`, `migrate-app-config`. Requiring `src/config.js`
    also loads `app-config/app-defaults-for-user-configurable/chains.json` for the current
-   `CHAIN_NAME`.
+   `CHAIN_NAME`, and runs the startup checks that stop the process on a
+   setting outside its range (see
+   [Reading Configuration Values](#reading-configuration-values)).
 4. **Legacy config migration runs once.** `migrateAppConfig()` moves
    any surviving legacy root-level config files (`.bot-config.json`,
    `.wallet.json`, `api-keys.json`, `rebalance_log.json`) into
@@ -2418,42 +2641,49 @@ What happens when the process starts, in order:
    not how long a handler may take to answer one, so raising it does
    nothing for a long-running scan and only weakens a slow-client
    guard.
-8. **If run directly (`require.main === module`)**:
+8. **If run directly (`require.main === module`)**, the server first
+   reads the shutdown timings (an unusable value stops startup here) and
+   empties the previous run's error log, then:
    1. `start()` calls `server.listen(PORT, HOST)` and logs the
       blockchain name, NFT factory, wallet address (or `(not loaded)`),
       dashboard URL, `/api/status` URL, port, and `/health` URL.
-   2. `_tryResolveKey()` tries to obtain the wallet private key —
+   2. As soon as it is listening, it writes `tmp/lp-ranger.pid` (removed
+      by an `exit` hook however the process ends) and installs the
+      `SIGINT` and `SIGTERM` handler. Both come before the wallet key is
+      resolved, which can wait on a prompt, so a signal during a slow
+      start still shuts down cleanly. The handler marks the app
+      stopping for good, so no position starts and no move begins
+      after it (src/app-phase.js), sends the shutdown alert, starts
+      `_positionMgr.stopAll()`, closes the HTTP server,
+      and exits within `shutdown.exitTimeoutMs` (three seconds as
+      shipped) whether or not a rebalance or compound has finished.
+      `npm run gentle-stop` is the stop that waits for one.
+   3. `_tryResolveKey()` tries to obtain the wallet private key —
       either from `PRIVATE_KEY` in `.env`, from a
       `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or from
       an interactive prompt.
       - On success: `_autoStartManagedPositions()` spins up one bot
-        loop per position whose v2 config has `status: 'running'`.
-        Multi-position staggering inserts
-        `CHECK_INTERVAL_SEC / N` ms between loop starts so they don't
-        all poll the RPC on the same tick.
+        loop per position whose v2 config has `status: 'running'`, on
+        this chain and in this wallet (src/server-auto-start.js). The
+        starts are staggered by the poll interval divided by the
+        number of positions (150 seconds apart for two at the default
+        300), so they don't all poll the RPC on the same tick. The
+        start-up ends early once a stop begins.
       - If the wallet is locked: logs
         `Wallet locked — unlock via dashboard to start bot.` and
         enters dashboard-only mode until the user unlocks via
         `POST /api/wallet/unlock`.
       - If no wallet exists: logs `No wallet key — dashboard-only mode`.
-   3. `SIGINT` and `SIGTERM` handlers are installed. Each calls
-      `_positionMgr.stopAll()` (which drains every bot loop through
-      the rebalance lock) and then closes the HTTP server. A 3-second
-      watchdog `setTimeout` forces exit if graceful shutdown hangs.
-   4. A diagnostic `process.on('exit', …)` handler logs the final
-      count of positions in memory vs. positions in `status: 'running'`
-      — this catches config-stomp bugs where positions silently vanish
-      mid-run.
 9. **If imported as a module (e.g. from a test)**: nothing in step 8
    runs. The caller controls `start()` / `stop()` lifecycle explicitly.
 
 The dashboard is served as static files from `public/` by `serveStatic()`;
 all JSON APIs are dispatched by `handleRequest()` through a route table
 that maps method+path to handlers defined in
-[`src/server-routes.js`](../src/server-routes.js) and
-[`src/server-positions.js`](../src/server-positions.js). The full route
-surface is covered by the Swagger spec (see
-[API Documentation](#api-documentation) above).
+[`src/server-routes.js`](../src/server-routes.js),
+[`src/server-positions.js`](../src/server-positions.js) and the other
+`src/` route modules. The full route surface is covered by the OpenAPI
+spec (see [API Documentation](#api-documentation) above).
 
 ---
 
@@ -2469,18 +2699,17 @@ an alternative to them: it layers the operator's override over the
 shipped file and stops there.
 
 The difference only shows when a value is wrong, which is exactly when
-it matters. `checkIntervalSec` is declared with a 10-to-3600-second
-clamp in `src/bot-config-defaults.js`; read raw, a hand-edited `0` or
-`"soon"` travels on as a live setting instead of falling back to the
-shipped 300.
+it matters. `checkIntervalSec` must be 10 to 3600 seconds. Read raw, a
+hand-edited `0` or `"soon"` travels on as a live setting; through its
+reader it stops startup, or, read after startup, leaves the shipped 300
+standing.
 
-Three rules follow.
+Five rules follow.
 
 **A value that becomes a `setTimeout` or `setInterval` delay is vetted
 by `src/timer-bounds.js`, and by nothing else.** One module, because
-such a value arrives by more than one road: `.env` and
-`app-runtime.json` at startup, and `POST /api/config` at runtime, since
-the poll cycle re-reads a per-position `checkIntervalSec` on every pass.
+such a value arrives by more than one road: `.env`, and JSON files an
+operator can override.
 A second copy of the rule would drift, and the half that drifted would
 be the half nobody tested. That file also carries the reasoning — in
 short, a timer asked for more than about 24.8 days does not wait longer,
@@ -2488,21 +2717,25 @@ it fires after a millisecond, and `NaN` behaves the same way.
 
 **Where the app cannot run on a wrong value, throw rather than fall
 back.** `src/config.js` does this for the three settings that become
-timer delays, and already did it for an unresolvable chain name. A
-value quietly replaced by its default leaves the bot running on a
-schedule or against a chain nobody chose — and that is then the last
-thing anyone would think to check. The throw happens while
-`src/config.js` is being required, so it stops the process before any
-position starts, and the message names the setting and the bound.
+timer delays, for the five Bot Configuration settings `.env` can set, for any setting
+an operator's `bot-config-defaults.json` or
+`ui-defaults_non-layout_for-server-up-scenario.json` puts outside its
+range, and for an unresolvable chain name. A value
+quietly replaced by its default leaves the bot on a schedule, setting or
+chain nobody chose, the last thing anyone would check. The throw comes
+as `src/config.js` loads, stopping the process before any position
+starts, with a message naming the setting and the bound.
 
 **Throw at a boundary a person writes to, never on a hot path.** This is
 why `bot-config-defaults.js` has two readers.
-`readBotConfigDefaultsStrict()` refuses an out-of-range timer setting
-and is called exactly once, by `src/config.js`, at startup.
+`readBotConfigDefaultsStrict()` refuses every setting written outside
+its range, judged by the timer rule for a timer and by
+`setting-bounds.json` for the rest, group members and list entries
+included, and names them in one message. It is called once, by
+`src/config.js`, at startup.
 `readBotConfigDefaults()` never throws over a value, and is what
-everything else calls — because this file is re-read on every call, and
-those calls include a poll cycle, a price lookup, the all-endpoints-down
-pause, and `GET /api/bot-config-defaults`. A throw from there would turn
+everything else calls — and those calls include a poll cycle, a price
+lookup, the all-endpoints-down pause, and `GET /api/bot-config-defaults`. A throw from there would turn
 an edit made while the bot is running into a broken poll and a 500, and
 the route's own contract is that it never 500s. The same edit is still
 refused: at the next start, which is when the operator can act on it.
@@ -2510,15 +2743,17 @@ refused: at the next start, which is when the operator can act on it.
 **Where the app can carry on, answer rather than throw.** A bad value
 arriving at `POST /api/config` gets a 400 naming the problem; the server
 keeps serving and the dashboard can say what was wrong. This is why
-`_timerKeyProblem()` in `src/server-routes.js` returns its reason
-instead of throwing it — the startup path throws that sentence, the
-route replies with it, and neither restates the rule.
+`_checkTimer()` in `src/config-bounds.js` catches the timer rule's
+throw and returns its message instead — the startup path throws that
+sentence, the route replies with it, and neither restates the rule.
 
 That 400 carries an `invalidValueForKey` field naming the setting whose
 value was refused, because the same route answers 400 for a second,
 unrelated reason: a malformed request, most often one with no
-`positionKey`. The dashboard raises its dialog and restores the field
-only for the first.
+`positionKey`, or one whose key names another chain. The dashboard
+raises its dialog and restores the field only for the first. Both
+refusals come before anything in the request is applied
+(`src/server-config-route.js`), so a refused request leaves no trace.
 
 **The browser does not decide whether a value is acceptable.**
 `src/config-bounds.js` is the only place that decision is made, for
@@ -2528,21 +2763,26 @@ a settable key means adding its rule to the first and mapping the key
 to its input id in the second; leave either out and the save fails with
 nothing said and the refused value still on screen.
 
-Three things make this one module rather than each control's own
-opinion. The browser's copies had drifted into four different policies:
-four settings quietly rewrote what was typed and saved the rewrite, so
-the bot ran on a number nobody chose; three refused with no message,
-which reads as a broken Save button; and the rest each raised a dialog
-of their own wording. None of it bound a request that did not come from
-the form — the same hole `src/timer-bounds.js` was built to close on the
-timer settings, and this is the rest of it.
+The price-cache settings (`priceCacheTtlMs`,
+`dustUnitPriceCacheMultiplier`, `moveCacheTtlMs` and
+`pricePauseExceptionPollWindowMultiple`) have no dashboard field, but
+`POST /api/config` saves them, so they are checked here too; the price
+code reads the saved value at its next start. `test/config-bounds.test.js`
+fails for any key the route saves that has a range in
+setting-bounds.json and no check here.
 
-Bounds live with the check, not in the browser. Where a bound pair is
-already shipped in `bot-config-defaults.json` — `gasFeePctMin/Max`,
-`impermanentLossGuardPctMin/Max` — the module reads it from there rather
-than restating the figures, and the dashboard input's `min`/`max`
-attributes stay what they always were: an affordance for the spinner
-arrows, not a gate.
+One module, rather than a rule per control, because rules kept per
+control drift into different policies. One rewrites what was typed and
+saves the rewrite, so the bot runs on a number nobody chose; another
+refuses with no message, which reads as a broken Save button. And no
+check in the browser binds a request that does not come from the form.
+
+Bounds live with the check, not in the browser: every range is in
+`setting-bounds.json`, read through `src/setting-bounds.js` by this
+module, the shipped-defaults reader and the timer rule, so no figure is
+restated. No input carries a configured range: the only `min` and
+`max` attributes in the page are a quantity's natural limits, zero for
+an amount and 0 to 100 for a share.
 
 Two values look like refusals but are not. **`null` clears a setting** —
 the route deletes the key and the shipped default stands again — so the
@@ -2673,11 +2913,13 @@ The short version: **an unhealthy endpoint costs time, not data.**
 
 Every read in the app goes through `getManagedReadProvider()`
 (`src/send-transaction.js`). When a read fails with an error that
-indicates the endpoint rather than the request — `SERVER_ERROR`,
-`TIMEOUT`, `NETWORK_ERROR`, or any 5xx — the call moves to the next
-configured endpoint and is tried again. The loop
-(`src/rpc-read-retry.js`) has no exit condition: it keeps cycling
-endpoints until one serves the read.
+indicates the endpoint rather than the request (the failover-eligible
+errors listed under [RPC Failover](#rpc-failover)), it is tried again.
+Each failure counts toward the endpoint's failure rate, and once that
+rate crosses `rpcFailoverRatePercentage`, selection moves to the next
+endpoint and the retries follow it. For a scan the loop
+(`src/rpc-read-retry.js`) has no exit condition: it keeps trying until
+some endpoint serves the read.
 
 Errors that say the *request* is at fault are not retried. An
 `AbortError`, a block-range-cap rejection, and any other
@@ -2685,7 +2927,9 @@ non-failover-eligible error propagate on the first occurrence.
 
 Two design choices follow from what a dropped read would cost.
 
-**It never gives up.** A dropped read is a dropped block window, and a
+**A scan never gives up.** (Reads someone is waiting on, such as
+`getPoolState`, are bounded instead; see its section below.) A dropped
+read is a dropped block window, and a
 history short by one window is indistinguishable from a complete one at
 every layer above it — the numbers still render, they are just wrong. A
 stalled scan is the visible alternative: it appears in the log as
@@ -2803,10 +3047,9 @@ for reading pool / token state from on-chain contracts (slot0, decimals,
 tickSpacing, derived price). Because the value it returns flows into
 every downstream P&L, IL, rebalance, and lifetime-deposit calculation,
 a silent bad return from a flaky RPC call can poison every consumer
-with `NaN` and never recover &mdash; the original `0.8.0` Prod incident
-where one position's `decimals0` came back `undefined` and produced a
-`$NaN` lifetime-deposit total that stuck the "Syncing&hellip;" badge in
-a forever-rescan loop.
+with `NaN` and never recover: a `decimals0` read as `undefined` makes
+the lifetime deposit `$NaN`, and the "Syncing&hellip;" badge stays in a
+rescan loop.
 
 ### Validation
 
@@ -2842,12 +3085,14 @@ being spent privately.
 What it adds to the shared loop is a **bound**. Reads whose answer
 nobody is waiting on retry until some endpoint serves them; a pool read
 has a poll cycle or a Manage click waiting, so it stops. The budget is
-`sendTx.endpointCount()` × `_POOL_STATE_ATTEMPTS_PER_URL` (2) — six
-attempts on the three-endpoint mainnet — and `endpointCount()` rather
-than `config.RPC_URLS.length` because `setRpcUrls` can leave the two
-disagreeing. `_POOL_STATE_RETRY_DELAY_MS` (3 s) waits before re-asking
-**the same** endpoint, and is skipped when the next attempt lands on a
-different one, which has no reason to wait.
+`sendTx.endpointCount()` × `boundedReadAttemptsPerEndpoint` (2 as
+shipped) — six attempts on the three-endpoint mainnet — and
+`endpointCount()` rather than `config.RPC_URLS.length` because
+`setRpcUrls` can leave the two disagreeing. `boundedReadRetryDelayMs`
+(3 s as shipped) waits before re-asking **the same** endpoint, and is
+skipped when the next attempt lands on a different one, which has no
+reason to wait. Both settings are in `bot-config-defaults.json`, shared
+with the re-open check's wallet read and the balance read after a swap.
 
 **Every failure is retried, validation throws included** — the loop is
 given `isFailoverable: () => true`. An endpoint answering with nonsense,
@@ -2905,7 +3150,7 @@ bot loop directly:
 
 1. **Wallet-token dust check.** Dashboard POSTs
    `/api/position/can-reopen` with the pair's two token addresses.
-   Server reads on-chain `balanceOf` + token decimals + Moralis price
+   Server reads on-chain `balanceOf` + token decimals + current USD price
    for each, compares each to `getDustThresholdUsd()` from
    `src/dust.js`, and returns `{ canReopen, balances, dustThresholdUsd }`.
    `canReopen` is true when at least one of the two tokens is above
@@ -2916,7 +3161,8 @@ bot loop directly:
    in a single attempt &mdash; partial failure (one token reads, the
    other throws) counts as a complete attempt failure to avoid mixing
    verified + unverified balances in the response. Each configured
-   RPC is tried up to 2 times with a 3 s wait between retries; on
+   RPC is tried up to `boundedReadAttemptsPerEndpoint` times (2 as
+   shipped), `boundedReadRetryDelayMs` apart (3 s); on
    exhaustion the handler throws `WalletReadUnavailableError`,
    mapped to HTTP 503 + `{ error: "wallet-read-unavailable",
    message }`. The dashboard recognizes the code and shows a
@@ -2933,9 +3179,9 @@ bot loop directly:
    POSTs directly to `/api/position/manage` (NOT `/api/rebalance`,
    which requires a running bot loop) with
    `{ tokenId, contract, forceRebalance: true }`. Range width is not
-   in the body: the bot reads `rebalanceRangeWidthPct` from the
-   position's saved config (Bot Settings > Range); if
-   nothing is saved, the rebalancer preserves the on-chain tick
+   in the body: the rebalance takes the position's Range settings
+   (Bot Configuration → Range) as any rebalance does. With No Override
+   on, or no width saved, the rebalancer preserves the on-chain tick
    spread via `preserveRange()`. `liquidity` is deliberately omitted:
    `handleManage`'s autoCompound-default branch keys off
    `body.liquidity === "0"` and would persist
@@ -2956,40 +3202,39 @@ bot loop directly:
    positive; position is alive again.
 
    Re-open collects no per-rebalance width of its own: range width is a
-   persistent Bot Settings field, so the reopened position uses the same
-   settings every other rebalance does.
+   persistent Bot Configuration field, so the reopened position uses the
+   same settings every other rebalance does.
 
 When `!canReopen`, the dashboard shows a single-button modal listing
 the current per-token wallet balances + the dust threshold so the
 user knows exactly what they need to fund. No state change.
 
-UI state for closed positions is also inverted from the prior
-catch-22: **Rebalance is disabled** (cannot rebalance a drained NFT
-directly &mdash; there's no liquidity to remove), **Manage is enabled**
-and routes through the flow above. See `public/dashboard-data.js`
+For a closed position **Rebalance is disabled** (a drained NFT has no
+liquidity to remove), and **Manage is enabled** and routes through the
+flow above. See `public/dashboard-data.js`
 `_updateRebalanceButtons` and `public/dashboard-manage-badge.js` for
 the button-state logic.
 
 ## Error Log & Reload Current Position
 
-Together these are the escape hatch for the single class of failure
-where a silent `catch` on the server side leaves persisted state
-subtly wrong &mdash; the initial pool-wide lifetime scan aborting
-before anything hits disk. That's the failure mode that produced the
-July 2026 Prod discrepancy where `Fees Compounded` for a PulseX/WPLS
-position showed $11.63 instead of the correct ~$255.50: the disk
-config's compounded coins had been populated entirely by a single
-runtime auto-compound event because `_classifyAllCompounds` never
-persisted anything.
+Together these are the escape hatch for one class of failure: a silent
+server-side `catch` that leaves saved state subtly wrong, typically the
+first pool-wide lifetime scan aborting before anything reaches disk.
+What it leaves looks plausible: with the first scan's compounds never
+saved, Fees Compounded shows only the compounds made after it, which
+can be a small part of the true total.
 
 ### logs/error.log
 
 **Owner:** `src/error-log.js` &mdash; `writeErrorLog(err, context)`.
 
-**Location:** `logs/error.log` relative to the process CWD, same
-directory as the diagnostic `lp-ranger.log` produced by
-`src/log-file.js`. Auto-created on first append; gitignored via the
-project-wide `*.log` rule.
+**Location:** logging.json → `errorLogPath`, relative to the process CWD
+unless absolute; as shipped, `logs/error.log`, beside the diagnostic
+`lp-ranger.log` from `src/log-file.js`. Auto-created on first append;
+gitignored via the project-wide `*.log` rule. The Reload Current
+Position dialog names the configured path (`errorLogPath` in
+`GET /api/status`), and `npm run clean` deletes the file there when it
+lies inside the install folder.
 
 **Entry format:**
 
@@ -2999,9 +3244,10 @@ project-wide `*.log` rule.
 <err.stack>
 ```
 
-The four-line gap is deliberate. The file is meant to be scanned by a
-human weeks or months later; a huge blank margin makes a new incident
-unmissable when the file is opened for the first time in a while.
+The four-line gap is deliberate: it sets each incident apart, so none
+is missed when the file is opened. The file holds only the current run's
+failures (see Lifecycle below), so copy it before restarting if you mean
+to report one.
 
 **Scope: catastrophic failures only.** The current callers are
 `_recordScanFailure` in `src/bot-recorder-lifetime.js` and the
@@ -3070,13 +3316,14 @@ describing which operation is running. The three error codes are:
   `_scanRunning` and would no-op silently, leaving the reload's state
   clears in place while the pre-existing scan writes stale results
   back to disk. User waits for the current scan to finish (up to
-  four hours) and clicks Reload again.
+  `reloadMaxWaitMs`, a dashboard setting, four hours as shipped) and
+  clicks Reload again.
 - `rebalance-in-progress` / `compound-in-progress` &mdash; the position
   is mid-TX. Reload would race the transaction and either corrupt the
   state reconstruction or step on the tracker mid-write.
 
 Every 409 falls through to the same yellow retry modal on the client
-(`_showReloadBusyModal` in `dashboard-events-manage.js`), so all
+(`_showReloadBusyModal` in `dashboard-reload-flow.js`), so all
 "busy" outcomes look identical to the operator. The dashboard's
 Reload button is also disabled by `paintReloadPositionButton`
 whenever `rebalanceInProgress` or `compoundInProgress` is truthy on
@@ -3111,12 +3358,10 @@ should not permanently disable the escape hatch.
 
    `_needsEpochRebuild` is what makes step 3 mean anything. Clearing
    the cache on disk is not enough on its own: the bot loop holds its
-   epochs in memory, so the completeness guard in `reconstructEpochs`
-   saw a full history, returned without doing any work, and the next
-   poll wrote the untouched set straight back over the cleared file.
-   Reload cleared a copy that memory restored seconds later, and no
-   correction to how an epoch is derived could reach an existing
-   install without hand-editing a cache file. The flag is consumed
+   epochs in memory, so without the flag the completeness guard in
+   `reconstructEpochs` would see a full history and do nothing, and the
+   next poll would write the untouched set back over the cleared file.
+   The flag is consumed
    once by `_consumeRebuildRequest` (`src/epoch-reconstructor.js`),
    which also drops the tracker's closed epochs so a rebuild that
    fails leaves nothing stale behind — the next scan then sees an
@@ -3176,8 +3421,8 @@ Current Position scan all get the same protection.
 5. Reset client-side caches (`resetHistoryFlag`, `clearHistory`,
    `resetLastFetchedId`) so the eventual page reload lands on a
    clean surface.
-6. Poll `/api/status` at 3 s intervals via `_waitForReloadCompletion`
-   until one of:
+6. Poll `/api/status` every `dashboardPollIntervalMs` (3 s as shipped)
+   via `_waitForReloadCompletion` until one of:
    - `lifetimeScanComplete === true` on the target position &rarr;
      `outcome = "complete"`.
    - `rebalanceInProgress` or `compoundInProgress` becomes truthy on
@@ -3194,9 +3439,10 @@ Current Position scan all get the same protection.
    - A brand-new `_catastrophicScanError` with `at > startedAt` on
      the target position &rarr; `outcome = "failed-again"`. Falls
      through to the page reload so the user sees the fresh red modal.
-   - Four hours elapse &rarr; `outcome = "timeout"`. Falls through
-     anyway; the fresh page shows the Syncing badge and the 30 min
-     recovery loop takes over from there.
+   - `reloadMaxWaitMs` elapses (four hours as shipped) &rarr;
+     `outcome = "timeout"`. Falls through anyway; the fresh page shows
+     the Syncing badge and the 30 min recovery loop takes over from
+     there.
 7. `window.location.reload()` for every outcome EXCEPT `raced`
    (which dismisses to the retry modal and leaves the tab alone).
 
@@ -3291,9 +3537,16 @@ NFT's mint. On a long chain that is minutes; see
 
 ## Dead Code Detection
 
-- `npm run knip` — [Knip](https://knip.dev) — finds unused exports, files,
-  and dependencies. Note: the 8 `public/dashboard-*.js` files are false
-  positives because knip cannot trace HTML `<script>` tags.
+[Knip](https://knip.dev) is gated on **unused files only**:
+`npm run knip:files` runs inside `npm run lint` and `npm run check`, so a
+file nothing reaches fails the build. `knip.json` declares the entry
+points knip cannot see for itself — `scripts/`, `util/` and `test/` hold
+tools run from a shell, not imported — so that answer can be trusted.
+
+Unused **exports** are deliberately not gated. `public/dashboard-*.js` is
+reached through HTML that knip cannot trace, and `src/` and `util/`
+export their internals on purpose so tests and other tools can compose
+them. Run bare `npm run knip` to see those, as information.
 
 ---
 
@@ -3413,9 +3666,8 @@ as the `lint-svg` gate (so CI catches it). Fails on: malformed XML,
 missing root `<svg>`, missing `xmlns` / `viewBox`, or any `id=`
 attribute anywhere in a file.
 
-It was in `npm run lint` only until the gate was added, and since CI
-runs `npm run check` and nothing else, the rules above went unenforced
-on the remote. The smoke test below does not cover them — an `id=` on a
+CI runs `npm run check` and nothing else, which is why the gate is in
+both. The smoke test below does not cover these rules — an `id=` on a
 referenced icon passes it — so the two are complementary, not
 redundant.
 
@@ -3542,7 +3794,10 @@ OS process:
 2. Open `chrome://inspect` in a local Chrome / Chromium tab.
 3. Under **Remote Target**, the Node process should appear within a
    second or two. Click the blue **inspect** link below it. A
-   dedicated DevTools window opens connected to the process.
+   dedicated DevTools window opens connected to the process, with full
+   Sources / Console / Profiler / Memory access. If the target doesn't
+   appear, click **Configure...** and confirm `localhost:9229` is in the
+   discovery list.
 4. **Sources** tab &rarr; navigate the project tree (`src/`,
    `public/`, etc.) and set breakpoints. They hit on the next code
    path that runs (e.g. the next poll cycle for bot code).
@@ -3570,22 +3825,17 @@ libraries and is a security concern). Existing `console.log` call
 sites continue to work unchanged; migrate them to `log.info` as you
 touch surrounding code.
 
-#### Attaching from Chrome / Chromium DevTools
-
-1. Open `chrome://inspect` in a Chrome or Chromium tab on the **same
-   machine** running LP Ranger.
-2. Under **Remote Target**, click **inspect** next to the Node target.
-   DevTools opens with full Sources / Console / Profiler / Memory access.
-3. If the target doesn't appear, click **Configure...** and confirm
-   `localhost:9229` is in the discovery list.
-
 #### Production debugging (Pi 5 over RealVNC)
 
 Production runs with SSH disabled for security &mdash; all remote
 access is via RealVNC. Debugging happens entirely inside the Pi's
-RealVNC desktop session, with no port tunneling involved.
+RealVNC desktop session, with no port tunneling involved, and in a
+Chrome or Chromium tab on that same machine.
 
-1. In the Pi terminal: stop the running LP Ranger, then `npm run debug`.
+1. In the Pi terminal: `npm run debug-attach` attaches to the running
+   server with no restart. To start fresh instead, stop LP Ranger with
+   `npm run gentle-stop`, which waits for any rebalance or compound
+   under way, then run `npm run debug`.
 2. In the Pi's local Chromium: `chrome://inspect` → **inspect** under
    Remote Target.
 
@@ -3612,15 +3862,19 @@ maintainer tested, with zero resolution latitude.
 
 ### Philosophy
 
-The `"dependencies"` block in `package.json` is intentionally small
-(9 packages as of this writing) so the review surface stays tractable.
-Every runtime dependency is well-vetted:
+The `"dependencies"` block in `package.json` is intentionally small so
+the review surface stays tractable. Every runtime dependency is
+well-vetted:
 
 - **Cryptography / tokens** — Node's built-in `crypto` module plus
   `csrf` (pillarjs, widely deployed behind Express).
 - **EVM math** — `ethers` v6, `@uniswap/v3-sdk`, `jsbi`.
 - **Concurrency** — `async-mutex`.
 - **Config** — `dotenv`.
+- **Validation** — `validator` (the rpc url check).
+- **Command lines** — `commander` (the `util/` tools' arguments).
+- **Formatting** — `numbro` (dashboard USD figures) and
+  `telegram-escape` (Telegram's MarkdownV2).
 - **Client-side routing** — `navigo` (~5 KB).
 - **Fonts** — `@fontsource/rye` (self-hosted, no CDN dependency).
 
@@ -3667,13 +3921,17 @@ Only add an override when the parent's range genuinely excludes the
 fix (an exact pin, a range ceiling, or a dependency that needs to be
 neutralized entirely).
 
-The top-level `"overrides"` object in `package.json` currently
-contains two entries:
+The top-level `"overrides"` object in `package.json` holds these
+entries:
 
 | Override | Reason |
 | -------- | ------ |
 | `@uniswap/v3-staker: 1.0.2` | The parent (`@uniswap/v3-sdk`) declares an exact pin `"1.0.0"`, not a caret range. npm cannot resolve `1.0.2` without the override. No advisory — just a minor bugfix version. |
-| `@uniswap/swap-router-contracts` → `hardhat-watcher` → `hardhat: npm:empty-npm-package@1.0.0` | Hardhat is a ~200 MB Solidity compiler toolchain required as a peer dep by `hardhat-watcher`, which is itself a transitive dep of the Uniswap SDK. LP Ranger never compiles Solidity. This override replaces the entire package with an empty stub so nothing downloads. |
+| `@uniswap/swap-router-contracts` → `hardhat-watcher` → `hardhat` and `chokidar`, both `npm:empty-npm-package@1.0.0` | Hardhat is a ~200 MB Solidity compiler toolchain required as a peer dep by `hardhat-watcher`, which is itself a transitive dep of the Uniswap SDK; `chokidar` is the watcher's file watcher, and carried the `braces` high advisories. LP Ranger never compiles Solidity or runs the watcher, so both are replaced with an empty stub and nothing downloads. |
+| `adm-zip: ^0.6.0` | `github-actionlint`, a dev-time workflow linter, pins an older `adm-zip` with two high advisories (a crafted ZIP allocates 4 GB). No runtime exposure. |
+| `@exodus/bytes` → `@noble/hashes: ^1.8.0` | jsdom's `@exodus/bytes` needs `^1.8.0`, while the hoisted copy is 1.3.2 from ethers, which made `npm ci` reject the lockfile. |
+| `markdownlint-cli2` → `js-yaml: 5.2.2`, `smol-toml: ^1.8.0` | The linter exact-pins both, at versions with high advisories, so no lockfile regeneration can move them. |
+| `@scalar/json-magic` → `undici: ^7.29.1` | The API reference's dependency exact-pins an `undici` with a high advisory; the override matches the version jsdom already resolves, so one copy serves both. |
 
 Each override decouples the dependency graph from upstream's own
 review, so the rationale belongs inline in a commit message and in
@@ -3708,7 +3966,8 @@ semver string as input. Summary of its steps:
    lockfile's top-level ranges now match the pinned `package.json`.
    `--ignore-scripts` prevents lifecycle scripts from running during
    lockfile regeneration (relevant for supply-chain safety).
-8. **Build the bundle** — `npm run build` produces `public/dist/bundle.js`.
+8. **Build the bundles** — `npm run build` produces `public/dist/bundle.js`
+   and the User Manual's `public/dist/manual-figures.js`.
 9. **Bump `package.json` version** via `npm version --no-git-tag-version`.
 10. **Commit** the pinned `package.json`, regenerated lockfile, the
     new `.npmrc`, and the built bundle to the release branch.
@@ -3735,8 +3994,9 @@ A user who downloads `lp-ranger-X.Y.Z.tar.gz` gets:
   `package.json`, so the entire transitive graph is also frozen.
 - `.npmrc` — `save-exact=true`, so any subsequent local
   `npm install` also produces exact pins.
-- `public/dist/bundle.js` — **prebuilt** browser bundle, so the
-  user's machine never runs esbuild on potentially compromised source.
+- `public/dist/` — **prebuilt** browser bundles, the dashboard's and
+  the User Manual's, so the user's machine never runs esbuild on
+  potentially compromised source.
 - All `src/`, `public/`, `docs/`, config — as committed to the
   release branch.
 
@@ -3838,19 +4098,23 @@ downloads.
 
 ### Dependency Inventory
 
-**Production runtime (`"dependencies"`)** — 9 packages, all vetted
-per the Philosophy section above:
+**Production runtime (`"dependencies"`)** — all vetted per the
+Philosophy section above:
 
 - `@fontsource/rye` — self-hosted display font for the disclaimer modal.
 - `@uniswap/v3-periphery` — V3 reference contract ABIs.
 - `@uniswap/v3-sdk` — exact 160-bit sqrtPrice math
   (`maxLiquidityForAmounts`, `SqrtPriceMath`).
 - `async-mutex` — rebalance lock.
+- `commander` — argument parsing and `--help` for the `util/` tools.
 - `csrf` — CSRF token generation/verification (pillarjs).
 - `dotenv` — `.env` file loading.
 - `ethers` — EVM math, address checksumming, transaction signing.
 - `jsbi` — BigInt shim the Uniswap SDK requires for exact arithmetic.
 - `navigo` — client-side router for deep-link URLs.
+- `numbro` — number formatting for the dashboard's USD figures.
+- `telegram-escape` — escaping for Telegram's MarkdownV2 messages.
+- `validator` — the rpc url check (`validator.isURL`).
 
 **Development and CI (`"devDependencies"`)** — tooling only, not
 shipped to users at runtime:
@@ -3874,3 +4138,10 @@ shipped to users at runtime:
 - `@fontsource/space-mono` + `@fontsource/urbanist` — additional
   self-hosted UI fonts (dev-dep so they're copied at install time
   via `postinstall`).
+- `eslint-plugin-n` — fails lint on an `import` or `require` path that
+  does not resolve.
+- `@xmldom/xmldom` — XML parsing for `scripts/lint-svg.js`.
+- `github-actionlint` — linter for `.github/workflows/*.yml`.
+- `jsdom` + `global-jsdom` — a DOM for the dashboard modules' tests.
+- `madge` — dependency-cycle finder.
+- `yaml` — parses `.github/pages-site.yml` for the Pages builder.

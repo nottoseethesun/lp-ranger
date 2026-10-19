@@ -31,7 +31,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-data.js");
+  mod = await import("../public/dashboard-sync-decisions.js");
 });
 
 const LIVE = {

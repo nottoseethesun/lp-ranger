@@ -25,6 +25,7 @@ const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
 const config = require("../../src/config");
+const { chainCacheTag } = require("../../src/cache-store");
 const { HELP_TEXT } = require("./clean-pool-cache-help");
 
 const TMP_DIR = path.join(process.cwd(), "tmp");
@@ -252,15 +253,22 @@ async function resolvePoolTokens(pool, ethersLib = ethers, cfg = config) {
   throw lastErr;
 }
 
-/* ---------- scope abbreviation helpers ----------
- *  Mirror the abbreviations used by liquidityPairScopeKey() in
- *  src/cache-store.js so that filename + key matches stay byte-identical
- *  to what the writers produce.  Match dimensions intentionally: chain,
- *  nft-factory, token0, token1, fee — wallet is wildcarded so we wipe
- *  every wallet's entry for the same pool configuration. */
+/* ---------- scope abbreviation helpers ---------- */
+
+/**
+ * Abbreviate a pool's scope the way liquidityPairScopeKey() in
+ * src/cache-store.js does, so that filename and key matches stay
+ * byte-identical to what the writers produce; the chain's segment is its
+ * cache tag, asked of the same `chainCacheTag` the writers ask. Match
+ * dimensions intentionally: chain, nft-factory, token0, token1, fee —
+ * wallet is wildcarded so we wipe every wallet's entry for the same pool
+ * configuration.
+ * @param {object} scope  blockchain, factory, token0, token1, fee.
+ * @returns {{bc: string, pm: string, t0: string, t1: string, fee: string}}
+ */
 function _abbrevScope({ blockchain, factory, token0, token1, fee }) {
   return {
-    bc: (blockchain || "").slice(0, 5),
+    bc: chainCacheTag(blockchain),
     pm: (factory || "").slice(2, 8).toLowerCase(),
     t0: (token0 || "").slice(2, 10).toLowerCase(),
     t1: (token1 || "").slice(2, 10).toLowerCase(),
@@ -305,7 +313,7 @@ function findEventCacheFiles(
  */
 function findLpPositionCacheFiles({ blockchain, factory }, dir = TMP_DIR) {
   const a = _abbrevScope({ blockchain, factory });
-  // Filename: lp-position-cache-{bc:5}-{pm:6}-{wallet:6hex}.json
+  // Filename: lp-position-cache-{bc}-{pm:6}-{wallet:6hex}.json
   const prefix = `lp-position-cache-${a.bc}-${a.pm}-`;
   const suffix = `.json`;
   if (!fs.existsSync(dir)) return [];
@@ -557,21 +565,32 @@ async function main(argv = process.argv, opts = {}) {
   );
   console.log("");
 
+  /**
+   * Both caches below key a pool's entry by the chain first and the pool
+   * last (`cacheKey` in src/cache-store.js), so only this chain's entries
+   * for this pool match: the same address on another chain is another
+   * pool, and its entries are left alone. The chain is matched up to the
+   * address that follows it, because a chain's name can contain a dash:
+   * `pulsechain-testnet-0x…` begins with `pulsechain-` too.
+   */
+  const forPool = (k) => {
+    const lower = k.toLowerCase();
+    return (
+      lower.startsWith(chainKey + "-0x") && lower.endsWith("-" + poolLower)
+    );
+  };
+
   /* 1. pool-creation-blocks-cache.json */
   const pcb = loadCacheOrNull(paths.poolCreationPath);
   const pcbRemoved = pcb
-    ? purgeMatchingKeys(paths.poolCreationPath, pcb, (k) =>
-        k.toLowerCase().includes(poolLower),
-      )
+    ? purgeMatchingKeys(paths.poolCreationPath, pcb, forPool)
     : null;
   reportFile("pool-creation-blocks-cache.json", pcbRemoved);
 
   /* 2. gecko-pool-cache.json */
   const gpc = loadCacheOrNull(paths.geckoPath);
   const gpcRemoved = gpc
-    ? purgeMatchingKeys(paths.geckoPath, gpc, (k) =>
-        k.toLowerCase().includes(poolLower),
-      )
+    ? purgeMatchingKeys(paths.geckoPath, gpc, forPool)
     : null;
   reportFile("gecko-pool-cache.json", gpcRemoved);
 

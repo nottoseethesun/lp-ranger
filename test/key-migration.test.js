@@ -20,6 +20,7 @@ const {
   readConfigValue,
   addManagedPosition,
 } = require("../src/bot-config-v2");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
 
 /** Minimal position manager mock. */
 function mockPositionMgr() {
@@ -35,10 +36,7 @@ function mockPositionMgr() {
 }
 
 describe("key migration on rebalance", () => {
-  const fs = require("fs");
-  const os = require("os");
-  const path = require("path");
-  const _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "key-mig-"));
+  const _tmpDir = makeTestTempFolder("key-mig");
 
   it("keyRef.current updates so subsequent calls use the new key", () => {
     const diskConfig = {

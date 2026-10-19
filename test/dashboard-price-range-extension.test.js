@@ -28,9 +28,10 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { learnActiveChain } = require("./helpers/active-chain");
 
 let mod;
-let data;
+let configInputs;
 let cache;
 let rangeOverride;
 
@@ -39,8 +40,10 @@ let rangeOverride;
 let posted;
 
 before(async () => {
+  // As at startup: the dashboard knows its chain before it keys a position.
+  await learnActiveChain();
   mod = await import("../public/dashboard-price-range-extension.js");
-  data = await import("../public/dashboard-data.js");
+  configInputs = await import("../public/dashboard-config-inputs.js");
   cache = await import("../public/dashboard-data-cache.js");
   rangeOverride = await import("../public/dashboard-range-override.js");
   const store = await import("../public/dashboard-positions-store.js");
@@ -75,7 +78,7 @@ beforeEach(() => {
   cache.clearDirtyInputs();
   /*- Stand in for the `/api/bot-config-defaults` fetch that
    *  dashboard-init.js performs at page load. */
-  data.setConfigInputDefault("rebalanceRangeWidthPct", 80);
+  configInputs.setConfigInputDefault("rebalanceRangeWidthPct", 80);
   /*- And for the first poll.  The row is only reachable in "Use
    *  Settings Below" mode — the "No Override" toggle disables every
    *  control on it — so that is the state these tests run in.

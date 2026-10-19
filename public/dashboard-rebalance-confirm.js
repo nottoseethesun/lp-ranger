@@ -33,29 +33,36 @@ import { posStore } from "./dashboard-positions-store.js";
 import {
   _createModal,
   _posContextHtml,
-  _posLabel,
+  posLabelOf,
 } from "./dashboard-data-status.js";
-import { setOptimisticSpecialAction, getLastStatus } from "./dashboard-data.js";
-import { findActiveAction } from "./dashboard-mission-badge.js";
+import { isAnswerForPositionOnScreen } from "./dashboard-answer-position.js";
+import { poolRuleRefusal } from "./dashboard-manage-refusal.js";
+import { getLastStatus } from "./dashboard-data.js";
+import {
+  findActiveAction,
+  setOptimisticSpecialAction,
+} from "./dashboard-mission-badge.js";
 import { showQueuedActionModal } from "./dashboard-compound.js";
 import {
   paintManageUI,
   setManageInFlight,
   manageKey,
 } from "./dashboard-manage-ui.js";
+import { activeChainId } from "./dashboard-chain.js";
 
-/*- "preserveRange width" as % — the width the rebalancer would
- *  produce for a position with the given tick spread + Position
- *  Offset.  Matches `src/range-math.js:preserveRange()` +
- *  `src/rebalancer.js:294-298`:
- *      belowTicks = spread * (100 - offset) / 100
- *      aboveTicks = spread * offset / 100
- *      widthPct   = (1.0001^aboveTicks - 1.0001^(-belowTicks)) * 100
- *  For offset=50 (centered) this simplifies to the symmetric form;
- *  for other offsets the exponents differ (asymmetric range).
- *  INDEPENDENT of `currentPrice` — pure function of (spread, offset).
- *  Returns a two-decimal string or null when inputs are missing /
- *  non-finite. */
+/**
+ * "preserveRange width" as % — the width the rebalancer would
+ * produce for a position with the given tick spread + Position
+ * Offset.  Matches `src/range-math.js:preserveRange()`:
+ *     belowTicks = spread * (100 - offset) / 100
+ *     aboveTicks = spread * offset / 100
+ *     widthPct   = (1.0001^aboveTicks - 1.0001^(-belowTicks)) * 100
+ * For offset=50 (centered) this simplifies to the symmetric form;
+ * for other offsets the exponents differ (asymmetric range).
+ * INDEPENDENT of `currentPrice` — pure function of (spread, offset).
+ * Returns a two-decimal string or null when inputs are missing /
+ * non-finite.
+ */
 export function _computePreservedWidthPct(tickLower, tickUpper, offset) {
   if (
     tickLower === undefined ||
@@ -82,31 +89,18 @@ export function _computePreservedWidthPct(tickLower, tickUpper, offset) {
   return widthPct.toFixed(2);
 }
 
-/*- Normalise a saved Position Offset to a usable 0-100 value, falling
- *  back to centred when it is absent or out of bounds.  Only consulted
- *  while the Range settings are in force: with "No Override" on the
- *  caller passes `undefined` so the preview centres, matching what
- *  `preserveRange()` will actually mint. */
-function _resolveOffsetPct(rawOffset) {
-  return rawOffset !== undefined &&
-    rawOffset !== null &&
-    Number.isFinite(rawOffset) &&
-    rawOffset >= 0 &&
-    rawOffset <= 100
-    ? rawOffset
-    : 50;
-}
-
-/*- Compact "X%" range-width value for the modal's position-context
- *  data-list line.  Pulls from getLastStatus() — the same source the
- *  Bot Settings row's `_syncRangeWidth` reads on every poll, so the
- *  preview matches what a subsequent rebalance will actually apply.
- *  A pre-populated but unsaved input value does NOT influence this —
- *  only the saved config value or the preserveRange fallback.  Offset
- *  is read from the same status payload (falls back to 50 centered
- *  if unset) so the value accounts for non-centered Position Offset
- *  configurations.  Returns an em-dash when neither source yields a
- *  finite value. */
+/**
+ * Compact "X%" range-width value for the modal's position-context
+ * data-list line.  Pulls from getLastStatus() — the same source the
+ * Bot Configuration row's `syncRangeWidth` reads on every poll, so the
+ * preview matches what a subsequent rebalance will actually apply.
+ * A pre-populated but unsaved input value does NOT influence this —
+ * only the saved config value or the preserveRange fallback.  The
+ * offset is the one the same status payload says the rebalance will
+ * use (`rebalanceOffsetToken0Pct`), so the value accounts for a
+ * non-centred Position Offset, saved or the install's default.
+ * Returns an em-dash when neither source yields a finite value.
+ */
 export function _rangeWidthPreviewText(status, active) {
   /*- The Range section's "No Override" toggle gates all three Range
    *  settings.  When it is on, the rebalance re-uses the existing
@@ -131,13 +125,16 @@ export function _rangeWidthPreviewText(status, active) {
   ) {
     return String(saved) + "%";
   }
-  const offset = _resolveOffsetPct(
-    overrideActive ? status?.offsetToken0Pct : undefined,
-  );
+  /*-
+   *  The offset the rebalance will use, as the server resolves it: the
+   *  saved one, the install's default, or centred under "No Override"
+   *  (src/range-override.js). Without it the preview shows a dash
+   *  rather than assume a centre.
+   */
   const preserved = _computePreservedWidthPct(
     active?.tickLower,
     active?.tickUpper,
-    offset,
+    status?.rebalanceOffsetToken0Pct,
   );
   return preserved ? preserved + "%" : "—";
 }
@@ -170,44 +167,69 @@ export function closeRebalanceConfirm() {
   if (m) m.classList.add("hidden");
 }
 
-/** Optimistically disable the Manage + Rebalance buttons for the
- *  duration of the in-flight POST so the user sees feedback
- *  immediately.  Copies the exact tooltip text the old
- *  `confirmRebalanceRange` used. */
-function _disableActionButtonsForInFlight() {
-  const _help =
-    "LP Ranger is currently submitting transactions" +
-    " to the blockchain to rebalance this LP Position.";
-  const _btn = g("manageToggleBtn");
-  if (_btn) {
-    _btn.disabled = true;
-    _btn.title = _help;
-  }
+// The tooltip both action buttons show while a rebalance request is in flight.
+const _SUBMITTING_HELP =
+  "LP Ranger is currently submitting transactions" +
+  " to the blockchain to rebalance this LP Position.";
+
+/**
+ * Optimistically disable the Rebalance button for the duration of the
+ * in-flight POST so the user sees feedback immediately. The Manage button
+ * is drawn disabled by `paintManageUI()`, from the in-flight label
+ * `_postRebalance` sets.
+ */
+function _disableRebalanceButtonForInFlight() {
   const _rebBtn = g("rebalanceWithRangeBtn");
   if (_rebBtn) {
     _rebBtn.disabled = true;
-    _rebBtn.title = _help;
+    _rebBtn.title = _SUBMITTING_HELP;
   }
 }
 
-/** Render the "Rebalance Blocked / Failed" caution modal + activity
- *  log entry.  Shared by the response-not-ok and network-exception
- *  branches. */
-function _showRebalanceError(title, detail) {
-  _createModal(
-    null,
-    "9mm-pos-mgr-modal-caution",
-    title,
-    _posContextHtml() + "<p>" + detail + "</p>",
-  );
-  const _p = _posLabel();
+/**
+ * Render the "Rebalance Blocked / Failed" caution modal + activity log
+ * entry. Shared by the response-not-ok and network-exception branches.
+ * The entry names the position the request was for. The dialog shows
+ * only while that position is on screen, since it reads as being about
+ * whatever is.
+ * @param {string} title
+ * @param {string} detail  Plain text, the server's words included.
+ * @param {object|null} active  The position the request was for.
+ * @param {boolean} onScreen    Whether it is still the one on screen.
+ */
+function _showRebalanceError(title, detail, active, onScreen) {
+  if (onScreen) {
+    _createModal(
+      null,
+      "9mm-pos-mgr-modal-caution",
+      title,
+      _posContextHtml() + "<p data-rebalance-error></p>",
+    );
+    /*-
+     *  The detail can carry the server's words, so it goes in as text,
+     *  into the dialog just built: the page's last element.
+     */
+    const dialog = document.body.lastElementChild;
+    const slot = dialog.querySelector("[data-rebalance-error]");
+    if (slot !== null) slot.textContent = detail;
+  }
+  const _p = posLabelOf(active);
   act(ACT_ICONS.warn, "alert", title, detail + (_p ? "\n" + _p : ""));
 }
 
-/** Handle a 200 OK response: optimistic action + queued-action modal
- *  + activity log entry. */
-function _handleRebalanceOk(active, inFlight, url, triggerActLabel) {
-  if (active) {
+/**
+ * Handle a 200 OK response: optimistic action + queued-action modal +
+ * activity log entry. The first two belong to the screen, so they wait
+ * for the position the request was for to be the one on screen; the
+ * entry names that position either way.
+ * @param {object|null} active  The position the request was for.
+ * @param {object|null} inFlight  Another action under way, if any.
+ * @param {string} url
+ * @param {string} triggerActLabel
+ * @param {boolean} onScreen  Whether `active` is still on screen.
+ */
+function _handleRebalanceOk(active, inFlight, url, triggerActLabel, onScreen) {
+  if (active && onScreen) {
     setOptimisticSpecialAction("rebalance", {
       tokenId: active.tokenId,
       fee: active.fee,
@@ -215,8 +237,8 @@ function _handleRebalanceOk(active, inFlight, url, triggerActLabel) {
       token1Symbol: active.token1Symbol,
     });
   }
-  if (inFlight) showQueuedActionModal("rebalance", inFlight);
-  const _pl = _posLabel();
+  if (inFlight && onScreen) showQueuedActionModal("rebalance", inFlight);
+  const _pl = posLabelOf(active);
   const _tid = active?.tokenId;
   log.info(
     "[lp-ranger] [rebalance-confirm] posted %s for #%s %s",
@@ -247,9 +269,27 @@ function _handleRebalanceOk(active, inFlight, url, triggerActLabel) {
  * @param {string} triggerActLabel       Activity-log label ("Manual Rebalance" or "Re-open Position")
  */
 export async function _postRebalance(url, body, active, triggerActLabel) {
-  _disableActionButtonsForInFlight();
-  if (active) setManageInFlight(manageKey(active), true);
+  _disableRebalanceButtonForInFlight();
+  if (active) {
+    setManageInFlight(manageKey(active), { title: _SUBMITTING_HELP });
+    paintManageUI();
+  }
   const inFlight = findActiveAction(getLastStatus()?._allPositionStates);
+  /*-
+   *  The position the request is for, as the answer will name it. A
+   *  re-open answers only once its first rebalance is done, minutes
+   *  later, and the screen may hold another position by then.
+   */
+  const requestKey =
+    body.positionKey ??
+    (active
+      ? compositeKey(
+          activeChainId(),
+          active.walletAddress,
+          active.contractAddress,
+          active.tokenId,
+        )
+      : undefined);
   try {
     const res = await fetchWithCsrf(url, {
       method: "POST",
@@ -257,19 +297,71 @@ export async function _postRebalance(url, body, active, triggerActLabel) {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!data.ok) {
-      _showRebalanceError("Rebalance Blocked", data.error || "Unknown error");
-      return;
-    }
-    _handleRebalanceOk(active, inFlight, url, triggerActLabel);
+    _settleRebalanceAnswer({
+      data,
+      requestKey,
+      active,
+      inFlight,
+      url,
+      triggerActLabel,
+    });
   } catch {
-    _showRebalanceError("Rebalance Failed", "Server unreachable");
+    _showRebalanceError(
+      "Rebalance Failed",
+      "Server unreachable",
+      active,
+      isAnswerForPositionOnScreen(null, requestKey),
+    );
   } finally {
     if (active) {
-      setManageInFlight(manageKey(active), false);
+      setManageInFlight(manageKey(active), null);
       paintManageUI();
     }
   }
+}
+
+/**
+ * What the answer to a rebalance or re-open request does: the dialog
+ * and the optimistic badge while the position it was for is on screen,
+ * and the Activity Log entry, naming that position, either way.
+ *
+ * Exported so a test can drive it with an answer of its own: the request
+ * goes through the global `fetch`, which a test must not replace.
+ *
+ * @param {object} o
+ * @param {object} o.data        The server's answer.
+ * @param {string} [o.requestKey]  The key of the position it was for.
+ * @param {object|null} o.active   That position.
+ * @param {object|null} o.inFlight  Another action under way, if any.
+ * @param {string} o.url
+ * @param {string} o.triggerActLabel
+ * @returns {boolean}  Whether the answer was for the screen.
+ */
+export function _settleRebalanceAnswer({
+  data,
+  requestKey,
+  active,
+  inFlight,
+  url,
+  triggerActLabel,
+}) {
+  const onScreen = isAnswerForPositionOnScreen(data, requestKey);
+  if (data?.ok === true) {
+    _handleRebalanceOk(active, inFlight, url, triggerActLabel, onScreen);
+    return onScreen;
+  }
+  // A re-open refused under the pool rule says which position holds it.
+  const refusal = poolRuleRefusal(data);
+  if (refusal !== null)
+    _showRebalanceError(refusal.title, refusal.text, active, onScreen);
+  else
+    _showRebalanceError(
+      "Rebalance Blocked",
+      data?.error || "Unknown error",
+      active,
+      onScreen,
+    );
+  return onScreen;
 }
 
 /** Rebalance Anyway button — close modal + POST /api/rebalance. */
@@ -285,8 +377,9 @@ export async function confirmRebalance() {
     );
     return;
   }
+  const chain = activeChainId();
   const positionKey = compositeKey(
-    "pulsechain",
+    chain,
     active.walletAddress,
     active.contractAddress,
     active.tokenId,

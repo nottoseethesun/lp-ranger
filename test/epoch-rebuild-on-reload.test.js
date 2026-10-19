@@ -175,7 +175,7 @@ describe("reconstructEpochs — forced rebuild after a reload", () => {
         };
       }
       if (id === "./bot-pnl-updater") {
-        return { actualGasCostUsd: async () => 0 };
+        return { pastGasCostUsd: async () => 0 };
       }
       return _origRequire.apply(this, arguments);
     };

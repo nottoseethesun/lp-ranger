@@ -1,7 +1,7 @@
 /**
  * @file test/epoch-reconstructor-full.test.js
  * @description Tests for the full reconstructEpochs flow with mocked
- *   getPositionHistory and actualGasCostUsd dependencies.
+ *   getPositionHistory and pastGasCostUsd dependencies.
  */
 
 "use strict";
@@ -34,6 +34,7 @@ describe("reconstructEpochs full flow", () => {
       if (id === "./bot-pnl-updater") {
         return {
           actualGasCostUsd: async () => _mockGasCost,
+          pastGasCostUsd: async () => _mockGasCost,
           positionValueUsd: () => 100,
           fetchTokenPrices: async () => ({ price0: 1, price1: 1 }),
           readUnclaimedFees: async () => ({
@@ -243,6 +244,7 @@ describe("reconstructEpochs full flow", () => {
       if (id === "./bot-pnl-updater") {
         return {
           actualGasCostUsd: async () => 0,
+          pastGasCostUsd: async () => 0,
           positionValueUsd: () => 0,
           fetchTokenPrices: async () => ({ price0: 0, price1: 0 }),
           readUnclaimedFees: async () => ({

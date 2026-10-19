@@ -22,8 +22,23 @@ const assert = require("node:assert/strict");
 const http = require("node:http");
 
 const { captureConsole } = require("./_capture");
+const CHAINS = require("../../app-config/app-defaults-for-user-configurable/chains.json");
+
+/*-
+ *  The tool checks the chain app-runtime.json names when `--chain` is not
+ *  given. Here that file names the testnet, not the chain the app ships
+ *  set to, so a tool naming a chain of its own fails.
+ */
+const RUNTIME_PATH =
+  require.resolve("../../app-config/app-defaults-for-user-configurable/app-runtime.json");
+const SHIPPED_RUNTIME = require(RUNTIME_PATH);
+require.cache[RUNTIME_PATH].exports = {
+  ...SHIPPED_RUNTIME,
+  defaults: { ...SHIPPED_RUNTIME.defaults, chain: "pulsechain-testnet" },
+};
+
 const {
-  DEFAULT_RPC,
+  defaultEndpoint,
   parseEndpoint,
   buildProgram,
   rpc,
@@ -48,9 +63,26 @@ function quiet() {
     .configureOutput({ writeErr: () => {} });
 }
 
-test("defaults to the app's first endpoint when no flag is given", () => {
-  assert.equal(opts([]).rpcEndpoint, DEFAULT_RPC);
-  assert.match(DEFAULT_RPC, /^https:\/\//);
+test("defaults to the app's chain, and to that chain's first endpoint", () => {
+  // Both from the JSON: nothing in the tool names a chain.
+  assert.equal(opts([]).chain, "pulsechain-testnet");
+  assert.equal(opts([]).rpcEndpoint, undefined);
+  assert.equal(
+    defaultEndpoint("pulsechain-testnet"),
+    CHAINS["pulsechain-testnet"].rpc.urls[0],
+  );
+  assert.match(defaultEndpoint("pulsechain-testnet"), /^https:\/\//);
+});
+
+test("--chain picks another chains.json entry, and refuses a name it lacks", () => {
+  assert.equal(
+    opts(["--chain", "pulsechain-testnet"]).chain,
+    "pulsechain-testnet",
+  );
+  assert.throws(
+    () => quiet().parse(["--chain", "no-such-chain"], { from: "user" }),
+    /not a chain in chains\.json/,
+  );
 });
 
 test("--rpc-endpoint overrides the default", () => {
@@ -267,7 +299,7 @@ describe("talking to a node", () => {
 
   test("runChecks passes all seven against a healthy node", async () => {
     mode = "healthy";
-    const checks = await runChecks(base);
+    const checks = await runChecks(base, CHAINS.pulsechain);
     assert.equal(checks.length, 7);
     const failed = checks.filter((c) => !c.ok);
     assert.deepEqual(
@@ -284,7 +316,7 @@ describe("talking to a node", () => {
      *  dereference it and surface a JavaScript internal into a table an
      *  operator is reading to find out what is wrong. */
     mode = "blockNumberOnly";
-    const checks = await runChecks(base);
+    const checks = await runChecks(base, CHAINS.pulsechain);
     const byName = Object.fromEntries(checks.map((c) => [c.name, c]));
 
     assert.equal(byName["Latest block available"].ok, false);
@@ -308,7 +340,7 @@ describe("talking to a node", () => {
     /*- Stopping at the first failure loses the more useful answer:
      *  which parts still work. */
     mode = "down";
-    const checks = await runChecks(base);
+    const checks = await runChecks(base, CHAINS.pulsechain);
     assert.equal(checks.length, 7, "every check still reports a row");
     assert.ok(
       checks.every((c) => c.ok === false),

@@ -101,4 +101,36 @@ function createBotPollScheduler({
   };
 }
 
-module.exports = { createBotPollScheduler };
+/**
+ * How long the bot waits before it looks at a position again, decided by
+ * what the poll just finished did.
+ *
+ * After a rebalance, compound or cancel completed, it looks again almost
+ * at once, so the dashboard shows the result. After a rebalance that
+ * waited for gas, it looks again after the gas wait rather than the poll
+ * interval, so a network too expensive to rebalance on is not asked again
+ * every poll. Otherwise it waits the poll interval. Each poll decides
+ * afresh from its own result, so a wait one poll chose never outlives it.
+ *
+ * @param {object} p
+ * @param {boolean} p.actionCompleted  A rebalance, compound or cancel
+ *   completed in the poll.
+ * @param {boolean} p.gasDeferred      The poll's rebalance waited for gas.
+ * @param {number} p.checkIntervalMs   The poll interval.
+ * @param {number} p.gasDeferMs        The gas wait (gasDeferRetrySec).
+ * @param {number} p.followUpMs        The quick look after an action.
+ * @returns {number} Milliseconds until the next poll.
+ */
+function nextCheckDelayMs({
+  actionCompleted,
+  gasDeferred,
+  checkIntervalMs,
+  gasDeferMs,
+  followUpMs,
+}) {
+  if (actionCompleted === true) return followUpMs;
+  if (gasDeferred === true) return gasDeferMs;
+  return checkIntervalMs;
+}
+
+module.exports = { createBotPollScheduler, nextCheckDelayMs };

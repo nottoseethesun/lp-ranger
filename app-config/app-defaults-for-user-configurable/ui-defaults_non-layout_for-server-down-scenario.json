@@ -1,0 +1,7 @@
+{
+  "_comment": "The two dashboard settings the page uses while it cannot reach the server, so it cannot be sent them: `npm run build` builds this shipped file into the page, and an operator's copy has no effect. The dashboard's other settings: ui-defaults_layout.json, built into the page's CSS, and ui-defaults_non-layout_for-server-up-scenario.json, which the server sends.",
+  "_chainQueryTimeoutMs_comment": "How long, in milliseconds, the dashboard gives the server to answer each startup question: its blockchain (GET /api/chain), its settings (GET /api/ui-defaults) and its help's figures (GET /api/help-figures). It builds no position key or url before it knows the blockchain, and polls nothing before it has its settings. A request unanswered in this time, or ended without one, is logged to the browser console and asked again, at most once per this interval, so a server that refuses at once is not asked in a tight loop. Read by public/dashboard-chain.js, public/dashboard-ui-settings.js and public/dashboard-help-figures.js.",
+  "chainQueryTimeoutMs": 3000,
+  "_pollFailuresBeforeHalted_comment": "How many server questions in a row may go unanswered before the status pill reads HALTED. The startup questions (blockchain, settings, help figures) count, since a dashboard without its blockchain or settings can show nothing, and so does every GET /api/status poll after them. One miss is usually a blip; an answer starts the count again. Read by public/dashboard-data-poll.js.",
+  "pollFailuresBeforeHalted": 3
+}

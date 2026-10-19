@@ -1,9 +1,10 @@
 /**
  * @file test/bot-recorder.test.js
  * @description Unit tests for pure helper functions in bot-recorder.js:
- *   _bigIntReplacer, _activePosSummary, _updateHodlBaseline,
- *   _collectTokenIds, _pushRebalanceEvent, _recordResidual,
- *   appendLog, and _notifyRebalance.
+ *   _bigIntReplacer, _activePosSummary, _collectTokenIds,
+ *   _pushRebalanceEvent, _recordResidual, appendLog, and
+ *   _notifyRebalance; and for `updateHodlBaseline`, split out of it into
+ *   bot-recorder-baseline.js.
  */
 
 "use strict";
@@ -16,12 +17,14 @@ const os = require("os");
 const {
   _bigIntReplacer,
   _activePosSummary,
-  _updateHodlBaseline,
   _collectTokenIds,
   _pushRebalanceEvent,
   _recordResidual,
   _notifyRebalance,
 } = require("../src/bot-recorder");
+const {
+  updateHodlBaseline: _updateHodlBaseline,
+} = require("../src/bot-recorder-baseline");
 
 // ── _bigIntReplacer ─────────────────────────────────────────────────
 
@@ -149,6 +152,21 @@ describe("_pushRebalanceEvent", () => {
     const events = [];
     _pushRebalanceEvent(events, { oldTokenId: "5", newTokenId: "6" });
     assert.strictEqual(events[0].txHash, "");
+  });
+
+  it("records the block the new NFT was minted in", () => {
+    /*-
+     *  Every read of the new NFT's history starts at this block. A
+     *  record of block 0 would start it at the chain's first block.
+     */
+    const events = [];
+    _pushRebalanceEvent(events, {
+      oldTokenId: "7",
+      newTokenId: "8",
+      txHashes: ["0xmint"],
+      blockNumber: 27_700_123,
+    });
+    assert.strictEqual(events[0].blockNumber, 27_700_123);
   });
 
   it("uses ? for missing tokenIds", () => {

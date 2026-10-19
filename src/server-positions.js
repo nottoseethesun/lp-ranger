@@ -23,11 +23,14 @@ const {
   PoolStateUnavailableError,
 } = require("./pool-state-validate");
 const { createCanReopenHandler } = require("./server-can-reopen");
+const { createStopManagingHandler } = require("./server-stop-managing");
+const { manageRequestRefusal } = require("./manage-request-check");
 const { rejectIfPoolManaged } = require("./pool-already-managed");
+const { openInPool } = require("./open-in-pool");
+const { positionTag } = require("./position-answer-tag");
 const sendTx = require("./send-transaction");
 const {
   compositeKey,
-  parseCompositeKey,
   saveConfig,
   getPositionConfig,
   getOrCreatePositionConfig,
@@ -36,6 +39,7 @@ const {
   removeManagedPosition,
   migratePositionKey: migrateConfigKey,
 } = require("./bot-config-v2");
+const { parseCompositeKey } = require("./composite-key");
 
 /** Per-position bot state (in-memory, keyed by composite key). */
 const _positionBotStates = new Map();
@@ -103,6 +107,11 @@ function createPerPositionBotState(_globalCfg, saved) {
     _lastInBand: false,
     _lastBalancedNotifyTs: 0,
     _lastBalancedPriceFetchTs: 0,
+    /*-
+     *  When the OOR Timeout alert last went out (process-lifetime only;
+     *  not persisted). Owned by `_oorAlertDue` in src/bot-cycle.js.
+     */
+    _lastOorAlertAt: null,
   };
   if (saved !== undefined && saved !== null) {
     for (const k of PERSISTED_STATE_KEYS) {
@@ -320,18 +329,6 @@ function createOnRetire(deps) {
   };
 }
 
-/**
- * Create route handlers for multi-position management.
- * @param {object} deps
- * @param {object} deps.diskConfig     V2 disk config.
- * @param {object} deps.positionMgr    Position manager instance.
- * @param {object} deps.walletManager  Wallet manager instance.
- * @param {Function} deps.getPrivateKey  Returns resolved private key.
- * @param {Function} deps.jsonResponse   JSON response helper.
- * @param {Function} deps.readJsonBody   JSON body reader.
- * @returns {object}  Map of route key → handler.
- */
-/** Keys currently in the process of starting (guards against concurrent requests). */
 /*- Composite key -> pool key, for Manage requests that passed the gate
  *  but whose bot loop has not finished starting.  A Set would answer
  *  "is THIS position starting"; the pool is needed too, because the
@@ -394,22 +391,23 @@ function _stampReopenFlagsOnLive(key, body) {
   return true;
 }
 
-/*- The three things a Manage request must carry before anything else
- *  happens.  Grouped into one predicate so `handleManage` spends one
- *  branch on them rather than three, leaving room under the complexity
- *  cap for the checks that actually decide something.  Returns the
- *  refusal to send, or null when the request is well-formed. */
-function _managePreflight(body, wallet, pk) {
-  if (!body.tokenId || !/^\d+$/.test(String(body.tokenId)))
-    return {
-      status: 400,
-      error: "Missing or invalid tokenId (must be numeric)",
-    };
-  if (!wallet) return { status: 400, error: "No wallet loaded" };
-  if (!pk) return { status: 400, error: "No private key available" };
-  return null;
-}
-
+/**
+ * Create route handlers for multi-position management.
+ * @param {object} deps
+ * @param {object} deps.diskConfig     V2 disk config.
+ * @param {object} deps.positionMgr    Position manager instance.
+ * @param {object} deps.walletManager  Wallet manager instance.
+ * @param {Function} deps.getPrivateKey  Returns resolved private key.
+ * @param {Function} deps.jsonResponse   JSON response helper.
+ * @param {Function} deps.readJsonBody   JSON body reader.
+ * @param {object} [deps.ethersLib]  Builds the contract the pool check
+ *   reads; ethers itself unless a test stands in for the chain.
+ * @param {Function} [deps.readProvider]  The provider that check reads
+ *   through.
+ * @param {Function} [deps.loadScanCache]  The wallet scan's cache reader,
+ *   for the re-open check; the real one unless a test passes its own.
+ * @returns {object}  Map of route key → handler.
+ */
 function createPositionRoutes(deps) {
   const {
     diskConfig,
@@ -423,16 +421,21 @@ function createPositionRoutes(deps) {
      *  built until `sendTx.init()` has run, which is after this factory. */
     ethersLib = ethers,
     readProvider = () => sendTx.getManagedReadProvider(),
+    loadScanCache,
   } = deps;
 
   async function handleManage(req, res) {
     const body = await readJsonBody(req);
-    const blockchain = body.blockchain || "pulsechain";
-    const contract = body.contract || config.POSITION_MANAGER;
+    /*-
+     *  The server runs one chain, so every position it manages is keyed
+     *  on that chain; a request cannot name another.
+     */
+    const blockchain = config.CHAIN_NAME;
+    const contract = config.POSITION_MANAGER;
     const wallet = walletManager.getAddress();
     const pk = getPrivateKey();
-    const bad = _managePreflight(body, wallet, pk);
-    if (bad) {
+    const bad = manageRequestRefusal(body, wallet, pk);
+    if (bad !== null) {
       jsonResponse(res, bad.status, { ok: false, error: bad.error });
       return;
     }
@@ -475,6 +478,7 @@ function createPositionRoutes(deps) {
         tokenId: String(body.tokenId),
         alreadyRunning: true,
         reopenStamped: stamped,
+        ...positionTag(key),
       });
       return;
     }
@@ -484,6 +488,12 @@ function createPositionRoutes(deps) {
      *  coins cannot be allocated — the rule the README and User Manual
      *  state.  `key` is passed as selfKey so a rebalance, which mints a
      *  new tokenId within the same pool, cannot reject itself. */
+    const provider = readProvider();
+    /*- The canonical pool-key builder, bound to this wallet.  Reused
+     *  rather than re-derived so the gate cannot disagree with the
+     *  pool keys the status payload and daily-cap counters use. */
+    const poolKeyFn = (t0, t1, f) =>
+      positionMgr.poolKey(blockchain, contract, wallet, t0, t1, f);
     if (
       await rejectIfPoolManaged({
         res,
@@ -491,19 +501,30 @@ function createPositionRoutes(deps) {
         log: log.warn,
         key,
         tokenId: String(body.tokenId),
+        chain: blockchain,
+        wallet,
         positionManager: contract,
         botStates: _positionBotStates,
-        provider: readProvider(),
-        /*- The canonical pool-key builder, bound to this wallet.  Reused
-         *  rather than re-derived so the gate cannot disagree with the
-         *  pool keys the status payload and daily-cap counters use. */
-        poolKeyFn: (t0, t1, f) =>
-          positionMgr.poolKey(blockchain, contract, wallet, t0, t1, f),
+        provider,
+        poolKeyFn,
         ethersLib,
         startingPools: _starting,
         /*- Claimed synchronously inside the gate, so the check and the
          *  claim cannot be split by another request. */
         claimPool: (pk) => _starting.set(key, pk),
+        // A re-open is refused while the wallet holds an open position there.
+        openInPool: (pool) =>
+          openInPool({
+            wallet,
+            pool,
+            tokenId: String(body.tokenId),
+            poolKeyFn,
+            provider,
+            ethersLib,
+            positionManager: contract,
+            blockchain,
+            loadCache: loadScanCache,
+          }),
       })
     )
       return;
@@ -601,11 +622,13 @@ function createPositionRoutes(deps) {
           error: "pool-info-unavailable",
           message: err.message,
           tokenId: body.tokenId,
+          ...positionTag(key),
         });
       } else {
         jsonResponse(res, 500, {
           ok: false,
           error: "Failed to start position: " + err.message,
+          ...positionTag(key),
         });
       }
       return;
@@ -637,51 +660,25 @@ function createPositionRoutes(deps) {
       positionMgr.count(),
     );
 
+    /*-
+     *  A re-open answers after its first rebalance, which mints a new
+     *  NFT, so the answer names both keys.
+     */
     jsonResponse(res, 200, {
       ok: true,
       key,
       tokenId: String(body.tokenId),
+      ...positionTag(key, keyRef.current),
     });
   }
 
-  async function handleRemove(req, res) {
-    const body = await readJsonBody(req);
-    if (!body.key) {
-      jsonResponse(res, 400, { ok: false, error: "Missing key" });
-      return;
-    }
-    log.info("[pos-route] DELETE /api/position/manage key=%s", body.key);
-    /*- Capture entry reference BEFORE the await.  `positionMgr.migrateKey`
-     *  mutates the entry object in place (entry.key = newKey) but
-     *  preserves the object identity, so reading entry.key after the
-     *  await gives the post-migration key if a rebalance migrated the
-     *  position during the in-flight poll that handle.stop() awaited.
-     *  Without this capture, the downstream cleanup uses the stale
-     *  body.key and leaves a phantom under the migrated key. */
-    const entry = positionMgr.get(body.key) || null;
-    try {
-      await positionMgr.removePosition(body.key);
-    } catch (err) {
-      log.error(
-        "[pos-route] Failed to remove position %s: %s\n%s",
-        body.key,
-        err.message,
-        err.stack,
-      );
-    }
-    const liveKey = entry?.key || body.key;
-    removeManagedPosition(diskConfig, liveKey);
-    // Clear auto-compound so it doesn't re-enable on next manage
-    const posRef = getPositionConfig(diskConfig, liveKey);
-    if (posRef) posRef.autoCompoundEnabled = false;
-    saveConfig(diskConfig);
-    _positionBotStates.delete(liveKey);
-    log.info(
-      "[pos-route] Position removed (remaining: %d)",
-      positionMgr.count(),
-    );
-    jsonResponse(res, 200, { ok: true, key: body.key, status: "stopped" });
-  }
+  const handleRemove = createStopManagingHandler({
+    diskConfig,
+    positionMgr,
+    botStates: _positionBotStates,
+    jsonResponse,
+    readJsonBody,
+  });
 
   const handleCanReopen = createCanReopenHandler({
     walletManager,

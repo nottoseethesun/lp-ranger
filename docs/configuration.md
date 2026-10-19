@@ -5,7 +5,7 @@ environment variable, the layered defaults system, where each setting lives on
 disk, and which settings are deliberately not editable.
 
 **Configure LP Ranger through the JSON files under `app-config/`**, or through
-the dashboard's Bot Settings panel, which writes to them for you.
+the dashboard's Bot Configuration panel, which writes to them for you.
 [JSON Configuration Values](#json-configuration-values) is where to start.
 `.env` is for headless or unattended operation, and for experiments.
 
@@ -30,6 +30,7 @@ For the controls protecting the wallet, see [`docs/security.md`](security.md).
 - [JSON Configuration Values](#json-configuration-values)
   - [Where each setting lives](#where-each-setting-lives)
   - [How to change one](#how-to-change-one)
+  - [Checking the Settings](#checking-the-settings)
 - [Environment Variables](#environment-variables)
   - [Overview](#overview)
   - [Configuration Precedence](#configuration-precedence)
@@ -42,12 +43,22 @@ For the controls protecting the wallet, see [`docs/security.md`](security.md).
     - [RPC endpoints](#rpc-endpoints)
   - [Contract Addresses](#contract-addresses)
     - [Why contract addresses are not editable](#why-contract-addresses-are-not-editable)
+  - [What a Chain's Entry Describes](#what-a-chains-entry-describes)
   - [File Paths and Diagnostics](#file-paths-and-diagnostics)
   - [Where Other Configuration Lives](#where-other-configuration-lives)
 - [RPC Request Pacing and Log Chunking](#rpc-request-pacing-and-log-chunking)
   - [Why chunking exists](#why-chunking-exists)
   - [Why pacing is global](#why-pacing-is-global)
   - [Cost](#cost)
+- [Other Operator Tunables](#other-operator-tunables)
+  - [Failover and the reads someone waits on](#failover-and-the-reads-someone-waits-on)
+  - [History scans](#history-scans)
+  - [Swaps and the throttle](#swaps-and-the-throttle)
+  - [Waiting for gas](#waiting-for-gas)
+  - [Sending and stopping](#sending-and-stopping)
+  - [Logs and price services](#logs-and-price-services)
+  - [Dashboard settings the server sends](#dashboard-settings-the-server-sends)
+  - [Dashboard settings built into the page](#dashboard-settings-built-into-the-page)
 
 ---
 
@@ -56,13 +67,13 @@ For the controls protecting the wallet, see [`docs/security.md`](security.md).
 **The JSON files under `app-config/` are where LP Ranger is configured.**
 That is the normal path, and for a dashboard install it is the only one you
 need. Almost every setting has a home there, and most of them also have a
-control in the dashboard's Bot Settings panel, which writes to those files
+control in the dashboard's Bot Configuration panel, which writes to those files
 for you.
 
 `.env` exists for two narrower purposes:
 
 - **Headless and unattended operation.** Running `npm run bot` on a
-  Raspberry Pi there is no Bot Settings panel to press Save in, so the same
+  Raspberry Pi there is no Bot Configuration panel to press Save in, so the same
   tunables are settable as environment variables. The wallet credentials
   belong to this case as well: `PRIVATE_KEY` and `WALLET_PASSWORD` are how
   an install unlocks itself with no browser present. A dashboard install
@@ -83,16 +94,28 @@ environment value.
 | What | File | Edited by |
 | --- | --- | --- |
 | Server and process settings — listen port and host, default chain, TX recovery timing, scan timeout | `app-config/app-defaults-for-user-configurable/app-runtime.json` | you, by hand |
-| Per-chain static tunables — RPC endpoints, contract addresses, gas multipliers, aggregator timeouts | `app-config/app-defaults-for-user-configurable/chains.json` | you, by hand |
+| Per-chain static tunables — RPC endpoints, contract addresses, gas multipliers, aggregator timeouts — and everything the app says about a chain ([What a Chain's Entry Describes](#what-a-chains-entry-describes)) | `app-config/app-defaults-for-user-configurable/chains.json` | you, by hand |
 | Shipped defaults for bot behaviour — thresholds, intervals, caps, chunk size, pacing | `app-config/app-defaults-for-user-configurable/bot-config-defaults.json` | you, by hand |
+| Each checked setting's range | `app-config/app-defaults-for-user-configurable/setting-bounds.json` | nobody: overrides are ignored |
 | Managed positions and per-position settings — HODL baselines, thresholds, slippage, auto-compound | `app-config/user-configurable/bot-config.json` | the dashboard and the bot; not hand-edited |
 | Encrypted wallet | `app-config/user-configurable/wallet.json` | the dashboard import flow |
 | Encrypted third-party API keys (Moralis, Telegram) | `app-config/user-configurable/api-keys.json` | the dashboard Settings dialog |
 
-Seven more shipped-default files cover narrower concerns — CSRF token TTL,
+More shipped-default files cover narrower concerns — CSRF token TTL,
 the dust threshold, RPC error-classifier strings, logging, LP-provider
-metadata, dashboard first-visit defaults and setting labels. The
-engineering reference linked below inventories them all.
+metadata, the price services, the dashboard's settings, and setting
+labels. The engineering reference linked below inventories them all,
+and [Other Operator Tunables](#other-operator-tunables) lists the
+settings in them that have no dashboard control.
+
+The dashboard's settings are in three files. An override takes effect:
+
+- `ui-defaults_layout.json`, the dialog height: at the next
+  `npm run build`.
+- `ui-defaults_non-layout_for-server-down-scenario.json`, two settings
+  needed while the server cannot be reached: never.
+- `ui-defaults_non-layout_for-server-up-scenario.json`, every other
+  dashboard setting: after a restart and a page reload.
 
 ### How to change one
 
@@ -104,11 +127,52 @@ tarball upgrade. Editing the shipped file directly works too, but the next
 release overwrites it.
 
 Settings with a dashboard control need no file editing at all — change them
-in Bot Settings and press Save.
+in Bot Configuration and press Save.
 
 See [The `app-config` Directory](engineering.md#the-app-config-directory) in
 the engineering reference for the full file inventory and the rules for
 where future config files should go.
+
+### Checking the Settings
+
+The server and the bot check every setting before they read any, and
+refuse to start while one is wrong, naming each problem. They check:
+
+- the JSON settings files, with your copies in
+  `app-config/user-configurable/` over them;
+- `.env`;
+- `bot-config.json`.
+
+A problem is a value of the wrong kind or outside its range, a setting
+LP Ranger does not read, a file that is not valid JSON, or a copy of a
+file the app never reads from `user-configurable/`. A setting LP Ranger
+has retired is not one: the next save drops it from `bot-config.json`.
+`npm stop` and `npm run gentle-stop` do not check, and read no setting
+but where the server listens and the `shutdown` timings below. So a bad
+setting anywhere else never keeps you from stopping a server that is
+running.
+
+To check without starting:
+
+```sh
+node util/diagnostic/validate-config-values-with-any-user-overrides.js
+```
+
+It lists every problem, or says there are none, and exits non-zero when
+there are any. The test suite checks only the files that ship, so local
+and CI results agree; this is how your own copies, `.env` and
+`bot-config.json` are checked.
+
+To see the values it checks:
+
+```sh
+node util/diagnostic/print-resolved-settings.js
+```
+
+It prints the `.env` variables LP Ranger reads, with the environment
+over them, then each JSON settings file by name, your copy over the
+shipped one, as raw JSON. It names the private key and the wallet
+password as set, and never shows them.
 
 ---
 
@@ -131,7 +195,7 @@ browser, and never needs either one.
 The reason to be careful is precedence: `.env` is the **top** layer, so a
 value set here beats both the shipped default and your own
 `user-configurable/` override, and it beats anything the dashboard writes
-later. A forgotten line in `.env` produces a Bot Settings panel that accepts
+later. A forgotten line in `.env` produces a Bot Configuration panel that accepts
 your change, saves it, and has no effect.
 
 With that said, the rest of this section is the complete list of what `.env`
@@ -161,31 +225,22 @@ composes them at startup and every consumer reads the result:
    merged result.
 
 The layer that surprises people is the third. `.env.example` documents
-only runtime flags and secrets, but `config.js` also accepts an env
-override for most Bot Settings tunables, which is how a **headless
-install sets them at all** — there is no Bot Settings panel to press
-Save in when running `npm run bot` on a Raspberry Pi. The **JSON
-counterpart** column in the tables that follow names the key each variable
-overrides.
+only runtime flags, secrets, endpoints and contracts, but `config.js` also
+accepts an env override for five Bot Configuration settings, which is how
+a **headless install sets them at all** — there is no Bot Configuration
+panel to press Save in when running `npm run bot` on a Raspberry Pi. The
+**JSON counterpart** column in the tables that follow names the key each
+variable overrides.
 
-A **per-position value saved in Bot Settings still wins over all three**.
-The layers above decide only what a position that has never had a value
-saved falls back to.
+A **per-position value saved in Bot Configuration still wins over all
+three**. The layers above decide only what a position that has never had
+a value saved falls back to.
 
-**Two rules follow from this, both learned the hard way:**
-
-- A value that is both *displayed* and *acted on* must resolve through
-  the **same expression**, not merely the same file. Two readers of one
-  JSON file still disagree if one of them layers `.env` and the other
-  does not — `IMPERMANENT_LOSS_GUARD_PCT=30` once showed 30 on the
-  dashboard badge while the bot enforced 50.
-- `GET /api/bot-config-defaults` serves `readBotConfigDefaults()` —
-  layers 1 and 2 only, since the browser cannot see the server's
-  environment. That endpoint fills a Bot Settings input **before the
-  first `/api/status` poll arrives**; from the first poll onward the
-  input shows the fully-layered figure, because `buildStatusPositions`
-  spreads the env-aware `posDefaults` into every position payload. Do
-  not mistake the pre-poll value for a second source of truth.
+**A value that is both displayed and acted on resolves through the same
+expression.** The server resolves all three layers for the dashboard
+(`src/resolved-settings.js`): `GET /api/bot-config-defaults` fills the
+Bot Configuration inputs and their Default buttons, and the help quotes
+the same figures, so what you see is what the bot runs on.
 
 ---
 
@@ -229,22 +284,32 @@ each layer live in [`docs/security.md`](security.md).
 | `RPC_URL` | `https://rpc-pulsechain.g4mm4.io` | `chains.json` → `<chain>.rpc.urls[0]` | First JSON-RPC endpoint. |
 | `RPC_URL_FALLBACK` | `https://rpc.pulsechain.com` | `chains.json` → `<chain>.rpc.urls[1]` | Second endpoint. |
 | `RPC_URL_FALLBACK_2` | `https://rpc.pulsechain.box` | `chains.json` → `<chain>.rpc.urls[2]` | Third endpoint. Free tier, 50 requests per 10 seconds per IP. |
-| `REBALANCE_OOR_THRESHOLD_PCT` | `5` | `bot-config-defaults.json` → `rebalanceOutOfRangeThresholdPercent` | How far past the position's price boundary the price must move before the distance condition fires, as a percentage of the position's own range width. `0` fires the moment the position leaves range. |
+| `REBALANCE_OOR_THRESHOLD_PCT` | `5` | `bot-config-defaults.json` → `rebalanceOutOfRangeThresholdPercent` | How far past the position's price boundary the price must move before the distance condition fires, as a percentage of the position's range width. A fraction is accepted. |
 | `REBALANCE_TIMEOUT_MIN` | `180` | `bot-config-defaults.json` → `rebalanceTimeoutMin` | Minutes continuously out of range before a rebalance fires whatever the distance. `0` disables it. |
-| `IMPERMANENT_LOSS_GUARD_PCT` | `15` | `bot-config-defaults.json` → `impermanentLossGuardPct` | How far below its own mint value a position may fall before the bot stops rebalancing it. Tight by default: rebalancing crystallizes the loss, and fees in a quiet pool may never earn it back. Accepted range 1–100. |
-| `SLIPPAGE_PCT` | `0.75` | `bot-config-defaults.json` → `slippagePct` | Most slippage a swap may take, measured against the quoted output rather than the spot price. This is the **default**: a position sets slippage per token, in the two Slippage rows, and this applies to a token that has no figure of its own. See [Slippage is two settings](#slippage-is-two-settings). |
+| `IMPERMANENT_LOSS_GUARD_PCT` | `15` | `bot-config-defaults.json` → `impermanentLossGuardPct` | How much impermanent loss a position may carry before the bot stops rebalancing it: how far below holding the coins its NFT was minted with, at today's prices. Tight by default: rebalancing crystallizes the loss, and fees in a quiet pool may never earn it back. Accepted range 1–100. |
 | `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. Range 10 to 3600 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | `bot-config-defaults.json` → `minRebalanceIntervalMin` | Shortest wait between two rebalances of one position. |
 | `MAX_REBALANCES_PER_DAY` | `5` | `bot-config-defaults.json` → `maxRebalancesPerDay` | Daily cap, counted per pool rather than per wallet. |
-| `REBALANCE_RETRY_SWAP_LIMIT` | `8` | `app-runtime.json` → `tx.retrySwapLimit` | Consecutive swap-backoff retries before the bot pauses rebalancing and waits for the operator. |
+| `REBALANCE_RETRY_SWAP_LIMIT` | `8` | `app-runtime.json` → `tx.retrySwapLimit` | Consecutive retries after the price moved under a rebalance before the bot aborts it and waits for the operator. |
 | `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. Range 1 to 120000 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. |
 | `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Range 1 to 172800 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
-| `AGGREGATOR_URL` | `https://api.9mm.pro` | `app-runtime.json` → `aggregator.url` | 9mm DEX Aggregator endpoint. |
-| `AGGREGATOR_API_KEY` | `f9275849-2a1d-406b-b2a2-a6be1ac127dc` | `app-runtime.json` → `aggregator.apiKey` | `0x-api-key` header sent with aggregator quotes. Public and embedded in 9mm's own product, not an operator credential, which is why it ships in a tracked file rather than the encrypted key store. |
+| `AGGREGATOR_URL` | `https://swap.watergun.pro/api/aggregator/369` | `chains.json` → `<chain>.aggregator.url` | The active chain's swap aggregator, chain path included — the Watergun Aggregator on PulseChain. Each chain names its own; an empty url means the chain has no aggregator, and every swap goes through the V3 router. A chain entry with no url at all stops the app at startup. `<chain>.aggregator.name` is how the "Routing through:" badge and the Rebalance Events table name the route; it is required whenever there is a url, so pointing this setting at another aggregator needs that name overridden to match. |
 | `LOG_FILE` | `./app-data/rebalance_log.json` | `app-runtime.json` → `log.file` | Path to the JSON rebalance log, relative to the project root. |
-| `DRY_RUN` | `false` | **none** — a run mode, not a setting | Connects, detects and polls, but sends no transactions. Accepts `1`, `true` or `yes`. |
-| `VERBOSE` | `false` | **none** — a run mode, not a setting | Verbose logging. Accepts `1`; `--verbose` and `-v` on the command line do the same thing. |
+| `DRY_RUN` | `false` | **none** — a run mode, not a setting | Connects, detects and polls, but sends no transactions. `true` or `false`. |
+| `VERBOSE` | `false` | **none** — a run mode, not a setting | Verbose logging. `true` or `false`; `--verbose` and `-v` on the command line do the same thing. |
+
+Five of these are Bot Configuration settings: `REBALANCE_OOR_THRESHOLD_PCT`,
+`REBALANCE_TIMEOUT_MIN`, `IMPERMANENT_LOSS_GUARD_PCT`,
+`MIN_REBALANCE_INTERVAL_MIN` and `MAX_REBALANCES_PER_DAY`. Each must fall
+in its range in `setting-bounds.json`, as a dashboard save must. Unset or
+empty, the default stands.
+
+Every variable is read one way: an on/off variable is `true` or
+`false`, a number is written in plain digits, an address is EIP-55, and
+nothing is coerced. A value that is not, a value outside its range, or a
+line in `.env` that sets something LP Ranger does not read, stops the
+server and the bot at startup; see [Checking the Settings](#checking-the-settings).
 
 #### RPC endpoints
 
@@ -253,8 +318,8 @@ override it positionally, so setting only `RPC_URL` leaves the endpoints behind
 it intact. See
 [RPC Request Pacing and Log Chunking](#rpc-request-pacing-and-log-chunking).
 
-There is a fourth source, and it outranks all of these: **Bot Settings →
-Network** in the dashboard. The **RPC URL** dropdown lists every endpoint in
+There is a fourth source, and it outranks all of these: **Bot
+Configuration → Network** in the dashboard. The **RPC URL** dropdown lists every endpoint in
 the order the bot tries them, each marked `PRIMARY` or `FAILOVER`. The selected
 option *is* the primary — picking a different one promotes it to the front of
 the failover order immediately. **Add RPC** opens a dialog with Save and Close
@@ -278,16 +343,11 @@ later, and the failover list already handles one that never answers.
 ### Ranges on the timer settings
 
 Three settings become a countdown the app schedules: `TX_SPEEDUP_SEC`,
-`TX_CANCEL_SEC` and `CHECK_INTERVAL_SEC`. Each has a ceiling, and what an
-out-of-range value does depends on where it was written. In the JSON file
-or in `.env` it **stops the app from starting**, with a message naming the
-setting and the limit. In the dashboard's Bot Settings form **the save is
-refused**: a dialog says what was wrong, the field goes back to the value
-it last saved, and the bot carries on with that one. Edit and save again
-whenever you like.
-
-That second rule is not only for the timer settings. **Every value you
-can type into the dashboard is checked the same way** — see
+`TX_CANCEL_SEC` and `CHECK_INTERVAL_SEC`. Each has a range. A value
+outside it, in the JSON file or in `.env`, **stops the app from
+starting**, with a message naming the setting and the limit. None of the
+three is set from the dashboard; the values you can type there are
+checked when you save — see
 [What the dashboard accepts](#what-the-dashboard-accepts) below.
 
 | Setting | Default | Range | Which bound sets it |
@@ -296,15 +356,20 @@ can type into the dashboard is checked the same way** — see
 | `TX_CANCEL_SEC` | `3600` | 1 to `172800` (48 hours) | 48 hours, since 1000× the default is 41 days |
 | `CHECK_INTERVAL_SEC` | `300` | `10` to `3600` (one hour) | its own range — an hour between looks at a position is already past any use |
 
+A fourth timer setting lives only in json: `aggregator.quoteTimeoutMs` in
+`chains.json`, 15000 by default, which limits how long a swap waits for
+the aggregator's quote. A quote that has not arrived by then counts as
+failed, and the swap goes through the V3 router in the position's own
+pool. It is checked at startup by the same rule, in milliseconds.
+
 Most of them take the general bound: 1000× the setting's default or 48
 hours, **whichever is lesser**. A setting with a small default stays near
 it, and nothing gets past two days. A setting with a sensible range of its
 own declares that instead, which the poll interval does.
 
-**The same range applies wherever the setting is written** — the JSON file,
-`.env`, and the dashboard's Bot Settings form all ask
-`src/timer-bounds.js`. They used to disagree: a poll interval of two hours
-was silently discarded in the JSON file and accepted by the other two.
+**The same range applies wherever the setting is written** — the JSON file
+and `.env` both ask `src/timer-bounds.js`, so a value one accepts the
+other cannot refuse.
 
 Lesser rather than greater is what keeps these safe. A countdown is held as
 a 32-bit count of milliseconds — about 24.8 days — and the runtime will not
@@ -316,8 +381,8 @@ of magnitude inside it.
 An over-ceiling value is refused rather than quietly lowered, because a
 setting replaced by its default leaves the bot running on a schedule nobody
 chose — and the schedule is then the last thing anyone would think to
-check. Naming the setting and its ceiling — by refusing to start, or by
-refusing the save — is the only form of this an operator can act on.
+check. Refusing to start, with a message naming the setting and its
+ceiling, is the only form of this an operator can act on.
 
 One of the three can breach its ceiling without being set at all.
 `TX_CANCEL_SEC` defaults to `deadlineSec × cancelToDeadlineMultiple`, so
@@ -329,8 +394,9 @@ it derives from, because that is where the lever is.
 
 ### Slippage is two settings
 
-One per token, and nothing else. Bot Settings → Execution has a
-**Slippage (Token 0)** row and a **Slippage (Token 1)** row. They may
+One per token, and nothing else. Bot Configuration → Execution has a
+**Slippage When Swapping to Token 0** row and a **Slippage When Swapping
+to Token 1** row, each naming its token. They may
 hold the same figure; they are two rows because the two sides of a pair
 often need different ones.
 
@@ -339,19 +405,16 @@ not where it starts. Selling token 0 to buy token 1 uses Token 1's
 figure; selling token 1 to buy token 0 uses Token 0's. The destination
 side is where the value can be taken, so that is where the budget sits.
 
-A token whose row you have not set falls back to the shipped default,
-`slippagePct` in `bot-config-defaults.json` (0.75%). That default is
-also what both rows show before you save anything of your own.
+A token whose row is unset uses the default, `slippagePct` in
+`bot-config-defaults.json` (0.75% as shipped) or your override of it.
+Both rows show that default until you save your own. No environment
+variable sets it.
 
 **The figures in those rows are what the bot uses — for rebalances and
-for compounds alike.** Earlier versions kept a third, older slippage
-value per position, from before the row was split in two. Rebalances
-ignored it and compounds obeyed it, so one position could swap at two
-different rates depending on which move it was making, with nothing on
-screen to say so. That value is gone. Nothing reads it, and it is
-removed from your config file the next time the app writes it. If you
-had one, both tokens fall back to the shipped default until you set the
-two rows.
+for compounds alike.** A single slippage value an older release saved per
+position is no longer read, and is removed from your config file the next
+time the app writes it. If you had one, both tokens use the default until
+you set the two rows.
 
 ### What the dashboard accepts
 
@@ -361,9 +424,13 @@ value outside the range comes back refused, with a dialog naming the
 setting and the range, and the field is put back to the value that was
 last accepted. Nothing is saved, and you can edit and save again.
 
+Every range is defined once, in `setting-bounds.json`: saves are checked
+against it, the shipped defaults are held to it, and the help quotes it.
+Only the shipped copy is read: a range an override could widen would
+bound nothing.
+
 | Setting | Accepts |
 | ------- | ------- |
-| Check Interval | 10 to 3600 sec |
 | OOR Timeout | 0 to 1440 min (0 = off) |
 | Min Time Between Rebalances | 1 to 10080 min (one week) |
 | Max Rebalances per Day | 1 to 12 |
@@ -371,7 +438,7 @@ last accepted. Nothing is saved, and you can edit and save again.
 | OOR Threshold | 1 to 100% |
 | Price Range Extension | 0.1 to 200% |
 | Position Offset (Token 0 share) | 0 to 100%, whole numbers |
-| Slippage (Token 0 / Token 1) | 0.1 to 20% |
+| Slippage When Swapping to Token 0 / Token 1 | 0.1 to 20% |
 | Auto-Compound Threshold | at least the minimum fee a compound needs |
 | Approval Multiple | 1 to 1,000,000 |
 | Max Gas Fee | 0.1 to 15% |
@@ -386,18 +453,10 @@ undo an override from the same box you set it in. And **zero is a real
 setting** for some of them: a price override of zero means "no
 override", and an OOR Timeout of zero switches the timeout off.
 
-Earlier versions decided this in the browser, and decided it
-differently per field: four settings quietly changed what you typed to
-the nearest allowed figure and saved that, and three did nothing at all
-on a bad value, with no message. The first meant the bot could be
-running on a number you never chose.
-
 ### Contract Addresses
 
-**These are not editable from the dashboard, by design.** The Bot
-Settings panel once offered Position Manager and Factory fields; they
-have been removed. See [why](#why-contract-addresses-are-not-editable)
-below.
+**These are not editable from the dashboard, by design.** See
+[why](#why-contract-addresses-are-not-editable) below.
 
 The shipped addresses live in
 `app-config/app-defaults-for-user-configurable/chains.json`, per chain:
@@ -409,9 +468,16 @@ The shipped addresses live in
     "mintGasLimit": 600000
   },
   "factory": "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68",
-  "swapRouter": "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA"
+  "swapRouter": {
+    "address": "0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA",
+    "name": "9mm V3 Router"
+  }
 }
 ```
+
+`swapRouter.name` is how the "Routing through:" badge and the Rebalance
+Events table name a swap through the router. The app does not start
+without it.
 
 Canonical deployment addresses:
 <https://github.com/9mm-exchange/deployments/blob/main/pulsechain/v3.json>
@@ -424,7 +490,7 @@ headless installs and experiments, outranking both JSON layers.
 | --- | --- | --- | --- |
 | `POSITION_MANAGER` | `0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2` | `chains.json` → `<chain>.contracts.positionManager.address` | NonfungiblePositionManager, the contract that holds every V3 position NFT. |
 | `FACTORY` | `0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68` | `chains.json` → `<chain>.contracts.factory` | V3 Factory, used to resolve a pool address from its two tokens and fee tier. |
-| `SWAP_ROUTER` | `0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA` | `chains.json` → `<chain>.contracts.swapRouter` | V3 SwapRouter, the fallback swap path when an aggregator quote cannot be used. |
+| `SWAP_ROUTER` | `0x7bE8fbe502191bBBCb38b02f2d4fA0D628301bEA` | `chains.json` → `<chain>.contracts.swapRouter.address` | V3 SwapRouter, the fallback swap path when an aggregator quote cannot be used. |
 
 In normal operation you should never set them. The only reason to is to
 point the bot at a different deployment of the 9mm Pro V3 contracts, and
@@ -436,8 +502,8 @@ Changing the Position Manager or Factory mid-life does not just change
 where transactions go — it invalidates everything already on disk. Both
 addresses are part of the scope key for every cache:
 
-- the event cache (`event-cache-{chain}-{contract}-{wallet}-…`)
-- the LP position cache (`lp-position-cache-{chain}-{contract}-{wallet}`)
+- the event cache (`event-cache-{cacheTag}-{contract}-{wallet}-…`)
+- the LP position cache (`lp-position-cache-{cacheTag}-{contract}-{wallet}`)
 - the epoch cache, keyed by `blockchain.contract.wallet.token0.token1.fee`
 - per-position config in `bot-config.json`, keyed by a composite that
   includes the contract address
@@ -459,6 +525,46 @@ A `positionManager` or `factory` value left in an existing
 `bot-config.json` from an older release is inert: nothing reads it, and
 `POST /api/config` no longer accepts either key.
 
+### What a Chain's Entry Describes
+
+Nothing in LP Ranger's code names a blockchain. What it shows or works
+out about one comes from that chain's entry in `chains.json`, and an
+entry that leaves any of these out stops the app at startup, naming the
+setting:
+
+| Key | PulseChain | What it is for |
+| --- | --- | --- |
+| `displayName` | `PulseChain` | The chain's name wherever the dashboard and the logs show it. |
+| `homepage`, `logo` | `https://pulsechain.com/`, `pulsechain-logo-transparent.png` | The chain link in the dashboard header; `logo` is a file under `public/`. |
+| `blockTimeSec` | `10` | Average seconds per block, which turns a span of time into a block count: the history scan's lookback (`bot-config-defaults.json` → `historyLookbackYears`), and the compounder's reposition window (`app-runtime.json` → `compound.repositionWindowSec`). |
+| `nativeCurrencySymbol` | `PLS` | The native token's symbol in messages and logs. |
+| `nativeWrappedToken` | `0xA1077a294dDE1B09bB078844df40758a5D0f9a27` | The wrapped native token, WPLS on PulseChain, or `""` where the chain has none. Gas is priced through it, fresh deposits of the native coin are recognised through it, and the Moralis key check asks its price. |
+| `cacheTag` | `pulse` | Names the chain in cache file names and cache keys. Lower-case letters and digits, and distinct from every other chain's: two chains with one tag would share their caches. Changing PulseChain's orphans its existing caches and forces a full re-scan. |
+| `priceServices` | `dexScreenerChain: pulsechain`, `geckoTerminalNetwork: pulsechain`, `moralisChain: 0x171` | The chain's id at each price service, or `""` where a service does not cover it, which is then not asked. |
+
+The dust threshold's reference tokens are not on the active chain, so
+each carries its own `moralisChain` and `dexScreenerChain` in
+`dust-threshold.json`.
+
+#### How a chain's transactions are priced
+
+The same holds for gas: each entry says how its own transactions are
+priced and bounded, and an entry that leaves one out stops the app at
+startup, naming it.
+
+| Key | PulseChain | What it is for |
+| --- | --- | --- |
+| `transactionEnvelopeType` | `legacy` | `legacy` or `eip1559`, the envelope every send is stamped with. Any other name stops startup rather than quietly sending legacy transactions. |
+| `gasPriceMultiplier` | `7` | Scales the network's gas price for every send. |
+| `gasLimitMultiplier` | `2` | Buffers every gas estimate. |
+| `gasLimitFloor` | `300000` | The least gas limit a send is given when the code sending it names no floor of its own: approvals, the compound's collect and increaseLiquidity, and a swap through the V3 router. A failed estimate sends with it. |
+| `contracts.positionManager.mintGasLimit` | `600000` | The floor under every mint and every liquidity removal. |
+| `speedUpGasBump` | `1.5` | A transaction still pending after `TX_SPEEDUP_SEC` is resent at its nonce priced this many times the higher of the network's price and its own. |
+| `cancelGasBump` | `2` | The zero-value cancel sent at `TX_CANCEL_SEC` is priced this many times the higher of the network's price and the stuck transaction's, so it outbids what it replaces. |
+| `estimatedRebalanceGasUnits` | `800000` | The gas a whole rebalance is priced at before it starts, to decide whether it waits (`rebalanceGasDeferPct`); also a period's gas when a rebalance reports none. |
+| `aggregator.estimatedSwapGasUnits` | `500000` | What the swap gas gate prices a swap at, the router's included, so it is required with or without an aggregator. |
+| `aggregator.gasUnitsWhenQuoteOmitsGas` | `300000` | Gas units an aggregator swap is sent with when its quote names none; times `gasLimitMultiplier`, like the quote's own figure. Required whenever there is an aggregator. |
+
 ### File Paths and Diagnostics
 
 These are not operator settings. Each one redirects a single file that a
@@ -466,7 +572,7 @@ module owns, or feeds a development script. **Leave every one of them unset
 in a normal install** — the defaults are the layout the rest of the app,
 `npm run clean` and the upgrade scripts all expect.
 
-The seven path overrides exist for one purpose: so that a test run can never
+The eight path overrides exist for one purpose: so that a test run can never
 write over a production file, whatever directory it is invoked from. Each is
 read by the module named on its row, not by `config.js`. None has a JSON
 counterpart, and none should — a key in a shipped defaults file would present
@@ -481,6 +587,7 @@ these as a supported way to lay out an install, which they are not.
 | `GECKO_POOL_CACHE_PATH` | `tmp/gecko-pool-cache.json` | **none** | Which way round GeckoTerminal quotes each pool ([`src/gecko-pool-cache.js`](../src/gecko-pool-cache.js)). |
 | `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` | `tmp/liquidity-pair-details-cache.json` | **none** | Initial-residual snapshot per pool scope ([`src/liquidity-pair-details.js`](../src/liquidity-pair-details.js)). |
 | `POOL_CREATION_BLOCK_CACHE_PATH` | `tmp/pool-creation-blocks-cache.json` | **none** | Resolved pool deployment blocks ([`src/pool-creation-block.js`](../src/pool-creation-block.js)). |
+| `TOKEN_SYMBOL_CACHE_PATH` | `tmp/token-symbol-cache.json` | **none** | Token names and symbols read from the chain ([`src/token-symbol-cache.js`](../src/token-symbol-cache.js)). |
 | `LP_RANGER_PID` | *(unset)* | **none** | The process for `npm run debug-attach` to signal, for when the port and `pgrep` lookups find the wrong one. Read by [`scripts/_debug-attach.js`](../scripts/_debug-attach.js); the server and bot never read it. |
 | `INSPECTOR_PORT` | `9229` | **none** | Port `npm run debug-attach` reports the V8 inspector on. Read by [`scripts/_debug-attach.js`](../scripts/_debug-attach.js); the server and bot never read it. |
 | `MORALIS_API_KEY` | *(unset)* | **none** | Read only by `util/diagnostic/verify-compound-usd`. The key LP Ranger itself uses for price lookups is the one entered in Settings and stored encrypted in `api-keys.json`; setting this variable does not change it and does not enable Moralis. |
@@ -509,7 +616,7 @@ at all.
 | Setting | Default | What it governs |
 | ------- | ------- | --------------- |
 | `getLogsChunkSize` | `9000` | Maximum block span per `eth_getLogs` call |
-| `globalRPCRequestRateIntervalMS` | `222` | Minimum gap between *any* two requests |
+| `globalRPCRequestRateIntervalMS` | `222` | Minimum gap between *any* two requests, in milliseconds; at least 5, so pacing cannot be turned off |
 | `rpcAllEndpointsDownPauseMS` | `3600000` | How long to hold every request once failover has tried every endpoint and none answered |
 
 They are not exposed in the GUI because they should never need changing in
@@ -572,8 +679,9 @@ The default of 9,000 is 90% of the published 10,000-block limit, verified
 accepted on all three configured endpoints. `g4mm4` enforces 10,000 exactly —
 12,000 is rejected — while `rpc.pulsechain.com` and `rpc.pulsechain.box` accept
 wider, so 10,000 is the binding figure. The remaining 1,000 blocks of headroom
-cover an endpoint that enforces slightly under its published limit.
-`src/bot-config-defaults.js` clamps the setting at 10,000 regardless.
+cover an endpoint that enforces slightly under its published limit. Its
+range in `setting-bounds.json` stops at 10,000, and an override past it
+stops startup.
 
 **Failures propagate.** A chunk that fails fails the scan, unless a call site
 explicitly opts into `bestEffort`. Swallowing a query error and returning an
@@ -601,18 +709,16 @@ If something needs to go sooner, the answer is a shorter interval.
 It is wired in by `buildProvider` (`src/bot-provider.js`), which wraps ethers'
 `send()` — the single funnel all JSON-RPC traffic passes through, reads and
 writes alike. Anything added later is paced automatically, with nothing to
-remember at the call site.
-
-A per-chunk delay preceded this and could not do the job: a chunk fires two to
-four queries in parallel, so a delay between chunks never bounded the request
-rate it appeared to bound.
+remember at the call site. A delay between chunks could not do this job: a
+chunk fires two to four queries in parallel.
 
 ### Cost
 
 Serializing removes parallelism, so scan time is roughly *requests x interval*.
-A full five-year scan is ~2,100 chunks / ~4,200 requests, about 18 minutes at the
-defaults. Raising `getLogsChunkSize` (up to the 10,000 cap) is the single lever
-if that is too slow; lowering it is the fix if an endpoint rejects a query.
+A full scan over the shipped five-year lookback (`historyLookbackYears`) is
+~1,750 chunks / ~3,500 requests, about 13 minutes at the defaults. Raising
+`getLogsChunkSize` (up to the 10,000 cap) is the single lever if that is too
+slow; lowering it is the fix if an endpoint rejects a query.
 
 That figure is the worst case, and in practice almost nothing scans that
 wide. What actually determines a cold start is **where each scan starts**,
@@ -620,7 +726,7 @@ and every scan in the app starts from a bound it already knows:
 
 | Scan | Starts at |
 | --- | --- |
-| Pool rebalance events | the later of the five-year floor, the pool's creation block, and the last cached block |
+| Pool rebalance events | the later of the history lookback's floor, the pool's creation block, and the last cached block |
 | Per-NFT event history | that NFT's own mint block, and runs to the current block |
 | Pool creation lookup | the newest block, working backwards, stopping at the first match |
 
@@ -634,8 +740,6 @@ two years older than the first deposit, that is up to 168 chunked queries
 per NFT instead of 954. See
 [Per-NFT Scan Windows](engineering.md#per-nft-scan-windows).
 
-Two consequences worth knowing:
-
 - **The bot's polling shares the queue with any running scan.** A long
   scan slows ordinary poll cycles and vice versa — they interleave, each
   at roughly half rate, rather than one blocking the other.
@@ -643,3 +747,140 @@ Two consequences worth knowing:
   saves its progress only when it completes. The per-NFT event history
   is read afresh after a restart. Interrupting a long first scan means
   the next start repeats it. Let the first one finish.
+
+---
+
+## Other Operator Tunables
+
+These have no control in the dashboard and should not need changing in
+normal operation. Each lives in one shipped file, and its comment in that
+file explains the figure. Override one the usual way, in the matching file
+under `app-config/user-configurable/`, and restart. A value that cannot
+work, or is outside its range, stops the app at startup, naming the
+setting. Ranges are in `setting-bounds.json` at the same key.
+
+### Failover and the reads someone waits on
+
+In `bot-config-defaults.json`. `boundedReadRetryDelayMs` becomes a timer,
+so it is bounded like the timer settings above.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `rpcFailoverStickyMs` | `3600000` | How long failover stays on the endpoint it moved to before reads go back to the first one. 1 minute to 2 days. |
+| `boundedReadAttemptsPerEndpoint` | `2` | How often each endpoint in service is asked for pool state, or for the wallet balances behind the re-open check, before the read reports itself unavailable. 1 to 10. |
+| `boundedReadRetryDelayMs` | `3000` | The wait before asking the same endpoint again. Moving to another endpoint is not a reason to wait. |
+
+### History scans
+
+In `bot-config-defaults.json`.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `historyLookbackYears` | `5` | How far back the rebalance-history and closed-position scans reach, turned into blocks at the chain's `blockTimeSec`. 1 to 20. |
+| `eventCacheTtlMs` | `31536000000` | How long the on-disk event cache keeps a pool's history after its last write (a year). Every scan and every rebalance writes it again. One hour to ten years. |
+| `poolScanReuseMs` | `60000` | How long a finished scan is handed to the next view asking for the same pool and wallet, instead of scanning again. `0` turns reuse off; at most one hour. |
+| `rebalancePairingWindowSec` | `300` | The most seconds between an NFT leaving the wallet and a new one arriving for the two to be read as one rebalance. 1 to 86400. |
+| `feeDataLogIntervalMs` | `3600000` | How often the network's gas price is written to the log; `--verbose` logs every read. One second to one day. |
+
+### Swaps and the throttle
+
+In `bot-config-defaults.json`. An override of `throttleDoubling` changes
+the rule the bot enforces and the numbers the dashboard shows.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `swapChunkCount` | `3` | How many equal parts a swap is split into when the aggregator refuses it whole for a price impact above slippage, before the V3 router. At least 2. |
+| `minSwapAmountRaw` | `1000` | The least amount worth swapping, in the token's smallest unit; less is skipped. |
+| `slippageSuggestionMarginPct` | `0.5` | Percentage points a "raise slippage to" message adds to the impact it saw, once rounded up to a tenth of a percent. |
+| `correctiveSwapMaxRounds` | `3` | The most corrective swaps one rebalance makes after its main swap moved the pool's own price and left the coins off the new range's ratio. 1 to 10. |
+| `throttleDoubling.triggerCount` | `3` | Rebalances inside the trigger window that switch doubling mode on. 2 to 12. |
+| `throttleDoubling.triggerWindowMultiple` | `4` | The trigger window, as a multiple of Min Time Between Rebalances. A whole number, 1 to 1440. |
+| `throttleDoubling.quietWindowMultiple` | `4` | The quiet spell that clears doubling mode, as a multiple of the current doubled wait. A whole number, 1 to 1440. |
+
+### Waiting for gas
+
+In `bot-config-defaults.json`. `gasDeferRetrySec` becomes a timer, so it
+is bounded like the timer settings above.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `rebalanceGasDeferPct` | `0.5` | A rebalance waits when its gas, `estimatedRebalanceGasUnits` at the current gas price, would cost more than this percent of the position's value. |
+| `gasDeferRetrySec` | `3600` | How long a waiting rebalance waits before the bot looks again, in place of the poll interval, until gas comes down or a rebalance goes through. |
+
+### Sending and stopping
+
+In `app-runtime.json`.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `tx.sendRetries` | `3` | How often a send that failed for a passing reason is sent again. `0` to `10`. |
+| `tx.sendRetryBaseDelayMs` | `30000` | The wait before the first retry; each later retry waits one more of it (30, 60 and 90 seconds as shipped). |
+| `tx.cancelPhaseFloorSec` | `10` | The least time a sped-up transaction gets to confirm before the cancel goes out. |
+| `tx.swapBackoffBaseMs` | `60000` | After the price moved under a rebalance, the wait before it is tried again; each failure in a row doubles it. One second to an hour. |
+| `tx.swapBackoffMaxMs` | `1200000` | The longest that wait may grow. One second to a day. |
+| `tx.midwayRetryLimit` | `4` | How many times a rebalance left mid-way, its coins in the wallet, is tried again before the bot aborts and asks you to act. 1 to 20. |
+| `poll.afterActionMs` | `2000` | How soon the bot looks again after a rebalance, compound or cancel, so the dashboard shows the result. |
+| `poll.lifetimeRescanCheckMs` | `1800000` | How often the bot checks whether a position's lifetime figures need their scan run again, and runs it if so. |
+| `retire.drainedAfterMs` | `1800000` | How long a managed position may sit drained, with no rebalance under way, before LP Ranger stops managing it. A rebalance aborted after its drain counts. One minute to two days. |
+| `shutdown.exitTimeoutMs` | `3000` | How long the server spends stopping before it exits regardless. |
+| `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. |
+| `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop`, and `npm run gentle-stop` once the server has taken its stop, check whether the server has gone. |
+| `shutdown.gentleStopPollMs` | `300000` | How often `npm run gentle-stop` asks whether a rebalance or compound is under way, and how long it waits for each answer. |
+| `dashboard.pollsBeforeAssumedSeen` | `2.5` | How many dashboard polls the server waits, after a change the dashboard must show, before assuming it was seen: the alert for a failed re-open comes up before the position is retired. 1 to 100. |
+| `compound.autoSpacingPolls` | `5` | The least time between two automatic compounds of one position, in polls of `CHECK_INTERVAL_SEC`. 1 to 100. |
+| `compound.autoSpacingFloorSec` | `300` | The floor under that time, in seconds, however short the poll interval. Compound Now is held to neither. 1 to 86400. |
+
+### Logs and price services
+
+| File | Setting | Default | What it governs |
+| ---- | ------- | ------- | --------------- |
+| `logging.json` | `errorLogPath` | `logs/error.log` | Where catastrophic failures are recorded. Emptied at every startup; the dashboard's alert for one names this file. |
+| `price-services.json` | `dexScreener.baseUrl` | `https://api.dexscreener.com` | DexScreener's api. |
+| `price-services.json` | `geckoTerminal.baseUrl` | `https://api.geckoterminal.com/api/v2` | GeckoTerminal's api, with its version. |
+| `price-services.json` | `geckoTerminal.topPoolsConsidered` | `10` | How many of GeckoTerminal's top-ranked pools for a token are considered for its historical price. At least 1. |
+| `price-services.json` | `moralis.baseUrl` | `https://deep-index.moralis.io/api/v2.2` | Moralis's api, with its version. |
+
+### Dashboard settings the server sends
+
+In `ui-defaults_non-layout_for-server-up-scenario.json`. The server reads
+them at startup and sends them to the dashboard, so an override takes
+effect after a restart and a page reload. Startup stops on a value
+outside its range in `setting-bounds.json`, or, for the timers
+`dashboardPollIntervalMs`, `staleDataCheckIntervalMs`, `copyFeedbackMs`
+and `heapLogIntervalMs`, the timer rule. A choice saved in the Settings popover overrides the sounds
+and privacy defaults.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `dashboardPollIntervalMs` | `3000` | How often the dashboard asks the server for fresh figures. Half a second to a minute. |
+| `staleDataCheckIntervalMs` | `50` | How often the dashboard checks whether its figures are still another position's. From a switch to another position until the server answers about it, every figure shows a dash and every button is disabled, except in the disclaimer and the wallet unlock. Ten milliseconds to a second. |
+| `reloadMaxWaitMs` | `14400000` | How long Reload Current Position waits for its scan before reloading the page anyway; its dialogs quote the same figure. |
+| `slippageConfirmAbovePct` | `5` | A per-token slippage saved above this asks for a click on Confirm first. The dialog quotes it. |
+| `slippageTypedConfirmFromPct` | `10` | A per-token slippage saved at this or more asks for Confirm to be typed. The dialog quotes it. |
+| `pollSkipLogEvery` | `20` | While a slow server holds a poll, one console line per this many skipped polls. |
+| `lastCheckJustNowSec` | `5` | How long Mission Control's last-check tag reads "just now". |
+| `autoCompoundSyncHoldMs` | `5000` | How long after Stop Managing the Auto-Compound toggle is left alone by status polls. |
+| `throttleNearLimitPct` | `80` | The share of Max Rebalances / Day at which the throttle badge reads NEAR LIMIT. |
+| `activityLogMaxEntries` | `500` | How many entries the Activity Log keeps. |
+| `copyFeedbackMs` | `1200` | How long a copy icon shows that it copied. |
+| `heapLogIntervalMs` | `600000` | How often the dashboard logs its heap size to the browser console. |
+| `soundsEnabled` | `true` | Whether sounds play. |
+| `privacyModeEnabled` | `false` | Whether Privacy Mode is on. |
+| `privacyBlurWalletAddresses` | `true` | Whether Privacy Mode blurs wallet addresses. |
+| `privacyBlurUsdAmounts` | `true` | Whether Privacy Mode blurs USD amounts above the threshold, and every coin amount. |
+| `privacyUsdAmountThreshold` | `99` | The USD amount Privacy Mode blurs above. |
+
+### Dashboard settings built into the page
+
+In `ui-defaults_non-layout_for-server-down-scenario.json`. The dashboard
+needs these while it cannot reach the server, so `npm run build` builds
+them into the page. An override has no effect; change the shipped value
+and rebuild.
+
+| Setting | Default | What it governs |
+| ------- | ------- | --------------- |
+| `chainQueryTimeoutMs` | `3000` | How long the dashboard gives the server to answer each startup question before it asks again. |
+| `pollFailuresBeforeHalted` | `3` | Questions to the server left unanswered in a row before the status pill reads HALTED. The startup questions count, and so does every status poll after them. |
+
+The dialog height, `dialogMaxHeightPx` in `ui-defaults_layout.json`, is
+built into the CSS; an override takes effect at the next `npm run build`.

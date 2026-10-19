@@ -26,7 +26,19 @@ const {
   _CACHE_PATH,
 } = require("../src/gecko-pool-cache");
 const { _resetForTest: _resetRateLimit } = require("../src/gecko-rate-limit");
-const { _getDelays } = require("../src/price-source-backoff");
+const config = require("../src/config");
+const { _getDelays, _setDelays } = require("../src/price-source-backoff");
+
+/**
+ * Zero the 429 retry schedule for one case through the backoff module's
+ * own seam, so its retries run at once, and put the schedule back after.
+ * A zero delay also leaves no penalty behind for the next case.
+ */
+function zeroRetryDelays(t) {
+  const schedule = _getDelays();
+  _setDelays(schedule.map(() => 0));
+  t.after(() => _setDelays(schedule));
+}
 
 describe("gecko-pool-cache", () => {
   let _origFetch;
@@ -47,6 +59,12 @@ describe("gecko-pool-cache", () => {
     } catch {
       /* ignore */
     }
+    /*-
+     *  TEST-ONLY global swap: each case below replaces `fetch`, because
+     *  the cache asks GeckoTerminal through the global one and offers no
+     *  seam for another. The original is captured here and restored
+     *  pristine after every case.
+     */
     _origFetch = global.fetch;
   });
 
@@ -108,6 +126,29 @@ describe("gecko-pool-cache", () => {
     assert.equal(calls, 1);
   });
 
+  it("keeps one chain's orientation from answering for another chain", async () => {
+    /*-
+     *  Keyed by the active chain, not by the service's name for the
+     *  network: the same address can be another pool on another chain.
+     */
+    let calls = 0;
+    global.fetch = async () => {
+      calls++;
+      return _mockPoolResponse("pulsechain", "0xtok0");
+    };
+    await getGeckoPoolOrientation("pulsechain", "0xpool", "0xtok0", "0xtok1");
+    const chain = config.CHAIN_NAME;
+    try {
+      config.CHAIN_NAME = "pulsechain-testnet";
+      await getGeckoPoolOrientation("pulsechain", "0xpool", "0xtok0", "0xtok1");
+      assert.equal(calls, 2, "the other chain asked for itself");
+    } finally {
+      config.CHAIN_NAME = chain;
+    }
+    await getGeckoPoolOrientation("pulsechain", "0xpool", "0xtok0", "0xtok1");
+    assert.equal(calls, 2, "the first chain's answer was kept");
+  });
+
   it("returns null when GeckoTerminal base matches neither token", async () => {
     global.fetch = async () => _mockPoolResponse("pulsechain", "0xother");
     const o = await getGeckoPoolOrientation(
@@ -131,12 +172,7 @@ describe("gecko-pool-cache", () => {
   });
 
   it("retries on 429, then succeeds on second attempt", async (t) => {
-    // Stub setTimeout so the backoff doesn't actually delay the test.
-    const origSetTimeout = global.setTimeout;
-    global.setTimeout = (fn, _ms) => origSetTimeout(fn, 0);
-    t.after(() => {
-      global.setTimeout = origSetTimeout;
-    });
+    zeroRetryDelays(t);
     let calls = 0;
     global.fetch = async () => {
       calls++;
@@ -154,11 +190,7 @@ describe("gecko-pool-cache", () => {
   });
 
   it("returns null after all 429 retries exhausted", async (t) => {
-    const origSetTimeout = global.setTimeout;
-    global.setTimeout = (fn, _ms) => origSetTimeout(fn, 0);
-    t.after(() => {
-      global.setTimeout = origSetTimeout;
-    });
+    zeroRetryDelays(t);
     let calls = 0;
     global.fetch = async () => {
       calls++;

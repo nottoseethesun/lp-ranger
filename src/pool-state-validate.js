@@ -13,6 +13,9 @@
 
 "use strict";
 
+const { SETTING_BOUNDS } = require("./setting-bounds");
+const { withinBound } = require("./range-check");
+
 /**
  * Error thrown when a single RPC attempt returns pool-state data that
  * fails per-field validation.  Captures the failing field, the bad
@@ -79,6 +82,20 @@ function isIntegerInRange(x, lo, hi) {
   return typeof x === "number" && Number.isInteger(x) && x >= lo && x <= hi;
 }
 
+/**
+ * A usable ERC-20 decimals: inside `tokenDecimals` in
+ * setting-bounds.json, which also bounds the decimals an operator types
+ * as an override. One answer for every reader — `getPoolState`, the
+ * decimals heal and the lifetime scan — so none can call valid what
+ * another refuses.
+ *
+ * @param {*} x
+ * @returns {boolean}
+ */
+function isTokenDecimals(x) {
+  return withinBound(x, SETTING_BOUNDS.tokenDecimals);
+}
+
 /** Any signed integer (Number.isInteger handles non-number short-circuit). */
 function isAnyInteger(x) {
   return typeof x === "number" && Number.isInteger(x);
@@ -109,6 +126,7 @@ module.exports = {
   isAddressString,
   isPositiveInteger,
   isIntegerInRange,
+  isTokenDecimals,
   isAnyInteger,
   isFinitePositive,
   isPositiveBigIntish,

@@ -74,20 +74,31 @@ valid — a missing or malformed file is treated as a broken install and
 the app refuses to start.
 
 The user override file is **optional** — its absence is the normal
-case.  If a user override file is malformed, the app logs a warning
-and falls back to the shipped defaults for that file.  Your typo will
-never brick your install.
+case.  An override file that is not valid JSON stops the server and the
+bot at startup, naming the file.
+
+A value the app cannot use stops startup too, with a message naming the
+setting and what it accepts: a value of the wrong kind, a value outside
+its range in `setting-bounds.json`, or a setting LP Ranger does not
+read.  Correct the value, or remove it to use the shipped default, and
+restart.  To check without starting, run
+`node util/diagnostic/validate-config-values-with-any-user-overrides.js`.
 
 ## File inventory
 
 | File | What it controls |
 | --- | --- |
-| `app-runtime.json` | App-level runtime defaults: server port/host, TX timing, aggregator URL/API key, scan timeout, compound min-fee + default-threshold, log file path. |
-| `bot-config-defaults.json` | Default values for every Bot Settings input (OOR threshold, slippage, intervals, daily cap, gas, etc.) plus validation bounds (`gasFeePctMin`/`Max`) and server-internal nested groups (`lowGasThresholds`, `residualCleanup`). |
-| `chains.json` | Per-blockchain RPC endpoints, contract addresses, gas multipliers, aggregator tunables (incl. `estimatedSwapGasUnits`), chart-provider URL templates. |
+| `app-runtime.json` | App-level runtime defaults: server port/host, TX timing, scan timeout, compound min-fee + default-threshold, log file path. |
+| `bot-config-defaults.json` | Defaults for every Bot Settings input, plus server-internal nested groups (`lowGasThresholds`, `residualCleanup`, `ilGuardRetry`, `throttleDoubling`). |
+| `chains.json` | Per-blockchain RPC endpoints, contract addresses, gas multipliers, aggregator url and tunables (incl. `quoteTimeoutMs`, `estimatedSwapGasUnits`), chart-provider URL templates. |
 | `csrf.json` | CSRF token TTL + dashboard refresh cadence. |
 | `dust-threshold.json` | Inflation-resistant "is this dust?" threshold (units of a reference asset) + USD floor + the price-source token list used to derive USD-per-unit. |
 | `evm-rpc-response-codes.json` | Error-classifier substring lists (transient / terminal-nonce-unused / terminal-nonce-consumed). |
-| `logging.json` | Always-on log-to-file toggle + default path. |
-| `nft-providers.json` | Short display labels for NFT position-manager contracts (e.g. "9mm v3"). |
-| `ui-defaults.json` | Dashboard first-visit defaults: sounds, privacy mode, blur toggles, USD-amount threshold. |
+| `logging.json` | Always-on log-to-file toggle + default path; the error log's path. |
+| `lp-providers.json` | LP-provider metadata keyed by `<poolFactory>_<positionManager>`: display names and supported chains. |
+| `price-services.json` | Each price service's api base url; how many pools GeckoTerminal weighs for a token's historical price. |
+| `setting-bounds.json` | The range each checked setting must fall in. **Not overridable**, or an override could widen any range. |
+| `setting-labels.json` | How the dashboard names each setting, for messages and the Activity Log. |
+| `ui-defaults_layout.json` | Dashboard layout settings (the dialog height), built into its CSS; an override applies at the next `npm run build`. |
+| `ui-defaults_non-layout_for-server-down-scenario.json` | The two dashboard settings needed while the server is unreachable, built into the page. **An override has no effect.** |
+| `ui-defaults_non-layout_for-server-up-scenario.json` | Every other dashboard setting, sent by the server, including the first-visit defaults for sounds and privacy. An override takes effect after a restart and a page reload; a value outside its range stops startup. |

@@ -101,6 +101,7 @@ Ten-plus explicit `!== undefined && !== null` guards already exist across the co
 - All date/time displays show both UTC and local time with timezone code.
 - All custom CSS classes prefixed with `9mm-pos-mgr-`.
 - No inline `style="..."` in HTML (except dynamic JS-set `width` values).
+- **The server is the source of truth for every data value.** A value the operator saves goes to the server first, and the page shows it only once a server answer carries it: no optimistic display, no marker that skips an answer, and no browser copy of a server value. Every value about a position is kept, sent and read under its fully-qualified key (chain, wallet, position manager, NFT), and the dashboard ignores a value that arrives any other way, such as a server-wide field standing in for one position's.
 - **Static markup, targeted data updates** — put icons, buttons, and structural markup in the HTML. JS should only update data values by targeting specific text containers (e.g. a `<span id="statT0Name">`), never rewrite innerHTML of a parent that contains static elements. This prevents poll cycles from destroying icons/buttons and avoids re-creating DOM nodes that don't change.
 
 ## HTTP Caching

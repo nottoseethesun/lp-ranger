@@ -1,6 +1,6 @@
 /**
  * @file dashboard-data.js
- * @description Polls /api/status, updates live UI elements. Re-exports.
+ * @description Polls /api/status, updates live UI elements.
  */
 import { log } from "./dashboard-log.js";
 import { g, botConfig } from "./dashboard-helpers.js";
@@ -9,7 +9,7 @@ import {
   updateManagedPositions,
   isPositionManaged,
   isPositionClosed,
-} from "./dashboard-positions.js";
+} from "./dashboard-positions-store.js";
 import { syncActivePosition } from "./dashboard-active-sync.js";
 import { syncBotSettingsConfigInputs } from "./dashboard-bot-settings-sync.js";
 import {
@@ -17,8 +17,10 @@ import {
   updateHistorySyncLabels,
 } from "./dashboard-history.js";
 import { wallet } from "./dashboard-wallet.js";
-import { reapplyPrivacyBlur } from "./dashboard-events.js";
-import { updateManageBadge } from "./dashboard-events-manage.js";
+import {
+  updateManageBadge,
+  reapplyPrivacyBlur,
+} from "./dashboard-events-manage.js";
 import { paintReloadPositionButton } from "./dashboard-reload-flow.js";
 import { paintRescanPricesButton } from "./dashboard-rescan-prices.js";
 import { refreshDecimalsOverrideOnPoll } from "./dashboard-token-decimals.js";
@@ -27,62 +29,33 @@ import {
   isViewingClosedPos,
   refetchClosedPosHistory,
 } from "./dashboard-closed-pos.js";
+import { askDetailsIfOwed } from "./dashboard-unmanaged.js";
+import {
+  isPositionDataStale,
+  markPositionDataFresh,
+  noteStatusAnswerFor,
+  forgetFreshAnswer,
+} from "./dashboard-stale-data.js";
 import { updateILDebugData } from "./dashboard-il-debug.js";
 import {
-  injectDataDeps,
   _wireDepositKpis,
-  loadRealizedGains,
   loadInitialDeposit,
   refreshDepositLabel,
   refreshCurDepositDisplay,
-  loadCurRealized,
-  toggleRealizedInput,
-  saveRealizedGains,
-  toggleCurRealized,
-  saveCurRealized,
-  toggleInitialDeposit,
-  saveInitialDeposit,
-  toggleCurDeposit,
-  saveCurDeposit,
   _poolKey,
-  loadCurDeposit,
-  toggleLifetimeDays,
-  saveLifetimeDays,
-  refreshLifetimeDaysLabel,
-  loadLifetimeStartDateOverride,
-  loadLifetimeDaysDisplay,
 } from "./dashboard-data-deposit.js";
-import {
-  _fmtUsd,
-  setKpiValue,
-  resetKpis,
-  _updateKpis,
-  _updateLifetimeKpis,
-  checkHodlBaselineDialog,
-  positionRangeVisual,
-  updateRangePctLabels,
-} from "./dashboard-data-kpi.js";
+import { _updateKpis, _updateLifetimeKpis } from "./dashboard-data-kpi.js";
+import { checkHodlBaselineDialog } from "./dashboard-data-baseline.js";
 import { updateTriggerDisplay } from "./dashboard-throttle.js";
 import {
   populateConfigInputs,
   syncGlobalConfig,
   configInputDefaults,
   resetGlobalSynced,
-  setConfigInputDefault,
-  getInputDefault,
 } from "./dashboard-config-inputs.js";
-
-/*- Re-exported so existing importers (dashboard-init, and the Default /
- *  No Offset buttons) keep their import path across the split. */
-export { setConfigInputDefault, getInputDefault };
 import { resetSoundTrackers } from "./dashboard-sounds.js";
-import {
-  setOptimisticSpecialAction,
-  updateMissionStatusBadge,
-} from "./dashboard-mission-badge.js";
+import { updateMissionStatusBadge } from "./dashboard-mission-badge.js";
 import { updateGasStatusBadge } from "./dashboard-gas-badge.js";
-import { AGGREGATOR_LABEL } from "./dashboard-routing-labels.js";
-export { setOptimisticSpecialAction };
 import {
   logAllPositionEvents,
   resetEventLogTrackers,
@@ -93,10 +66,7 @@ import {
   resetPopulateHistoryFlags,
 } from "./dashboard-populate-history.js";
 import {
-  _createModal,
   _posLabel,
-  _posContextHtml,
-  _titled,
   _updateComposition,
   _updatePositionTicks,
   _updatePosStatus,
@@ -106,38 +76,6 @@ import {
   _syncAutoCompound,
   _updateCompoundButton,
 } from "./dashboard-data-status.js";
-export {
-  injectDataDeps,
-  loadRealizedGains,
-  toggleRealizedInput,
-  saveRealizedGains,
-  loadCurRealized,
-  toggleCurRealized,
-  saveCurRealized,
-  loadInitialDeposit,
-  refreshDepositLabel,
-  loadCurDeposit,
-  refreshCurDepositDisplay,
-  toggleCurDeposit,
-  saveCurDeposit,
-  toggleInitialDeposit,
-  saveInitialDeposit,
-  toggleLifetimeDays,
-  saveLifetimeDays,
-  refreshLifetimeDaysLabel,
-  loadLifetimeStartDateOverride,
-  loadLifetimeDaysDisplay,
-  _fmtUsd,
-  setKpiValue,
-  resetKpis,
-  checkHodlBaselineDialog,
-  positionRangeVisual,
-  updateRangePctLabels,
-  _createModal,
-  _posLabel,
-  _posContextHtml,
-  _titled,
-};
 let _lastStatus = null,
   _configSynced = false;
 /*- Single source of truth for "is the dashboard's view of the active
@@ -161,12 +99,10 @@ export function isSyncComplete() {
   return _lastSyncComplete;
 }
 import {
-  markInputDirty,
   clearDirtyInputs,
   cacheRebalanceEvents,
   loadCachedRebalanceEvents,
 } from "./dashboard-data-cache.js";
-export { markInputDirty };
 
 /**
  * Wire the deposit-module's live-status callbacks.  Extracted from a
@@ -255,6 +191,7 @@ function _syncStatus(d) {
     positionScan: d._positionScan,
     rebalanceScanComplete: d.rebalanceScanComplete,
     lifetimeScanComplete: d.lifetimeScanComplete,
+    startingPositions: d._startingPositions,
   });
 }
 function _updateSyncBadge(d) {
@@ -300,15 +237,17 @@ function _updateSyncBadge(d) {
   applySyncBlur();
 }
 
-/** Update "Routing through: ..." badge. Always reverts to the default
- *  "9mm Aggregator" between rebalances — the badge is a live indicator,
- *  not a historical summary. Per-rebalance route detail lives in the
- *  Rebalance Events table. */
+/**
+ * Update the "Routing through: ..." badge with the active chain's first
+ * swap route, as the server names it (`swapRouteLabel`, from
+ * chains.json). The badge is a live indicator, not a historical
+ * summary: per-rebalance route detail lives in the Rebalance Events
+ * table. It stays empty until the first poll lands.
+ */
 function _updateSwapSourcesBadge(d) {
   const badge = g("swapSourcesBadge");
   if (!badge) return;
-  const sources = d.swapSources || AGGREGATOR_LABEL;
-  badge.textContent = "Routing through: " + sources;
+  badge.textContent = "Routing through: " + d.swapRouteLabel;
 }
 
 import {
@@ -404,6 +343,8 @@ export function resetHistoryFlag() {
 }
 export function resetPollingState() {
   _lastStatus = null;
+  // No answer is kept, so none is on screen.
+  forgetFreshAnswer();
   resetHistoryFlag();
   resetEventLogTrackers();
   resetSoundTrackers();
@@ -457,10 +398,8 @@ function _syncManagedAndGlobals(data) {
     botConfig.withinThreshold = data.withinThreshold;
   botConfig.oorSince = data.oorSince || null;
   botConfig.residualCleanupInProgress = !!data.residualCleanupInProgress;
-  botConfig.pmName = data.positionManagerName || botConfig.pmName || "";
-  botConfig.chainName = data.chainDisplayName || botConfig.chainName || "";
-  if (data.defaultSlippagePct > 0)
-    botConfig.defaultSlip = data.defaultSlippagePct;
+  botConfig.pmName = data.positionManagerName;
+  botConfig.errorLogPath = data.errorLogPath;
   if (data.compoundMinFeeUsd > 0)
     botConfig.compoundMinFee = data.compoundMinFeeUsd;
   if (data.compoundDefaultThresholdUsd > 0)
@@ -476,6 +415,24 @@ function _syncManagedAndGlobals(data) {
 const _LC = "color:#7df;background:#112;padding:1px 4px;border-radius:2px";
 const _LW = "color:#ff0;background:#620;padding:1px 4px;border-radius:2px";
 const _LO = "color:#0f0;background:#012;padding:1px 4px;border-radius:2px";
+/**
+ * While the figures on screen are stale, ask again for the answer that
+ * makes them fresh, in case its request went unanswered or was never
+ * sent: a closed position's history, an unmanaged one's details. The
+ * details are never sent at a switch when the managed list kept from a
+ * previous visit says the position is managed and this answer says it is
+ * not. Neither is asked while one about the same position is out or has
+ * been answered, nor the details while the wallet is locked. An open
+ * managed position's answer is this status answer itself, marked fresh
+ * once its figures are painted.
+ */
+function _askOwedAnswer() {
+  const a = posStore.getActive();
+  if (a === null || a === undefined || !isPositionDataStale()) return;
+  if (isViewingClosedPos()) refetchClosedPosHistory();
+  else if (!isPositionManaged(a.tokenId)) askDetailsIfOwed(a);
+}
+
 function _applyManagedUpdates(data, managed) {
   if (!managed) return;
   syncActivePosition(data);
@@ -486,6 +443,8 @@ function _applyManagedUpdates(data, managed) {
 
 function updateDashboardFromStatus(data) {
   _lastStatus = data;
+  // Read for the position on screen, it replaces any other position's.
+  noteStatusAnswerFor(posStore.getActive());
   /*- Single Manage-UI paint per poll.  Runs BEFORE any branch that
    *  may early-return (e.g. cross-wallet skip below), so the button
    *  always reflects current server state every 3 s regardless of
@@ -513,6 +472,8 @@ function updateDashboardFromStatus(data) {
     !!data.poolState,
   );
   _syncManagedAndGlobals(data);
+  // The route is the chain's, not a wallet's, so it is shown whoever's is loaded.
+  _updateSwapSourcesBadge(data);
   logAllPositionEvents(data);
   _updateBotStatus(data);
   _updateThrottleKpis(data);
@@ -528,7 +489,6 @@ function updateDashboardFromStatus(data) {
   _syncAutoCompound(data);
   _syncRebCache(data);
   _updateSyncBadge(data);
-  _updateSwapSourcesBadge(data);
   _updateRebalanceButtons(data);
   updateHistorySyncLabels(data);
   const _pl = _posLabel();
@@ -536,6 +496,7 @@ function updateDashboardFromStatus(data) {
   populateCompoundHistoryOnce(data, _pl, posStore.getActive()?.tokenId);
   updateHistoryFromStatus(data);
   _updatePriceMarker(data);
+  _askOwedAnswer();
   if (isViewingClosedPos()) return;
   const _a2 = posStore.getActive();
   const _managed = _a2 && isPositionManaged(_a2.tokenId);
@@ -556,17 +517,12 @@ function updateDashboardFromStatus(data) {
   _applyManagedUpdates(data, _managed);
   reapplyPrivacyBlur();
   clearDirtyInputs();
+  // An open managed position's figures are this answer's, now painted.
+  if (_managed && data._hasPositionData) markPositionDataFresh(_a2);
 }
 import {
   _computeSyncStatus,
   _computeRebalanceFollow,
 } from "./dashboard-sync-decisions.js";
-export { _computeSyncStatus, _computeRebalanceFollow };
-import {
-  initDataPoll,
-  pollNow,
-  startDataPolling,
-  stopDataPolling,
-} from "./dashboard-data-poll.js";
+import { initDataPoll } from "./dashboard-data-poll.js";
 initDataPoll(updateDashboardFromStatus);
-export { pollNow, startDataPolling, stopDataPolling };

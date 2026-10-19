@@ -8,14 +8,8 @@
     "dexDetailPage": {
       "name": "Dex Detail Page",
       "scheme": "https",
-      "domain": "dex.9mm.pro",
-      "pathSegments": [
-        "info",
-        "{swapProtocolVersion}",
-        "{blockchain}",
-        "pairs",
-        "{poolId}"
-      ]
+      "domain": "app.9mm.pro",
+      "pathSegments": ["pools", "{poolId}"]
     }
   }
 }

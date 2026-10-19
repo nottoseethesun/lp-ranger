@@ -92,9 +92,9 @@ function _slowTests(data) {
 }
 
 function _failures(data) {
-  if (!data.tests.failures || !data.tests.failures.length) return "";
+  if (data.failures.length === 0) return "";
   const lines = ["## ❌ Test failures", ""];
-  for (const f of data.tests.failures) {
+  for (const f of data.failures) {
     lines.push(`- \`${f.name}\``);
   }
   return lines.join("\n");

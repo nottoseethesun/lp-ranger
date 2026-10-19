@@ -11,11 +11,17 @@ import {
   toggleSettingsPopover,
   fetchWithCsrf,
   copyWithFeedback,
-  botConfig,
+  compositeKey,
+  emojiId,
 } from "./dashboard-helpers.js";
+import { activeChainId, activeChainDisplayName } from "./dashboard-chain.js";
 import { copyText } from "./dashboard-wallet.js";
-import { isPositionClosed } from "./dashboard-positions-store.js";
+import {
+  isPositionClosed,
+  isPositionManaged,
+} from "./dashboard-positions-store.js";
 import { runReopenFlow } from "./dashboard-reopen-flow.js";
+import { poolRuleRefusal } from "./dashboard-manage-refusal.js";
 import { getProviderLabel } from "./dashboard-lp-providers.js";
 import { paintChartLinks } from "./dashboard-chart-providers.js";
 import { paintDexDetailPage } from "./dashboard-dex-detail-page.js";
@@ -29,7 +35,8 @@ import {
   closeGasFeeModal,
 } from "./dashboard-settings-dialogs.js";
 import { closeRpcAddModal } from "./dashboard-rpc-add.js";
-import { closePriceOverrideDialog } from "./dashboard-price-override.js";
+import { POSITION_MODALS } from "./dashboard-position-dialogs.js";
+import { isAnswerForPositionOnScreen } from "./dashboard-answer-position.js";
 import {
   fetchUnmanagedDetails,
   resetLastFetchedId,
@@ -42,7 +49,9 @@ import { playSound, SOUND_MANAGE_START } from "./dashboard-sounds.js";
 import {
   applyPrivacyState,
   forceBothSubOptionsOn,
+  isPrivacyModeOn,
 } from "./dashboard-privacy-subform.js";
+import { uiSettingsReady } from "./dashboard-ui-settings.js";
 import {
   paintManageUI,
   setManageInFlight,
@@ -73,40 +82,31 @@ export function _togglePrivacy() {
  * the USD-threshold sweep re-runs against the fresh DOM text.
  */
 export function reapplyPrivacyBlur() {
-  if (localStorage.getItem("9mm_privacy_mode") !== "1") return;
+  if (!isPrivacyModeOn()) return;
+  applyPrivacyState();
+}
+
+/** Set the switch to whether privacy mode is on, and blur to match. */
+function _showPrivacyMode() {
+  const sw = g("privacySwitch");
+  if (sw) sw.checked = isPrivacyModeOn();
   applyPrivacyState();
 }
 
 /**
- * Restore privacy mode from localStorage on page load. When the
- * localStorage entry is absent (first visit or after "Clear Local
- * Storage"), falls back to the operator-configured default from
- * `GET /api/ui-defaults` (backed by
- * `app-config/app-defaults-for-user-configurable/ui-defaults.json`). Fetch failures
- * degrade to "off" so a brand-new browser without server reachability
- * still renders sensitive data (caller explicitly chose to view).
+ * Restore privacy mode on page load. A choice saved in this browser is
+ * shown and applied at once. When there is none (first visit or after
+ * "Clear Local Storage"), privacy mode follows `privacyModeEnabled`, the
+ * operator's first-visit default, which the server sends; until then it
+ * is off. Either way it is shown and applied again once the server has
+ * sent the dashboard's settings, so a blur option with no saved choice
+ * takes the server's default rather than the blur it holds until then.
  * @returns {Promise<void>}
  */
 export async function restorePrivacyMode() {
-  let on = false;
-  const saved = localStorage.getItem("9mm_privacy_mode");
-  if (saved === "1" || saved === "0") {
-    on = saved === "1";
-  } else {
-    try {
-      const res = await fetch("/api/ui-defaults");
-      if (res.ok) {
-        const data = await res.json();
-        if (typeof data.privacyModeEnabled === "boolean")
-          on = data.privacyModeEnabled;
-      }
-    } catch {
-      /* keep default off */
-    }
-  }
-  const sw = g("privacySwitch");
-  if (sw) sw.checked = on;
-  applyPrivacyState();
+  _showPrivacyMode();
+  await uiSettingsReady;
+  _showPrivacyMode();
 }
 
 // ── Copy button helper ──────────────────────────────
@@ -189,7 +189,7 @@ export function _openPoolDetailsModal() {
     const e = g(id);
     if (e) e.replaceChildren(frag);
   };
-  el("pdBlockchain", botConfig.chainName || "—");
+  el("pdBlockchain", activeChainDisplayName() || "—");
   el("pdType", active.positionType === "nft" ? "NFT (ERC-721)" : "ERC-20");
   elFrag("pdToken0", _tokenCellFrag(active.token0Symbol, active.token0));
   elFrag("pdToken1", _tokenCellFrag(active.token1Symbol, active.token1));
@@ -222,14 +222,27 @@ export function _openPoolDetailsModal() {
 
 // ── Manage toggle ───────────────────────────────────
 
-/*- Single-flight is now per-position via `setManageInFlight(key, on)`
- *  in dashboard-manage-ui.js.  Click handlers stamp the key on entry
- *  and clear it in finally.  paintManageUI() consults the Map and
- *  returns null when the flag is set so the optimistic "Managing\u2026" /
- *  "Stopping\u2026" text survives across poll cycles.  Keying by
- *  walletAddress-contractAddress-tokenId prevents the prior page-scoped
- *  boolean's bug where switching positions mid-click mis-painted the
- *  destination position's button.  See dashboard-manage-ui.js. */
+/*-
+ *  Single-flight is per-position via `setManageInFlight(key, button)` in
+ *  dashboard-manage-ui.js.  Click handlers set it on entry, with the
+ *  label the button shows meanwhile ("Managing\u2026", "Stopping\u2026"), and
+ *  clear it in finally.  paintManageUI() draws that label, disabled, on
+ *  every paint while it is set, so it survives poll cycles and a switch
+ *  to another position and back.  Keying by
+ *  walletAddress-contractAddress-tokenId keeps one position's label off
+ *  another's button.  See dashboard-manage-ui.js.
+ */
+
+// The labels a click's button shows until the server answers it.
+const _STOPPING = {
+  text: "Stopping\u2026",
+  title: "Waiting for the server to stop managing this position.",
+};
+const _STARTING = {
+  text: "Managing\u2026",
+  title: "Waiting for the server to start managing this position.",
+};
+const _REOPEN_CHECK = { title: "Checking position for re-open\u2026" };
 
 /**
  * Format a brief position specification for user-facing failure messages.
@@ -259,13 +272,22 @@ function _formatPositionSpec(active) {
  * the next click hits the backup RPC immediately instead of repeating
  * the same dead-RPC walk.  See `src/bot-loop-detect.js`.
  *
+ * A refusal under the one-position-per-pool rule gets no retry hint,
+ * since a second click would be refused the same way: its words say
+ * which position holds the pool and what to do
+ * (public/dashboard-manage-refusal.js).
+ *
+ * Exported so a test can drive it with an answer of its own.
+ *
  * @param {string} verb    Human verb for the message ("manage"/"unmanage").
  * @param {object|string} payload  Server error body `{ error, message }`
  *   (preferred) OR a bare reason string (legacy callers / network
  *   errors that never reached the JSON parse).
  * @param {object} [active] Active position (for the spec line).
+ * @param {Function} [tell]  Shows the message; the browser's `alert`
+ *   unless a test passes its own.
  */
-function _handleManageFailure(verb, payload, active) {
+export function _handleManageFailure(verb, payload, active, tell = alert) {
   /*- Wrap the whole body in try/finally so the in-flight clear + paint
    *  ALWAYS fire \u2014 audit found that a misbehaving modal helper could
    *  leave the button stuck disabled if it threw before reaching the
@@ -279,16 +301,22 @@ function _handleManageFailure(verb, payload, active) {
     const code = isObj ? payload.error : payload;
     const message = isObj ? payload.message : payload;
     log.warn("[lp-ranger] [manage] %s failed: %s", verb, code || message);
-    /*- `pool-info-unavailable` (503 from handleManage when getPoolState
-     *  validation + retry was exhausted) is shown in a dedicated warning
-     *  modal so the raw error message can be displayed in a scrollable
-     *  code block.  Other failures keep the alert() path. */
+    /*- `pool-info-unavailable` (503 from handleManage when the position's
+     *  pool, or the pool's state, could not be read) is shown in a
+     *  dedicated warning modal so the raw error message can be displayed
+     *  in a scrollable code block.  Other failures keep the alert() path. */
     if (code === "pool-info-unavailable") {
       _showPoolInfoUnavailableModal(message, active);
       return;
     }
     const spec = _formatPositionSpec(active);
     const action = verb === "manage" ? "start managing" : "stop managing";
+    const headline = `Couldn't ${action}${spec ? " " + spec : ""}:\n`;
+    const refusal = poolRuleRefusal(payload);
+    if (refusal !== null) {
+      tell(headline + refusal.text);
+      return;
+    }
     const buttonLabel = verb === "manage" ? "Manage" : "Stop Managing";
     /*- The bot-loop-detect retry chain engages sticky RPC failover on
      *  every miss, so by the time the server returns "No V3 NFT position
@@ -302,9 +330,9 @@ function _handleManageFailure(verb, payload, active) {
     /*- alert() is intentional here — the manage flow is a deliberate
      *  user action and silent failure is what got us into the stuck-UI
      *  state this branch is fixing. */
-    alert(`Couldn't ${action}${spec ? " " + spec : ""}:\n${code}${retryHint}`);
+    tell(`${headline}${code}${retryHint}`);
   } finally {
-    setManageInFlight(manageKey(active), false);
+    setManageInFlight(manageKey(active), null);
     paintManageUI();
   }
 }
@@ -341,9 +369,15 @@ function _showPoolInfoUnavailableModal(rawMessage, active) {
 
 /** Send the DELETE request to stop managing `active`. */
 async function _sendUnmanage(active) {
-  const key = `pulsechain-${active.walletAddress}-${active.contractAddress}-${active.tokenId}`;
+  const chain = activeChainId();
+  const key = compositeKey(
+    chain,
+    active.walletAddress,
+    active.contractAddress,
+    active.tokenId,
+  );
   // Suppress poll-driven auto-compound sync so it doesn't race back on
-  suppressAutoCompoundSync(5000);
+  suppressAutoCompoundSync();
   const res = await fetchWithCsrf("/api/position/manage", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
@@ -358,7 +392,45 @@ async function _sendUnmanage(active) {
     );
     return false;
   }
-  // Turn off auto-compound UI
+  const answer = await res.json().catch(() => ({}));
+  _afterUnmanaged(answer, key, active);
+  return true;
+}
+
+/**
+ * What a Stop Managing that the server took does to the screen.
+ *
+ * The answer can come minutes later, once the position's check under
+ * way has finished, and the operator may have moved to another position
+ * by then. What it does belongs to the position on screen: the
+ * auto-compound switch, and a refetch whose first act blanks the figures
+ * on screen. So it is done only when the answer names the position on
+ * screen.
+ *
+ * Exported so a test can drive it with an answer of its own: the request
+ * goes through the global `fetch`, which a test must not replace.
+ *
+ * @param {object} answer  The server's answer.
+ * @param {string} key     The key the request named.
+ * @param {object} active  The position stopped.
+ * @param {Function} [refetch]  Fetches an unmanaged position's figures;
+ *   `fetchUnmanagedDetails` unless a test passes its own.
+ * @returns {boolean}  Whether the answer was for the screen.
+ */
+export function _afterUnmanaged(
+  answer,
+  key,
+  active,
+  refetch = fetchUnmanagedDetails,
+) {
+  if (!isAnswerForPositionOnScreen(answer, key)) {
+    log.info(
+      "[lp-ranger] [manage] stopped managing #%s %s; another position is on screen, so it is left as it is",
+      active.tokenId,
+      emojiId(String(active.tokenId)),
+    );
+    return false;
+  }
   const acCb = g("autoCompoundToggle");
   if (acCb) acCb.checked = false;
   const acBadge = g("autoCompoundBadge");
@@ -366,7 +438,7 @@ async function _sendUnmanage(active) {
   // Position is now unmanaged — trigger unmanaged detail fetch
   // so the sync badge resolves and KPIs stay populated.
   resetLastFetchedId();
-  fetchUnmanagedDetails(active);
+  refetch(active);
   return true;
 }
 
@@ -390,25 +462,27 @@ async function _sendManage(active) {
     );
     return false;
   }
-  log.info("[lp-ranger] [manage] started managing #%s", active.tokenId);
+  log.info(
+    "[lp-ranger] [manage] started managing #%s %s",
+    active.tokenId,
+    emojiId(String(active.tokenId)),
+  );
   return true;
 }
 
-/*- Run the closed-position re-open dialog flow.  Per-position
- *  setManageInFlight(key, true) prevents a duplicate POST while the
- *  modal-based confirmation is open AND the bot loop spins up.
+/**
+ * Run the closed-position re-open dialog flow.  Per-position
+ * setManageInFlight(key, …) prevents a duplicate POST while the
+ * modal-based confirmation is open AND the bot loop spins up.
  *
- *  Synchronous optimistic disable mirrors the open-position click
- *  handler: paintManageUI() returns null while the in-flight flag is
- *  set (so the next poll cannot re-enable the button mid-flight), but
- *  on its own that leaves the button showing whatever state it had
- *  before the click — visibly still ENABLED until the request
- *  resolves.  The synchronous btn.disabled+title write below gives the
- *  user immediate feedback and blocks a fast second click that would
- *  otherwise queue another can-reopen POST + duplicate modal.
- *  Deliberately does NOT mutate the button TEXT — the modal that
- *  follows is the primary indicator; a "Checking…" label would just
- *  flicker into the next poll's rebalance-in-progress state. */
+ * The paint straight after setting it draws the button disabled at
+ * once, which blocks a fast second click that would otherwise queue
+ * another can-reopen POST + duplicate modal, and every paint keeps it
+ * so until the flow ends.  Deliberately gives the button no TEXT of its
+ * own — the modal that follows is the primary indicator; a "Checking…"
+ * label would just flicker into the next poll's rebalance-in-progress
+ * state.
+ */
 async function _runClosedPositionFlow(active) {
   /*- Sync-state race guard.  Defense-in-depth: the button should
    *  already be disabled when sync is incomplete (computeManageUI's
@@ -420,44 +494,38 @@ async function _runClosedPositionFlow(active) {
   const synced = isSyncComplete() === true;
   if (!synced) {
     log.info(
-      "[lp-ranger] [reopen] Manage click ignored for #%s: app still syncing",
+      "[lp-ranger] [reopen] Manage click ignored for #%s %s: app still syncing",
       active.tokenId,
+      emojiId(String(active.tokenId)),
     );
     return;
   }
   const key = manageKey(active);
-  /*- Synchronous optimistic disable BEFORE setManageInFlight so the
-   *  button stops accepting clicks the instant this handler runs.
-   *  paintManageUI() will skip (manageInFlight=true → null spec), so
-   *  this disable persists until the finally-block clears the flag and
-   *  re-paints from server state. */
-  const btn = g("manageToggleBtn");
-  if (btn) {
-    btn.disabled = true;
-    btn.title = "Checking position for re-open…";
-  }
-  setManageInFlight(key, true);
+  setManageInFlight(key, _REOPEN_CHECK);
+  paintManageUI();
   try {
     await runReopenFlow(active, {
       formatPositionSpec: _formatPositionSpec,
       handleManageFailure: _handleManageFailure,
     });
   } finally {
-    setManageInFlight(key, false);
+    setManageInFlight(key, null);
     paintManageUI();
   }
 }
 
-/** Toggle manage / pause for the active NFT position.  Single-flight
- *  is now per-position via setManageInFlight(); the synchronous
- *  optimistic disable below also blocks a within-tick second click
- *  on the same button. */
+/**
+ * Toggle manage / stop for the active NFT position.  Single-flight is
+ * per-position via setManageInFlight(); the paint straight after setting
+ * it disables the button, which also blocks a within-tick second click.
+ *
+ * Manage or Stop is decided from the managed set, the same state the
+ * button was drawn from, never from the button or badge on the page.
+ */
 export async function _toggleManagePosition() {
   const active = _posStoreRef?.getActive?.();
   if (!active?.tokenId || active.positionType !== "nft") return;
-  const badge = g("manageBadge");
-  const btn = g("manageToggleBtn");
-  const isManaged = badge?.classList.contains("managed");
+  const isManaged = isPositionManaged(active.tokenId);
   const key = manageKey(active);
   /*- Closed-position re-open path: any drained NFT (liquidity=0)
    *  routes through `_runClosedPositionFlow` regardless of whether
@@ -478,14 +546,8 @@ export async function _toggleManagePosition() {
   clearHistory();
   resetHistoryFlag();
 
-  setManageInFlight(key, true);
-  /*- Optimistic disable + label.  paintManageUI() observes the
-   *  in-flight flag and returns null (skip apply), so this transient
-   *  text survives across poll cycles until the click resolves. */
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = isManaged ? "Stopping\u2026" : "Managing\u2026";
-  }
+  setManageInFlight(key, isManaged ? _STOPPING : _STARTING);
+  paintManageUI();
 
   try {
     if (isManaged) {
@@ -507,7 +569,7 @@ export async function _toggleManagePosition() {
       active,
     );
   } finally {
-    setManageInFlight(key, false);
+    setManageInFlight(key, null);
     paintManageUI();
   }
 }
@@ -616,19 +678,8 @@ export function bindDelegatedEvents(closers) {
         close: closers.clearWallet,
       },
       {
-        id: "rebalanceIlWarningModal",
-        close: closers.rebalanceIlWarning,
-      },
-      {
         id: "allPositionsStatsModal",
         close: closers.allPositionsStats,
-      },
-      {
-        id: "poolDetailsModal",
-        close: () => {
-          const m = g("poolDetailsModal");
-          if (m) m.classList.add("hidden");
-        },
       },
       {
         id: "donateOverlay",
@@ -663,38 +714,24 @@ export function bindDelegatedEvents(closers) {
         id: "rpcAddModal",
         close: closeRpcAddModal,
       },
-      /*- These dismiss by clicking their own button rather than by
-       *  hiding the overlay from here.  hodlBaselineModal's dismissal
-       *  also writes the acknowledgement keys that stop it reappearing;
-       *  and the two slippage confirmations leave a pending save dangling
-       *  unless `_cancelPending` runs.  Hiding the element directly
-       *  would look identical on screen and quietly skip all of that.
-       *  Routing through the button keeps one definition of what
-       *  dismissal means per dialog.
-       *
-       *  Escape maps to Cancel, never Confirm: on a dialog guarding a
-       *  slippage above 5% or 10%, the safe reading of a keypress that
-       *  means "get me out of here" is "do not apply it". */
-      {
-        id: "hodlBaselineModal",
-        close: () => g("hodlBaselineClose")?.click(),
-      },
+      /*-
+       *  These dismiss by clicking their own button rather than by
+       *  hiding the overlay from here.  Routing through the button keeps
+       *  one definition of what dismissal means per dialog.
+       */
       {
         id: "noPositionsModal",
         close: () => g("noPositionsClose")?.click(),
       },
-      {
-        id: "slippageAbove5ConfirmModal",
-        close: () => g("slipAbove5CancelBtn")?.click(),
-      },
-      {
-        id: "slippageAbove10TypeConfirmModal",
-        close: () => g("slipAbove10CancelBtn")?.click(),
-      },
-      {
-        id: "priceOverrideModal",
-        close: closePriceOverrideDialog,
-      },
+      /*-
+       *  The dialogs that belong to the position on screen, each closed
+       *  as a switch to another position closes it
+       *  (dashboard-position-dialogs.js). Escape maps to Cancel, never
+       *  Confirm: on a dialog guarding a slippage above 5% or 10%, the
+       *  safe reading of a keypress that means "get me out of here" is
+       *  "do not apply it".
+       */
+      ...POSITION_MODALS,
       /*- walletUnlockModal is deliberately NOT here.  Escape must not
        *  dismiss the unlock prompt: dropping to view-only is a decision
        *  the operator makes with the dialog's own button, not something

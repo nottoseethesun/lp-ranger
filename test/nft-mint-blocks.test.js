@@ -43,6 +43,20 @@ describe("mintBlocksByTokenId", () => {
     assert.equal(m.get("300"), 6_000_000);
   });
 
+  it("takes no mint block from an event recorded at block 0", () => {
+    /*-
+     *  Block 0 is no NFT's mint. Taken as one, it starts the NFT's
+     *  history read at the chain's first block: about 9,000 requests,
+     *  half an hour in which the position is not checked. Left out, the
+     *  NFT falls back to the pool's floor like any other unknown mint.
+     */
+    const m = mintBlocksByTokenId([
+      { oldTokenId: "300", newTokenId: "301", blockNumber: 0 },
+    ]);
+    assert.equal(m.get("301"), undefined);
+    assert.equal(scanFloorFor(m, "301", 27_000_000), 27_000_000);
+  });
+
   it("does not claim a mint block for the first NFT in the chain", () => {
     /*- #100 only ever appears as an oldTokenId — its mint predates the
      *  chain, so callers must fall back to the pool floor rather than

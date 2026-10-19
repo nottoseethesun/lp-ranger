@@ -74,9 +74,10 @@
  *   GET  /api/position/:tokenId/history → Closed position historical P&L
  *
  *   UI
- *   GET  /api/ui-defaults           → Dashboard default preferences (sounds, etc.)
+ *   GET  /api/ui-defaults           → Dashboard settings the server sends (shipped + override)
  *   GET  /api/lp-providers          → LP-provider metadata keyed by <factory>_<positionManager>
- *   GET  /api/bot-config-defaults   → Bot Settings defaults (single source of truth)
+ *   GET  /api/bot-config-defaults   → Bot Settings defaults in force (shipped, override, .env)
+ *   GET  /api/help-figures          → Figures the help quotes, as this install runs
  *   GET  /api/setting-labels        → Human-readable labels for config keys (Activity Log formatter)
  *
  *   Actions
@@ -125,9 +126,19 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
  *  src/boot-log-file.js + src/log-file.js. */
 require("./src/boot-log-file").bootLogFile();
 
+/*-
+ *  Every setting is checked before any is read: the JSON settings files
+ *  with the operator's copies, `.env` and bot-config.json. A wrong one
+ *  stops the server here, each named, rather than leaving it to run on a
+ *  value nobody chose. See src/settings-check.js.
+ */
+require("./src/settings-check").refuseToStartOnBadSettings();
+
 const { log } = require("./src/log");
 const { resetErrorLog } = require("./src/error-log");
-const { writePidFile, removePidFile } = require("./src/server-pid");
+const { writePidFile } = require("./src/server-pid");
+const { readShutdownTimings } = require("./src/shutdown-timing");
+const { markStopping } = require("./src/app-phase");
 // First statement of a real run — `--help` has already exited above, so
 // nothing logs before this and it always tops the log.  Black on light gray (inverse of
 // bot.js), rocket emoji before and after "Started."  ANSI: 30=black fg,
@@ -154,11 +165,8 @@ const { getPositionHistory } = require("./src/position-history");
 const { createRebalanceLock } = require("./src/rebalance-lock");
 const { createPositionManager } = require("./src/position-manager");
 const botRecorder = require("./src/bot-recorder");
-const {
-  loadConfig,
-  managedKeys,
-  parseCompositeKey,
-} = require("./src/bot-config-v2");
+const { loadConfig, managedKeys } = require("./src/bot-config-v2");
+const { parseCompositeKey } = require("./src/composite-key");
 const { migrateAppConfig } = require("./src/migrate-app-config");
 const { buildGasStatusPayload } = require("./src/gas-monitor");
 const { actualGasCostUsd } = require("./src/bot-pnl-updater");
@@ -403,7 +411,14 @@ const {
 const { createRouteHandlers } = require("./src/server-routes");
 const { getLpProviderDisplayName } = require("./src/lp-providers");
 const { createApiStatusHandler } = require("./src/handle-api-status");
+const { createPositionStateRoutes } = require("./src/position-state-routes");
+const { primaryRouteLabel } = require("./src/rebalancer-swap");
+const { moralisEnabledIn } = require("./src/server-moralis");
+const { positionTag } = require("./src/position-answer-tag");
 const { askPassword: _askPassword } = require("./src/ask-password");
+const {
+  notifyShutdown: _notifyShutdown,
+} = require("./src/telegram-notifications/server-shutdown");
 
 const _routeHandlers = createRouteHandlers({
   diskConfig: _diskConfig,
@@ -417,6 +432,7 @@ const _routeHandlers = createRouteHandlers({
   attachMultiPosDeps,
   updatePositionState,
   askPassword: _headless ? _askPassword : null,
+  notifyShutdown: _notifyShutdown,
 });
 
 // ── Idle-driven price-lookup pause ──────────────────
@@ -456,6 +472,8 @@ const _routes = {
     actualGasCostUsd,
     getLpProviderDisplayName,
     managedKeys,
+    primaryRouteLabel,
+    moralisEnabledIn,
     jsonResponse,
   }),
   "GET /api/wallet/status": (_, res) =>
@@ -525,6 +543,7 @@ const _routes = {
       jsonResponse(res, 409, {
         ok: false,
         error: "Position not running or syncing",
+        ...positionTag(body.positionKey),
       });
       return;
     }
@@ -551,6 +570,7 @@ const _routes = {
     jsonResponse(res, 200, {
       ok: true,
       message: "Rebalance requested",
+      ...positionTag(body.positionKey),
     });
   },
   "POST /api/compound": async (req, res) => {
@@ -600,6 +620,13 @@ const _routes = {
 
   // ── Multi-position management ─────────────────
   ..._positionRoutes,
+  ...createPositionStateRoutes({
+    positionMgr: _positionMgr,
+    diskConfig: _diskConfig,
+    managedKeys,
+    getAllPositionBotStates,
+    jsonResponse,
+  }),
 
   // ── Idle-driven price-lookup pause endpoints ──
   ..._pauseInfra.routes,
@@ -624,7 +651,8 @@ async function handleRequest(req, res) {
    *  endpoint or move scope). */
   if (url.startsWith("/api/")) _pauseInfra.markActivity();
 
-  const routeKey = method + " " + url;
+  // A route is named by its path; a handler reads its query string from req.url.
+  const routeKey = method + " " + url.split("?")[0];
   const handler = _routes[routeKey];
   if (handler) {
     try {
@@ -732,7 +760,10 @@ function start(portOverride) {
     server.listen(port, host, () => {
       const loopback = host === "0.0.0.0" || host === "127.0.0.1";
       const addr = `http://${loopback ? "localhost" : host}:${port}`;
-      log.info("[server] Blockchain:" + "  PulseChain (chainId 369)");
+      log.info(
+        `[server] Blockchain:  ${config.CHAIN.displayName}` +
+          ` (chainId ${config.CHAIN.chainId})`,
+      );
       log.info(`[server] NFT Factory:` + ` ${config.POSITION_MANAGER}`);
       log.info(
         "[server] Wallet:     " +
@@ -759,10 +790,6 @@ function stop() {
   });
 }
 
-const {
-  notifyShutdown: _notifyShutdown,
-} = require("./src/telegram-notifications/server-shutdown");
-
 // ── Entry point ─────────────────────────────────────
 
 // Only start automatically when run directly
@@ -771,27 +798,38 @@ const {
 // caller controls lifecycle.
 if (require.main === module) {
   installServerErrorGuard();
+  // Read before anything starts, so an unusable value stops startup.
+  const { exitTimeoutMs } = readShutdownTimings();
   /*- Fresh start: delete the previous run's error.log so no stale entry
    *  lingers (current problems are re-logged by the scans). See src/error-log.js. */
   resetErrorLog();
   start()
-    .then(() => _routeHandlers._tryResolveKey())
     .then(() => {
-      /*- Server is up: record the PID so `npm stop` (scripts/stop.js) can send
-       *  SIGTERM for the same clean shutdown as Ctrl+C. Removed in `shutdown`. */
+      /*-
+       *  Server is up: record the PID so `npm stop` (scripts/stop.js) can send
+       *  SIGTERM for the same clean shutdown as Ctrl+C. The file is removed
+       *  when this process exits, however it exits (src/server-pid.js).
+       *
+       *  Both come before the wallet key is resolved, not after it.
+       *  Resolving it can wait on a terminal prompt, and then starts the
+       *  managed positions one at a time, the first already running while
+       *  the rest wait their turn. Until the handlers are in place, either
+       *  signal ends the process on the spot, positions mid-start.
+       */
       writePidFile();
       const shutdown = () => {
+        markStopping();
         log.info("\n[server] Shutting down\u2026");
-        removePidFile();
         _notifyShutdown();
         _pauseInfra.stop();
         _positionMgr.stopAll().catch(() => {});
         server.close(() => process.exit(0));
-        setTimeout(() => process.exit(0), 3000);
+        setTimeout(() => process.exit(0), exitTimeoutMs);
       };
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
     })
+    .then(() => _routeHandlers._tryResolveKey())
     .catch((err) => {
       log.error("[server] Failed to start:", err.message);
       process.exit(1);

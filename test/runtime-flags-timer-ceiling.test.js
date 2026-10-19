@@ -182,11 +182,92 @@ describe("timer bounds: the default the maximum is derived from", () => {
   });
 });
 
+describe("timer bounds: a setting counted in milliseconds", () => {
+  /*-
+   *  A key whose name ends in "ms", either case, is counted in
+   *  milliseconds, and a refusal must say so: "3000001 seconds" would
+   *  send the operator looking for a value a thousand times too large.
+   */
+  const POLL_MS = 3000;
+  /**
+   * A setting counted in milliseconds that has no range of its own, so
+   * the general rule applies; the dashboard's poll interval, once the
+   * example here, now declares one.
+   */
+  const poll = (sec) =>
+    assertTimerSec({
+      sec,
+      key: "copyFeedbackMs",
+      defaultSec: POLL_MS,
+    });
+
+  it("names milliseconds when refusing a value below the minimum", () => {
+    assert.throws(
+      () => poll(0),
+      (err) => {
+        assert.match(err.message, /whole number of milliseconds of at least 1/);
+        assert.doesNotMatch(err.message, /\bseconds\b/);
+        return true;
+      },
+    );
+  });
+
+  it("names milliseconds when refusing a value above the maximum", () => {
+    assert.equal(poll(POLL_MS * 1000), POLL_MS * 1000);
+    assert.throws(
+      () => poll(POLL_MS * 1000 + 1),
+      /resolves to 3000001 milliseconds, above its maximum of 3000000\./,
+    );
+  });
+
+  it("caps at 48 hours counted in milliseconds, however the key is cased", () => {
+    const pause = (sec) =>
+      assertTimerSec({
+        sec,
+        key: "rpcAllEndpointsDownPauseMS",
+        defaultSec: 3_600_000,
+      });
+    assert.equal(pause(172_800_000), 172_800_000);
+    assert.throws(
+      () => pause(172_800_001),
+      /resolves to 172800001 milliseconds, above its maximum of 172800000\./,
+    );
+  });
+});
+
+describe("timer bounds: the dashboard's poll interval", () => {
+  /**
+   * An operator can now set it, so it has a range of its own: under half
+   * a second every open tab would flood the server, and past a minute the
+   * figures go stale.
+   */
+  const dashPoll = (sec) =>
+    assertTimerSec({ sec, key: "dashboardPollIntervalMs", defaultSec: 3000 });
+
+  it("accepts half a second to a minute", () => {
+    assert.equal(dashPoll(500), 500);
+    assert.equal(dashPoll(60_000), 60_000);
+  });
+
+  it("refuses a value outside that range, in milliseconds", () => {
+    assert.throws(() => dashPoll(499), /milliseconds of at least 500/);
+    assert.throws(
+      () => dashPoll(60_001),
+      /resolves to 60001 milliseconds, above its maximum of 60000\./,
+    );
+  });
+});
+
 describe("timer bounds: the .env road", () => {
+  /** The poll interval as read from an environment holding `text`. */
+  const poll = (text) =>
+    parseTimerSec("CHECK_INTERVAL_SEC", POLL, "checkIntervalSec", {
+      CHECK_INTERVAL_SEC: text,
+    });
+
   it("names the setting the way .env spells it", () => {
     assert.throws(
-      () =>
-        parseTimerSec("7200", POLL, "CHECK_INTERVAL_SEC", "checkIntervalSec"),
+      () => poll("7200"),
       (err) => {
         assert.match(err.message, /^\[config\] CHECK_INTERVAL_SEC resolves to/);
         assert.match(err.message, /above its maximum of 3600/);
@@ -199,14 +280,17 @@ describe("timer bounds: the .env road", () => {
     );
   });
 
-  it("falls back to the default when only the OVERRIDE is unusable", () => {
-    /*- A zero or unparseable override is not a configuration error — it
-     *  is no override, and the shipped default stands. */
-    for (const v of ["0", "-5", "abc", "", undefined]) {
-      assert.equal(
-        parseTimerSec(v, POLL, "CHECK_INTERVAL_SEC", "checkIntervalSec"),
-        POLL,
-      );
-    }
+  it("refuses text that is not a whole number, naming the setting", () => {
+    /*-
+     *  Read by its rule in src/env-settings.js, never coerced: a comma or
+     *  an exponent once read as 1 second, and a zero, a sign or a word as
+     *  the default, with nothing said.
+     */
+    for (const v of ["0", "-5", "abc", "1,800", "1e3", "2.5"])
+      assert.throws(() => poll(v), /CHECK_INTERVAL_SEC in \.env must be/, v);
+  });
+
+  it("leaves the default standing when the variable is unset or blank", () => {
+    for (const v of ["", "  ", undefined]) assert.equal(poll(v), POLL);
   });
 });

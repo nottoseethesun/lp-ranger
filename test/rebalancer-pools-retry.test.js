@@ -28,9 +28,11 @@ const {
   _getPoolStateOnce,
   getPoolState,
   _setRetryDelayForTests,
+} = require("../src/rebalancer-pools");
+const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
-} = require("../src/rebalancer-pools");
+} = require("../src/pool-state-validate");
 
 /*- Shrink the inter-retry delay to zero so the exhaustion test (4
  *  attempts) completes in milliseconds rather than ~6 seconds. */

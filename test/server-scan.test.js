@@ -5,8 +5,23 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, after } = require("node:test");
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+/*-
+ *  Token symbols resolved here are fixtures. They go to a file of this
+ *  test's own, not the operator's cache, which nothing expires. Set
+ *  before src/server-scan.js loads src/token-symbol-cache.js, which
+ *  reads it once.
+ */
+const SYMBOL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "server-scan-"));
+const SYMBOL_FILE = path.join(SYMBOL_DIR, "token-symbol-cache.json");
+process.env.TOKEN_SYMBOL_CACHE_PATH = SYMBOL_FILE;
+after(() => fs.rmSync(SYMBOL_DIR, { recursive: true, force: true }));
+
 const {
   createScanHandlers,
   resolveTokenSymbol,
@@ -14,6 +29,7 @@ const {
   formatNftResponse,
   poolKey,
 } = require("../src/server-scan");
+const { getTokenSymbol } = require("../src/token-symbol-cache");
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -134,6 +150,18 @@ describe("server-scan — resolveSymbolMap", () => {
     const addr = "0x1234567890abcdef1234567890abcdef12345678";
     assert.ok(typeof map[addr] === "string");
     assert.ok(map[addr].length > 0);
+  });
+
+  it("does not cache the address that stands in for an unreadable name", async () => {
+    /*-
+     *  With no provider the chain answers nothing, so the list shows the
+     *  address. Cached, it would be read back as the token's name by the
+     *  next position that asks, and shown in move logs and alerts.
+     */
+    const addr = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd";
+    const map = await resolveSymbolMap(null, new Set([addr]));
+    assert.match(map[addr], /^0xabcd…abcd$/);
+    assert.equal(getTokenSymbol(addr), null);
   });
 });
 

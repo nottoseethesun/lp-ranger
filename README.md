@@ -2,15 +2,15 @@
 
 ![LP Ranger Banner, showing the name in Western style against the Texas night sky.](./assets/lp-ranger-app_social-preview-for-github-project-config-half.png "LP Ranger Banner")
 
-[![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
-[![Tests (Node 20/22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/ci.yml)
-[![Security Audit](https://img.shields.io/github/actions/workflow/status/nottoseethesun/9mm-lp-position-manager/security-audit.yml?branch=main&label=security)](https://github.com/nottoseethesun/9mm-lp-position-manager/actions/workflows/security-audit.yml)
+[![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/ci.yml)
+[![Tests (Node 22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/ci.yml)
+[![Security Audit](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/security-audit.yml?branch=main&label=security)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/security-audit.yml)
 
 ## Overview
 
 LP Ranger keeps your coins concentrated around the current price point in on-blockchain liquidity pools, maximizing your earnings from fees, and shows you your key performance indicators such as Impermanent Loss/Gain and Profit.
 
-LP Ranger is an on-chain, self-hosted, auto-rebalancing concentrated liquidity manager for crypto, dedicated to simplicity, for [9mm Pro](https://9mm.pro)
+LP Ranger is an on-chain, self-hosted, auto-rebalancing concentrated liquidity manager for crypto, dedicated to simplicity, for [9mm Pro](https://app.9mm.pro/)
 (Uniswap v3 fork) on [PulseChain](https://pulsechain.com) (Ethereum w/o the Bug-eating). Manages multiple LP positions simultaneously across different pools from a single wallet, with complete P&L stats extending back up to five years per pool. Provides a unified global view of all your positions' performance in a sortable table.
 
 With LP Ranger, you hold your own coins on your own wallet, at a wallet address on the blockchain: It is a completely self-custodial solution. You also run the software code (that makes up the LP Ranger application) yourself on your own machine: It is a completely self-hosted solution. Only basic computer skills, including just the very basic Terminal skills, are needed. The code is completely open-source and as such is free for you to completely inspect, use and modify ([License](#license)).
@@ -34,7 +34,7 @@ _**Ride Your LP Ranges with the Trusty LP Ranger!**_
 - [Update](#update)
 - [Uninstall](#uninstall)
 - [Usage](#usage)
-  - [Help and User Manual](#help-and-user-manual)
+  - [User Manual](#user-manual)
 - [Configure](#configure)
 - [Lint & Test](#lint--test)
 - [Private Key Security](#private-key-security)
@@ -222,14 +222,14 @@ tar xvzf lp-ranger-[new-version].tar.gz
 rm lp-ranger-[new-version].tar.gz lp-ranger-[new-version].tar.gz.sha256
 ```
 
-**Step Five** &mdash; Stop the running bot:
+**Step Five** &mdash; Stop the running bot, from another terminal:
 
 ```bash
 cd lp-ranger-[current-version-number]
-# Press Ctrl+C in the terminal where the server is running, or from another
-# terminal run:
-npm stop
+npm run gentle-stop
 ```
+
+`npm run gentle-stop`, the recommended way to stop LP Ranger, stops the server once no rebalance or compound is under way, checking every five minutes. Ctrl+C or `npm stop` stops it at once, even mid-rebalance or mid-compound.
 
 **Step Six** &mdash; Carry your personal state forward from the old install into the new one. The script never overwrites anything the release ships, and never modifies the old install:
 
@@ -270,7 +270,7 @@ rm -rf lp-ranger-[current-version-number]
   Stop the bot first &mdash; the command refuses to run while a server is up &mdash; then, from your new install directory:
 
   ```bash
-  npm stop
+  npm run gentle-stop
   npm run clear-blockchain-scan-cache
   npm start
   ```
@@ -296,6 +296,8 @@ What it does NOT touch in the new install: the shipped code (`src/`, `public/`, 
 
 Because Step Six carried those files across, the new install starts where the old one left off: the wallet unlocks from the encrypted `wallet.json`, managed positions resume polling, and operator overrides still apply.
 
+The new install checks every setting before it starts, the ones carried across included, and refuses to start while any is wrong, naming each one: a value of the wrong kind or outside its range, or a setting it does not read. To see that list without starting, run `node util/diagnostic/validate-config-values-with-any-user-overrides.js` from the new install's folder.
+
 Step Six's `migrate-app-state` supports `--dry-run`, which reports what it would copy without writing anything. Run it with `--help` for the rest, including `--from` for when more than one old install sits alongside the new one.
 
 ---
@@ -309,10 +311,9 @@ Step Six's `migrate-app-state` supports `--dry-run`, which reports what it would
 
 ```bash
 cd lp-ranger-[current-version-number]
-# Press Ctrl+C in the terminal where the server is running,
-# or, from another terminal in the app directory, run:  npm stop
-# Wait for the server to stop gracefully.
-# If it does not stop, press Ctrl+C again.
+npm run gentle-stop
+# Waits until no rebalance or compound is under way, then stops the server.
+# Ctrl+C or npm stop stops it at once, even mid-rebalance or mid-compound.
 ```
 
 **Step Three** — Clear browser data:
@@ -334,20 +335,20 @@ rm -rf lp-ranger*
 2. Pick a wallet address that you own (it can be a new address that LP Ranger will generate for you later, if you want it to) and that you will use exclusively for LP Ranger activity (manual interactions with the dApps of supported DEX Pools, such as the 9mm Liquidity Manager, are okay as well).
    - This kind of wallet segregation is a security best-practice. Separately but as well, this will ensure that LP Ranger's Lifetime Net Profit and Lifetime Impermanent Loss/Gain (IL/G) numbers are correct.
 3. Ensure that you either plan to use a brand new wallet address that LP Ranger will create for you if you so choose, or that you have either the Seed Phrase or Private Key of an existing wallet address if you plan to use an existing one.
-4. On the wallet address that you will be using for LP Ranger, if you don't have any 9mm V3 Liquidity Positions on that wallet address, then create one or more at <https://dex.9mm.pro/liquidity>, making sure to use V3.
+4. On the wallet address that you will be using for LP Ranger, if you don't have any 9mm V3 Liquidity Positions on that wallet address, then create one or more at <https://app.9mm.pro/add>, making sure to use V3.
    - Next: If you used LP Manager to create your wallet, click on "Scan Wallet" on the LP Ranger App, in the LP Browser dialog. To reach the "Scan Wallet" button, first click the "Positions" button on the app (in the three-column view, it's near top middle, and otherwise, it's on the left). Next, click the "Scan Wallet" button at top right of the dialog that pops up (that's the LP Liquidity Position Browser, aka "LP Browser"). The scan process make take some time.
 5. Visit <http://localhost:5555> in your web browser.
-6. Now, continue on by proceeding with Step #2 under the "Getting Started & How to Use" section of the "LP Ranger Help and User Manual" (pull it up by clicking on the "? Help" button at top right on the app).
+6. Now, continue on by proceeding with Step #2 under the "Getting Started & How to Use" section of the "LP Ranger User Manual" (open it with the "User Manual" button at top right in the app).
 
 > **Note:** Selecting a position starts LP Ranger synchronizing it with the
 > blockchain, which takes about an hour depending on how long ago the liquidity pool
 > was created. The "Manage" button stays disabled until that position has synced.
 >
-> **Stopping LP Ranger:** press Ctrl+C in the terminal where it is running, or run `npm stop` from another terminal in the app directory. Either way it performs the same clean shutdown &mdash; it stops all managed positions, closes the server, and removes its PID file. (`npm stop` reads the server's PID from `tmp/lp-ranger.pid` and sends it SIGTERM.)
+> **Stopping LP Ranger:** run `npm run gentle-stop` from another terminal in the app directory. It waits until no rebalance or compound is under way, checking every five minutes, then asks the server to stop itself. Ctrl+C in the server's terminal, or `npm stop`, is a force-stop: the server exits within three seconds, cutting off any rebalance or compound under way, which can leave a position's coins in the wallet. (`npm stop` sends SIGTERM to the PID in `tmp/lp-ranger.pid`.) Every way stops all managed positions, closes the server and removes its PID file, and none takes a position off the list LP Ranger brings back under management at its next start.
 
-### Help and User Manual
+### User Manual
 
-**[View the full Help and User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html)**
+**[View the full User Manual](https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html)**
 
 ---
 
@@ -355,7 +356,7 @@ rm -rf lp-ranger*
 
 No special configuration is needed beyond what the app's user interface already guides you through. Read on only if you want to override one of the shipped operator-tunable defaults for your install.
 
-Shipped defaults live under [`app-config/app-defaults-for-user-configurable/`](app-config/app-defaults-for-user-configurable/) (do not edit; tarball upgrades overwrite). To override, copy the file into [`app-config/user-configurable/`](app-config/user-configurable/) and edit your copy there. The app deep-merges your overrides on top of the shipped defaults, with your values winning. Files under `user-configurable/` are gitignored and survive upgrades.
+Shipped defaults live under [`app-config/app-defaults-for-user-configurable/`](app-config/app-defaults-for-user-configurable/) (do not edit; tarball upgrades overwrite). To override, copy the file into [`app-config/user-configurable/`](app-config/user-configurable/) and edit your copy there. The app deep-merges your overrides on top of the shipped defaults, with your values winning. Files under `user-configurable/` are gitignored and survive upgrades. Each value must be of its setting's kind and inside its range, and a copy may hold only settings LP Ranger reads: the app refuses to start otherwise, naming each problem ([Checking the Settings](docs/configuration.md#checking-the-settings)).
 
 For the full layout and rules for where new config files belong, see [The app-config Directory](docs/engineering.md#the-app-config-directory) in the engineering reference.
 
@@ -480,6 +481,7 @@ These are **internal code clean-ups**, not bugs. Nothing here changes what the a
 | [Letter-First CSS Class Prefix](docs/roadmap/clean-ups/project_css_prefix_rename.md)                                                | Every CSS class starts with a digit (`9mm-pos-mgr-`), so every selector carries a character escape. A formatter once wrapped a line right after one, silently changing what the rule matched while every gate stayed green. Two guards now catch that; a letter-first prefix would remove the class of problem instead. Wide, mechanical sweep.                                                                                                                                                                                                                                                                                                                                           |
 | [`startBotLoop` Lifecycle Test Scaffolding](docs/roadmap/clean-ups/project_bot_loop_test_scaffolding.md)                            | Build a test fixture for `startBotLoop`'s poll/stop lifecycle so behaviours that need a poll held mid-flight — the `stop()` race, for one — can be covered. Today only the extracted helpers (`pollCycle`, `resolvePrivateKey`, etc.) are covered.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | [ESM Migration](docs/roadmap/clean-ups/project_esm_migration.md)                                                                    | Migrate the codebase from CommonJS `require` / `module.exports` to ESM `import` / `export`. Dedicated branch, big-bang change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| [Clear Out Older Rule Violations](docs/roadmap/clean-ups/project_older_rule_violations.md)                                          | Code breaks four rules, most of it written before the rule it breaks. Test files swap globals without the `TEST-ONLY global swap:` label (68 of the 78 that swap one), some where a seam such as `log._setSinkForTests` exists. Eight runtime modules, `config.js` and `price-fetcher.js` among them, re-export names they import. Four CLAUDE.md passages recount past incidents instead of describing the mechanism. More than 560 checks test an element or an object for truthiness, as in `if (el)`, where the rule asks for an explicit check.                                                                                                                                      |
 
 ### Nice to Have's
 
@@ -490,7 +492,7 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [Avoid Edge-Case, Temporary Lag in Rebalance Data](docs/roadmap/nice-to-haves/project_rebalance_data_lag.md)                        | Incremental scanner sometimes, depending on blockchain reads coming through normally, misses pairing a new rebalance to its cached predecessor; self-heals next cycle but causes brief lag of about 30 minutes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | [Show Swap Route Even If Only Blockchain Data Available](docs/roadmap/nice-to-haves/project_route_via_chain_scan_gap.md)            | Chain-scanned rebalance events have no swap-source field, so "Routed Via" shows em-dash on fresh installs; recover from on-chain receipts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | [Suppress False Out-of-Range on Unmanaged View Until Synced](docs/roadmap/nice-to-haves/project_suppress_oor_until_synced.md)       | Unmanaged view briefly shows a position as out-of-range before range bar and price finish loading; gate the indicator on full sync.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| [Corrective-Swap Oscillation Guard](docs/roadmap/nice-to-haves/project_corrective_swap_oscillation.md)                              | Corrective-swap loop can overshoot then exhaust 3 iterations on volatile paths, leaving small residuals above the dust threshold.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| [Corrective-Swap Oscillation Guard](docs/roadmap/nice-to-haves/project_corrective_swap_oscillation.md)                              | Corrective-swap loop can overshoot then exhaust its round limit (`correctiveSwapMaxRounds`) on volatile paths, leaving small residuals above the dust threshold.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | [Mint Speed-Up Recompute](docs/roadmap/nice-to-haves/project_mint_speedup_recompute.md)                                             | On a stuck mint speedup, recompute amounts/min from a fresh pool snapshot so a delayed mint doesn't revert on stale slippage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | [Log-to-File](docs/roadmap/nice-to-haves/project_log_to_file.md)                                                                    | The tee and its `--log-file` flag have shipped. What remains is the dashboard Settings toggle, plus size-based rotation — rotate externally.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | [Batch And Cache The Per-NFT History Walk](docs/roadmap/nice-to-haves/project_cache_per_nft_walk.md)                                | The batching half has shipped: one pass now covers a whole chain in around 510 queries rather than 53,268. What remains is the cache. Each NFT is re-read on every cold start even though its history is settled, so a long chain pays the same minutes again on each one. Caching against a high-water block would take a restart to roughly seven seconds. Non-trivial because an NFT can be re-funded on 9mm outside LP Ranger, so entries need per-NFT resumption rather than a write-once.                                                                                                                                                                                           |
@@ -505,7 +507,9 @@ These are **polish and refinement ideas**, not bugs. The app works correctly tod
 | [Range Width as a Fraction of Pool's Populated Liquidity Range](docs/roadmap/nice-to-haves/project_range_width_pool_populated.md)   | Add a per-position width option expressed as a percentage of the pool's currently-populated liquidity range, alongside the existing Price Range Extension (percentage of current price). More native to LP decision-making; requires querying the pool's tick bitmap to compute the denominator.                                                                                                                                                                                                                                                                                                                                                                                          |
 | [Debug Scripts Print the Inspector URL](docs/roadmap/nice-to-haves/project_debug_scripts_print_url.md)                              | The four `npm run debug*` scripts start Node's debugger without plainly saying where to go next &mdash; the useful line is either mixed into startup output or buried in a block of alternatives. Print one clean `chrome://inspect` line instead, and move the alternatives to the engineering docs.                                                                                                                                                                                                                                                                                                                                                                                     |
 | [Re-scan Prices and Reload for Unmanaged Positions](docs/roadmap/nice-to-haves/project_rescan_reload_for_unmanaged.md)              | Both actions refuse on an unmanaged position, and the dialogs now say why. The refusal is mechanical: each drives its work through a running bot loop, and the server resolves the position from that loop’s state, so without one the route answers 404. Little is actually at stake — an unmanaged position shows no Lifetime panel, and its Current panel is recomputed from chain each request — but a bad price in the shared caches is visible there with no way to correct it short of Manage → re-scan → stop.                                                                                                                                                                    |
+| [Don't Let a Bookmarked Link Override a Pick Made During the Scan](docs/roadmap/nice-to-haves/project_deep_link_overrides_pick.md)  | A link to a position this browser has never stored starts a wallet scan, and a position picked during the scan is replaced by the linked one when it ends. The fix needs a signal only the operator's click produces: the dashboard rewrites the address bar itself when the wallet loads, so checking it would break such links.                                                                                                                                                                                                                                                                                                                                                         |
 | [Merge the Two Historical-Price Lookups](docs/roadmap/nice-to-haves/project_merge_historical_price_fetches.md)                      | Reconstruction prices a pool's two tokens under a block-scoped cache key, while the gas lookup prices the native token under a day-scoped one. Same token, same moment, two entries that cannot see each other — so a pool holding the native token pays for it twice. Every figure is correct; the cost is duplicated calls against a rate-limited tier. Making the single-token lookup the primitive is surgery on `price-fetcher.js`, so it wants its own branch.                                                                                                                                                                                                                      |
+| [Show a Locked Wallet After the Server Restarts](docs/roadmap/nice-to-haves/project_wallet_state_after_restart.md)                  | After a server restart without `WALLET_PASSWORD`, a page left open still treats the wallet as unlocked: Unlock Wallet stays disabled and Manage enabled, since the page reads the wallet's state only when it loads. The server refuses a Manage it cannot carry out, and reloading the page shows the unlock dialog. The fix would carry the locked state in the status answer and open the unlock dialog when it turns locked.                                                                                                                                                                                                                                                          |
 
 ### Possible Major New Features
 
@@ -531,6 +535,6 @@ Thank you for the support — it directly funds development time on LP Ranger.
 
 ## Contributing
 
-Bug reports and ideas for new features and improvements are welcome. Use the [Discussions](https://github.com/nottoseethesun/lp-ranger/discussions) tab to discuss and ask questions, or if you have something very specific and are ready to supply logs, use the [Issues](https://github.com/nottoseethesun/9mm-lp-position-manager/issues) tab.
+Bug reports and ideas for new features and improvements are welcome. Use the [Discussions](https://github.com/nottoseethesun/lp-ranger/discussions) tab to discuss and ask questions, or if you have something very specific and are ready to supply logs, use the [Issues](https://github.com/nottoseethesun/lp-ranger/issues) tab.
 
 Due to security being the highest priority, only contributions that have been formally audited for security can be considered for acceptance.

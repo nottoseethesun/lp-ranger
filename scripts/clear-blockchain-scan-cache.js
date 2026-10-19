@@ -208,7 +208,7 @@ function main() {
   const pid = waitForServerExit();
   if (pid !== null) {
     console.error(
-      `[clear-cache] LP Ranger is running (PID ${pid}). Stop it first:\n\n    npm stop\n`,
+      `[clear-cache] LP Ranger is running (PID ${pid}). Stop it first:\n\n    npm run gentle-stop\n`,
     );
     process.exitCode = 1;
     return;

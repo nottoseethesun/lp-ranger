@@ -4,11 +4,38 @@
  *   _humanizeError, _checkRangeAndThreshold, and _checkRebalanceGates
  *   (src/bot-cycle.js), plus _isTimeoutExpired, _isBeyondThreshold,
  *   and _reloadFromConfig (src/bot-cycle-triggers.js).
+ *
+ *   The swap backoff's waits and retry limit, how long a drained position
+ *   waits to be retired, and the OOR timeout's default are an operator's
+ *   own here, not the figures that ship, so a figure written into the
+ *   code fails.
  */
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const SETTINGS_DIR = makeTestTempFolder("bot-cycle-helpers-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "app-runtime.json"),
+  JSON.stringify({
+    tx: {
+      swapBackoffBaseMs: 45000,
+      swapBackoffMaxMs: 900000,
+      retrySwapLimit: 6,
+    },
+    retire: { drainedAfterMs: 2700000 },
+  }),
+);
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "bot-config-defaults.json"),
+  JSON.stringify({ rebalanceTimeoutMin: 240 }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
+
+const { describe, it, beforeEach, afterEach, mock } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   _humanizeError,
@@ -17,8 +44,13 @@ const {
   _checkRebalanceGates,
   _activateSwapBackoff,
   _liquidityChanged,
-  DRAINED_RETIRE_MS,
 } = require("../src/bot-cycle");
+const config = require("../src/config");
+const tg = require("../src/telegram-notifications/telegram");
+const {
+  EVENT_DEFAULTS,
+} = require("../src/telegram-notifications/telegram-events");
+const { DRAINED_RETIRE_MS } = config;
 const {
   _isTimeoutExpired,
   _isBeyondThreshold,
@@ -77,10 +109,13 @@ describe("_isTimeoutExpired", () => {
   });
 
   it("uses config default when gc returns undefined", () => {
-    const bs = { oorSince: Date.now() - 1000 * 60_000 };
+    // 240 minutes here, so 200 minutes out of range is not yet long enough.
     const gc = () => undefined;
-    // Default REBALANCE_TIMEOUT_MIN is 180
-    assert.strictEqual(_isTimeoutExpired(bs, gc), true);
+    assert.ok(!_isTimeoutExpired({ oorSince: Date.now() - 200 * 60_000 }, gc));
+    assert.strictEqual(
+      _isTimeoutExpired({ oorSince: Date.now() - 250 * 60_000 }, gc),
+      true,
+    );
   });
 });
 
@@ -152,27 +187,114 @@ describe("_checkRangeAndThreshold", () => {
   });
 });
 
+// ── The OOR Timeout alert ───────────────────────────────────────────
+
+describe("the OOR Timeout alert", () => {
+  const realFetch = globalThis.fetch;
+  /*-
+   *  The OOR Timeout messages sent, caught at the fetch the telegram
+   *  module makes.
+   */
+  let sent;
+  beforeEach(() => {
+    sent = [];
+    /*-
+     *  TEST-ONLY global swap: the telegram module sends through the
+     *  global fetch and takes none of its own. The original is put back
+     *  pristine after each case.
+     */
+    globalThis.fetch = async (_url, opts) => {
+      const text = JSON.parse(opts.body).text;
+      if (text.includes("OOR Timeout Triggered")) sent.push(text);
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+    tg.setBotToken("tok");
+    tg.setChatId("123");
+    tg.setEnabledEvents(EVENT_DEFAULTS);
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    tg.setBotToken(null);
+    tg.setChatId(null);
+  });
+
+  /**
+   * Ninety minutes and 7%, off the shipped 180 and 5, so the test cannot
+   * pass on the defaults.
+   */
+  const gc = (k) =>
+    ({ rebalanceTimeoutMin: 90, rebalanceOutOfRangeThresholdPercent: 7 })[k];
+  const position = {
+    tokenId: 1,
+    fee: 3000,
+    token0: "0xA",
+    token1: "0xB",
+    tickLower: -100,
+    tickUpper: 100,
+  };
+  /*-
+   *  Just above the range and inside the threshold, so only the timeout
+   *  can trigger the rebalance.
+   */
+  const outOfRange = { tick: 105, price: 1.0105, decimals0: 18, decimals1: 18 };
+  const inRange = { tick: 0, price: 1, decimals0: 18, decimals1: 18 };
+
+  /** One poll at `iso`, then let the alert's send run. */
+  async function pollAt(bs, iso, poolState = outOfRange) {
+    mock.method(Date, "now", () => Date.parse(iso));
+    _checkRangeAndThreshold(
+      { position, _botState: bs, _getConfig: gc },
+      poolState,
+      () => {},
+    );
+    mock.restoreAll();
+    await new Promise((r) => setImmediate(r));
+  }
+
+  it("goes out once, not on every poll while the rebalance is held", async () => {
+    /*-
+     *  Each poll after the timeout is one the daily cap, the throttle,
+     *  the Guard or a gas wait held, and each would send the alert again
+     *  if the alert went out per poll rather than once.
+     */
+    const bs = { oorSince: Date.parse("2026-10-18T10:00:00Z") };
+    for (const iso of [
+      "2026-10-18T12:00:00Z",
+      "2026-10-18T12:05:00Z",
+      "2026-10-18T18:00:00Z",
+    ])
+      await pollAt(bs, iso);
+    assert.equal(sent.length, 1);
+  });
+
+  it("goes out again once a new UTC day begins, while the spell lasts", async () => {
+    const bs = { oorSince: Date.parse("2026-10-18T20:00:00Z") };
+    await pollAt(bs, "2026-10-18T23:50:00Z");
+    await pollAt(bs, "2026-10-18T23:55:00Z");
+    assert.equal(sent.length, 1);
+    // Twenty minutes later, but past midnight UTC.
+    await pollAt(bs, "2026-10-19T00:10:00Z");
+    assert.equal(sent.length, 2);
+  });
+
+  it("goes out for each new out-of-range spell, the same day included", async () => {
+    const bs = { oorSince: Date.parse("2026-10-18T08:00:00Z") };
+    await pollAt(bs, "2026-10-18T10:00:00Z");
+    assert.equal(sent.length, 1);
+    /*-
+     *  Back in range ends the spell. Out again at 11:10 starts a new one,
+     *  whose ninety minutes run out at 12:40.
+     */
+    await pollAt(bs, "2026-10-18T11:00:00Z", inRange);
+    await pollAt(bs, "2026-10-18T11:10:00Z");
+    await pollAt(bs, "2026-10-18T12:45:00Z");
+    assert.equal(sent.length, 2);
+  });
+});
+
 // ── _reloadFromConfig ───────────────────────────────────────────────
 
 describe("_reloadFromConfig", () => {
-  it("sets interval from config", () => {
-    let newInterval = null;
-    const gc = (k) => (k === "checkIntervalSec" ? 30 : undefined);
-    const throttle = {
-      configure: () => {},
-    };
-    _reloadFromConfig(gc, throttle, (ms) => (newInterval = ms));
-    assert.strictEqual(newInterval, 30000);
-  });
-
-  it("does not set interval when config returns undefined", () => {
-    let called = false;
-    const gc = () => undefined;
-    const throttle = { configure: () => {} };
-    _reloadFromConfig(gc, throttle, () => (called = true));
-    assert.strictEqual(called, false);
-  });
-
   it("configures throttle from config", () => {
     let configured = null;
     const gc = (k) => {
@@ -183,7 +305,7 @@ describe("_reloadFromConfig", () => {
     const throttle = {
       configure: (opts) => (configured = opts),
     };
-    _reloadFromConfig(gc, throttle, () => {});
+    _reloadFromConfig(gc, throttle);
     assert.ok(configured);
     assert.strictEqual(configured.minIntervalMs, 15 * 60_000);
     assert.strictEqual(configured.dailyMax, 10);
@@ -302,10 +424,10 @@ describe("_checkRebalanceGates", () => {
 // ── _activateSwapBackoff ────────────────────────────────────────────
 
 describe("_activateSwapBackoff", () => {
-  it("sets initial backoff of 60s on first call", () => {
+  it("waits tx.swapBackoffBaseMs on the first call", () => {
     const state = { rebalanceInProgress: true };
     _activateSwapBackoff(state, null);
-    assert.strictEqual(state.swapBackoffMs, 60_000);
+    assert.strictEqual(state.swapBackoffMs, 45_000);
     assert.ok(state.swapBackoffUntil > Date.now() - 1000);
     assert.strictEqual(state.swapBackoffAttempts, 1);
     assert.strictEqual(state.rebalanceInProgress, false);
@@ -318,15 +440,15 @@ describe("_activateSwapBackoff", () => {
     assert.strictEqual(state.swapBackoffAttempts, 2);
   });
 
-  it("caps backoff at 20 minutes", () => {
-    const state = { swapBackoffMs: 15 * 60_000, swapBackoffAttempts: 4 };
+  it("caps backoff at tx.swapBackoffMaxMs", () => {
+    const state = { swapBackoffMs: 899_000, swapBackoffAttempts: 4 };
     _activateSwapBackoff(state, null);
-    assert.strictEqual(state.swapBackoffMs, 20 * 60_000);
+    assert.strictEqual(state.swapBackoffMs, 900_000);
   });
 
   it("pauses after max retry limit is reached", () => {
-    // Default limit is from config.REBALANCE_RETRY_SWAP_LIMIT
-    const state = { swapBackoffAttempts: 99 };
+    // The sixth failure in a row, the limit tx.retrySwapLimit sets here.
+    const state = { swapBackoffAttempts: 5 };
     let emitted = null;
     _activateSwapBackoff(state, (p) => (emitted = p));
     assert.strictEqual(state.rebalancePaused, true);
@@ -338,10 +460,13 @@ describe("_activateSwapBackoff", () => {
   });
 
   it("does not pause when below limit", () => {
-    const state = { swapBackoffAttempts: 0 };
-    _activateSwapBackoff(state, null);
-    assert.strictEqual(state.rebalancePaused, undefined);
-    assert.strictEqual(state.swapBackoffAttempts, 1);
+    // The fifth failure: one short of the limit, as the first is.
+    for (const before of [0, 4]) {
+      const state = { swapBackoffAttempts: before };
+      _activateSwapBackoff(state, null);
+      assert.strictEqual(state.rebalancePaused, undefined);
+      assert.strictEqual(state.swapBackoffAttempts, before + 1);
+    }
   });
 });
 
@@ -371,11 +496,16 @@ describe("_checkZeroLiquidity drained retirement", () => {
   });
 
   it("signals retired once elapsed >= DRAINED_RETIRE_MS", () => {
-    const state = { drainedSince: Date.now() - DRAINED_RETIRE_MS - 1000 };
+    // 45 minutes here; 40 minutes is not yet long enough.
+    const early = { drainedSince: Date.now() - 2_400_000 };
+    assert.deepStrictEqual(_checkZeroLiquidity(depsWith(early, "0")), {
+      rebalanced: false,
+    });
+    const state = { drainedSince: Date.now() - 2_700_000 - 1000 };
     const r = _checkZeroLiquidity(depsWith(state, "0"));
     assert.strictEqual(r.retired, true);
     assert.strictEqual(r.rebalanced, false);
-    assert.ok(r.drainedForMs >= DRAINED_RETIRE_MS);
+    assert.ok(r.drainedForMs >= 2_700_000);
   });
 
   it("does NOT arm the timer while a rebalance is in flight", () => {
@@ -420,8 +550,8 @@ describe("_checkZeroLiquidity drained retirement", () => {
     assert.strictEqual(state.drainedSince, undefined);
   });
 
-  it("DRAINED_RETIRE_MS is 30 minutes", () => {
-    assert.strictEqual(DRAINED_RETIRE_MS, 30 * 60_000);
+  it("takes the retire wait from app-runtime.json's retire.drainedAfterMs", () => {
+    assert.strictEqual(DRAINED_RETIRE_MS, 2_700_000);
   });
 });
 

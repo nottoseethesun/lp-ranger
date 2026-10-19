@@ -8,16 +8,15 @@
  * and range validity.
  */
 
-const { describe, it } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
+const { startLocalAggregator } = require("./helpers/local-aggregator");
+const { mintPosition, executeRebalance } = require("../src/rebalancer");
 const {
   computeDesiredAmounts,
   swapIfNeeded,
-  mintPosition,
-  removeLiquidity,
-  executeRebalance,
-  _MAX_UINT128,
-} = require("../src/rebalancer");
+} = require("../src/rebalancer-swap");
+const { removeLiquidity, _MAX_UINT128 } = require("../src/rebalancer-pools");
 const { computeNewRange, priceToTick } = require("../src/range-math");
 
 // ── Shared helpers (test/helpers/rebalancer-mocks.js) ───────────────────────
@@ -30,6 +29,17 @@ const {
   defaultDispatch,
   buildMockEthersLib,
 } = require("./helpers/rebalancer-mocks");
+
+/*-
+ *  These swaps are meant to reach the V3 router. The live aggregator
+ *  refuses the fixtures' made-up tokens, which sends them there; a local
+ *  one refuses them the same way, with no third party asked.
+ */
+let aggregator;
+before(async () => {
+  aggregator = await startLocalAggregator();
+});
+after(() => aggregator.stop());
 
 const rebalOpts = (posOverride) => ({
   position: {
@@ -364,7 +374,7 @@ describe("Fund safety — new range validity", () => {
  *
  * The guard is an `err.nonceUnsettled` flag that the fallback declines. This
  * drives the real chain — `swapIfNeeded` → `swapViaAggregator` →
- * `_sendWithRetry` → `_settleNonce` → `_balanceDiff` — with only the quote
+ * `_sendWithRetry` → `settleNonce` → `balanceDiff` — with only the quote
  * endpoint and the signer stubbed, because the flag's whole job is to survive
  * those layers. Stubbing the aggregator module would prove the two halves and
  * not the join: a refactor that re-wrapped the error on its way out would
@@ -449,7 +459,7 @@ describe("Fund safety — one swap intent, at most one swap", () => {
           assert.strictEqual(
             err.nonceUnsettled,
             true,
-            "flag must survive _sendWithRetry, swapViaAggregator and _balanceDiff",
+            "flag must survive _sendWithRetry, swapViaAggregator and balanceDiff",
           );
           return true;
         },
@@ -529,7 +539,7 @@ describe("Fund safety — a partial chunked swap is not swapped again", () => {
       require.cache[id] = { id, filename: id, loaded: true, exports };
     };
     stub(AGG_PATH, {
-      AGGREGATOR_LABEL: "9mm Aggregator",
+      AGGREGATOR_LABEL: "Watergun Aggregator",
       swapViaAggregator: async (_s, _e, params) => {
         const label = params._attemptLabel || "";
         if (label.includes("(full)")) {

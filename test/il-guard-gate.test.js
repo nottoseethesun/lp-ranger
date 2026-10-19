@@ -22,8 +22,9 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { checkIlGuard } = require("../src/il-guard");
+const { checkIlGuard, clearIlGuardWait } = require("../src/il-guard");
 const { isRecoveryResult } = require("../src/bot-loop");
+const { ilSnapshot } = require("./helpers/il-snapshot");
 
 describe("checkIlGuard — the gate", () => {
   /*- Every collaborator that could touch the chain throws.  If the gate
@@ -39,7 +40,7 @@ describe("checkIlGuard — the gate", () => {
     deps = {
       position: { tokenId: "164418", fee: 2500, token0: "0xA", token1: "0xB" },
       _getConfig: (k) => (k === "impermanentLossGuardPct" ? 50 : undefined),
-      _botState: { hodlBaseline: { entryValue: 1000 } },
+      _botState: {},
       provider: new Proxy({}, { get: () => explode("provider") }),
       signer: new Proxy({}, { get: () => explode("signer") }),
     };
@@ -60,34 +61,39 @@ describe("checkIlGuard — the gate", () => {
     };
     deps._recordPoolRebalance = explode("_recordPoolRebalance");
     deps._poolKey = explode("_poolKey");
-    const r = checkIlGuard(deps, false, { currentValue: 480 }, notifyPos);
+    const r = checkIlGuard(deps, false, ilSnapshot(480, 1000), notifyPos);
     assert.deepEqual(r, { rebalanced: false, ilGuardRejected: true });
   });
 
   it("rejects a position below the floor without touching it", () => {
-    const r = checkIlGuard(deps, false, { currentValue: 480 }, notifyPos);
+    const r = checkIlGuard(deps, false, ilSnapshot(480, 1000), notifyPos);
     assert.deepEqual(r, { rebalanced: false, ilGuardRejected: true });
   });
 
   it("returns null — proceed — when above the floor", () => {
     assert.equal(
-      checkIlGuard(deps, false, { currentValue: 640 }, notifyPos),
+      checkIlGuard(deps, false, ilSnapshot(640, 1000), notifyPos),
       null,
     );
   });
 
   it("is skipped entirely for a user-forced rebalance", () => {
-    /*- Rebalance Now always works, like every other gate here.  It has
-     *  already shown its own impermanent-loss confirmation. */
+    /*-
+     *  Rebalance Now skips the Guard, as it skips every other gate here.
+     *  It has already shown its own impermanent-loss confirmation.
+     */
     assert.equal(
-      checkIlGuard(deps, true, { currentValue: 1 }, notifyPos),
+      checkIlGuard(deps, true, ilSnapshot(1, 1000), notifyPos),
       null,
       "a forced rebalance must pass even at a total loss",
     );
   });
 
-  it("proceeds when the position has no baseline yet", () => {
-    deps._botState = { hodlBaseline: null };
+  it("proceeds before the snapshot carries IL/G", () => {
+    /*-
+     *  The minted coins not read yet: there is nothing to measure
+     *  against, and the Guard fails open.
+     */
     assert.equal(
       checkIlGuard(deps, false, { currentValue: 1 }, notifyPos),
       null,
@@ -95,12 +101,15 @@ describe("checkIlGuard — the gate", () => {
   });
 
   it("still guards a position with no saved value", () => {
-    /*- An unset key falls back to the shipped default, so the Guard is
-     *  live out of the box.  A position worth $1 against a $1,000 mint
-     *  must be refused whether or not anyone opened Bot Settings. */
+    /*-
+     *  An unset key falls back to the shipped default, so the Guard is
+     *  live out of the box.  A position worth $1 against $1,000 of
+     *  holding must be refused whether or not anyone opened Bot
+     *  Settings.
+     */
     deps._getConfig = () => undefined;
     assert.deepEqual(
-      checkIlGuard(deps, false, { currentValue: 1 }, notifyPos),
+      checkIlGuard(deps, false, ilSnapshot(1, 1000), notifyPos),
       {
         rebalanced: false,
         ilGuardRejected: true,
@@ -110,28 +119,6 @@ describe("checkIlGuard — the gate", () => {
 
   it("proceeds when there is no snapshot to project from", () => {
     assert.equal(checkIlGuard(deps, false, null, notifyPos), null);
-  });
-
-  it("credits the residual, which can lift a position over the floor", () => {
-    /*- $480 LP alone is under the $500 floor; with $60 of pool residual
-     *  the rebalance would mint $540 and is allowed. */
-    const rejected = checkIlGuard(
-      deps,
-      false,
-      { currentValue: 480 },
-      notifyPos,
-    );
-    assert.ok(rejected, "without residual it rejects");
-    /*- That refusal started the retry cooldown.  Clear it so the second
-     *  probe is a fresh decision rather than the held one. */
-    deps._botState._ilGuardRejectedAt = 0;
-    const allowed = checkIlGuard(
-      deps,
-      false,
-      { currentValue: 480, residualValueUsd: 60 },
-      notifyPos,
-    );
-    assert.equal(allowed, null, "with residual folded in it proceeds");
   });
 });
 
@@ -147,12 +134,17 @@ describe("checkIlGuard — the retry backoff", () => {
     deps = {
       position: { tokenId: "164418" },
       _getConfig: (k) => (k === "impermanentLossGuardPct" ? 50 : undefined),
-      _botState: { hodlBaseline: { entryValue: 1000 } },
+      _botState: {},
     };
   });
 
-  const poll = (currentValue) =>
-    checkIlGuard(deps, false, { currentValue }, notifyPos);
+  const poll = (positionUsd) =>
+    checkIlGuard(deps, false, ilSnapshot(positionUsd, 1000), notifyPos);
+  /**
+   * A poll whose snapshot carries no IL/G, which fails open whenever
+   * the Guard actually decides.
+   */
+  const pollUnmeasured = () => checkIlGuard(deps, false, {}, notifyPos);
 
   /*- Wind the clock back so the current window has elapsed. */
   const elapse = (hours) => {
@@ -170,9 +162,8 @@ describe("checkIlGuard — the retry backoff", () => {
     /*- The backoff silences the retry and the alert, never the refusal.
      *  Every poll inside the window must still say no. */
     poll(480);
-    deps._botState.hodlBaseline = null; // would otherwise fail open
     for (let i = 0; i < 5; i++) {
-      assert.deepEqual(poll(480), {
+      assert.deepEqual(pollUnmeasured(), {
         rebalanced: false,
         ilGuardRejected: true,
         ilGuardCoolingDown: true,
@@ -231,12 +222,13 @@ describe("checkIlGuard — the retry backoff", () => {
   });
 
   it("resets the ladder when the guard stops being evaluable", () => {
-    /*- e.g. a Reload wiped the baseline.  Leaving the stamp would hold
-     *  the next real episode on a stale schedule. */
+    /*-
+     *  e.g. a Reload wiped the minted coins.  Leaving the stamp would
+     *  hold the next real episode on a stale schedule.
+     */
     poll(480);
     elapse(4);
-    deps._botState.hodlBaseline = null;
-    assert.equal(poll(480), null);
+    assert.equal(pollUnmeasured(), null);
     assert.equal(deps._botState._ilGuardRejectedAt, 0);
     assert.equal(deps._botState._ilGuardRejectCount, 0);
   });
@@ -244,10 +236,64 @@ describe("checkIlGuard — the retry backoff", () => {
   it("never holds a manual Rebalance Now", () => {
     poll(480);
     assert.equal(
-      checkIlGuard(deps, true, { currentValue: 1 }, notifyPos),
+      checkIlGuard(deps, true, ilSnapshot(1, 1000), notifyPos),
       null,
       "a forced rebalance ignores both the guard and its backoff",
     );
+  });
+});
+
+describe("checkIlGuard — the block the dashboard shows after a Guard save", () => {
+  /*-
+   *  A rejection publishes `ilGuardBlocked`, which the dashboard shows as
+   *  the "Rebalance skipped — impermanent loss" dialog until the bot
+   *  publishes it null. Saving the Guard lifts the wait at once
+   *  (`clearIlGuardWait`) and leaves the block for the next check to
+   *  lift or word again. The state here is merged into as the server's
+   *  is, so what the bot published is what it reads.
+   */
+
+  const notifyPos = (p) => ({ tokenId: p.tokenId });
+  let deps;
+  let guardPct;
+
+  beforeEach(() => {
+    guardPct = 50;
+    deps = {
+      position: { tokenId: "164418" },
+      _getConfig: (k) =>
+        k === "impermanentLossGuardPct" ? guardPct : undefined,
+      _botState: {},
+    };
+    deps.updateBotState = (patch) => Object.assign(deps._botState, patch);
+  });
+
+  const poll = (positionUsd) =>
+    checkIlGuard(deps, false, ilSnapshot(positionUsd, 1000), notifyPos);
+
+  it("is lifted when the raised Guard lets the rebalance through", () => {
+    poll(480);
+    assert.ok(deps._botState.ilGuardBlocked, "the rejection is published");
+    clearIlGuardWait(deps._botState);
+    guardPct = 60;
+    assert.equal(poll(480), null, "the raised Guard passes it");
+    assert.equal(deps._botState.ilGuardBlocked, null, "the dialog goes");
+  });
+
+  it("is lifted when the next check cannot measure the position", () => {
+    poll(480);
+    clearIlGuardWait(deps._botState);
+    assert.equal(checkIlGuard(deps, false, {}, notifyPos), null);
+    assert.equal(deps._botState.ilGuardBlocked, null);
+  });
+
+  it("is worded again when the next check rejects again", () => {
+    poll(480);
+    clearIlGuardWait(deps._botState);
+    // A 52% loss: still past a Guard of 51, whose floor is $490.
+    guardPct = 51;
+    assert.equal(poll(480).ilGuardRejected, true);
+    assert.match(deps._botState.ilGuardBlocked.message, /set to 51%/);
   });
 });
 
@@ -265,11 +311,13 @@ describe("checkIlGuard — the shipped default actually applies", () => {
     /*- Nothing saved for this position — the normal state of every
      *  position the user has never configured. */
     _getConfig: () => undefined,
-    _botState: { hodlBaseline: { entryValue: 3947.23 } },
+    _botState: {},
   });
+  // Holding the coins this position was minted with: $3,947.23 today.
+  const at = (positionUsd) => ilSnapshot(positionUsd, 3947.23);
 
   it("guards a never-configured position", () => {
-    const r = checkIlGuard(virgin(), false, { currentValue: 500 }, notifyPos);
+    const r = checkIlGuard(virgin(), false, at(500), notifyPos);
     assert.deepEqual(
       r,
       { rebalanced: false, ilGuardRejected: true },
@@ -279,22 +327,24 @@ describe("checkIlGuard — the shipped default actually applies", () => {
 
   it("still allows a loss inside the shipped default", () => {
     assert.equal(
-      checkIlGuard(virgin(), false, { currentValue: 3600 }, notifyPos),
+      checkIlGuard(virgin(), false, at(3600), notifyPos),
       null,
       "8.8% down sits inside the shipped 15%",
     );
   });
 
   it("a saved per-position value overrides the shipped default", () => {
-    /*- 29.4% down, the drawdown this position really had: refused by the
-     *  shipped 15, allowed once the operator raises the guard to 50. The
+    /*-
+     *  29.4% below holding: refused by the shipped 15, allowed once the
+     *  operator raises the guard to 50. The
      *  outcome flips, so it is the saved value deciding, not the default.
      *  Each case gets its own state — a rejection stamps the retry clock,
      *  and a second call on the same object would be held by it rather
-     *  than re-decided. */
+     *  than re-decided.
+     */
     const shipped = virgin();
     assert.ok(
-      checkIlGuard(shipped, false, { currentValue: 2788.65 }, notifyPos),
+      checkIlGuard(shipped, false, at(2788.65), notifyPos),
       "the shipped 15% refuses this one",
     );
 
@@ -302,7 +352,7 @@ describe("checkIlGuard — the shipped default actually applies", () => {
     raised._getConfig = (k) =>
       k === "impermanentLossGuardPct" ? 50 : undefined;
     assert.equal(
-      checkIlGuard(raised, false, { currentValue: 2788.65 }, notifyPos),
+      checkIlGuard(raised, false, at(2788.65), notifyPos),
       null,
       "the same loss passes once the guard is raised to 50",
     );
@@ -347,6 +397,10 @@ describe("a blocked poll is not a recovery", () => {
      *  result can carry it.  These rows prove that. */
     ["gate pause", { rebalanced: false, paused: true }],
     ["drained + retiring", { rebalanced: false, retired: true }],
+    [
+      "a stopped loop's skipped rebalance",
+      { rebalanced: false, stopped: true },
+    ],
   ];
 
   for (const [name, result] of BLOCKED) {

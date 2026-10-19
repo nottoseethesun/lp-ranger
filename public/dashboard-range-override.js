@@ -38,15 +38,11 @@
 
 "use strict";
 
-import {
-  g,
-  act,
-  ACT_ICONS,
-  compositeKey,
-  fetchWithCsrf,
-} from "./dashboard-helpers.js";
+import { g, act, ACT_ICONS, compositeKey } from "./dashboard-helpers.js";
 import { posStore } from "./dashboard-positions-store.js";
-import { _posLabel } from "./dashboard-data.js";
+import { _posLabel } from "./dashboard-data-status.js";
+import { activeChainId } from "./dashboard-chain.js";
+import { saveConfigValues } from "./dashboard-config-save.js";
 
 /*- Badge copy.  Deliberately short: the badge sits on the left of the
  *  section's header line and the long-form explanation of both modes
@@ -180,29 +176,35 @@ export function saveRangeOverrideToggle() {
   );
   applyRangeFieldState(overrideActive, g("chkFullRange")?.checked === true);
   const active = posStore.getActive();
+  const chain = activeChainId();
   const positionKey = active
     ? compositeKey(
-        "pulsechain",
+        chain,
         active.walletAddress,
         active.contractAddress,
         active.tokenId,
       )
     : undefined;
-  fetchWithCsrf("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rangeOverrideEnabled: overrideActive, positionKey }),
-  }).catch(() => {});
+  /*-
+   *  Labelled now, for the position clicked, and logged only once the
+   *  server has the setting, so the Activity Log never reports a change
+   *  the server did not take.
+   */
   const pl = _posLabel();
-  act(
-    ACT_ICONS.gear,
-    "start",
-    "Setting Saved",
-    (overrideActive
-      ? "Range settings will be applied on the next rebalance"
-      : "No Override — the existing position range will be re-used") +
-      (pl ? "\n" + pl : ""),
-  );
+  saveConfigValues({
+    values: { rangeOverrideEnabled: overrideActive },
+    positionKey,
+    onSaved: () =>
+      act(
+        ACT_ICONS.gear,
+        "start",
+        "Setting Saved",
+        (overrideActive
+          ? "Range settings will be applied on the next rebalance"
+          : "No Override — the existing position range will be re-used") +
+          (pl ? "\n" + pl : ""),
+      ),
+  });
 }
 
 /**

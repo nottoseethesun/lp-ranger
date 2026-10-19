@@ -16,8 +16,8 @@
  * ─────────────
  * Each position lookup may trigger up to 4 GeckoTerminal API calls
  * (base+quote × open+close prices).  Rate limiting is handled centrally
- * by the sliding-window limiter in `price-fetcher.js` (25 calls / 60 s),
- * so no per-position delay is needed here.
+ * by the sliding-window limiter in `gecko-rate-limit.js`, so no
+ * per-position delay is needed here.
  */
 
 "use strict";
@@ -31,11 +31,7 @@ const {
 } = require("./position-history-scan-helpers");
 const { eventsFor } = require("./nft-events-batch");
 const { getCachedEpochs, setCachedEpochs } = require("./epoch-cache");
-const { actualGasCostUsd } = require("./bot-pnl-updater");
-const {
-  fetchTokenPriceUsd,
-  withFreshPricesAllowed,
-} = require("./price-fetcher");
+const { pastGasCostUsd } = require("./bot-pnl-updater");
 
 const EPOCH_COLORS = [
   "#00e5ff",
@@ -75,11 +71,11 @@ function _buildClosedEpoch(h, index) {
    *  way: an unknown cost subtracted as zero reports MORE profit than
    *  the position made.
    *
-   *  `_fetchEpochsFromChain` sets `gasCostUsd` only when it actually
-   *  resolved one — both when the wei amount is unknown and when the
-   *  USD price behind it is — so an absent value here always means "not
-   *  known", never "free". A rebalance always costs gas. */
-  if (h.gasCostUsd === null || h.gasCostUsd === undefined) return null;
+   *  `_fetchEpochsFromChain` sets `gasNative` only once the amount is
+   *  read, so an absent one means "not known", never "free", and the
+   *  NFT is read again. A known amount whose day has no price builds,
+   *  with `gasCostUsd` null and no `epochPnl` (`_assembleEpoch`). */
+  if (h.gasNative === null || h.gasNative === undefined) return null;
   return _assembleEpoch(h, index);
 }
 
@@ -99,8 +95,9 @@ function _assembleEpoch(h, index) {
    *  fallback would quietly restore the behaviour the guard removes. */
   const fees = h.feesEarnedUsd;
   /*- No `|| 0` here either, and for the same reason as the fees above:
-   *  `_buildClosedEpoch` rejected the unknowns, so a zero reaching this
-   *  line is a rebalance that genuinely cost nothing to make. */
+   *  a zero reaching this line is a rebalance that genuinely cost
+   *  nothing to make. Null is a known amount whose day has no price,
+   *  so the epoch's net figure is not known either. */
   const gas = h.gasCostUsd;
   return {
     id: index + 1,
@@ -117,7 +114,7 @@ function _assembleEpoch(h, index) {
     gas,
     gasNative: h.gasNative || 0,
     exitValue,
-    epochPnl: exitValue - entryValue + fees - gas,
+    epochPnl: gas === null ? null : exitValue - entryValue + fees - gas,
     priceChangePnl: exitValue - entryValue - fees,
     feePnl: fees,
     hodlAmount0: h.entryAmount0 || 0,
@@ -168,8 +165,9 @@ function _cacheKeyFromState(botState) {
  * The gas charged to an epoch is the rebalance that closed it, so the
  * close is the moment to price at: the date for GeckoTerminal, whose
  * historical candles are per-day, and the block for Moralis, which is
- * exact. A record carrying neither returns `undefined`, and the charge
- * is valued at today's price instead.
+ * exact. A record carrying neither returns `undefined`: the day the gas
+ * was spent is not known, so neither is its dollar figure, and the
+ * Per-Day table shows a dash for it.
  *
  * @param {object} h  History record for one NFT in the chain.
  * @param {boolean} [refresh]  Read past the price cache and replace what
@@ -193,48 +191,27 @@ function _gasSpentAt(h, refresh = false) {
 }
 
 /**
- * Resolve the native token's USD price once, before converting any gas.
+ * A closed period's gas in dollars, at the native token's price on the
+ * day the rebalance that closed it was made.
  *
- * Gas is priced at the day it was spent, like every other figure on an
- * epoch. This warms the CURRENT price because that is gas's fallback:
- * when no historical source can answer for a given day, the charge is
- * valued at today's market rather than at nothing.
+ * Null when that day is not recorded or its price cannot be read: the
+ * Per-Day table shows a dash for the period's gas, and for the Profit
+ * and Net P&L that subtract it. A known amount of nothing is $0, which
+ * needs no price.
  *
- * That fallback is the reason this matters at all.
- * `actualGasCostUsd` reports a failed price lookup as `0`, and a
- * zero USD on a non-zero wei amount is what `_fetchEpochsFromChain`
- * reads as "price unknown", so without a resolved price every epoch in
- * the chain is rejected and the history never builds.
+ * The historical lookups are not behind the idle pause, and they are
+ * bounded by the number of distinct days the chain closed on rather than
+ * by the number of NFTs, because the day cache answers the repeats.
  *
- * That is not hypothetical: `bot.js` pauses price lookups at startup
- * unless `--start-with-price-lookups-unpaused` is passed, and the only
- * thing that lifts the pause is browser activity — which a headless run
- * never has. A paused lookup returns the last cached value or `0`, and
- * a process that has never fetched has nothing cached.
- *
- * One fetch, inside `withFreshPricesAllowed` so the pause does not
- * apply to it, and every later reader of the CURRENT price takes it from
- * cache. The historical lookups each epoch makes are a separate matter:
- * they are not behind the pause at all, and they are bounded by the
- * number of distinct days the chain closed on rather than by the number
- * of NFTs, because the day cache answers the repeats.
- *
- * Failure is left to speak for itself: a genuinely unresolvable price
- * still yields `0`, the epochs are still rejected, and the rescan
- * retries. Rejecting beats recording a gas cost of nothing.
- *
- * @returns {Promise<void>}
+ * @param {bigint} wei  The gas the period spent.
+ * @param {object} h    History record for its NFT.
+ * @param {boolean} refresh  Read past the price cache (Re-scan Prices).
+ * @returns {Promise<number|null>}
  */
-async function _warmNativePrice() {
-  try {
-    await withFreshPricesAllowed(() =>
-      fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken),
-    );
-  } catch {
-    /*- Swallowed deliberately: the price is an input to gas, not to the
-     *  scan. A failure here surfaces as rejected epochs and a retry,
-     *  which is the same path any other unresolved gas cost takes. */
-  }
+async function _gasUsdAtClose(wei, h, refresh) {
+  if (wei === 0n) return 0;
+  const when = _gasSpentAt(h, refresh);
+  return when === undefined ? null : pastGasCostUsd(wei, when);
 }
 
 /**
@@ -371,7 +348,6 @@ async function _fetchEpochsFromChain(
   readChainEvents,
   refreshPrices = false,
 ) {
-  await _warmNativePrice();
   const histories = await _readChainHistories(
     closedIds,
     events,
@@ -391,28 +367,15 @@ async function _fetchEpochsFromChain(
       const gasKnown = h.gasCostWei !== null && h.gasCostWei !== undefined;
       if (buffered === undefined && gasKnown) {
         const wei = BigInt(h.gasCostWei);
-        const usd = await actualGasCostUsd(
-          wei,
-          _gasSpentAt(h, ctx.refreshPrices === true),
-        );
-        /*- A second way to a fabricated $0.00, and the likelier one:
-         *  the wei amount is known but the price behind it is not.
-         *  `actualGasCostUsd` answers 0 both when its price lookup
-         *  throws and when `fetchTokenPriceUsd` returns 0 — which is
-         *  what the idle pause returns with no cached price.
-         *
-         *  Since usd = (wei / 1e18) × price, a positive wei can only
-         *  yield zero when the price was zero. So the pair below is
-         *  decidable without changing `actualGasCostUsd`, whose nine
-         *  callers include one that feeds `tracker.addGas()` directly
-         *  and would break on a null.
-         *
-         *  Left unset otherwise, so the guard in `_buildClosedEpoch`
-         *  skips this NFT and the next pass reads it again. */
-        if (wei === 0n || usd > 0) {
-          h.gasNative = Number(wei) / 1e18;
-          h.gasCostUsd = usd;
-        }
+        /*-
+         *  The amount is known, so the period builds. Its dollar figure
+         *  is null when the price of its day is not, and the Per-Day
+         *  table shows that as a dash. An unknown amount leaves both
+         *  unset, so the guard in `_buildClosedEpoch` skips this NFT and
+         *  the next pass reads it again.
+         */
+        h.gasNative = Number(wei) / 1e18;
+        h.gasCostUsd = await _gasUsdAtClose(wei, h, ctx.refreshPrices === true);
       }
       const epoch = _buildClosedEpoch(h, closedEpochs.length);
       if (epoch) {
@@ -543,8 +506,8 @@ async function _rebuildClosedEpochs(o) {
  * It has to persist because it carries a figure nothing can rebuild.
  * Its entry value, fees and compounded coins are all re-derived on the
  * next poll, so those would cost nothing to drop. Its GAS would: gas
- * only accumulates, so a dropped charge is gone. `_recordCancelGas` in
- * `bot-cycle.js` is the charge that depends on this: it is offered once,
+ * only accumulates, so a dropped charge is gone. `recordSpentGas` in
+ * `spent-gas.js` is the charge that depends on this: it is offered once,
  * by the code that just spent it, and nothing re-derives it.
  *
  * @param {object}   pnlTracker     Tracker instance.

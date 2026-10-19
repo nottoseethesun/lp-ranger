@@ -5,11 +5,17 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, afterEach } = require("node:test");
 const assert = require("assert");
 const { createRouteHandlers } = require("../src/server-routes");
-const { compositeKey } = require("../src/bot-config-v2");
+const { compositeKey, managedKeys } = require("../src/bot-config-v2");
 const { CHAIN_NAME } = require("../src/config");
+const appPhase = require("../src/app-phase");
+const { createPositionManager } = require("../src/position-manager");
+const { updatePositionState } = require("../src/server-positions");
+
+const WALLET_0X = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
+const PM_0X = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
 
 /** Build a minimal deps object with stubs for createRouteHandlers. */
 function makeDeps(overrides = {}) {
@@ -53,6 +59,7 @@ function makeDeps(overrides = {}) {
     createPerPositionBotState: () => ({ running: false }),
     attachMultiPosDeps: () => {},
     updatePositionState: () => {},
+    notifyShutdown: () => {},
     ...overrides,
   };
 }
@@ -129,6 +136,56 @@ describe("server-routes createRouteHandlers", () => {
       await h._handleWalletImport({}, res);
       assert.strictEqual(res._status, 200);
     });
+
+    describe("while the app is starting up or stopping", () => {
+      /*-
+       *  An import stops every position and starts the saved ones again
+       *  under the new wallet, so it is refused while the start-up works
+       *  through the list, and once nothing may start.
+       */
+      afterEach(() => appPhase._resetAppPhaseForTests());
+
+      /** Import, recording whether the wallet changed or a stop came. */
+      async function importRecorded() {
+        const seen = { imported: false, stopped: false };
+        const base = makeDeps();
+        const h = createRouteHandlers(
+          makeDeps({
+            walletManager: {
+              ...base.walletManager,
+              importWallet: async () => {
+                seen.imported = true;
+              },
+            },
+            positionMgr: {
+              ...base.positionMgr,
+              stopAll: async () => {
+                seen.stopped = true;
+              },
+            },
+          }),
+        );
+        const res = makeRes();
+        await h._handleWalletImport({}, res);
+        return { res, seen };
+      }
+
+      it("is refused during the start-up, changing nothing", async () => {
+        appPhase.beginStartUp(2);
+        const { res, seen } = await importRecorded();
+        assert.strictEqual(res._status, 409);
+        assert.match(res._body.error, /still starting/);
+        assert.deepStrictEqual(seen, { imported: false, stopped: false });
+      });
+
+      it("is refused once the app is stopping", async () => {
+        appPhase.markStopping();
+        const { res, seen } = await importRecorded();
+        assert.strictEqual(res._status, 409);
+        assert.match(res._body.error, /stopping/);
+        assert.deepStrictEqual(seen, { imported: false, stopped: false });
+      });
+    });
   });
 
   // ── _handleWalletReveal ───────────────────────────────────────────────────
@@ -187,6 +244,54 @@ describe("server-routes createRouteHandlers", () => {
   // ── _handleShutdown ───────────────────────────────────────────────────────
 
   describe("_handleShutdown", () => {
+    afterEach(() => appPhase._resetAppPhaseForTests());
+
+    it("marks the app stopping before it stops the positions", async () => {
+      // So no position starts, and no move begins, while they stop.
+      let stoppingAtStop = null;
+      const base = makeDeps();
+      const h = createRouteHandlers(
+        makeDeps({
+          positionMgr: {
+            ...base.positionMgr,
+            stopAll: async () => {
+              stoppingAtStop = appPhase.isStopping();
+            },
+          },
+        }),
+      );
+      await h._handleShutdown({}, makeRes(), { close: () => {} });
+      assert.strictEqual(stoppingAtStop, true);
+    });
+
+    it("leaves the positions saved as managed for the next launch", async () => {
+      /*-
+       *  Each loop's stop reports itself no longer running, as the bot
+       *  loop's own stop does. The saved list is the one the next launch
+       *  starts, so the stop may not take anything off it.
+       */
+      const deps = makeDeps();
+      const key = compositeKey(CHAIN_NAME, WALLET_0X, PM_0X, "157");
+      deps.diskConfig.positions[key] = { status: "running" };
+      const mgr = createPositionManager({ rebalanceLock: {} });
+      const keyRef = { current: key };
+      await mgr.startPosition(key, {
+        tokenId: "157",
+        startLoop: async () => ({
+          stop: async () =>
+            updatePositionState(
+              keyRef,
+              { running: false },
+              deps.diskConfig,
+              mgr,
+            ),
+        }),
+      });
+      const h = createRouteHandlers({ ...deps, positionMgr: mgr });
+      await h._handleShutdown({}, makeRes(), { close: () => {} });
+      assert.deepStrictEqual(managedKeys(deps.diskConfig), [key]);
+    });
+
     it("responds with ok and stops all positions", async () => {
       let stopped = false;
       let closed = false;
@@ -210,6 +315,46 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(res._body.ok, true);
       assert.ok(stopped);
       assert.ok(closed);
+    });
+
+    it("sends the shutdown alert, as a stop by signal does", async () => {
+      // `npm run gentle-stop` stops the server through here.
+      let alerts = 0;
+      const h = createRouteHandlers(
+        makeDeps({
+          notifyShutdown: () => {
+            alerts++;
+          },
+        }),
+      );
+      await h._handleShutdown({}, makeRes(), { close: () => {} });
+      assert.strictEqual(alerts, 1);
+    });
+
+    it("closes the server only once every position has stopped", async () => {
+      /*-
+       *  Stopping a position waits for a rebalance or compound under way,
+       *  so `npm run gentle-stop`, which asks this route, cuts none off.
+       */
+      let release;
+      const stopping = new Promise((resolve) => {
+        release = resolve;
+      });
+      let closed = false;
+      const deps = makeDeps({
+        positionMgr: { ...makeDeps().positionMgr, stopAll: () => stopping },
+      });
+      const h = createRouteHandlers(deps);
+      const done = h._handleShutdown({}, makeRes(), {
+        close: () => {
+          closed = true;
+        },
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.strictEqual(closed, false, "not while a position is stopping");
+      release();
+      await done;
+      assert.strictEqual(closed, true);
     });
   });
 

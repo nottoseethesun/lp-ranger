@@ -86,7 +86,7 @@ function load(read) {
       };
     }
     // Neither may reach the network from a unit test.
-    if (id === "./bot-pnl-updater") return { actualGasCostUsd: async () => 0 };
+    if (id === "./bot-pnl-updater") return { pastGasCostUsd: async () => 0 };
     if (id === "./price-fetcher") {
       return {
         fetchTokenPriceUsd: async () => 1,

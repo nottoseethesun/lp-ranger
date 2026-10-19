@@ -20,7 +20,15 @@
 
 import { log } from "./dashboard-log.js";
 import { ethers } from "./ethers-adapter.js";
-import { g, fetchWithCsrf } from "./dashboard-helpers.js";
+import {
+  g,
+  fetchWithCsrf,
+  compositeKey,
+  botConfig,
+} from "./dashboard-helpers.js";
+import { activeChainId } from "./dashboard-chain.js";
+import { uiSetting } from "./dashboard-ui-settings.js";
+import { duration } from "../src/help-figures.js";
 import { confirmViaDialog } from "./dashboard-confirm-dialog.js";
 import {
   getLastStatus,
@@ -65,11 +73,29 @@ export function injectPosStoreForReload(posStore) {
 // ── Constants ───────────────────────────────────────
 
 const _RELOAD_MODAL_ID = "reloadCurrentPositionModal";
-/*- Client-side upper bound on how long we wait for the reload to
- *  complete before reloading the page anyway.  Matches the "up to
- *  four hours" ceiling in the modal copy. */
-const _RELOAD_MAX_WAIT_MS = 4 * 60 * 60 * 1000;
-const _RELOAD_POLL_MS = 3000;
+/*-
+ *  How long the dashboard waits for the reload to finish before
+ *  reloading the page anyway is `reloadMaxWaitMs`, and the dialogs quote
+ *  the same figure as the longest a reload may take, built from it by
+ *  `reloadDurationText`. The wait loop reads the status the dashboard's
+ *  own poll fetched, so it checks at the poll's pace,
+ *  `dashboardPollIntervalMs`. Both are settings the server sends, read
+ *  when a reload runs (`uiSetting`).
+ */
+
+/**
+ * Say how long a reload may take, in words for the dialogs.
+ *
+ * The estimate the operator reads and the wait the dashboard allows are
+ * one figure, the `reloadMaxWaitMs` setting, so the text is built from it
+ * rather than written beside it. It is worded by the help's own
+ * `duration`, so a span of time reads the same here as in the help.
+ *
+ * @returns {string} The ceiling, e.g. "4 hours".
+ */
+export function reloadDurationText() {
+  return duration(uiSetting("reloadMaxWaitMs") / 1000);
+}
 
 // ── Small helpers ───────────────────────────────────
 
@@ -88,20 +114,25 @@ function _positionState(key) {
   return all[key] || null;
 }
 
-/*- Build the canonical composite key for a position.  Both EVM
- *  addresses are EIP-55 checksummed so the key byte-exactly matches
- *  the server-side composite key (built via `bot-config-v2.compositeKey`
- *  which also checksums).  Deliberately does NOT accept the raw
- *  posStore values — every caller must go through here. */
-function _buildKey(walletAddress, contractAddress, tokenId) {
-  return (
-    "pulsechain-" +
-    _toChecksum(walletAddress) +
-    "-" +
-    _toChecksum(contractAddress) +
-    "-" +
-    tokenId
-  );
+/**
+ * Build the canonical composite key for a position on the active
+ * chain.  Both EVM addresses are EIP-55 checksummed so the key
+ * byte-exactly matches the server-side composite key (built via
+ * `bot-config-v2.compositeKey` which also checksums).  Deliberately
+ * does NOT accept the raw posStore values — every caller must go
+ * through here.  Exported for tests.
+ *
+ * @param {string} walletAddress    The position's wallet.
+ * @param {string} contractAddress  Its NFT position manager.
+ * @param {string} tokenId          Its NFT's token id.
+ * @returns {string|null} The key, or null before the server has named
+ *   the chain.
+ */
+export function _buildKey(walletAddress, contractAddress, tokenId) {
+  const chain = activeChainId();
+  const wallet = _toChecksum(walletAddress);
+  const contract = _toChecksum(contractAddress);
+  return compositeKey(chain, wallet, contract, tokenId);
 }
 
 /** Build the composite key for the currently-active position. */
@@ -137,12 +168,14 @@ function _showReloadBlockingModal(active, logPath) {
   const p1 = document.createElement("p");
   p1.textContent =
     "Every on-chain-derived figure for NFT #" +
-    (active.tokenId || "?") +
+    active.tokenId +
     " is being re-scanned from scratch. Do not close this tab.";
   inner.appendChild(p1);
   const p2 = document.createElement("p");
   p2.textContent =
-    "This will take at least a few minutes and up to four hours, depending on how many rebalances the position has and how responsive the RPC endpoint is.";
+    "This will take at least a few minutes and up to " +
+    reloadDurationText() +
+    ", depending on how many rebalances the position has and how responsive the RPC endpoint is.";
   inner.appendChild(p2);
   const p3 = document.createElement("p");
   p3.className = "9mm-pos-mgr-text-muted";
@@ -162,6 +195,7 @@ function _showReloadBlockingModal(active, logPath) {
 
 const _RELOAD_BUSY_MODAL_ID = "reloadBusyModal";
 const _RELOAD_BUSY_MSG_SLOT_ID = "reloadBusyModal-msg";
+const _RELOAD_BUSY_ID_SLOT_ID = "reloadBusyModal-tokenId";
 
 /*- Yellow (caution) "try again" modal.  One shell, three specific
  *  bodies (pre-check, race, server-message).  Removes any prior
@@ -181,14 +215,15 @@ function _showReloadBusyModal(bodyHtml) {
   );
 }
 
-/** Race variant: auto-rebalance / auto-compound started in the 500ms window. */
+/** Race variant: an auto-rebalance or auto-compound began while the reload waited. */
 function _showReloadRaceModal(active) {
-  const label = active?.tokenId ? "NFT #" + active.tokenId : "the position";
   _showReloadBusyModal(
-    "<p>An auto-rebalance or auto-compound started for " +
-      label +
-      " just before the Reload Current Position operation could begin. To keep the reload from racing that operation, LP Ranger dismissed the reload and left this position untouched.</p>",
+    '<p>An auto-rebalance or auto-compound started for NFT #<span id="' +
+      _RELOAD_BUSY_ID_SLOT_ID +
+      '"></span> just before the Reload Current Position operation could begin. To keep the reload from racing that operation, LP Ranger dismissed the reload and left this position untouched.</p>',
   );
+  const slot = document.getElementById(_RELOAD_BUSY_ID_SLOT_ID);
+  if (slot) slot.textContent = String(active.tokenId);
 }
 
 /** Server 409 variant: server's `message` is untrusted → textContent slot. */
@@ -200,21 +235,27 @@ function _showReloadServerBusyModal(serverMessage) {
 
 // ── Poll for completion ─────────────────────────────
 
-/*- Wait until either the target position reports lifetimeScanComplete,
+/*-
+ *  Wait until either the target position reports lifetimeScanComplete,
  *  a fresh _catastrophicScanError lands, an auto-rebalance / auto-
- *  compound raced the reload, or the 4-hour ceiling elapses. */
+ *  compound raced the reload, or `reloadMaxWaitMs` elapses.
+ */
 function _waitForReloadCompletion(key, startedAtMs) {
+  const maxWaitMs = uiSetting("reloadMaxWaitMs");
+  const pollMs = uiSetting("dashboardPollIntervalMs");
   return new Promise((resolve) => {
     const started = startedAtMs;
     let tickCount = 0;
     const tick = () => {
       tickCount++;
       const elapsed = Date.now() - started;
-      if (elapsed >= _RELOAD_MAX_WAIT_MS) return resolve("timeout");
+      if (elapsed >= maxWaitMs) return resolve("timeout");
       const st = _positionState(key);
-      /*- Per-tick log so a failed poll-detection is visible within
-       *  3 seconds of the modal opening — no need to sit through the
-       *  full scan to know whether the polling machinery works. */
+      /*-
+       *  Per-tick log so a failed poll-detection is visible within one
+       *  poll of the modal opening — no need to sit through the full
+       *  scan to know whether the polling machinery works.
+       */
       log.info(
         "[lp-ranger] [reload] tick #%d elapsed=%ds stFound=%s lifetimeScanComplete=%s rebIP=%s compIP=%s catastrophic=%s key=%s",
         tickCount,
@@ -226,26 +267,20 @@ function _waitForReloadCompletion(key, startedAtMs) {
         !!st?._catastrophicScanError,
         key,
       );
-      if (!st) return setTimeout(tick, _RELOAD_POLL_MS);
+      if (st === null) return setTimeout(tick, pollMs);
       if (st.rebalanceInProgress || st.compoundInProgress)
         return resolve("raced");
       if (st._catastrophicScanError && st._catastrophicScanError.at > started)
         return resolve("failed-again");
       if (st.lifetimeScanComplete === true) return resolve("complete");
-      setTimeout(tick, _RELOAD_POLL_MS);
+      setTimeout(tick, pollMs);
     };
-    setTimeout(tick, _RELOAD_POLL_MS);
+    setTimeout(tick, pollMs);
   });
 }
 
 // ── Reload flow — split into pieces to keep complexity ≤ 17 ─────
 
-/**
- * Ask the user to confirm the reload, via the standard Action Dialog
- * rather than a native `confirm()`.
- * @param {string|number|null|undefined} tokenId  NFT id, for the prompt.
- * @returns {Promise<boolean>} True when the user confirmed.
- */
 /**
  * Say why the action is unavailable, and disable it.
  *
@@ -280,12 +315,21 @@ export function applySyncGate(frag, state) {
   if (go) go.disabled = true;
 }
 
+/**
+ * Ask the user to confirm the reload, via the standard Action Dialog
+ * rather than a native `confirm()`.
+ * @param {string|number} tokenId  NFT id, for the prompt.
+ * @returns {Promise<boolean>} True when the user confirmed.
+ */
 function _confirmReload(tokenId) {
   return confirmViaDialog("tplReloadConfirmModal", {
     overlayId: "reloadConfirmModal",
+    positionDialog: true,
     fill: (frag) => {
       const idEl = frag.querySelector('[data-tpl="tokenId"]');
-      if (idEl) idEl.textContent = String(tokenId || "?");
+      if (idEl) idEl.textContent = String(tokenId);
+      for (const el of frag.querySelectorAll('[data-tpl="maxWait"]'))
+        el.textContent = reloadDurationText();
       applySyncGate(frag, {
         /*- Managed means a live bot loop, which is what the server
          *  resolves this position's state from. Without one the route
@@ -388,7 +432,7 @@ export async function _reloadCurrentPosition() {
   if (!(await _confirmReload(active.tokenId))) return;
   const btn = g("reloadPositionBtn");
   if (btn) btn.disabled = true;
-  const overlay = _showReloadBlockingModal(active, "logs/error.log");
+  const overlay = _showReloadBlockingModal(active, botConfig.errorLogPath);
   const startedAt = Date.now();
   log.info(
     "[lp-ranger] [reload] user requested full reload for #%s",
@@ -444,5 +488,7 @@ export function paintReloadPositionButton() {
   }
   btn.disabled = false;
   btn.title =
-    "Wipe every on-chain-derived figure for the current position and re-scan from scratch. Takes a few minutes to four hours.";
+    "Wipe every on-chain-derived figure for the current position and re-scan from scratch. Takes a few minutes to " +
+    reloadDurationText() +
+    ".";
 }

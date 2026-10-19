@@ -246,6 +246,8 @@ function _poll(tick, overrides = {}) {
       : captured
         ? (u) => Object.assign(captured, u)
         : () => {},
+    // Deps the bot loop hands a poll that a test sets itself, e.g. a lock.
+    ...overrides.extraDeps,
   }).then((r) => ({ r, deps, stateUpdates, captured }));
 }
 

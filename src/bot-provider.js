@@ -13,10 +13,13 @@ const config = require("./config");
 const rpcRequestManager = require("./rpc-request-manager");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 
-/*- Throttle for the per-call feeData log line.  Every call logs in
-    --verbose mode; otherwise log at most once per hour so the terminal
-    stays readable over long sessions. */
-const _FEE_LOG_INTERVAL_MS = 60 * 60 * 1000;
+/*-
+ *  Throttle for the per-call feeData log line. Every call logs in
+ *  --verbose mode; otherwise at most once per `feeDataLogIntervalMs`
+ *  (bot-config-defaults.json), so the terminal stays readable over long
+ *  sessions.
+ */
+const _FEE_LOG_INTERVAL_MS = readBotConfigDefaults().feeDataLogIntervalMs;
 let _lastFeeDataLogAt = 0;
 
 /**
@@ -46,7 +49,7 @@ function _patchFeeData(provider) {
     // Return ONLY gasPrice (no maxFeePerGas/maxPriorityFeePerGas) so
     // ethers.js sends legacy type 0 TXs. PulseChain validators don't
     // reliably include EIP-1559 type 2 TXs — they sit pending forever.
-    const _mult = config.CHAIN.gasPriceMultiplier || 1;
+    const _mult = config.CHAIN.gasPriceMultiplier;
     const gp = fd.gasPrice && fd.gasPrice > 0n ? fd.gasPrice : fd.maxFeePerGas;
     if (gp && gp > 0n) {
       const scaled = (gp * BigInt(Math.round(_mult * 1000))) / 1000n;
@@ -270,7 +273,7 @@ function _knownNetwork(lib) {
   if (!Number.isInteger(chainId) || chainId <= 0) {
     throw new Error(
       "[bot-provider] chainId missing/invalid for " +
-        `${config.CHAIN?.displayName ?? "?"} — must be a positive integer in chains.json`,
+        `${config.CHAIN.displayName} — must be a positive integer in chains.json`,
     );
   }
   return lib.Network.from(chainId);

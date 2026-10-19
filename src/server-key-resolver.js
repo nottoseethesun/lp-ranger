@@ -24,7 +24,7 @@
 
 "use strict";
 
-const { parseCompositeKey } = require("./bot-config-v2");
+const { parseCompositeKey } = require("./composite-key");
 
 /**
  * Map an `originalKey` (possibly captured before a key migration) to
@@ -56,21 +56,14 @@ function resolveLiveKey(positionMgr, originalKey, getBotState) {
   if (!positionMgr || !originalKey) return originalKey;
   const direct = positionMgr.get(originalKey);
   if (direct) return direct.key;
-  let parsed;
-  try {
-    parsed = parseCompositeKey(originalKey);
-  } catch {
-    return originalKey;
-  }
+  // A key that does not parse names no position, live or migrated.
+  const parsed = parseCompositeKey(originalKey);
+  if (parsed === null) return originalKey;
   if (typeof positionMgr.getAll !== "function") return originalKey;
   for (const e of positionMgr.getAll()) {
     if (String(e.tokenId) === String(parsed.tokenId)) continue;
-    let eParsed;
-    try {
-      eParsed = parseCompositeKey(e.key);
-    } catch {
-      continue;
-    }
+    const eParsed = parseCompositeKey(e.key);
+    if (eParsed === null) continue;
     if (
       eParsed.blockchain !== parsed.blockchain ||
       eParsed.wallet !== parsed.wallet ||

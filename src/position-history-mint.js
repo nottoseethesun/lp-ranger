@@ -10,7 +10,7 @@
  * `position-history-scan-helpers.js` because it owns persistent state —
  * the two files next to it are stateless.
  *
- * **When this runs.** Almost never. `_supplementFromEvents` fills both
+ * **When this runs.** Almost never. `supplementFromEvents` fills both
  * the mint date and the mint TRANSACTION for every NFT a rebalance
  * created, reading each off that rebalance's own event. The chain's
  * oldest NFT has no such event — it appears only as an `oldTokenId` —
@@ -40,7 +40,8 @@ const {
   getPoolCreationBlockCached,
   resolvePoolAddressForToken,
 } = require("./pool-creation-block");
-const { FIVE_YEAR_BLOCKS } = require("./position-history-scan-helpers");
+const { historyFloorBlock } = require("./history-lookback");
+const { cacheKey } = require("./cache-store");
 
 const _IFACE = new ethers.Interface(PM_ABI);
 
@@ -52,20 +53,23 @@ const _MINT_CACHE_PATH = path.join(
 const _mintCache = new Map();
 
 /**
- * Cache key for one NFT's mint.
+ * Cache key for one NFT's mint: the canonical `chain-contract-tokenId`
+ * (`cacheKey` in `src/cache-store.js`).
  *
  * Scoped by the NFT contract, because a token id identifies an NFT only
  * WITHIN its contract. Two position managers both number their NFTs from
  * one, so a key of the id alone hands the first provider's mint back for
  * the second provider's NFT — a wrong mint date, a wrong opening value,
- * and a wrong creation gas, all silently.
+ * and a wrong creation gas, all silently. Scoped by the chain for the
+ * same reason one level up: the same contract address can hold different
+ * NFTs on two chains.
  *
  * @param {string} pmAddress  NFT contract (NonfungiblePositionManager).
  * @param {string|number} tokenId
  * @returns {string}
  */
 function _mintKey(pmAddress, tokenId) {
-  return `${String(pmAddress).toLowerCase()}-${String(tokenId)}`;
+  return cacheKey(config.CHAIN_NAME, pmAddress, tokenId);
 }
 
 /** Load disk mint cache into memory on first use. */
@@ -103,10 +107,9 @@ async function _mintScanWindow(prov, tokenId, knownBlock, pmAddress) {
    *  requests; this is one. */
   if (Number.isInteger(knownBlock) && knownBlock > 0)
     return { from: knownBlock, to: knownBlock };
-  /* Search recent blocks only — NFTs are minted within
-     the last ~5 years max (~15.8M blocks on PulseChain). */
-  const latest = await prov.getBlockNumber();
-  const fiveYearFloor = Math.max(0, latest - FIVE_YEAR_BLOCKS);
+  // Search no further back than the history lookback reaches.
+  const head = await prov.getBlockNumber();
+  const lookbackFloor = historyFloorBlock(head);
   /*- Tighten the lower bound to the pool's creation block when we can
       determine it; the pool can't have minted NFTs before it existed. */
   const poolAddress = await resolvePoolAddressForToken({
@@ -128,7 +131,7 @@ async function _mintScanWindow(prov, tokenId, knownBlock, pmAddress) {
    *  consecutive mints as successive rebalances — sound only when every
    *  mint in the pool IS a rebalance. */
   return {
-    from: Math.max(fiveYearFloor, poolCreationBlock),
+    from: Math.max(lookbackFloor, poolCreationBlock),
     to: "latest",
   };
 }

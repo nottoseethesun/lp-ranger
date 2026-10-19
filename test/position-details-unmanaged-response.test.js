@@ -76,7 +76,7 @@ function load(cachedEpochs) {
         cachedEpochs ? { closedEpochs: cachedEpochs, liveEpoch: null } : null,
       setCachedEpochs: () => {},
     },
-    "./rebalancer": {
+    "./rebalancer-pools": {
       getPoolState: async () => ({
         tick: 0,
         price: 1,

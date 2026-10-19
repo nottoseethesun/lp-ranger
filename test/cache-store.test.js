@@ -11,6 +11,9 @@ const assert = require("assert");
 const { createCacheStore, eventCachePath } = require("../src/cache-store");
 const path = require("path");
 
+// A store's lifetime is its caller's to give; these tests give a minute.
+const TTL_MS = 60_000;
+
 // ── Mock fs ─────────────────────────────────────────────────────────────────
 
 function createMockFs() {
@@ -40,6 +43,7 @@ describe("cache-store — basic operations", () => {
   it("get returns null for missing key", async () => {
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     assert.strictEqual(await cache.get("missing"), null);
@@ -48,6 +52,7 @@ describe("cache-store — basic operations", () => {
   it("set + get round-trip", async () => {
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     await cache.set("key1", { data: 42 });
@@ -58,6 +63,7 @@ describe("cache-store — basic operations", () => {
   it("persists to disk as JSON", async () => {
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     await cache.set("k", "v");
@@ -74,6 +80,7 @@ describe("cache-store — basic operations", () => {
     });
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     assert.strictEqual(await cache.get("preloaded"), "hello");
@@ -82,6 +89,7 @@ describe("cache-store — basic operations", () => {
   it("delete removes an entry", async () => {
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     await cache.set("k", "v");
@@ -93,6 +101,7 @@ describe("cache-store — basic operations", () => {
   it("delete returns false for missing key", async () => {
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     const deleted = await cache.delete("nope");
@@ -102,6 +111,7 @@ describe("cache-store — basic operations", () => {
   it("clear removes all entries", async () => {
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     await cache.set("a", 1);
@@ -114,6 +124,7 @@ describe("cache-store — basic operations", () => {
   it("size returns the number of entries", async () => {
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     assert.strictEqual(cache.size(), 0);
@@ -162,6 +173,7 @@ describe("cache-store — error resilience", () => {
     mockFs.files["/tmp/test-cache.json"] = "NOT VALID JSON";
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     assert.strictEqual(cache.size(), 0);
@@ -175,6 +187,7 @@ describe("cache-store — error resilience", () => {
     };
     const cache = createCacheStore({
       filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
     // Should not throw
@@ -215,13 +228,13 @@ describe("cache-store — eventCachePath", () => {
     };
     const a = eventCachePath(
       { ...base, tokenId: "157804" },
-      "pc",
+      "pulsechain",
       "0xPM",
       "0xW",
     );
     const b = eventCachePath(
       { ...base, tokenId: "157939" },
-      "pc",
+      "pulsechain",
       "0xPM",
       "0xW",
     );
@@ -240,8 +253,32 @@ describe("cache-store — eventCachePath", () => {
       fee: 10000,
     };
     assert.notStrictEqual(
-      eventCachePath(poolA, "pc", "0xPM", "0xW"),
-      eventCachePath(poolB, "pc", "0xPM", "0xW"),
+      eventCachePath(poolA, "pulsechain", "0xPM", "0xW"),
+      eventCachePath(poolB, "pulsechain", "0xPM", "0xW"),
+    );
+  });
+
+  it("names each chain by its own cache tag, so no two chains share a file", () => {
+    /*-
+     *  PulseChain keeps the tag its existing caches carry, and the
+     *  testnet, whose name begins the same way, gets one of its own.
+     */
+    const pos = { token0: "0x2b591e99", token1: "0x57fde0a7", fee: 2500 };
+    const main = eventCachePath(pos, "pulsechain", "0xPM", "0xW");
+    const test = eventCachePath(pos, "pulsechain-testnet", "0xPM", "0xW");
+    assert.ok(path.basename(main).startsWith("event-cache-pulse-"), main);
+    assert.notStrictEqual(main, test);
+  });
+
+  it("refuses a chain with no cache tag rather than assuming one", () => {
+    const pos = { token0: "0x2b591e99", token1: "0x57fde0a7", fee: 2500 };
+    assert.throws(
+      () => eventCachePath(pos, undefined, "0xPM", "0xW"),
+      /cacheTag/,
+    );
+    assert.throws(
+      () => eventCachePath(pos, "no-such-chain", "0xPM", "0xW"),
+      /no-such-chain\.cacheTag/,
     );
   });
 });

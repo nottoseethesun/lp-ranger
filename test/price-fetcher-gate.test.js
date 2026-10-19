@@ -64,7 +64,7 @@ describe("pause / unpause", () => {
     /*- Seed cache with a value, then backdate it past the TTL.  With
      *  the gate paused the value MUST still be returned and fetch MUST
      *  NOT be called. */
-    _cache.set("pulsechain:" + TOKEN.toLowerCase(), {
+    _cache.set("pulsechain-" + TOKEN.toLowerCase(), {
       price: 0.42,
       ts: Date.now() - _CACHE_TTL_MS - 60_000,
     });
@@ -130,7 +130,7 @@ describe("withFreshPricesAllowed", () => {
     /*- In-move TTL replaces the original "bypass cache entirely" pattern.
      *  Within the configured moveCacheTtlMs (default 4_000 ms) a
      *  same-scope call hits the cache; past it the cascade runs again. */
-    const key = "pulsechain:" + TOKEN.toLowerCase();
+    const key = "pulsechain-" + TOKEN.toLowerCase();
     let serverPrice = 9.99;
     globalThis.fetch = async () => ({
       ok: true,
@@ -201,8 +201,8 @@ describe("withFreshPricesAllowed", () => {
 
 describe("invalidatePriceCacheFor", () => {
   it("removes only the listed token entries", () => {
-    const a = "pulsechain:" + TOKEN.toLowerCase();
-    const b = "pulsechain:0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const a = "pulsechain-" + TOKEN.toLowerCase();
+    const b = "pulsechain-0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     _cache.set(a, { price: 1, ts: Date.now() });
     _cache.set(b, { price: 2, ts: Date.now() });
     invalidatePriceCacheFor([{ token: TOKEN }]);
@@ -216,13 +216,6 @@ describe("invalidatePriceCacheFor", () => {
     invalidatePriceCacheFor([]);
     invalidatePriceCacheFor([null, {}, { token: "" }]);
     /* no assertion needed — must not throw */
-  });
-
-  it("respects a non-default chain", () => {
-    const k = "eth:" + TOKEN.toLowerCase();
-    _cache.set(k, { price: 1, ts: Date.now() });
-    invalidatePriceCacheFor([{ token: TOKEN, chain: "eth" }]);
-    assert.strictEqual(_cache.has(k), false);
   });
 });
 

@@ -15,7 +15,8 @@
  *
  * Because the corrective swap can ALSO route through our own pool and
  * shift the tick again, the check is iterative: up to `_MAX_ITERATIONS`
- * rounds (hard cap: 3).  Each round re-reads pool state and balances,
+ * rounds (bot-config-defaults.json → `correctiveSwapMaxRounds`).  Each
+ * round re-reads pool state and balances,
  * stops when the imbalance falls below the dust threshold, and flags
  * `aboveThresholdAfterCap = true` if the cap is reached with residual
  * still above threshold.  The UI surfaces this as a non-blocking
@@ -29,6 +30,8 @@
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
+const { logCtx } = require("./logger");
 const {
   ERC20_ABI,
   getPoolState,
@@ -36,6 +39,7 @@ const {
 } = require("./rebalancer-pools");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const { resolveSlippagePct } = require("./slippage-resolver");
+const { addSpentGas } = require("./spent-gas");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { getDustThresholdUsd } = require("./dust");
 const {
@@ -43,9 +47,13 @@ const {
   shouldSkipSwap,
   gasFeePctToRatio,
 } = require("./swap-gates");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
 
-/** Hard cap on corrective-swap iterations per rebalance. */
-const _MAX_ITERATIONS = 3;
+/*-
+ *  The most corrective swaps per rebalance: bot-config-defaults.json →
+ *  correctiveSwapMaxRounds, with any operator override.
+ */
+const _MAX_ITERATIONS = readBotConfigDefaults().correctiveSwapMaxRounds;
 
 /**
  * @typedef {Object} CorrectiveCtx
@@ -55,7 +63,8 @@ const _MAX_ITERATIONS = 3;
  * @property {string} factoryAddress
  * @property {{lowerTick: number, upperTick: number}} newRange
  * @property {string} swapRouterAddress
- * @property {number} slippagePct
+ * @property {number} [slippagePctToken0]  The position's slippage for a swap into token0.
+ * @property {number} [slippagePctToken1]  The position's slippage for a swap into token1.
  * @property {string} [symbol0]
  * @property {string} [symbol1]
  */
@@ -88,9 +97,17 @@ async function correctivelyRebalanceIfNeeded(signer, ethersLib, ctx) {
     _MAX_ITERATIONS,
   );
   const acc = _initAccumulator();
-  for (let i = 0; i < _MAX_ITERATIONS; i++) {
-    const stop = await _runIteration(signer, ethersLib, ctx, acc, i);
-    if (stop) return stop;
+  /*-
+   *  A round that fails carries the gas of the rounds before it, which
+   *  confirmed and were paid for (src/spent-gas.js).
+   */
+  try {
+    for (let i = 0; i < _MAX_ITERATIONS; i++) {
+      const stop = await _runIteration(signer, ethersLib, ctx, acc, i);
+      if (stop) return stop;
+    }
+  } catch (err) {
+    throw addSpentGas(err, acc.gasCostWei);
   }
   return _capExhaustedResult(acc);
 }
@@ -180,9 +197,9 @@ async function _runIteration(signer, ethersLib, ctx, acc, i) {
     i,
   );
   if (iter.txHash) acc.txHashes.push(iter.txHash);
-  acc.gasCostWei += iter.gasCostWei || 0n;
-  acc.extra0 += iter.extra0 || 0n;
-  acc.extra1 += iter.extra1 || 0n;
+  acc.gasCostWei += iter.gasCostWei;
+  acc.extra0 += iter.extra0;
+  acc.extra1 += iter.extra1;
   if (iter.swapSources) acc.swapSources.push(iter.swapSources);
   return null;
 }
@@ -268,8 +285,10 @@ async function _fireCorrectiveSwap(signer, ethersLib, ctx, ps, desired, i) {
     symbol1,
     approvalMultiple,
   } = ctx;
-  /*- Destination-token slippage (per-token opt-in) or legacy single
-   *  slippagePct — see src/slippage-resolver.js. */
+  /*-
+   *  Destination-token slippage, or the default when the position has
+   *  none for that token — see src/slippage-resolver.js.
+   */
   const slippagePct = resolveSlippagePct(ctx, is0to1);
   log.info(
     "[rebalance] Step 6d iter %d: firing corrective swap: %s %s -> %s",
@@ -293,16 +312,24 @@ async function _fireCorrectiveSwap(signer, ethersLib, ctx, ps, desired, i) {
     symbolIn: is0to1 ? symbol0 : symbol1,
     symbolOut: is0to1 ? symbol1 : symbol0,
     approvalMultiple,
+    logCtx: logCtx({
+      chain: config.CHAIN_NAME,
+      wallet: signerAddress,
+      factory: config.POSITION_MANAGER,
+      tokenId: position.tokenId,
+      symbol0,
+      symbol1,
+    }),
   });
   log.info(
-    "[rebalance] Step 6d iter %d: corrective swap done, txHash=%s out=%s",
+    "[rebalance] Step 6d iter %d: corrective swap done, txHash= %s out=%s",
     i + 1,
     result.txHash,
     String(result.amountOut),
   );
   return {
     txHash: result.txHash,
-    gasCostWei: result.gasCostWei || 0n,
+    gasCostWei: result.gasCostWei,
     extra0: is0to1 ? 0n : result.amountOut,
     extra1: is0to1 ? result.amountOut : 0n,
     swapSources: result.swapSources || null,

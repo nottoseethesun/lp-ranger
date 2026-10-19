@@ -11,18 +11,19 @@
  * again.
  *
  * Something still has to stop the asking, and the rule is that exactly
- * one thing may. Inside a speed-up phase, the phase's own clock stops
- * it, and the move then proceeds to its next phase. Outside one, the
- * caller's deadline stops it, and the caller is the one waiting.
+ * one thing may: the caller's signal. Inside a speed-up phase, the
+ * phase's own clock aborts it, and the move then proceeds to its next
+ * phase; during a cancel, the first of the competing transactions to
+ * mine aborts the rest.
  *
- * Both at once is the fault these cases exist to prevent. The phase
- * clock and a deadline of the loop's own were the same length, so under
- * an endpoint that was already down at broadcast they expired within
- * milliseconds of each other — one concluding "speed the transaction
- * up", the other "the move failed". Whichever callback the event loop
- * reached first decided, which meant the bot could abandon a stuck
- * transaction instead of pushing it through with more gas, at the one
- * moment pushing it through mattered most.
+ * A second stop is the fault these cases exist to prevent. The phase
+ * clock and a deadline of the loop's own were once the same length, so
+ * under an endpoint that was already down at broadcast they expired
+ * within milliseconds of each other — one concluding "speed the
+ * transaction up", the other "the move failed". Whichever callback the
+ * event loop reached first decided, which meant the bot could abandon a
+ * stuck transaction instead of pushing it through with more gas, at the
+ * one moment pushing it through mattered most.
  *
  * These drive the re-ask directly rather than through a whole move. The
  * fault was a race between two equal deadlines, so reproducing it
@@ -38,7 +39,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const sendTx = require("../src/send-transaction");
-const config = require("../src/config");
 const rpcQueue = require("../src/rpc-request-manager");
 const outOfService = require("../src/rpc-out-of-service");
 const logModule = require("../src/log");
@@ -48,6 +48,8 @@ const FALL = "http://reask-fallback.test";
 
 /** The transaction being asked about. Only its hash is read. */
 const TX = { hash: "0xfeedface", nonce: 3 };
+
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 /** The receipt an endpoint returns once the transaction has mined. */
 const RECEIPT = {
@@ -101,10 +103,8 @@ function makeLib(onAsk) {
 
 describe("what bounds a receipt re-ask", () => {
   let restoreLog;
-  let savedCancel;
 
   beforeEach(() => {
-    savedCancel = config.TX_CANCEL_SEC;
     sendTx._resetForTests();
     rpcQueue._resetForTests();
     outOfService._resetForTests();
@@ -115,35 +115,49 @@ describe("what bounds a receipt re-ask", () => {
     });
   });
   afterEach(() => {
-    config.TX_CANCEL_SEC = savedCancel;
     if (restoreLog) restoreLog();
     sendTx._resetForTests();
     rpcQueue._resetForTests();
     outOfService._resetForTests();
   });
 
-  it("keeps asking under a phase signal, however stale its own deadline", async () => {
-    /*- The regression. A deadline of 1 ms is already past by the time
-     *  the first ask returns, so if the loop honoured it at all it would
-     *  give up immediately and hand back the endpoint's 502 — which the
-     *  phase's catch does not recognise, so the move would fail instead
-     *  of being sped up. A signal means the phase owns the lifetime, so
-     *  the deadline must not be consulted. */
-    const lib = makeLib((n) => (n < 3 ? null : RECEIPT));
+  it("keeps asking under the caller's signal until a receipt arrives", async (t) => {
+    /*-
+     *  The regression. A loop with a clock of its own would give up
+     *  partway and hand back the endpoint's 502 — which the phase's catch
+     *  does not recognise, so the move would fail instead of being sped
+     *  up. Only the signal may end the asking. Each empty answer here
+     *  takes three days, longer than any wait a setting can name, so a
+     *  loop timing itself by the clock or by a timer of its own gives up
+     *  before the receipt arrives.
+     */
+    const lib = makeLib((n) => {
+      t.mock.timers.tick(THREE_DAYS_MS);
+      if (n >= 3) return RECEIPT;
+      // Ends the loop's pause between asks once it has begun.
+      setImmediate(() => t.mock.timers.tick(1));
+      return null;
+    });
     sendTx.init({ urls: [PRI, FALL] }, lib);
     const controller = new AbortController();
+    /*-
+     *  TEST-ONLY global swap: such a clock would be the loop's own, read
+     *  from `Date` and `setTimeout`, which take no stand-in. The test
+     *  runner puts both back pristine as this case ends.
+     */
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
 
     const receipt = await sendTx._receiptAcrossEndpoints(
       serverError(PRI),
       TX,
       "[compound] collect",
-      { signal: controller.signal, deadlineMs: 1 },
+      { signal: controller.signal },
     );
 
     assert.strictEqual(receipt.blockNumber, 1234);
     assert.ok(
       lib.askCount() >= 3,
-      `asked ${lib.askCount()} times — a stale deadline must not cut the asking short`,
+      `asked ${lib.askCount()} times — nothing but the signal may cut the asking short`,
     );
   });
 
@@ -169,50 +183,6 @@ describe("what bounds a receipt re-ask", () => {
           {
             signal: controller.signal,
           },
-        ),
-      /502 Bad Gateway/,
-    );
-  });
-
-  it("honours a deadline when there is no phase to answer to", async () => {
-    /*- The other half of the rule, and the reason the deadline cannot
-     *  simply be deleted. One wait runs with no phase around it: the
-     *  fallback after a speed-up could not be sent, usually because the
-     *  original confirmed in between. Nothing else bounds that one, so
-     *  its deadline has to end it. */
-    const lib = makeLib(() => null);
-    sendTx.init({ urls: [PRI, FALL] }, lib);
-
-    await assert.rejects(
-      () =>
-        sendTx._receiptAcrossEndpoints(
-          serverError(PRI),
-          TX,
-          "[compound] collect",
-          { deadlineMs: 1 },
-        ),
-      /502 Bad Gateway/,
-    );
-    assert.ok(
-      lib.askCount() >= 1,
-      "the deadline bounds the asking, it does not prevent it",
-    );
-  });
-
-  it("falls back to the cancel budget when given neither bound", async () => {
-    /*- A caller that supplies nothing must still be bounded, because an
-     *  unbounded loop here polls a block at a time for the life of the
-     *  process, through the queue every other request shares. */
-    config.TX_CANCEL_SEC = 0.05;
-    const lib = makeLib(() => null);
-    sendTx.init({ urls: [PRI, FALL] }, lib);
-
-    await assert.rejects(
-      () =>
-        sendTx._receiptAcrossEndpoints(
-          serverError(PRI),
-          TX,
-          "[rebalance] mint",
         ),
       /502 Bad Gateway/,
     );

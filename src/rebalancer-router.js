@@ -1,7 +1,8 @@
 /**
  * @file rebalancer-router.js
  * @description V3 SwapRouter swap path for the rebalancer — fallback
- *   used when the 9mm DEX Aggregator (rebalancer-aggregator.js) fails.
+ *   used when the aggregator (rebalancer-aggregator.js) fails, and the
+ *   only path on a chain with no aggregator.
  *   Single-pool swap via the V3 SwapRouter contract; staticCall is used
  *   to quote price impact before sending the TX.
  */
@@ -9,28 +10,26 @@
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
 const sendTx = require("./send-transaction");
-const { loadShippedDefaults } = require("./load-merged-defaults");
-
-/*- Single-source default: per feedback_one_literal_per_shipped_default,
- *  the shipped slippage default lives only in bot-config-defaults.json.
- *  Read once at module init for the `slippagePct` fallback. */
-const _DEFAULTS = loadShippedDefaults("bot-config-defaults.json");
 const {
   ERC20_ABI,
   SWAP_ROUTER_ABI,
-  _checkSwapImpact,
   _deadline,
   _ensureAllowance,
 } = require("./rebalancer-pools");
+const { _checkSwapImpact } = require("./rebalancer-swap-impact");
 const { receiptGasWei } = require("./receipt-gas");
+const { addSpentGas } = require("./spent-gas");
 
 /**
- * Display label for the V3 router fallback route.  Stamped onto
- * result.swapSources whenever the aggregator fails and we fall back to
- * the 9mm V3 SwapRouter.  Surfaces to the Rebalance Events table only.
+ * Display label for the V3 router route: the active chain's
+ * `contracts.swapRouter.name` in chains.json. Stamped onto
+ * `result.swapSources` on every swap through the router, which the
+ * Rebalance Events table shows, and named by the "Routing through:"
+ * badge on a chain with no aggregator.
  */
-const V3_ROUTER_LABEL = "9mm V3 Router";
+const V3_ROUTER_LABEL = config.SWAP_ROUTER_NAME;
 
 /**
  * Swap via V3 SwapRouter (fallback path — single pool).
@@ -43,6 +42,47 @@ const V3_ROUTER_LABEL = "9mm V3 Router";
  *   a circular dep with rebalancer-swap.js).
  */
 async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
+  const { swapRouterAddress, tokenIn, amountIn, approvalMultiple } = params;
+  const { Contract } = ethersLib;
+  const signerAddr = await signer.getAddress();
+  const approvalGas = await _ensureAllowance(
+    new Contract(tokenIn, ERC20_ABI, signer),
+    signerAddr,
+    swapRouterAddress,
+    amountIn,
+    approvalMultiple,
+  );
+  /*-
+   *  The approval, when one was needed, has confirmed and been paid for,
+   *  so the swap's result carries its gas, and so does every way this
+   *  swap can fail from here: a refused quote, no liquidity, too much
+   *  price impact, the swap itself failing, or the balance read after it
+   *  (src/spent-gas.js). It is added here and only here: that last error
+   *  already carries the swap's own gas, and an approval counted inside
+   *  the swap as well was counted twice.
+   */
+  try {
+    return addSpentGas(
+      await _quoteAndSwap(signer, ethersLib, params, balanceDiff),
+      approvalGas,
+    );
+  } catch (err) {
+    throw addSpentGas(err, approvalGas);
+  }
+}
+
+/**
+ * Quote the router swap, hold it to the slippage setting, and send it.
+ *
+ * @param {object} signer
+ * @param {object} ethersLib
+ * @param {object} params  `swapViaRouter`'s parameters.
+ * @param {Function} balanceDiff  Balance-diff wrapper.
+ * @returns {Promise<{txHash: string, gasCostWei: bigint,
+ *   swapSources: string, amountOut: bigint}>}  `gasCostWei` is the swap's
+ *   own; `swapViaRouter` adds the approval's.
+ */
+async function _quoteAndSwap(signer, ethersLib, params, balanceDiff) {
   const {
     swapRouterAddress,
     tokenIn,
@@ -55,28 +95,18 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
     decimalsOut,
     isToken0To1,
     recipient,
-    deadline,
-    approvalMultiple,
     _attempts,
     _attemptLabel,
+    logCtx,
   } = params;
   const { Contract } = ethersLib;
-  const signerAddr = await signer.getAddress();
-  const approvalGas = await _ensureAllowance(
-    new Contract(tokenIn, ERC20_ABI, signer),
-    signerAddr,
-    swapRouterAddress,
-    amountIn,
-    approvalMultiple,
-  );
   const router = new Contract(swapRouterAddress, SWAP_ROUTER_ABI, signer);
-  const dl = deadline || _deadline();
   const swapParams = {
     tokenIn,
     tokenOut,
     fee,
     recipient,
-    deadline: dl,
+    deadline: _deadline(),
     amountIn,
     amountOutMinimum: 0n,
     sqrtPriceLimitX96: 0n,
@@ -88,7 +118,6 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
     throw new Error("Swap quote failed: " + e.message, { cause: e });
   }
   if (quotedOut === 0n) throw new Error("Swap aborted: no pool liquidity.");
-  const slip = slippagePct ?? _DEFAULTS.slippagePct;
   const spotRate = isToken0To1 ? currentPrice : 1 / currentPrice;
   const spotExpected =
     (Number(amountIn) / 10 ** decimalsIn) * spotRate * 10 ** decimalsOut;
@@ -97,21 +126,17 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
       ? Math.max(0, ((spotExpected - Number(quotedOut)) / spotExpected) * 100)
       : 0;
   log.info(
-    "[rebalance] swap (V3 router): quote=%s spot=%s impact=%s%% slip=%s%%",
+    "[rebalance] %s: swap (V3 router): quote=%s spot=%s impact=%s%% slip=%s%%",
+    logCtx,
     String(quotedOut),
     spotExpected.toFixed(0),
     impactPct.toFixed(2),
-    slip,
+    slippagePct,
   );
-  _checkSwapImpact(
-    impactPct,
-    slip,
-    _attempts,
-    _attemptLabel || V3_ROUTER_LABEL,
-  );
-  const slipBps = Math.round(slip * 100);
+  _checkSwapImpact(impactPct, slippagePct, _attempts, _attemptLabel);
+  const slipBps = Math.round(slippagePct * 100);
   swapParams.amountOutMinimum = (quotedOut * BigInt(10000 - slipBps)) / 10000n;
-  const provider = signer.provider || signer;
+  const provider = signer.provider;
   return balanceDiff(ethersLib, tokenOut, recipient, provider, async () => {
     const { receipt } = await sendTx.sendTransaction({
       populate: () => router.exactInputSingle.populateTransaction(swapParams),
@@ -119,7 +144,8 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
       label: "[rebalance] swap (V3 router)",
     });
     log.info(
-      "[rebalance] swap (V3 router): confirmed gasUsed=%s",
+      "[rebalance] %s: swap (V3 router): confirmed gasUsed=%s",
+      logCtx,
       String(receipt.gasUsed),
     );
     log.info(
@@ -128,7 +154,7 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
     );
     return {
       txHash: receipt.hash,
-      gasCostWei: receiptGasWei(receipt) + (approvalGas || 0n),
+      gasCostWei: receiptGasWei(receipt),
       swapSources: V3_ROUTER_LABEL,
     };
   });

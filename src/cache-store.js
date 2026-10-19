@@ -22,6 +22,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { loadMergedDefaults } = require("./load-merged-defaults");
 const fs = require("fs");
 const path = require("path");
 
@@ -43,14 +44,19 @@ const path = require("path");
 /**
  * Create a file-backed cache store.
  *
+ * The TTL has no default here. Each cache's lifetime is a setting of its
+ * own, read by the caller from the JSON configuration, and a figure
+ * supplied here instead would be a second value for it that nothing
+ * configures.
+ *
  * @param {Object} opts
  * @param {string} opts.filePath      - Path to the JSON cache file.
- * @param {number} [opts.defaultTtlMs=86400000] - Default TTL in ms (24 hours).
+ * @param {number} opts.defaultTtlMs  - TTL in ms for a `set` that names none.
  * @param {Object} [opts.fsModule]    - Injected fs module (for testing).
  * @returns {CacheStore}
  */
 function createCacheStore(opts) {
-  const { filePath, defaultTtlMs = 86_400_000, fsModule = fs } = opts;
+  const { filePath, defaultTtlMs, fsModule = fs } = opts;
 
   /** @type {Map<string, CacheEntry>|null} */
   let store = null;
@@ -151,19 +157,89 @@ function createCacheStore(opts) {
 }
 
 /**
+ * The tag that names a chain in cache file names and cache keys: its
+ * `cacheTag` in chains.json.
+ *
+ * Each chain declares its own, so two chains never share a cache file;
+ * PulseChain's is `pulse`, the tag its existing caches already carry. A
+ * tag is lower-case letters and digits only, because the keys it heads
+ * are joined with dashes and a chain's own name may contain one. There is
+ * no fallback: a chain without a usable tag of its own throws, naming the
+ * setting.
+ *
+ * @param {string} chainName  The chain's key in chains.json.
+ * @returns {string} The chain's cache tag.
+ * @throws {Error} When the chain gives no usable tag, or shares its tag
+ *   with another chain.
+ */
+function chainCacheTag(chainName) {
+  const chains = loadMergedDefaults("chains.json");
+  const problem = cacheTagProblem(chains, chainName);
+  if (problem !== null) throw new Error(problem);
+  return chains[chainName].cacheTag;
+}
+
+/**
+ * What is wrong with a chain's cache tag in a chains.json, or null when
+ * nothing is: the rule `chainCacheTag` holds the running chain to, and the
+ * settings check (src/settings-check.js) holds every chain to.
+ *
+ * @param {object} chains     A chains.json, keyed by chain name.
+ * @param {string} chainName  The chain's key in it.
+ * @returns {string|null}
+ */
+function cacheTagProblem(chains, chainName) {
+  const tag = chains[chainName]?.cacheTag;
+  if (typeof tag !== "string" || !/^[a-z0-9]+$/.test(tag))
+    return (
+      `chains.json → ${chainName}.cacheTag must be lower-case letters and ` +
+      `digits; it is ${JSON.stringify(tag)}.`
+    );
+  const sharing = Object.keys(chains).filter(
+    (other) => other !== chainName && chains[other]?.cacheTag === tag,
+  );
+  if (sharing.length > 0)
+    return (
+      `chains.json → ${chainName}.cacheTag "${tag}" is also the tag of ` +
+      `${sharing.join(", ")}; two chains with one tag share their caches.`
+    );
+  return null;
+}
+
+/**
+ * The canonical key of an entry in a cache of chain data: the chain
+ * first, then whatever identifies the entry, joined with dashes, every
+ * part lower-cased so an address matches in either capitalisation.
+ *
+ * The chain is its key in chains.json, the name the historical-price,
+ * block-time and epoch caches already lead with. Leading with it keeps
+ * one chain's entries from answering for another's: a token or a pool
+ * can sit at the same address on two chains, and PulseChain's copy of
+ * Ethereum's state means many do.
+ *
+ * @param {string} chain  The chain's key in chains.json.
+ * @param {...(string|number|bigint)} parts  What identifies the entry.
+ * @returns {string}
+ */
+function cacheKey(chain, ...parts) {
+  return [chain, ...parts].map((p) => String(p).toLowerCase()).join("-");
+}
+
+/**
  * Build the canonical "liquidity-pair scope" key string used as the suffix of
  * `event-cache-*.json` filenames and as the top-level key of
  * `liquidity-pair-details-cache.json`.
  *
- * Format: `{chain:5}-{factory:6hex}-{wallet:6hex}-{t0:8hex}-{t1:8hex}-{fee}`
- * where all hex segments are lower-case and skip the `0x` prefix.  The same
- * string identifies an asset configuration (chain + NFT factory + wallet +
- * token pair + fee tier) regardless of which specific pool address holds it
- * at any given time — the load-bearing property for Lifetime P&L reporting
- * across pool-instance redeployments.
+ * Format: `{cacheTag}-{factory:6hex}-{wallet:6hex}-{t0:8hex}-{t1:8hex}-{fee}`
+ * where the chain is its `chainCacheTag` and all hex segments are
+ * lower-case and skip the `0x` prefix.  The same string identifies an
+ * asset configuration (chain + NFT factory + wallet + token pair + fee
+ * tier) regardless of which specific pool address holds it at any given
+ * time — the load-bearing property for Lifetime P&L reporting across
+ * pool-instance redeployments.
  *
  * @param {object} args
- * @param {string} args.blockchain   Internal chain name (e.g. 'pulsechain').
+ * @param {string} args.blockchain   The chain's key in chains.json.
  * @param {string} args.factory      NFT factory / position manager address.
  * @param {string} args.wallet       Owner wallet address.
  * @param {string} args.token0       Pool token0 address.
@@ -179,7 +255,7 @@ function liquidityPairScopeKey({
   token1,
   fee,
 }) {
-  const bc = (blockchain || "pulsechain").slice(0, 5);
+  const bc = chainCacheTag(blockchain);
   const pm = (factory || "").slice(2, 8).toLowerCase();
   const w = (wallet || "").slice(2, 8).toLowerCase();
   const t0 = (token0 || "").slice(2, 10).toLowerCase();
@@ -193,8 +269,9 @@ function liquidityPairScopeKey({
  * {@link liquidityPairScopeKey}.
  *
  * @param {{ token0: string, token1: string, fee: number|string }} position
- * @param {string} [blockchain]  Default: 'pulsechain'.
+ * @param {string} blockchain    The chain's key in chains.json.
  * @param {string} [contract]    NFT factory / position manager address.
+ * @param {string} [wallet]      Owner wallet address.
  * @returns {string} Absolute path under tmp/
  */
 function eventCachePath(position, blockchain, contract, wallet) {
@@ -209,4 +286,11 @@ function eventCachePath(position, blockchain, contract, wallet) {
   return path.join(process.cwd(), "tmp", `event-cache-${scope}.json`);
 }
 
-module.exports = { createCacheStore, eventCachePath, liquidityPairScopeKey };
+module.exports = {
+  createCacheStore,
+  cacheKey,
+  eventCachePath,
+  liquidityPairScopeKey,
+  chainCacheTag,
+  cacheTagProblem,
+};

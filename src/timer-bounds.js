@@ -5,19 +5,20 @@
  * The one place that decides whether a configured number of seconds may
  * become a `setTimeout` or `setInterval` delay.
  *
- * **Why one module.** Such a value arrives by three roads, and an
- * operator may reasonably take any of them: the shipped-defaults JSON
- * under `app-config/user-configurable/`, `.env`, and the dashboard's
- * Bot Settings form via `POST /api/config`. Three copies of the rule
- * meant three different answers to the same question — a poll interval
- * of two hours was silently discarded on one road and accepted on the
- * other two. One module, one answer.
+ * **Why one module.** Such a value arrives by two roads, and an operator
+ * may take either: a JSON file under
+ * `app-config/app-defaults-for-user-configurable/` with the operator's
+ * copy under `app-config/user-configurable/`, and `.env`. No dashboard
+ * field sets one. Three copies of the rule once gave three different
+ * answers to the same question — a poll interval of two hours was
+ * silently discarded on one road and accepted on the others. One
+ * module, one answer.
  *
  * **Why it throws.** A value silently replaced by a default leaves the
  * bot running on a schedule nobody chose, and the schedule is then the
- * last thing anyone would think to check. Callers that cannot carry on
- * let the throw stop them; `POST /api/config` catches it and answers
- * 400, so the dashboard can say what was wrong.
+ * last thing anyone would think to check. At startup the throw stops the
+ * app, naming the setting; after startup the lenient reader of
+ * bot-config-defaults.json catches it and keeps the shipped default.
  *
  * **What the ceilings are protecting.** A timer holds its delay as a
  * 32-bit count of milliseconds, about 24.8 days. Asked for longer it
@@ -31,37 +32,29 @@
 
 "use strict";
 
-/*- Ceiling over any timer setting, whatever its default.  Two days is
- *  past anything these settings are for, and it keeps them clear of the
- *  runtime limit above: 48 hours is 172,800,000 ms against a limit of
- *  2,147,483,647, an order of magnitude inside it.
+const { SETTING_BOUNDS } = require("./setting-bounds");
+
+/*-
+ *  The rule's figures, from setting-bounds.json → timers: the least a
+ *  timer setting may be, how far above its own shipped default it may be
+ *  set, and the ceiling over any of them whatever its default. The
+ *  ceiling and the multiple combine by taking the LESSER. The greater
+ *  would not do: 1000x `txCancelSec`'s hour is 41 days, past the limit
+ *  above.
  *
- *  Combined with 1000x the default by taking the LESSER. The greater
- *  would not do: 1000x `txCancelSec`'s hour is 41 days, past the
- *  limit. */
-const GENERAL_CAP_SEC = 48 * 60 * 60;
-
-/*- How far above its own shipped default a timer setting may be set. */
-const MAX_DEFAULT_MULTIPLE = 1000;
-
-/*- Settings whose own sensible range is narrower than the general rule
- *  produces. The poll interval is the one that has such a range: an
- *  hour between looks at a position is already far beyond any use, and
- *  ten seconds is as often as it is worth asking a chain. Declared here
+ *  `settings` holds the ranges a setting declares for itself, where its
+ *  own sensible range differs from the general rule: declared once,
  *  rather than at each of the three call sites, which is how they came
- *  to disagree in the first place. */
-const EXPLICIT_BOUNDS_SEC = Object.freeze({
-  checkIntervalSec: Object.freeze({ min: 10, max: 3600 }),
-  /*- Both of these take 0 to mean "off" — no pacing, no outage pause. */
-  globalRPCRequestRateIntervalMS: Object.freeze({ min: 0 }),
-  rpcAllEndpointsDownPauseMS: Object.freeze({ min: 0 }),
-});
+ *  to disagree in the first place.
+ */
+const _TIMERS = SETTING_BOUNDS.timers;
 
 /**
  * Accept `sec` as a timer delay, or throw explaining why not.
  *
  * @param {object} o
- * @param {*} o.sec          The resolved value, in seconds.
+ * @param {*} o.sec          The resolved value: seconds, or milliseconds
+ *   for a key whose name ends in "ms".
  * @param {string} o.key     Canonical setting name, e.g. `checkIntervalSec`.
  *   Selects any explicit bounds declared above.
  * @param {number} o.defaultSec  Shipped default, which sets the general
@@ -94,23 +87,28 @@ function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
       remedy,
     );
   }
-  const explicit = EXPLICIT_BOUNDS_SEC[key];
-  const minSec = explicit && explicit.min !== undefined ? explicit.min : 1;
-  /*- The cap is the LESSER of 48 hours and 1000x the default; this is
+  const explicit = _TIMERS.settings[key];
+  const minSec =
+    typeof explicit?.min === "number" ? explicit.min : _TIMERS.minimum;
+  /*-
+   *  The cap is the LESSER of 48 hours and 1000x the default; this is
    *  the 48-hour half of it, expressed in whatever unit the setting
    *  uses. The key name says which: a name ending in "ms" is
    *  milliseconds, anything else seconds. Matched without regard to
    *  case because this file spells it both ways —
    *  `rpcAllEndpointsDownPauseMS` beside `priceCacheTtlMs` — and
    *  reading one of those as seconds would put this half a thousand
-   *  times too low without saying so. */
-  const capFromHours = /ms$/i.test(key)
-    ? GENERAL_CAP_SEC * 1000
-    : GENERAL_CAP_SEC;
+   *  times too low without saying so. The messages below name the same
+   *  unit.
+   */
+  const inMs = /ms$/i.test(key);
+  const unit = inMs ? "milliseconds" : "seconds";
+  const capSec = _TIMERS.maxHours * 60 * 60;
+  const capFromHours = inMs ? capSec * 1000 : capSec;
   const maxSec = Math.min(
-    defaultSec * MAX_DEFAULT_MULTIPLE,
+    defaultSec * _TIMERS.maxDefaultMultiple,
     capFromHours,
-    explicit && explicit.max !== undefined ? explicit.max : Infinity,
+    typeof explicit?.max === "number" ? explicit.max : Infinity,
   );
   /*- Checked before the ceiling, so a negative is reported as what it
    *  is: the ceiling of a negative default is itself negative, and
@@ -119,13 +117,13 @@ function assertTimerSec({ sec, key, defaultSec, label, remedy }) {
   if (!Number.isInteger(sec) || sec < minSec) {
     throw _badTimerValue(
       `${name} resolves to ${String(sec)}, which is not a whole number of ` +
-        `seconds of at least ${minSec}.`,
+        `${unit} of at least ${minSec}.`,
       remedy,
     );
   }
   if (sec > maxSec) {
     throw _badTimerValue(
-      `${name} resolves to ${sec} seconds, above its maximum of ${maxSec}.`,
+      `${name} resolves to ${sec} ${unit}, above its maximum of ${maxSec}.`,
       remedy,
     );
   }

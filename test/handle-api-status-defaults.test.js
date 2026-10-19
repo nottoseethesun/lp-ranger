@@ -12,11 +12,34 @@
 
 "use strict";
 
-const { test } = require("node:test");
+const { test, after } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+/*-
+ *  An operator's logging.json of this file's own, moving the error log
+ *  away from its default, so a status that named the default could not
+ *  pass for one that names the configured path. Set before anything
+ *  under src/ loads, because the loader reads the override directory's
+ *  path at load. Nothing else is overridden.
+ */
+const _MOVED_ERROR_LOG = "logs/elsewhere/errors.log";
+const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "status-defaults-"));
+fs.writeFileSync(
+  path.join(_USER_DIR, "logging.json"),
+  JSON.stringify({ errorLogPath: _MOVED_ERROR_LOG }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
+after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
 const { createApiStatusHandler } = require("../src/handle-api-status");
+const { primaryRouteLabel } = require("../src/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/server-moralis");
 const config = require("../src/config");
+const { configuredErrorLogPath } = require("../src/error-log");
+const logFile = require("../src/log-file");
 
 /** Drive the real handler with the smallest viable dependency set. */
 async function statusPayload(overrides = {}) {
@@ -38,6 +61,8 @@ async function statusPayload(overrides = {}) {
     actualGasCostUsd: async () => 0,
     getLpProviderDisplayName: () => "9mm v3",
     managedKeys: () => [],
+    primaryRouteLabel,
+    moralisEnabledIn,
     jsonResponse: (_res, _code, body) => {
       captured = body;
     },
@@ -46,6 +71,26 @@ async function statusPayload(overrides = {}) {
   await handler({}, {});
   return captured;
 }
+
+test("/api/status names the aggregator as the route on PulseChain", async () => {
+  const body = await statusPayload();
+  assert.equal(body.global.swapRouteLabel, "Watergun Aggregator");
+});
+
+test("/api/status names the V3 router on a chain with no aggregator", async () => {
+  /*-
+   *  A chain whose `aggregator.url` is empty — the testnet, today — swaps
+   *  only through the V3 router, so the badge must not claim otherwise.
+   */
+  const saved = config.AGGREGATOR_URL;
+  config.AGGREGATOR_URL = "";
+  try {
+    const body = await statusPayload();
+    assert.equal(body.global.swapRouteLabel, "9mm V3 Router");
+  } finally {
+    config.AGGREGATOR_URL = saved;
+  }
+});
 
 test("/api/status publishes the position defaults in `global`", async () => {
   /*-
@@ -59,4 +104,42 @@ test("/api/status publishes the position defaults in `global`", async () => {
     body.global.impermanentLossGuardPct,
     config.IMPERMANENT_LOSS_GUARD_PCT,
   );
+});
+
+test("/api/status names the error log as logging.json sets it", async () => {
+  /*-
+   *  The Reload Current Position dialog tells the operator where a
+   *  failure's details go; the user ruled it must name the configured
+   *  path, as written, rather than the default.
+   */
+  const body = await statusPayload();
+  assert.equal(configuredErrorLogPath(), _MOVED_ERROR_LOG);
+  assert.equal(body.global.errorLogPath, _MOVED_ERROR_LOG);
+});
+
+test("/api/status no longer publishes the removed settings", async () => {
+  /*-
+   *  `SLIPPAGE_PCT` and Gas Strategy are gone, and so are the status
+   *  fields they fed, which nothing on the page read.
+   */
+  const body = await statusPayload();
+  for (const k of ["slippagePct", "defaultSlippagePct", "gasStrategy"])
+    assert.equal(Object.hasOwn(body.global, k), false, k);
+});
+
+test("/api/status names the file the server logs to, or null while that is off", async () => {
+  /*-
+   *  A failed re-open's Manage tooltip sends the operator there for the
+   *  details, and to the terminal while there is no such file.
+   */
+  assert.equal((await statusPayload()).global.logFilePath, null);
+  const file = path.join(os.tmpdir(), `lp-ranger-status-${process.pid}.log`);
+  logFile.enableLogFile(file);
+  try {
+    const body = await statusPayload();
+    assert.equal(body.global.logFilePath, path.relative(process.cwd(), file));
+  } finally {
+    logFile.disableLogFile();
+    fs.rmSync(file, { force: true });
+  }
 });

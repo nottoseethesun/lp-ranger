@@ -50,6 +50,8 @@ import { posStore } from "./dashboard-positions-store.js";
  *  the dashboard-data import the header warns about, this closes no
  *  cycle. */
 import { getInputDefault } from "./dashboard-config-inputs.js";
+import { activeChainId } from "./dashboard-chain.js";
+import { POSITION_DIALOG_ATTRIBUTE } from "./dashboard-position-dialogs.js";
 
 /*- Canonicalize to EIP-55 so the composite key byte-matches the
  *  server's (built via bot-config-v2.compositeKey, which checksums).
@@ -63,11 +65,16 @@ function _toChecksum(addr) {
   }
 }
 
-/** Composite key for the active position, or null. */
-function _activeKey() {
+/**
+ * Composite key for the active position, or null — as before the server
+ * has named the chain, since the key's first segment is that chain.
+ * Exported for tests.
+ */
+export function _activeKey() {
   const a = posStore.getActive();
   if (!a?.tokenId) return null;
-  const chain = "pulsechain";
+  const chain = activeChainId();
+  if (chain === null) return null;
   return [
     chain,
     _toChecksum(a.walletAddress),
@@ -355,6 +362,8 @@ export function openRescanPricesDialog(getStatus, getSynced) {
   const overlay = document.createElement("div");
   overlay.className = "9mm-pos-mgr-modal-overlay";
   overlay.id = "rescanPricesModal";
+  // About the position on screen: a switch closes it, unless it is busy.
+  overlay.setAttribute(POSITION_DIALOG_ATTRIBUTE, "");
   overlay.appendChild(frag);
   document.body.appendChild(overlay);
   _wireDialog(overlay, getStatus, getSynced);

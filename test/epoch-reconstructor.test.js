@@ -5,18 +5,38 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, after } = require("node:test");
 const assert = require("assert");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const {
   _buildClosedEpoch,
   isEpochHistoryComplete,
   reconstructEpochs,
 } = require("../src/epoch-reconstructor");
+const epochCache = require("../src/epoch-cache");
 const {
   CHAIN_HISTORY_MODULE,
   chainHistoryStub,
 } = require("./helpers/chain-history-stub");
 const { captureWarnings } = require("./helpers/capture-warnings");
+
+/*-
+ *  The epoch cache is one JSON file, and a dozen test files write it
+ *  while the suite runs 24 at a time, so a run against the real path
+ *  races the others and fails intermittently while passing in
+ *  isolation. Every case here writes a file of this process's own
+ *  instead, in a directory under the system's temporary directory,
+ *  never the project's tmp/, where the operator's caches are. It is set
+ *  for the whole file and removed after the last case, because cases in
+ *  several blocks below write it.
+ */
+const _CACHE_DIR = fs.mkdtempSync(
+  path.join(os.tmpdir(), "epoch-reconstructor-test-"),
+);
+epochCache._setCachePath(path.join(_CACHE_DIR, "pnl-epochs-cache.json"));
+after(() => fs.rmSync(_CACHE_DIR, { recursive: true, force: true }));
 
 describe("_buildClosedEpoch", () => {
   it("returns null when no dates available", () => {
@@ -34,6 +54,7 @@ describe("_buildClosedEpoch", () => {
       exitValueUsd: 295,
       feesEarnedUsd: 0.5,
       gasCostUsd: 0.02,
+      gasNative: 0.001,
       token0UsdPriceAtOpen: 0.0016,
       token1UsdPriceAtOpen: 0.0006,
       token0UsdPriceAtClose: 0.0017,
@@ -63,6 +84,7 @@ describe("_buildClosedEpoch", () => {
       exitValueUsd: 0,
       feesEarnedUsd: 0,
       gasCostUsd: 0,
+      gasNative: 0,
     };
     const ep = _buildClosedEpoch(h, 0);
     assert.ok(ep);
@@ -99,6 +121,7 @@ describe("_buildClosedEpoch", () => {
       /*- Present so these cases turn on the fee alone. Gas carries its
        *  own guard, covered in test/epoch-reconstructor-gas.test.js. */
       gasCostUsd: 0.02,
+      gasNative: 0.001,
     });
 
     it("rejects the epoch when feesEarnedUsd is null", () => {
@@ -134,6 +157,7 @@ describe("_buildClosedEpoch", () => {
       exitValueUsd: 100,
       feesEarnedUsd: 1,
       gasCostUsd: 0.02,
+      gasNative: 0.001,
     };
     assert.strictEqual(_buildClosedEpoch(h, 0).color, "#00e5ff");
     assert.strictEqual(_buildClosedEpoch(h, 1).color, "#ff6b35");
@@ -148,6 +172,7 @@ describe("_buildClosedEpoch", () => {
       exitValueUsd: 190,
       feesEarnedUsd: 3,
       gasCostUsd: 2,
+      gasNative: 0.1,
     };
     const ep = _buildClosedEpoch(h, 0);
     // epochPnl = (exit - entry) + fees - gas = (190 - 200) + 3 - 2 = -9
@@ -162,22 +187,8 @@ describe("_buildClosedEpoch", () => {
 });
 
 describe("epoch-cache round-trip", () => {
-  /*- The cache is one JSON file, and a dozen test files write it while
-   *  the suite runs 24 at a time — so a run against the real path races
-   *  the others and fails intermittently while passing in isolation.
-   *  Point it at a per-process file, the same isolation
-   *  `epoch-cache.test.js` uses. */
-  const mod = require("../src/epoch-cache");
-  const { getCachedEpochs, setCachedEpochs } = mod;
-  const fs = require("node:fs");
-  const path = require("node:path");
-  const TMP = path.join(process.cwd(), "tmp");
-  fs.mkdirSync(TMP, { recursive: true });
-  mod._setCachePath(
-    path.join(TMP, `pnl-epochs-cache-reconstructor-${process.pid}.json`),
-  );
+  const { getCachedEpochs, setCachedEpochs } = epochCache;
   const key = {
-    blockchain: "test",
     contract: "0xPM",
     wallet: "0xW",
     token0: "0xA",
@@ -314,9 +325,9 @@ describe("_fetchEpochsFromChain resume buffer", () => {
    * stubbed.
    *
    * @param {string|null} failOn  tokenId to throw for, once.
-   * @param {number} [gasUsd]     What the gas converter answers. Zero
-   *   stands for a failed or paused price lookup, which the real
-   *   `actualGasCostUsd` also reports as 0.
+   * @param {number|null} [gasUsd]  What the gas converter answers. Null
+   *   stands for a close day with no native price, which the real
+   *   `pastGasCostUsd` also reports as null.
    */
   function withStubbedHistory(failOn, gasUsd = 0.02) {
     const Module = require("module");
@@ -326,12 +337,12 @@ describe("_fetchEpochsFromChain resume buffer", () => {
     Module.prototype.require = function (id) {
       if (id === CHAIN_HISTORY_MODULE) return chainHistoryStub();
       /*- The gas converter is stubbed alongside the history because the
-       *  real one calls `fetchTokenPriceUsd`, which would put network
-       *  I/O in a unit test — and because a zero USD is now meaningful
-       *  (it says the price was unknown), so the tests need to set it
-       *  deliberately rather than inherit whatever a price lookup did. */
+       *  real one asks a price source, which would put network I/O in a
+       *  unit test — and because a null USD is meaningful (it says the
+       *  price was unknown), so the tests set it deliberately rather
+       *  than inherit whatever a price lookup did. */
       if (id === "./bot-pnl-updater")
-        return { actualGasCostUsd: async () => gasUsd };
+        return { pastGasCostUsd: async () => gasUsd };
       if (id !== "./position-history") return orig.apply(this, arguments);
       return {
         getPositionHistory: async (tid) => {

@@ -111,8 +111,6 @@ describe("dex-detail-page-url-generator — fails closed", () => {
       withPage({ pathSegments: "info/v3" }),
       "pulsechain",
     ],
-    ["an unknown chain", entry(), "ethereum"],
-    ["a blank chain name", entry(), ""],
   ];
 
   for (const [label, providerEntry, chain] of cases) {
@@ -231,8 +229,12 @@ describe("lp-providers payload enrichment", () => {
 
 describe("shipped config wires end to end", () => {
   it("the real lp-providers.json + chains.json produce the 9mm URL", () => {
-    /*- Guards the config itself, not just the pure functions: a typo in
-     *  either JSON file breaks the link with no other signal. */
+    /*-
+     *  Guards the config itself, not just the pure functions: a typo in
+     *  either JSON file breaks the link with no other signal. The address
+     *  is the 9mm app's own pool page, because dex.9mm.pro's pair page
+     *  redirects to the app's home page and drops the pool.
+     */
     const { readLpProviders } = require("../src/lp-providers");
     const enriched = _withDexDetailPage(readLpProviders(), "pulsechain");
     const hit = Object.values(enriched).find(
@@ -241,7 +243,7 @@ describe("shipped config wires end to end", () => {
     assert.ok(hit, "no shipped provider yielded a dex detail page URL");
     assert.strictEqual(
       hit.dexDetailPageUrlTemplate,
-      "https://dex.9mm.pro/info/v3/pulsechain/pairs/{poolId}",
+      "https://app.9mm.pro/pools/{poolId}",
     );
     assert.strictEqual(hit.dexDetailPageName, "Dex Detail Page");
   });

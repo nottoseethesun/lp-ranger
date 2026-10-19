@@ -2,9 +2,11 @@
  * @file test/config.test.js
  * @description Unit tests for src/config.js.
  *
- * Because config.js reads process.env at require-time, we test the internal
- * parser helpers (_parsePositiveInt, _parsePositiveFloat) directly, and test
- * assertLiveModeReady() by manipulating the exported object.
+ * Because config.js reads process.env at require-time, we test
+ * assertLiveModeReady() by manipulating the exported object. How each
+ * `.env` variable is read is covered by test/settings-check.test.js
+ * (src/env-settings.js), and the Bot Settings `.env` can set by
+ * test/config-env-ranges.test.js.
  *
  * Run with: npm test
  */
@@ -16,75 +18,6 @@ const assert = require("assert");
 
 const config = require("../src/config");
 const walletManager = require("../src/wallet-manager");
-
-// ── _parsePositiveInt ─────────────────────────────────────────────────────────
-
-describe("_parsePositiveInt", () => {
-  const parse = config._parsePositiveInt;
-
-  it("parses a valid positive integer string", () => {
-    assert.strictEqual(parse("5555", 3000), 5555);
-  });
-
-  it("returns fallback for zero", () => {
-    assert.strictEqual(parse("0", 42), 42);
-  });
-
-  it("returns fallback for negative value", () => {
-    assert.strictEqual(parse("-1", 10), 10);
-  });
-
-  it("returns fallback for non-numeric string", () => {
-    assert.strictEqual(parse("abc", 99), 99);
-  });
-
-  it("returns fallback for undefined", () => {
-    assert.strictEqual(parse(undefined, 7), 7);
-  });
-
-  it("returns fallback for empty string", () => {
-    assert.strictEqual(parse("", 8), 8);
-  });
-
-  it("parses string with leading/trailing whitespace", () => {
-    // parseInt handles leading whitespace
-    assert.strictEqual(parse("  42  ", 1), 42);
-  });
-
-  it("parses a float string by truncating to int", () => {
-    assert.strictEqual(parse("3.9", 1), 3);
-  });
-});
-
-// ── _parsePositiveFloat ───────────────────────────────────────────────────────
-
-describe("_parsePositiveFloat", () => {
-  const parse = config._parsePositiveFloat;
-
-  it("parses a valid float string", () => {
-    assert.ok(Math.abs(parse("0.5", 1) - 0.5) < 1e-9);
-  });
-
-  it("parses an integer string", () => {
-    assert.strictEqual(parse("20", 1), 20);
-  });
-
-  it("returns fallback for zero", () => {
-    assert.strictEqual(parse("0", 0.5), 0.5);
-  });
-
-  it("returns fallback for negative", () => {
-    assert.strictEqual(parse("-0.1", 1.0), 1.0);
-  });
-
-  it("returns fallback for non-numeric", () => {
-    assert.strictEqual(parse("NaN", 2.5), 2.5);
-  });
-
-  it("returns fallback for undefined", () => {
-    assert.strictEqual(parse(undefined, 3.14), 3.14);
-  });
-});
 
 // ── Default values ────────────────────────────────────────────────────────────
 
@@ -110,8 +43,9 @@ describe("config default values", () => {
     assert.ok(config.REBALANCE_OOR_THRESHOLD_PCT > 0);
   });
 
-  it("SLIPPAGE_PCT is a positive number", () => {
-    assert.ok(config.SLIPPAGE_PCT > 0);
+  it("no longer reads SLIPPAGE_PCT", () => {
+    assert.equal(config.SLIPPAGE_PCT, undefined);
+    assert.equal(config.DEFAULT_SLIPPAGE_PCT, undefined);
   });
 
   it("CHECK_INTERVAL_SEC is a positive integer", () => {
@@ -189,12 +123,6 @@ describe("PORT configuration", () => {
       `Expected PORT in 1–65535, got ${config.PORT}`,
     );
   });
-
-  it("default PORT is 5555 when process.env.PORT is not set in test env", () => {
-    // This test is informational — in real usage PORT=5555 is the default.
-    // We verify _parsePositiveInt('5555', 5555) returns 5555.
-    assert.strictEqual(config._parsePositiveInt("5555", 99), 5555);
-  });
 });
 
 // ── EIP-55 checksummed addresses ─────────────────────────────────────────────
@@ -255,7 +183,6 @@ describe("config module shape", () => {
     "RPC_URL",
     "POSITION_ID",
     "REBALANCE_OOR_THRESHOLD_PCT",
-    "SLIPPAGE_PCT",
     "CHECK_INTERVAL_SEC",
     "MIN_REBALANCE_INTERVAL_MIN",
     "MAX_REBALANCES_PER_DAY",
@@ -265,8 +192,6 @@ describe("config module shape", () => {
     "SWAP_ROUTER",
     "assertLiveModeReady",
     "VERBOSE",
-    "_parsePositiveInt",
-    "_parsePositiveFloat",
   ];
 
   for (const key of expectedKeys) {

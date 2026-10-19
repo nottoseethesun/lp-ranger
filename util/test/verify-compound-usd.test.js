@@ -345,6 +345,10 @@ test("tokenIdFromKey — extracts the tokenId, null when malformed", () => {
   assert.equal(tokenIdFromKey("too-few-parts"), null);
 });
 
+test("tokenIdFromKey — reads a key whose chain name holds a dash", () => {
+  assert.equal(tokenIdFromKey("pulsechain-testnet-0xW-0xPM-162980"), "162980");
+});
+
 test("formatters — render values and degrade to an em dash", () => {
   assert.equal(fmtUsd(1234.5), "$1,234.50");
   assert.equal(fmtUsd(null), "—");

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 53c63b8a-d973-4be1-8005-50ac113c57eb
-  modified: 2026-10-04T17:03:01.519Z
+  modified: 2026-10-04T17:58:46.159Z
 ---
 
 The repo has **two** dependency-audit workflows, and they audit different things:
@@ -32,4 +32,4 @@ The repo has **two** dependency-audit workflows, and they audit different things
 
 Example: 2026-07-25 `brace-expansion` + `js-yaml` high advisories tripped it → fixed on main (commit 3157488) → user cut 0.8.13 → manual dispatch of the Latest-Release audit went green. The `elliptic`/`@ethersproject` chain stays as accepted low-severity (below the `--audit-level=high` gate, documented in CLAUDE-SECURITY.md).
 
-Open as of 2026-10-04: 0.9.8 ships the `braces` chain (`braces` → `chokidar` → `hardhat-watcher` → `@uniswap/swap-router-contracts` → `@uniswap/v3-sdk`), five high advisories in its shipped tree. Main is clean — `e51b0a7` added `--omit=dev` plus the scoped `chokidar` override on 10-03. The daily audit stays red until 0.9.9 is published.
+**Worked example, 2026-10-04 — the whole cycle in one day.** 0.9.8 shipped the `braces` chain (`braces` → `chokidar` → `hardhat-watcher` → `@uniswap/swap-router-contracts` → `@uniswap/v3-sdk`), five high advisories in its shipped tree. It audited green on 10-02 and red on 10-03 from the same immutable tag, because the advisory landed in between. `e51b0a7` fixed main that same morning with `--omit=dev` plus the scoped `chokidar` override; the scheduled run hours later correctly reported that the *release* still carried it, and stayed red for two days. Publishing 0.9.9 cleared it — confirmed by dispatching the workflow rather than waiting for the schedule, which reported `Latest published release: 0.9.9` and passed. Every part of the system behaved correctly throughout; the only thing that misled was the report's shape, which is what the pinned command now fixes.

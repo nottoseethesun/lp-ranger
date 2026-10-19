@@ -193,7 +193,15 @@ module.exports = [
       n: nPlugin,
     },
     languageOptions: {
-      ecmaVersion: 2022,
+      /*-
+       *  2025 for import attributes: `import X from "….json" with
+       *  { type: "json" }` is how a dashboard module reads a shipped
+       *  value esbuild bakes into the bundle, and Node's own import of
+       *  a JSON module in the tests needs the attribute too. esbuild
+       *  still emits es2020, so this widens what lint parses, not what
+       *  ships.
+       */
+      ecmaVersion: 2025,
       sourceType: "module",
       globals: {
         ...globals.browser,

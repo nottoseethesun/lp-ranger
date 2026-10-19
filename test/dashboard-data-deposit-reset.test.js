@@ -129,14 +129,14 @@ describe("Return to Automatic Detection — Lifetime Realized Gains", () => {
 });
 
 describe("Return to Automatic Detection — Initial Deposit (this position)", () => {
-  const key = "9mm_deposit_pos_162249";
+  const key = "9mm_deposit_pos_pulsechain_0xw_0xc_162249";
   it("removes the override and the load helper returns 0 (historical-price auto-detection resumes)", () => {
     assertResetReturnsToAutomatic(key, "curDepositInputWrap", false);
   });
 });
 
 describe("Return to Automatic Detection — Realized Gains (this position)", () => {
-  const key = "9mm_realized_pos_162249";
+  const key = "9mm_realized_pos_pulsechain_0xw_0xc_162249";
   it("removes the override; per-position realized gains have no auto-source, default is $0", () => {
     assertResetReturnsToAutomatic(key, "curRealizedInputWrap", true);
   });

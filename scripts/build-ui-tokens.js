@@ -1,7 +1,8 @@
 /**
  * @file scripts/build-ui-tokens.js
  * @description Generates `public/ui-tokens.css` (a generated artifact,
- * gitignored) from the shipped `ui-defaults.json`.
+ * gitignored) from `ui-defaults_layout.json`, the dashboard's layout
+ * settings, with any operator override applied.
  *
  * The problem this solves: a layout constant that operators should be
  * able to change has to reach CSS, and this project forbids both inline
@@ -34,12 +35,12 @@ const { log } = require("../src/log");
 const { loadMergedDefaults } = require("../src/load-merged-defaults");
 
 const OUT = path.join(__dirname, "..", "public", "ui-tokens.css");
-const SRC = "ui-defaults.json";
+const SRC = "ui-defaults_layout.json";
 
 /**
  * Read one positive-integer pixel value out of the merged defaults.
  *
- * @param {object} defaults  Parsed ui-defaults.
+ * @param {object} defaults  Parsed layout settings.
  * @param {string} key       Key to read.
  * @returns {number} The validated value.
  * @throws {Error} When absent or not a positive integer.
@@ -66,7 +67,7 @@ function renderCss(tokens) {
  * ui-tokens.css — GENERATED FILE, do not edit by hand.
  *
  * Written by scripts/build-ui-tokens.js from
- * app-config/app-defaults-for-user-configurable/ui-defaults.json
+ * app-config/app-defaults-for-user-configurable/ui-defaults_layout.json
  * (merged with any operator override in app-config/user-configurable/).
  * Edit the JSON and re-run \`npm run build\`.
  *

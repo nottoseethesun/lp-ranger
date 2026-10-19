@@ -27,6 +27,7 @@
 
 const { log } = require("./log");
 const ethers = require("ethers");
+const { coinDecimals } = require("./coin-decimals");
 const { ERC20_ABI } = require("./rebalancer-pools");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 
@@ -148,7 +149,7 @@ function _armCleanup(deps, sharePct, residual, lpValue) {
  *
  * All of the following must hold for the function to arm:
  *   - `state.lastRebalanceAt` is set and at least `delayMs` old
- *   - No state flag blocks arming (see `_stateAllowsArming`)
+ *   - No state flag blocks arming (see `_evaluateArmingGates`)
  *   - `snap.residualValueUsd > 0` and `snap.currentValue > 0`
  *   - `residual / (LP + residual) * 100 > thresholdPct`
  *   - `throttle.canRebalance().allowed` (non-consuming check)
@@ -272,14 +273,19 @@ async function computeWalletResidualUsd(deps, result, token0, token1) {
       t0.balanceOf(signerAddr),
       t1.balanceOf(signerAddr),
     ]);
+    const { d0, d1 } = coinDecimals(
+      result,
+      "the rebalance result",
+      "the wallet residual's value",
+    );
     return tracker.cappedValueUsd(
       result.poolAddress,
       bal0,
       bal1,
       result.token0UsdPrice || 0,
       result.token1UsdPrice || 0,
-      result.decimals0 ?? 18,
-      result.decimals1 ?? 18,
+      d0,
+      d1,
     );
   } catch (err) {
     log.warn(

@@ -6,15 +6,17 @@ real-time view into the bot with GUI controls. The two halves communicate
 through a well-defined HTTP API, documented in an interactive local Scalar
 API reference (`npm run api-doc`).
 
-Three companion references sit alongside this one:
-[`docs/configuration.md`](configuration.md) for how the app is configured —
-every environment variable, where each setting lives, and which are
-deliberately not editable; [`docs/security.md`](security.md) for the controls
-protecting the wallet and the gates enforcing them; and
-[`docs/npm-project-commands.md`](npm-project-commands.md) for every npm
-command and its flags, and
-[`docs/engineering.md`](engineering.md) for runtime state, development tools
-and the check-report pipeline.
+Four companion references sit alongside this one:
+
+- [`docs/configuration.md`](configuration.md): how the app is configured —
+  every environment variable, where each setting lives, and which are
+  deliberately not editable.
+- [`docs/security.md`](security.md): the controls protecting the wallet and
+  the gates enforcing them.
+- [`docs/npm-project-commands.md`](npm-project-commands.md): every npm command
+  and its flags.
+- [`docs/engineering.md`](engineering.md): runtime state, development tools
+  and the check-report pipeline.
 
 ---
 
@@ -29,6 +31,7 @@ and the check-report pipeline.
   - [Dashboard → Bot](#dashboard--bot)
   - [Persistence](#persistence)
 - [The Rebalance Pipeline](#the-rebalance-pipeline)
+- [The Compound Pipeline](#the-compound-pipeline)
 - [Multi-Position Concurrency](#multi-position-concurrency)
 - [P&L Tracking](#pl-tracking)
   - [Lifetime P&L Components](#lifetime-pl-components)
@@ -74,16 +77,19 @@ Node.js process that runs the bot. It provides a real-time view of every
 managed position — current value, fee earnings, P&L breakdown, range status,
 rebalance history — and a set of controls for managing the bot's behavior.
 
-The dashboard is built from 20 modular ES module source files in `public/`,
-bundled by esbuild into a single `bundle.js`. It uses no frontend framework —
-just vanilla JavaScript, DOM manipulation, and CSS. Fonts are self-hosted
-(no CDN dependencies). Client-side URL routing via Navigo provides
-bookmarkable deep links to specific positions.
+The dashboard is built from small ES module source files in `public/`
+(`dashboard-*.js`), bundled by esbuild into a single `bundle.js`. It uses no
+frontend framework — just vanilla JavaScript, DOM manipulation, and CSS.
+Fonts are self-hosted (no CDN dependencies). Client-side URL routing via
+Navigo provides bookmarkable deep links to specific positions.
 
-The dashboard never talks to the blockchain directly. Every piece of data it
-displays comes from the bot via the HTTP API, and every action the user takes
-(start/stop a position, trigger a rebalance, change settings) is a POST to
-an API endpoint.
+Nearly everything the dashboard displays comes from the bot via the HTTP
+API, and every action the user takes (start or stop managing a position,
+trigger a rebalance, change settings) is a POST or DELETE to an API
+endpoint. Two reads go elsewhere. When a wallet is imported, the browser asks
+the primary rpc endpoint how many transactions the address has sent, to tell
+a used wallet from a new one. And opening Check for Updates & About asks
+GitHub's api for the latest release.
 
 ---
 
@@ -93,23 +99,33 @@ The HTTP API is the contract between the two halves. It is documented in an
 OpenAPI 3.0 spec (`docs/openapi.json`) and can be browsed interactively via
 the Scalar API reference (`npm run api-doc` on port 5556).
 
-The API has roughly 20 endpoints organized into groups:
+The endpoints fall into these groups, which are the reference's tags:
 
-- **Status** — the dashboard polls `GET /api/status` every 3 seconds to get
-  the full state of all managed positions, including pool prices, P&L
-  snapshots, throttle state, and scan progress.
-- **Config** — `POST /api/config` updates per-position settings (slippage,
-  threshold, timeout, auto-compound) and global settings (gas strategy).
-- **Wallet** — import, unlock, reveal, and clear the encrypted wallet.
-- **Positions** — scan the wallet for LP positions, start/stop management,
-  fetch quick details (Phase 1) or full lifetime P&L (Phase 2).
-- **Actions** — force a rebalance or compound on demand.
-- **System** — health check and graceful shutdown.
+- **Status** — `GET /api/status`, which the dashboard polls every
+  `dashboardPollIntervalMs` (three seconds as shipped), returns the full
+  state of all managed positions: pool prices, P&L snapshots, throttle
+  state and scan progress.
+- **Config** — `POST /api/config` saves per-position settings (slippage,
+  threshold, timeout, auto-compound) and global ones (rpc list, gas fee
+  limit, approval multiple).
+- **Wallet** and **API Keys** — import, unlock, reveal and clear the
+  encrypted wallet; store the encrypted third-party api keys.
+- **Positions** — scan the wallet for LP positions; start and stop
+  management; fetch quick details or full lifetime P&L; re-open, reload or
+  re-scan prices; and answer whether a position is managed or being
+  adjusted.
+- **Rebalance** and **Compound** — force either on demand.
+- **UI** — the dashboard settings, the help's figures, the Bot Configuration
+  defaults and the LP providers.
+- **Telegram** and **Price Lookups** — alert settings and a test message;
+  pausing and resuming price lookups.
+- **System** — `GET /health` and a graceful shutdown.
 
 The server uses Node's built-in `http` module with a simple route table — no
-Express or other framework. Responses are JSON. The API is local-only (bound
-to `localhost` by default) and has no authentication layer — security relies on
-network isolation.
+Express or other framework. Responses are JSON. The API has no login.
+Instead it binds to `localhost` by default, refuses a POST or DELETE sent
+from any browser origin but the dashboard's own, and requires a CSRF token
+in the `x-csrf-token` header of every POST and DELETE.
 
 ---
 
@@ -134,22 +150,23 @@ refresh picks up exactly where it left off.
 User actions flow in the opposite direction as HTTP POST/DELETE requests.
 When the user clicks "Manage" on a position, the dashboard sends
 `POST /api/position/manage { tokenId }`. The server starts a new bot loop
-for that position and responds with success. When the user changes slippage,
-the dashboard sends `POST /api/config { slippagePct, positionKey }` and the
-server updates the per-position config on disk.
+for that position and responds with success. When the user saves a slippage
+setting, the dashboard sends `POST /api/config { slippagePctToken0,
+positionKey }` (or `slippagePctToken1`), and the server updates the
+per-position config on disk.
 
 ### Persistence
 
-The bot persists its state to two locations:
+The bot persists its state to three locations:
 
-1. **`app-config/` directory** — all app-managed config. Two subdirs
-   only: `app-defaults-for-user-configurable/` (tracked shipped
-   defaults including `chains.json`) and `user-configurable/` (operator
-   runtime files: the bot config `bot-config.json` with per-position
-   settings / HODL baselines / compound history, the auto snapshot
-   `bot-config.backup.json`, the encrypted wallet `wallet.json` —
-   AES-256-GCM with PBKDF2-SHA512 600,000 iterations — and the
-   encrypted third-party API keys `api-keys.json`).
+1. **`app-config/` directory** — all app-managed config, in two
+   subdirectories. `app-defaults-for-user-configurable/` holds the tracked
+   shipped defaults, `chains.json` among them. `user-configurable/` holds
+   the operator's files: `bot-config.json` (per-position settings, HODL
+   baselines, compound history) and its automatic snapshot
+   `bot-config.backup.json`; the encrypted wallet `wallet.json` (AES-256-GCM,
+   PBKDF2-SHA512 at 600,000 iterations); the encrypted third-party api keys
+   `api-keys.json`; and any override of a shipped file.
 2. **`app-data/` directory** — per-install runtime data. Contains the
    historical rebalance event log (`rebalance_log.json`). Separate
    from `app-config/` because it's per-install data, not config.
@@ -166,16 +183,19 @@ deposit values.
 
 ## The Rebalance Pipeline
 
-When the bot detects a position is out of range, the rebalance pipeline
-executes as a single synchronous sequence under the rebalance lock:
+A rebalance starts when the position is out of range and either the price
+has passed the OOR threshold or the OOR timeout has run out. Every gate must
+pass first — the throttle, the pool's daily cap and the Impermanent Loss
+Guard among them — and the gas check must find gas cheap enough. Rebalance
+Now skips the gates but not the gas check. The pipeline then runs as one
+sequence under the rebalance lock:
 
-1. **getPoolState** — read current tick, price, decimals, and **tick spacing**
-   from the pool contract. Tick spacing comes from
-   `factory.feeAmountTickSpacing(fee)` and is fetched fresh every call —
-   never cached. V3 forks like 9mm Pro define non-standard fee tiers (e.g.
-   `fee=20000` → `spacing=400`) that aren't in upstream Uniswap's hardcoded
-   map, so any cached or hardcoded fee→spacing table will silently mint
-   reverting positions on those pools.
+1. **getPoolState** — read the current tick, price, decimals and **tick
+   spacing** from the pool. Tick spacing comes from
+   `factory.feeAmountTickSpacing(fee)`, fresh on every call. V3 forks like
+   9mm Pro define fee tiers missing from upstream Uniswap's built-in map
+   (`fee=20000` → `spacing=400`), so a cached or built-in fee→spacing table
+   would mint positions that revert on those pools.
 2. **ownerOf** — verify the wallet still owns the NFT.
 3. **removeLiquidity** — drain the position via `decreaseLiquidity` +
    `collect` (atomic multicall). The old NFT is kept, not burned.
@@ -183,32 +203,38 @@ executes as a single synchronous sequence under the rebalance lock:
    to determine how much of each token the new position needs at the target
    tick range.
 5. **swapIfNeeded** — convert the excess token into the deficient one. The
-   primary path uses the 9mm DEX Aggregator (multi-hop routing across all
-   PulseChain DEXes for lowest slippage), with the V3 SwapRouter as fallback.
-   Two **swap-gates** (in `src/swap-gates.js`) run before every swap call
-   site:
-   - **Dust gate** (first) — skips the swap when the swap value is below the
-     gold-pegged dust threshold. Cheaper and more reliable to evaluate than
-     the gas gate, so it short-circuits.
-   - **Gas gate** — skips when estimated gas cost exceeds **1%** of the swap
-     value (`MAX_SWAP_GAS_RATIO`). Prevents pathological gas-eats-the-swap
-     cases on volatile or low-liquidity routes.
+   primary path is the active chain's aggregator: on PulseChain, the
+   Watergun Aggregator, which routes across PulseChain DEXes for the lowest
+   slippage. The V3 SwapRouter is the fallback, and the only path on a
+   chain with no aggregator. Two **swap-gates** (`src/swap-gates.js`) run
+   before every swap:
+   - **Dust gate** (first) — skips a swap worth less than the gold-pegged
+     dust threshold. It is cheaper and more reliable to evaluate than the
+     gas gate, so it runs first and short-circuits.
+   - **Gas gate** — skips a swap whose estimated gas would cost more than
+     `gasFeePct` of its value (Settings → Gas Fee Threshold; 1% as shipped),
+     so gas cannot eat the swap on a volatile or thin route.
 
-   When either gate trips, the rebalance proceeds straight to mint with the
-   unswapped balances; any leftover is mopped up later by the corrective
-   loop or the residual-cleanup rebalance.
-6. **mintPosition** — mint a new NFT at the re-centered tick range with the
+   When either gate trips, the rebalance goes on to mint with the balances
+   unswapped; any leftover is mopped up later by the corrective swaps or the
+   residual-cleanup rebalance.
+6. **Corrective swaps** (`src/rebalancer-correct.js`) — a swap routed
+   through the position's own pool moves that pool's price, which can leave
+   the coins off the new range's ratio. The pool is read again, and while
+   the imbalance is above the dust threshold another swap follows, up to
+   `correctiveSwapMaxRounds` rounds.
+7. **mintPosition** — mint a new NFT at the re-centered tick range with the
    swapped balances.
 
-Transactions in this pipeline are wrapped in a 4-phase recovery system
-(`_waitOrSpeedUp`, in `src/tx-speedup.js`): wait for confirmation, speed-up
-with 1.5x gas, wait again, then auto-cancel with a 0-value self-transfer if
-still stuck. What it wraps is whatever passes through
-`sendTx.sendTransaction` — every step above except the aggregator swap,
-which sends on its own and carries its own timeout, cancel and re-quote
-loop. Either route sends a cancel at the stuck nonce rather than leaving
-it blocked, and a cancel that cannot be confirmed is logged as possibly
-still stuck rather than assumed clear.
+A transaction stuck in this pipeline is recovered in four phases
+(`_waitOrSpeedUp`, in `src/tx-speedup.js`): wait for confirmation; resend at
+the same nonce with higher gas (1.5× on PulseChain); wait again; then send a
+zero-value self-transfer at that nonce to cancel it, and wait until something
+mines there. This covers every transaction that goes through
+`sendTx.sendTransaction`, which is every step above except the aggregator
+swap. That swap brings its own loop: after its wait it cancels and asks for
+a fresh quote. If neither the swap nor its cancel has mined, the rebalance
+fails rather than swap the same balance again through the V3 router.
 
 ---
 
@@ -227,15 +253,17 @@ unclaimed fees back into liquidity. The flow:
 3. **increaseLiquidity** — re-deposit the (now ratio-balanced) tokens into
    the same NFT.
 
-When the swap-gates skip the swap (dust-sized imbalance or gas-unfavorable),
-the compound deposits only the side that fits the ratio and leaves the
-rest as a tracked residual for the next rebalance to fold back in.
+When the swap-gates skip the swap (a dust-sized imbalance, or gas too dear),
+the compound offers just the collected fees. The position takes what fits
+its ratio, and the rest stays in the wallet as a tracked residual for the
+next rebalance to fold back in.
 
-When the swap does fire, the deposit uses the post-swap wallet balance
-directly. Any pre-existing wallet residual for the pool is incidentally
-swept back into the position alongside the freshly-collected fees — that
-is fine; `residual-tracker` caps its reported residual to actual
-`balanceOf`, so accounting self-corrects on the next read.
+When the swap does fire, the deposit is offered the wallet's whole
+post-swap balance of both tokens. So any other balance of them goes in too,
+as far as it fits the ratio: a residual from an earlier rebalance, or the
+same coin left over from another position. `residual-tracker` caps its
+reported residual to the actual `balanceOf`, so its figures correct
+themselves on the next read.
 
 ---
 
@@ -247,12 +275,13 @@ a single provider, signer, and — critically — a single rebalance lock.
 
 The lock ensures only one position sends transactions at a time. Without it,
 two positions trying to rebalance simultaneously would use the same nonce,
-causing one transaction to fail or replace the other. The lock has no timeout;
-it releases only after the transaction confirms on-chain.
+causing one transaction to fail or replace the other. The lock has no
+timeout: a move holds it until the move has ended and its transactions have
+settled on chain.
 
 Polling continues for all positions even while one holds the lock. A position
-that needs to rebalance waits for the lock, executes its full pipeline, then
-releases it for the next position.
+that needs to rebalance or compound waits for the lock, executes its full
+pipeline, then releases it for the next position.
 
 ---
 
@@ -265,7 +294,8 @@ rebalance to the next. When a rebalance occurs, the current epoch closes
 For positions with history, LP Ranger reconstructs past epochs by scanning
 on-chain Transfer events up to five years back, identifying the rebalance
 chain (consecutive NFT mints by the same wallet in the same pool), and
-fetching historical token prices from GeckoTerminal's OHLCV API.
+fetching historical token prices from Moralis when a key is stored, else from
+GeckoTerminal's OHLCV API.
 
 Epoch data is cached to disk (`tmp/pnl-epochs-cache.json`) keyed by pool
 identity — not by tokenId — so P&L history survives rebalances (which mint
@@ -273,15 +303,14 @@ new NFTs) without migration.
 
 ### Lifetime P&L Components
 
-Three data points feed the Lifetime panel's P&L calculation, each computed
-during the startup scan and cached in the epoch cache
-(`tmp/pnl-epochs-cache.json`, pool-keyed):
+Three figures from the lifetime scan feed the Lifetime panel's P&L:
 
-- **Lifetime deposited amounts** (`lifetimeHodlAmounts`) — the total tokens
-  externally deposited into the pool across the entire rebalance chain.
-  Computed by `src/lifetime-hodl.js`.  The first NFT's mint is the original
-  deposit; subsequent IncreaseLiquidity events that exceed collected fees are
-  classified as external deposits.
+- **Lifetime deposited amounts** (`lifetimeHodlAmounts`) — the tokens
+  deposited into the pool from outside across the whole rebalance chain,
+  computed by `src/lifetime-hodl.js` and kept in the pool's epoch cache
+  (`tmp/pnl-epochs-cache.json`). The first NFT's mint is the original
+  deposit; a later IncreaseLiquidity worth more than the fees collected is
+  an external deposit.
 
   **Fresh deposit detection algorithm** — for each rebalance boundary
   (drain on NFT[i-1] → mint/IncreaseLiquidity on NFT[i]):
@@ -291,10 +320,16 @@ during the startup scan and cached in the epoch cache
   2. **Scan wallet Transfer events** for token0 and token1 across the
      full window.  This covers both pre-drain deposits and post-drain
      deposits without counting residuals from prior rebalances.
-  3. **Group transfers by txHash** — if a single TX decreases one token
+  3. **Drop LP traffic** — transfers sent from the position manager or the
+     pool (a drain, a collect, a refund) are not deposits, and neither is a
+     transaction in which both tokens only come in.
+  4. **Group transfers by txHash** — if a single TX decreases one token
      and increases the other, it is a **swap** and both legs are excluded.
-  4. **Sum remaining inbound transfers** — these are genuine fresh deposits.
-  5. **Accumulate** into lifetime HODL amounts.
+  5. **Credit native-coin wraps** — when one token is the wrapped native
+     coin, a wrap into it (its `Deposit` event) counts as a fresh deposit of
+     that token, with or without a Transfer event.
+  6. **Sum remaining inbound transfers** — these are genuine fresh deposits.
+  7. **Accumulate** into lifetime HODL amounts.
 
   The first NFT in the chain has no drain — its full mint amounts are the
   original deposit.  When no provider is available (e.g. tests without
@@ -306,34 +341,37 @@ during the startup scan and cached in the epoch cache
   `getCachedFreshDeposits` / `setCachedFreshDeposits` in `epoch-cache.js`.
   On subsequent runs, only rebalance boundaries past the cached block are
   scanned — previously accumulated fresh amounts are restored from cache.
-  RPC cost per boundary: 4 `getLogs` calls (2 tokens × in/out).
+  Each boundary costs four log scans (two tokens, in and out), plus one for
+  wraps when a token is the wrapped native coin; each scan is split into
+  windows of `getLogsChunkSize` blocks.
 
   The scan a rebalance triggers takes exactly this path. That rebalance
   minted with the wallet's whole balance of both tokens, so any coins
   that arrived since the previous mint are now deposits in the position;
   the one new boundary is scanned and the rest come back from cache.
 
-- **Lifetime compounded amount** (`compoundedAmount0` / `compoundedAmount1`)
-  — the **coins** each NFT earned in fees and re-deposited, whether by a
-  compound or by the rebalance that closed it. Each NFT's figure is its
-  Collect amounts less the principal its DecreaseLiquidity events released
-  (`lifetimeFeeAmounts`). The per-event compound history is the
-  IncreaseLiquidity events after the mint, less the rebalance-adjacent ones
-  (`_filterRebalances`).
+- **Lifetime compounded amount** (`compoundedAmount0` / `compoundedAmount1`,
+  saved with the position's config) — the **coins** each NFT earned in fees
+  and re-deposited, whether by a compound or by the rebalance that closed
+  it. Each NFT's figure is its Collect amounts less the principal its
+  DecreaseLiquidity events released (`lifetimeFeeAmounts`). The per-event
+  compound history is the IncreaseLiquidity events after the mint, less the
+  rebalance-adjacent ones (`_filterRebalances`).
 
-  The saved figure is coins, never dollars. A stored USD total is true only
-  at the price that computed it, so its error grows with every move the pair
-  makes afterwards — on an old position, without bound. `snap.totalCompoundedUsd`
-  is therefore computed fresh on every poll, coins × current price, through
-  `src/coin-value.js`. The historical figures are the deliberate exceptions
-  and keep their own prices: Total Lifetime Deposit values each deposit at its
-  own block, the HODL Baseline's Entry Value stands at the NFT's mint, and a
-  closed epoch in the Historical P&L table keeps the dollars it closed at.
+  The saved figure is coins, never dollars. A stored dollar total is true
+  only at the price that computed it, so on an old position its error grows
+  without bound. `snap.totalCompoundedUsd` is therefore computed fresh on
+  every poll, coins × current price, through `src/coin-value.js`. The
+  historical figures keep their own prices on purpose: Total Lifetime
+  Deposit values each deposit at its own block, the HODL Baseline's Entry
+  Value stands at the NFT's mint, and a closed epoch in the Per-Day P&L
+  table keeps the dollars it closed at.
 
-- **Lifetime gas** (`totalGas`) — the cumulative gas cost in USD across all
-  rebalance and compound transactions.  Extracted from TX receipts during
-  epoch reconstruction: the mint TX receipt (already fetched for entry value)
-  and the close TX receipt (one additional RPC call per epoch).
+- **Lifetime gas** (`totalGas`) — the native coin every transaction of the
+  chain paid: each NFT's mint plus every charge against it, summed from the
+  receipts and kept per NFT (`nftGasWeiByTokenId`). The Lifetime line prices
+  that coin at today's native-token price; the Per-Day P&L table keeps each
+  closed period's gas at its close day's price.
 
 ### Lifetime Impermanent Loss / Gain
 
@@ -356,20 +394,19 @@ the earlier compounds. Both are the saved coins priced at the current
 poll, so IL/G does not drift as the pair moves after a compound.
 
 `ilFigures` (`src/bot-pnl-il.js`) computes both, and is the only place
-either is computed. It is pure — every input is an argument — which is
-what lets the bot tier and the unmanaged details endpoint share it
-despite holding their state in different shapes. A position therefore
-reports the same IL/G managed or not: managing one changes nothing on
-chain, so nothing on screen may move when it starts or stops. Were the
-view tier to compare the raw LP value instead, the gap would be the
-whole compounded amount — enough on a long-running position to flip the
-sign. `computeHodlIL` itself is unchanged.
+either is computed; it calls `computeHodlIL` from `src/il-calculator.js`.
+It is pure — every input is an argument — which is what lets the bot tier
+and the unmanaged details endpoint share it despite holding their state in
+different shapes. A position therefore reports the same IL/G managed or
+not: managing one changes nothing on chain, so nothing on screen may move
+when it starts or stops. (Comparing the raw LP value instead would differ
+by the whole compounded amount, enough on a long-running position to flip
+the sign.)
 
-Both the managed and unmanaged paths use the same `computeHodlIL` function
-from `src/il-calculator.js`.  The HODL amounts come from
-`lifetimeHodlAmounts` (accumulated via the fresh deposit detection
-algorithm) with fallback to the first closed epoch or the current HODL
-baseline when the scan hasn't run yet.
+The lifetime figure's HODL amounts come from `lifetimeHodlAmounts`
+(accumulated by the fresh deposit detection algorithm), falling back to the
+first closed epoch or the current HODL baseline while the scan has not
+run yet.
 
 ### Scan Architecture: Single Fetch, Two Classifiers
 
@@ -405,43 +442,50 @@ reconstruction reads the closed NFTs itself, in one batch
 Reconstruction runs for the bot only; the unmanaged view builds no
 epochs, because it renders no Per-Day P&L.
 
-When the HODL amounts, the compound total and the lifetime deposit are all
-already on disk (`lifetimeFiguresSaved`), the scan has nothing to compute
-and does not read at all, unless a rebalance has flagged a full rescan or
-Re-scan Prices has asked for the figures to be re-priced.
-Whenever it does read, it reads from the pool's creation block, lifted to the
-chain's first mint. A consumer about to compute from scratch needs the whole
-chain, not a slice of it. The start block is taken from the pool when the read
-runs. The compound total and the lifetime deposit are saved and
-restored with the position's config (`PERSISTED_STATE_KEYS` in
-`src/server-positions.js`). The HODL amounts are kept in the pool's epoch
-cache. So after the first complete scan, a restart reads nothing for them.
-Compounds and rebalances add to the compound total as they happen. The full
-rescan a rebalance flags re-derives the HODL amounts and the lifetime
-deposit, because that rebalance minted with the wallet's whole balance:
-coins that arrived since the previous mint are deposits in the new NFT.
-Re-scan Prices asks for the other kind of rebuild — the amounts stand and
-every dollar figure built on them is fetched again at fresh prices. See
-docs/engineering.md § `POST /api/position/rescan-prices`.
+The scan reads the chain only when it has something to compute. Once the
+HODL amounts, the compound total and the lifetime deposit are all on disk
+(`lifetimeFiguresSaved`), it reads nothing, so after the first complete scan
+a restart reads nothing for them. Two requests make it read again:
 
-A pass whose event scan fails computes none of them. The chain the bot holds
-is then whatever it held before the pass, which on a cold start is nothing.
-Figures computed from it would be saved, and later passes would keep them.
-When the pass needed a read, the position stays unready instead, and the
-30-minute rescan retries the pass.
+- **A rebalance flags a full rescan.** That rebalance minted with the
+  wallet's whole balance, so coins that arrived since the previous mint are
+  deposits in the new NFT. The HODL amounts and the lifetime deposit are
+  derived again.
+- **Re-scan Prices asks for a re-pricing.** The amounts stand, and every
+  dollar figure built on them is fetched again at fresh prices. See
+  docs/engineering.md § `POST /api/position/rescan-prices`.
+
+A read starts at the pool's creation block, lifted to the chain's first mint
+and taken from the pool when the read runs, because a figure computed from
+scratch needs the whole chain. The compound total and the lifetime deposit
+are saved and restored with the position's config (`PERSISTED_STATE_KEYS` in
+`src/server-positions.js`), and compounds and rebalances add to the compound
+total as they happen. The HODL amounts are kept in the pool's epoch cache.
+
+A pass whose event scan fails computes none of these figures. The chain the
+bot holds would be whatever it held before the pass — nothing, on a cold
+start — and figures computed from it would be saved and kept by later
+passes. So when the pass needed a read, the position stays unready instead,
+and the 30-minute rescan retries the pass.
 
 ### Lifetime Sync vs Bot Loop
 
-The lifetime P&L scan (event scan, epoch reconstruction, price fetching) is
-**the same work** for managed and unmanaged positions. The bot loop exists
-solely to monitor the position and act on it — rebalance when out of range,
-auto-compound when the fee threshold is hit. The lifetime sync is not a
-bot-loop concern. Dashboard readiness (the "Synced" badge and blur overlay)
-tracks whether the lifetime scan has completed, not whether the bot loop is
-running. This separation prevents the badge from coupling to bot startup
-timing (e.g. stagger delays between positions) or falsely showing "Synced"
-when an unmanaged detail fetch completes for a position whose managed scan
-hasn't started yet.
+Dashboard readiness — the "Synced" badge and the blur over the Lifetime
+panel — tracks whether the lifetime scan has completed, not whether the bot
+loop is running. The two are different jobs. The lifetime scan (event scan,
+epoch reconstruction, price fetching) produces the reporting; the bot loop
+exists to monitor the position and act on it — rebalance when out of range,
+auto-compound when the fee threshold is crossed.
+
+Kept apart, a position's badge does not depend on when its own bot loop
+starts. Only a managed position has a Lifetime panel, so only its own scan
+can mark it "Synced": an unmanaged position's details fetch never sets the
+flag, so it cannot show "Synced" for a position whose managed scan has not
+started yet. One thing overrides every position's badge: after a launch,
+while the server is still starting the positions saved as managed, one at
+a time, the badge reads "Syncing" whatever is on screen. The server reports
+that start-up's progress in `GET /api/status` (`startingManagedPositions`),
+and the Syncing state keeps Manage and Stop Managing disabled until it ends.
 
 ---
 
@@ -460,13 +504,13 @@ for unmanaged-position detail and closed-position history) — it is the
 single chokepoint. Adding or removing a price source later requires zero
 changes here.
 
-Four sources mutate the pause flag, each capable of pausing on its own:
+These set the pause flag, or bypass it:
 
 | Source | Effect | Notes |
 | --- | --- | --- |
 | `server.js` startup | flag = `false` | Browser idle tracker / endpoints take over from there. |
 | Server-side idle tracker | flag = `true` after 15 min of no `/api/*` traffic | Catches the "browser fully closed" case (`src/server-idle-tracker.js`). |
-| Browser-side idle (`public/dashboard-idle.js`) | flag = `true` via `POST /api/pause-price-lookups` after 2-min blur or 15-min no-input; flag = `false` via `POST /api/unpause-price-lookups` on activity (focus / mouse / keyboard / touch / pointer) | 500 ms throttle on activity events. Mobile-aware. |
+| Browser-side idle (`public/dashboard-idle.js`) | flag = `true` via `POST /api/pause-price-lookups` after 15 min with no input; flag = `false` via `POST /api/unpause-price-lookups` on the next activity (focus / mouse / keyboard / touch / pointer) | 500 ms throttle on activity events. |
 | Move scope (`withFreshPricesAllowed`) | counter increment > 0 forces fresh fetches inside the move; restores prior flag on completion (success or throw) | Wraps every auto- and manual-triggered rebalance / compound. Purely scoped — no "remember to re-pause." |
 | `bot.js` headless startup | flag = `true` (default); opt out with `--start-with-price-lookups-unpaused` | No dashboard, no idle signal — only moves need prices. |
 
@@ -477,13 +521,15 @@ the browser-issued pause. Unpausing is always explicit.
 Pool-tick polling is unaffected by pause state. OOR detection, threshold
 checks, and OOR-timeout countdowns are tick-based on-chain RPC calls, not
 part of the price-source cascade. When paused with an empty cache,
-`fetchTokenPriceUsd` returns `0`; downstream consumers (gas-too-high
-gate, P&L snapshot) already tolerate `0` and degrade to no-op rather
-than block moves.
+`fetchTokenPriceUsd` returns `0`, which the P&L snapshot tolerates. The gas
+check before a rebalance never meets that `0`: it runs inside the move
+scope, so it always gets a fresh price.
 
-Two configurable global keys live in `app-config/user-configurable/bot-config.json`:
-`priceCacheTtlMs` (default 120 000) and `dustUnitPriceCacheMultiplier`
-(default 30). The dust-unit-price TTL is computed at module init as
+Three global keys tune the caching. They are saved in `bot-config.json`'s
+global section, with their defaults in `bot-config-defaults.json`:
+`priceCacheTtlMs` (120000 as shipped), `dustUnitPriceCacheMultiplier` (30)
+and `moveCacheTtlMs` (4000, the cache's life inside a move). The
+dust-unit-price TTL is computed at module init as
 `priceCacheTtlMs × multiplier`, with a runtime assertion guarding the
 integer-multiple invariant.
 
@@ -492,21 +538,20 @@ is also the gate for `playSound()` in `public/dashboard-sounds.js`:
 polling-driven rebalance and compound jingles are suppressed while the
 dashboard is idle, so a user returning to a long-untouched tab is not
 greeted with a backlog of event sounds. `playSoundAlways()` (Easter Egg,
-title tune) is unaffected. The move-scope bypass
-(`withFreshPricesAllowed`) is irrelevant here — it never touches the
-browser flag — so an auto-rebalance/compound that runs while the user is
-away leaves the browser paused and its corresponding sound suppressed.
+title tune) is unaffected. The move scope never touches the browser flag,
+so a rebalance or compound that runs while the user is away plays no sound.
 
 ---
 
 ## Security Model
 
-- **Private keys** exist only in memory during signing. On disk, they are
-  encrypted with AES-256-GCM (PBKDF2-SHA512 key derivation, 600,000
-  iterations). The encrypted file is gitignored.
+- **Private keys** exist in plaintext only in the server's memory, while it
+  runs. On disk, they are encrypted with AES-256-GCM (PBKDF2-SHA512 key
+  derivation, 600,000 iterations). The encrypted file is gitignored.
 - **Localhost only** by default. The server binds to `127.0.0.1` so only
-  local connections are accepted. CORS is locked to `localhost:<PORT>` and
-  mutating requests from non-localhost origins are rejected.
+  local connections are accepted. CORS is locked to `localhost:<PORT>`,
+  mutating requests from non-localhost origins are rejected, and every POST
+  and DELETE must carry a CSRF token.
 - **Nonce safety** is enforced by the async mutex rebalance lock — only one
   transaction chain executes at a time.
 - **Slippage protection** uses quote-based minimums (not spot price) and

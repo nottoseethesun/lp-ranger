@@ -4,10 +4,11 @@
  * @description
  * Single TX-submission entry point for the entire app.  Bundles:
  *   - estimateGas with chain-config gas-limit multiplier and per-call floor
- *   - mid-session RPC failover (one fallback RPC, sticky for FAILOVER_DURATION_MS)
- *   - retry on transient RPC errors (delegated to ./tx-retry._retrySend)
+ *   - mid-session RPC failover along the chain's ordered endpoint list,
+ *     sticky for `rpcFailoverStickyMs` (bot-config-defaults.json)
+ *   - retry on transient RPC errors (delegated to ./tx-retry._retrySendTimed)
  *   - automatic speed-up of pending TXs after TX_SPEEDUP_SEC
- *   - automatic cancel via 0-PLS self-transfer after TX_CANCEL_SEC
+ *   - automatic cancel via zero-value self-transfer after TX_CANCEL_SEC
  *
  * Public API:
  *   - init(rpcConfig)         — call once at boot from bot-loop.js
@@ -17,13 +18,14 @@
  *                               singleton NonceManager bound to the
  *                               active RPC)
  *   - failoverToNextRPC()     — step one place forward through the RPC
- *                               list for the next FAILOVER_DURATION_MS
- *                               (sticky window).  Off the end of the
- *                               list it pauses all RPC traffic and
- *                               restarts from the first endpoint.
+ *                               list for the sticky window.  Off the
+ *                               end of the list it pauses all RPC
+ *                               traffic and restarts from the first
+ *                               endpoint.
  *
- * Encapsulation: this module owns the primary/fallback provider pair.
- * Callers pass the raw `chain.rpc` JSON; provider construction stays here.
+ * Encapsulation: this module owns the ordered list of providers, one per
+ * endpoint. Callers pass the raw `chain.rpc` JSON; provider construction
+ * stays here.
  *
  * RPC-failover scope: estimateGas-failover works with ANY signer because
  * `sendTransaction` performs the estimate against `getCurrentRPC()`
@@ -40,8 +42,15 @@ const { log } = require("./log");
 const ethers = require("ethers");
 const config = require("./config");
 const { buildProvider } = require("./bot-provider");
-const { _retrySend } = require("./tx-retry");
-const { _waitOrSpeedUp, _waitOnePhase } = require("./tx-speedup");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { _retrySendTimed } = require("./tx-retry");
+const {
+  _waitOrSpeedUp,
+  _waitOnePhase,
+  confirmedReceipt,
+} = require("./tx-speedup");
+const { receiptGasWei } = require("./receipt-gas");
+const { addSpentGas } = require("./spent-gas");
 const { retryRead } = require("./rpc-read-retry");
 const { pauseForExhaustedEndpoints } = require("./rpc-endpoints-exhausted");
 const rpcRequestManager = require("./rpc-request-manager");
@@ -49,19 +58,12 @@ const rpcOutOfService = require("./rpc-out-of-service");
 const { noteRpcResult, decideIfCurrentRPCIsOutOfService, clearRpcSamples } =
   rpcOutOfService;
 
-/**
- * How long a single failover stays sticky before we try the primary again.
- * One hour: long enough to ride out a sustained RPC outage, short enough
- * that a transient blip doesn't pin us to the (typically slower) fallback
- * for the rest of the bot's lifetime.  Module-internal — not exported.
+/*-
+ *  How long a failover stays on the endpoint it moved to before reads go
+ *  back to the first one: `rpcFailoverStickyMs` in
+ *  bot-config-defaults.json, whose comment explains the figure.
  */
-const FAILOVER_DURATION_MS = 60 * 60 * 1000;
-
-/** Default gas-limit multiplier when chain config doesn't set one. */
-const _DEFAULT_GAS_LIMIT_MULTIPLIER = 2;
-/** Default gasLimit floor for callers that omit one. Sized so plain
- *  contract calls don't OOG on the worst tier we've observed. */
-const _DEFAULT_FLOOR = 300_000n;
+const _STICKY_MS = readBotConfigDefaults().rpcFailoverStickyMs;
 
 /*- The ordered RPC list and where in it we currently are.
  *
@@ -480,7 +482,7 @@ function getCurrentRPCUrl() {
 /**
  * Report that an endpoint failed, and step one place forward through the
  * RPC list if it is still the one selected, sticky for
- * FAILOVER_DURATION_MS.
+ * `rpcFailoverStickyMs`.
  *
  * Called by the read-retry loop when an endpoint answers with a failure
  * that is the endpoint's fault, and by the NonceManager wrapper when its
@@ -588,7 +590,7 @@ function failoverToNextRPC(failedProvider) {
  */
 function _engageFailoverTo(idx, from) {
   _activeIdx = idx;
-  _stickyUntilMs = Date.now() + FAILOVER_DURATION_MS;
+  _stickyUntilMs = Date.now() + _STICKY_MS;
   /*- Forget what the endpoint we are leaving did.  Coming back to it
    *  later should judge it on what it does then; carrying the window
    *  that retired it would retire it again on arrival, and relying on
@@ -599,27 +601,36 @@ function _engageFailoverTo(idx, from) {
     "[send-tx] RPC failover engaged: %s → %s (sticky for %d min)",
     _urls[from],
     _urls[idx],
-    Math.round(FAILOVER_DURATION_MS / 60_000),
+    Math.round(_STICKY_MS / 60_000),
   );
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * estimateGas against the current RPC, falling back to the alternate
- * RPC once if the current fails.  When the alternate succeeds we
- * engage `failoverToNextRPC()` so subsequent operations (broadcast,
- * receipts, nonce lookups) also go through the alternate for the
- * sticky-window duration.
+ * estimateGas against the current RPC, and on failure against each
+ * endpoint after it in the list, in order. The first endpoint that
+ * answers becomes the selected one for the sticky window, so the
+ * broadcast, the receipt and the nonce lookups that follow go to an
+ * endpoint known to work. None is selected until one has answered, and
+ * none at all if another caller moved selection while this one waited.
  *
- * Only PRIMARY → FALLBACK failover is supported (the user's spec).
- * If we're already on fallback and fallback fails, we throw the
- * fallback error — there's no further alternate to try.
+ * When every endpoint refuses, selection is left where it was and the
+ * current endpoint's error is thrown, since its revert data, if any, is
+ * the one that describes the transaction.
  *
  * @returns {Promise<bigint>} estimated gas units.
  */
 async function _estimateWithFailover(populated, label) {
+  /*-
+   *  The index is taken together with the endpoint, before the first
+   *  await. Selection is process-wide, so another caller can move it
+   *  while this estimate is out; read afterwards, it would name an
+   *  endpoint this call never asked, and the walk below would start past
+   *  the endpoint that is now serving.
+   */
   const cur = getCurrentRPC();
+  const startIdx = _activeIdx;
   try {
     const gas = await cur.estimateGas(populated);
     noteRpcResult(_urlOf(cur), true);
@@ -639,7 +650,6 @@ async function _estimateWithFailover(populated, label) {
      *  would mean a total outage ends with the bot pinned for an hour
      *  to whichever endpoint it happened to try last — strictly worse
      *  than staying on its preferred one and retrying there. */
-    const startIdx = _activeIdx;
     for (let i = startIdx + 1; i < _providers.length; i++) {
       log.warn(
         "[send-tx] %s: estimateGas on %s failed — trying %s. Inner: %s",
@@ -651,7 +661,13 @@ async function _estimateWithFailover(populated, label) {
       try {
         const gas = await _providers[i].estimateGas(populated);
         noteRpcResult(_urls[i], true);
-        _engageFailoverTo(i, startIdx);
+        /*-
+         *  Selection moves only while it is still where this call found
+         *  it, the rule `failoverToNextRPC` keeps. A caller that moved it
+         *  during these awaits saw something this call did not, and
+         *  moving it again would undo that.
+         */
+        if (_activeIdx === startIdx) _engageFailoverTo(i, startIdx);
         return gas;
       } catch (nextErr) {
         if (_isReadFailoverable(nextErr)) noteRpcResult(_urls[i], false);
@@ -663,10 +679,12 @@ async function _estimateWithFailover(populated, label) {
         );
       }
     }
-    /*- Every endpoint refused, and nothing was committed — we are still
-     *  on the endpoint we started from.  Throw the FIRST error: it came
-     *  from the endpoint the caller was actually using, and is the one
-     *  whose revert data (if any) describes the transaction. */
+    /*-
+     *  Every endpoint refused, and this call moved nothing. Throw the
+     *  FIRST error: it came from the endpoint the caller was actually
+     *  using, and is the one whose revert data (if any) describes the
+     *  transaction.
+     */
     throw curErr;
   }
 }
@@ -686,8 +704,7 @@ async function _resolveGasLimit(populated, floor, label) {
   if (populated.gasLimit !== undefined && populated.gasLimit !== null) {
     return BigInt(populated.gasLimit);
   }
-  const mult =
-    config.CHAIN?.gasLimitMultiplier ?? _DEFAULT_GAS_LIMIT_MULTIPLIER;
+  const mult = config.CHAIN.gasLimitMultiplier;
   try {
     const estimate = await _estimateWithFailover(populated, label);
     const buffered = (estimate * BigInt(Math.round(mult * 1000))) / 1000n;
@@ -757,7 +774,10 @@ function _waitOrAbort(ms, signal) {
  *
  * Errors describing the TRANSACTION rather than the endpoint — a revert,
  * say — re-throw untouched. Those are answers, and another endpoint
- * would give the same one.
+ * would give the same one. A receipt another endpoint returns is held to
+ * the same rule: one recording a revert is answered with the error
+ * `tx.wait()` raises for it (`confirmedReceipt`), not taken as a
+ * confirmation.
  *
  * **It polls rather than calling `waitForTransaction`**, and the
  * difference is the whole of this function's correctness.
@@ -784,30 +804,26 @@ function _waitOrAbort(ms, signal) {
  * asking is therefore never an error — it is whatever outranks this loop
  * saying the answer is no longer wanted.
  *
- * Exactly one thing outranks it, and the caller picks which by what it
- * passes. A phase passes its abort signal: the phase's clock ends the
- * wait, and the move then goes on to its next phase rather than failing.
- * A caller with no phase around it passes a deadline, which is then the
- * only bound there is. Both at once would be two clocks of the same
- * length concluding opposite things about one silence — the phase's
- * "speed it up" against a deadline's "give up" — settled by whichever
- * callback the event loop reached first.
+ * That is the caller's signal, and nothing else. A phase aborts it when
+ * the phase's clock runs out, and the move then goes on to its next
+ * phase rather than failing; the cancel aborts it once one of the
+ * transactions competing for the nonce has mined. A clock of this loop's
+ * own would be a second one over the same silence, concluding the
+ * opposite of the phase's — "give up" against "speed it up" — and the
+ * order the event loop happened to reach the two would decide.
  *
- * Either way the stop rethrows the ORIGINAL error rather than a timeout,
- * because the endpoint failure is what actually went wrong. A phase that
- * has already moved on absorbs it (`_settled` in `tx-speedup.js`); a
- * caller holding its own deadline is the one still waiting for it.
+ * The stop rethrows the ORIGINAL error rather than a timeout, because
+ * the endpoint failure is what actually went wrong. The caller has
+ * already moved on by then, and absorbs it (`_settled` in
+ * `tx-speedup.js`).
  *
  * @param {Error} err    Why `tx.wait()` rejected.
  * @param {object} tx    The transaction being waited on.
  * @param {string} label Log label.
- * @param {{signal?: AbortSignal, deadlineMs?: number}} [budget]
- *   What bounds the asking. A signal takes precedence and suppresses any
- *   deadline; with neither, `TX_CANCEL_SEC` is the fallback so a caller
- *   that supplies nothing cannot ask forever.
+ * @param {{signal: AbortSignal}} budget  Whose abort ends the asking.
  * @returns {Promise<object>} The receipt, from whichever endpoint serves it.
  */
-async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
+async function _receiptAcrossEndpoints(err, tx, label, budget) {
   if (!_isReadFailoverable(err)) throw err;
   log.warn(
     "[send-tx] %s: receipt wait failed (%s) — re-asking across endpoints for %s",
@@ -816,20 +832,13 @@ async function _receiptAcrossEndpoints(err, tx, label, budget = {}) {
     tx.hash,
   );
   const provider = getManagedReadProvider();
-  /*- A signal means the caller owns this loop's lifetime, so there is no
-   *  deadline of our own to reach — `null` says that outright rather
-   *  than leaning on a number large enough never to arrive. */
-  const until = budget.signal
-    ? null
-    : Date.now() + (budget.deadlineMs ?? config.TX_CANCEL_SEC * 1000);
   for (;;) {
     /*- Checked before asking as well as after, so a phase that ended
      *  while the previous request was queued costs nothing more. */
-    if (budget.signal?.aborted) throw err;
+    if (budget.signal.aborted) throw err;
     const receipt = await provider.getTransactionReceipt(tx.hash);
-    if (receipt) return receipt;
-    if (budget.signal?.aborted) throw err;
-    if (until !== null && Date.now() >= until) throw err;
+    if (receipt) return confirmedReceipt(receipt);
+    if (budget.signal.aborted) throw err;
     /*- ethers' own block cadence, read off the provider rather than
      *  named here, so there is no second opinion about how often a
      *  chain produces a block. The global queue spaces requests but
@@ -881,6 +890,40 @@ function waitForReceipt({ tx, label, ms, sentinel }) {
   });
 }
 
+/**
+ * Wait for a sent transaction through the speed-up pipeline, timed from
+ * its first submission.
+ *
+ * A transaction that failed on chain was mined, so its gas was paid. The
+ * CALL_EXCEPTION carries its receipt, and the gas goes with the error to
+ * wherever the failed move is recorded (src/spent-gas.js).
+ *
+ * @param {object} tx           The sent transaction.
+ * @param {object} signer       The signer that sent it.
+ * @param {string} label        Log prefix.
+ * @param {number} submittedAt  When it was first submitted, in ms.
+ * @returns {Promise<object>} The receipt.
+ */
+async function _awaitReceipt(tx, signer, label, submittedAt) {
+  try {
+    return await _waitOrSpeedUp(
+      tx,
+      signer,
+      label,
+      _receiptAcrossEndpoints,
+      submittedAt,
+    );
+  } catch (err) {
+    if (
+      err.code === "CALL_EXCEPTION" &&
+      err.receipt !== undefined &&
+      err.receipt !== null
+    )
+      throw addSpentGas(err, receiptGasWei(err.receipt));
+    throw err;
+  }
+}
+
 // ── Public sendTransaction ───────────────────────────────────────────────────
 
 /**
@@ -898,8 +941,9 @@ function waitForReceipt({ tx, label, ms, sentinel }) {
  *   AND broadcast), pass a `FailoverNonceManager`.  A plain
  *   `ethers.NonceManager` gets estimate failover only.
  * @param {bigint|number} [opts.floor]
- *   gasLimit floor.  Default: 300000n.  Use a higher floor for known
- *   gas-heavy paths (e.g. mint via `config.CHAIN.contracts.positionManager.mintGasLimit`).
+ *   gasLimit floor.  Default: the active chain's `gasLimitFloor` in
+ *   chains.json.  Use a higher floor for known gas-heavy paths (e.g.
+ *   mint via `config.CHAIN.contracts.positionManager.mintGasLimit`).
  *   Use 21000n for plain value transfers (cancel TXs).
  * @param {string} [opts.label]
  *   Log prefix.  Defaults to "send-tx".
@@ -921,7 +965,7 @@ async function sendTransaction(opts) {
       ? opts.floor
       : opts.floor !== undefined && opts.floor !== null
         ? BigInt(opts.floor)
-        : _DEFAULT_FLOOR;
+        : BigInt(config.CHAIN.gasLimitFloor);
 
   const populated = await opts.populate();
   if (!populated.from) {
@@ -935,13 +979,28 @@ async function sendTransaction(opts) {
       the caller already pinned one. */
   if (txReq.type === undefined) txReq.type = config.TX_TYPE;
 
-  const tx = await _retrySend(
+  /*-
+   *  The speed-up and the cancel are timed from when the transaction
+   *  waited on was first submitted, which the retry reports: the attempt
+   *  that was accepted, or, for a transaction an endpoint answered
+   *  "already known", the first attempt, which is the one that reached
+   *  it. Such a transaction is waited on through the endpoint then
+   *  selected, which is the one that answered, as a fresh submission is
+   *  through the endpoint that took it.
+   */
+  const { tx, submittedAt } = await _retrySendTimed(
     () => opts.signer.sendTransaction(txReq),
     "[send-tx] " + label,
-    { signer: opts.signer },
+    {
+      signer: opts.signer,
+      heldProviders: () => ({
+        wait: getCurrentRPC(),
+        read: getManagedReadProvider(),
+      }),
+    },
   );
   log.info(
-    "[send-tx] %s: TX submitted, hash=%s nonce=%d gasLimit=%s gasPrice=%s",
+    "[send-tx] %s: TX submitted, hash= %s nonce=%d gasLimit=%s gasPrice=%s",
     label,
     tx.hash,
     tx.nonce,
@@ -949,12 +1008,7 @@ async function sendTransaction(opts) {
     String(tx.gasPrice ?? tx.maxFeePerGas ?? "—"),
   );
 
-  const receipt = await _waitOrSpeedUp(
-    tx,
-    opts.signer,
-    label,
-    _receiptAcrossEndpoints,
-  );
+  const receipt = await _awaitReceipt(tx, opts.signer, label, submittedAt);
   log.info(
     "[send-tx] %s: confirmed, gasUsed=%s gasPrice=%s block=%s",
     label,

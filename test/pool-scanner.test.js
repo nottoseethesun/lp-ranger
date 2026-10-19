@@ -9,6 +9,19 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const config = require("../src/config");
+const { eventCachePath } = require("../src/cache-store");
+const poolScanner = require("../src/pool-scanner");
+
+const {
+  scanPoolHistory,
+  appendToPoolCache,
+  getPoolScanLock,
+  clearPoolCache,
+  cancelPoolScan,
+  _recentScansForTests,
+  _recentKey,
+} = poolScanner;
 
 const TMP = path.join(process.cwd(), "tmp");
 
@@ -23,7 +36,6 @@ describe("appendToPoolCache", () => {
 
   before(() => {
     fs.mkdirSync(TMP, { recursive: true });
-    const { eventCachePath } = require("../src/cache-store");
     cachePath = eventCachePath(
       pos,
       "pulsechain",
@@ -46,7 +58,6 @@ describe("appendToPoolCache", () => {
   });
 
   it("creates cache with single event when empty", async () => {
-    const { appendToPoolCache } = require("../src/pool-scanner");
     await appendToPoolCache(pos, wallet, {
       oldTokenId: "100",
       newTokenId: "200",
@@ -62,7 +73,12 @@ describe("appendToPoolCache", () => {
     assert.equal(entry.events[0].oldTokenId, "100");
     assert.equal(entry.events[0].newTokenId, "200");
     assert.equal(entry.events[0].txHash, "0xbbb");
-    assert.equal(entry.lastBlock, 5000);
+    assert.equal(entry.events[0].blockNumber, 5000);
+    /*-
+     *  No scan has read the chain yet, so there is no last block read,
+     *  and the next scan reads the pool's history in full.
+     */
+    assert.equal(entry.lastBlock, undefined);
     assert.equal(
       entry.events[0].swapSources,
       "9mm Aggregator (PulseX V2, 9mm V3)",
@@ -70,7 +86,6 @@ describe("appendToPoolCache", () => {
   });
 
   it("appends to existing events", async () => {
-    const { appendToPoolCache } = require("../src/pool-scanner");
     await appendToPoolCache(pos, wallet, {
       oldTokenId: "200",
       newTokenId: "300",
@@ -84,13 +99,13 @@ describe("appendToPoolCache", () => {
     assert.equal(entry.events[1].newTokenId, "300");
     assert.equal(entry.events[0].index, 1);
     assert.equal(entry.events[1].index, 2);
-    assert.equal(entry.lastBlock, 6000);
+    // An append reads none of the chain, so it sets no last block read.
+    assert.equal(entry.lastBlock, undefined);
   });
 });
 
 describe("clearPoolCache", () => {
   it("clears the cache file", async () => {
-    const { clearPoolCache } = require("../src/pool-scanner");
     const pos = {
       token0: "0x1111111111111111111111111111111111111111",
       token1: "0x2222222222222222222222222222222222222222",
@@ -103,7 +118,6 @@ describe("clearPoolCache", () => {
 
 describe("module exports", () => {
   it("exports expected functions", () => {
-    const m = require("../src/pool-scanner");
     for (const fn of [
       "scanPoolHistory",
       "appendToPoolCache",
@@ -111,7 +125,7 @@ describe("module exports", () => {
       "clearPoolCache",
       "cancelPoolScan",
     ])
-      assert.equal(typeof m[fn], "function");
+      assert.equal(typeof poolScanner[fn], "function");
   });
 });
 
@@ -146,7 +160,6 @@ describe("appendToPoolCache — recent-scan invalidation (auto-follow fix)", () 
 
   before(() => {
     fs.mkdirSync(TMP, { recursive: true });
-    const { eventCachePath } = require("../src/cache-store");
     cachePath = eventCachePath(
       pos,
       "pulsechain",
@@ -168,17 +181,30 @@ describe("appendToPoolCache — recent-scan invalidation (auto-follow fix)", () 
     }
   });
 
-  function _recentKey(p, w) {
-    const tag =
-      p.token0.slice(0, 8) + "…/" + p.token1.slice(0, 8) + "… fee=" + p.fee;
-    return tag + ":" + (w || "").slice(0, 8);
-  }
+  it("keys an entry by the chain, the pool and the whole wallet address", () => {
+    /*-
+     *  The canonical pool key: the same pair in either order and either
+     *  letter case is one entry, and two wallets that share their first
+     *  characters are two.
+     */
+    const flipped = { token0: pos.token1, token1: pos.token0, fee: pos.fee };
+    assert.equal(
+      _recentKey(flipped, wallet.toUpperCase().replace("0X", "0x")),
+      _recentKey(pos, wallet),
+    );
+    // On a chain other than the shipped default, so naming that outright fails.
+    const shipped = config.CHAIN_NAME;
+    config.CHAIN_NAME = "pulsechain-testnet";
+    try {
+      assert.ok(_recentKey(pos, wallet).startsWith("pulsechain-testnet-"));
+    } finally {
+      config.CHAIN_NAME = shipped;
+    }
+    const lookalike = wallet.slice(0, 10) + "f".repeat(wallet.length - 10);
+    assert.notEqual(_recentKey(pos, lookalike), _recentKey(pos, wallet));
+  });
 
   it("removes the in-memory recent-scan entry for the pool+wallet", async () => {
-    const {
-      appendToPoolCache,
-      _recentScansForTests,
-    } = require("../src/pool-scanner");
     const key = _recentKey(pos, wallet);
 
     /*- Seed the in-memory cache as if a scan had just completed and
@@ -210,10 +236,6 @@ describe("appendToPoolCache — recent-scan invalidation (auto-follow fix)", () 
   });
 
   it("does not touch unrelated pool+wallet entries", async () => {
-    const {
-      appendToPoolCache,
-      _recentScansForTests,
-    } = require("../src/pool-scanner");
     const otherPos = {
       token0: "0x9999999999999999999999999999999999999999",
       token1: "0x8888888888888888888888888888888888888888",
@@ -237,10 +259,6 @@ describe("appendToPoolCache — recent-scan invalidation (auto-follow fix)", () 
   });
 
   it("is safe when no recent-scan entry exists (no-op delete)", async () => {
-    const {
-      appendToPoolCache,
-      _recentScansForTests,
-    } = require("../src/pool-scanner");
     const key = _recentKey(pos, wallet);
     _recentScansForTests.delete(key);
 
@@ -262,7 +280,6 @@ describe("cancelPoolScan", () => {
   const wallet = "0x9999999999999999999999999999999999999999";
 
   it("returns false when no scan is active for the pool", () => {
-    const { cancelPoolScan } = require("../src/pool-scanner");
     const aborted = cancelPoolScan(tok0, tok1, fee, wallet);
     assert.equal(aborted, false, "no active scan to abort");
   });
@@ -271,11 +288,6 @@ describe("cancelPoolScan", () => {
     "aborts an in-flight scan: event-scanner throws AbortError and " +
       "scanPoolHistory releases the lock",
     async () => {
-      const {
-        scanPoolHistory,
-        cancelPoolScan,
-        getPoolScanLock,
-      } = require("../src/pool-scanner");
       const position = {
         token0: "0xAAAAaAaaAaAaAaaAaaAAAAAAaAaAaaaAaAaaaAAA",
         token1: "0xBBbbBbBbBbBbbbBbbBbBBBbbBbBbBbBBbBbBBBbB",

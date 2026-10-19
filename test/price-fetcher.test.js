@@ -12,12 +12,12 @@ const assert = require("node:assert/strict");
 const {
   fetchTokenPriceUsd,
   fetchHistoricalPriceGecko,
-  _fetchDexScreener,
   _fetchGeckoTerminalOhlcv,
   _fetchGeckoOhlcvAtTimeframe,
   _cache,
   _CACHE_TTL_MS,
 } = require("../src/price-fetcher");
+const { _fetchDexScreener } = require("../src/price-sources-current");
 const {
   _resetForTest: _resetGeckoRateLimit,
 } = require("../src/gecko-rate-limit");
@@ -25,6 +25,12 @@ const {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 const TOKEN = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
+// GeckoTerminal's id for the chain these fixtures sit on.
+const NETWORK = "pulsechain";
+
+/** The base token's candle on that network, the call most cases make. */
+const baseOhlcv = (pool, ts) =>
+  _fetchGeckoTerminalOhlcv(pool, ts, "base", NETWORK);
 
 /** Save and restore the real global fetch around every test. */
 let _originalFetch;
@@ -57,6 +63,12 @@ function _mockFetchError(message) {
 // ── setup / teardown ─────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  /*-
+   *  TEST-ONLY global swap: the cases below replace `fetch`, because the
+   *  price sources ask their services through the global one and offer
+   *  no seam for another. The original is captured here and restored
+   *  pristine in `afterEach`, after each case's call.
+   */
   _originalFetch = globalThis.fetch;
   _cache.clear();
   _resetGeckoRateLimit();
@@ -256,7 +268,7 @@ describe("Cache expiry", () => {
     assert.strictEqual(fetchCallCount, 1);
 
     // Manually expire the cache entry by backdating its timestamp.
-    const key = `pulsechain:${TOKEN.toLowerCase()}`;
+    const key = `pulsechain-${TOKEN.toLowerCase()}`;
     const entry = _cache.get(key);
     entry.ts = Date.now() - _CACHE_TTL_MS - 1;
 
@@ -281,14 +293,14 @@ describe("GeckoTerminal _fetchGeckoTerminalOhlcv", () => {
       },
     });
 
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    const price = await baseOhlcv(POOL, TIMESTAMP);
     assert.strictEqual(price, 0.11, "should return close price (index 4)");
   });
 
   it("returns 0 on HTTP error", async () => {
     globalThis.fetch = mockFetch({}, 500);
 
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    const price = await baseOhlcv(POOL, TIMESTAMP);
     assert.strictEqual(price, 0);
   });
 
@@ -297,21 +309,21 @@ describe("GeckoTerminal _fetchGeckoTerminalOhlcv", () => {
       data: { attributes: { ohlcv_list: [] } },
     });
 
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    const price = await baseOhlcv(POOL, TIMESTAMP);
     assert.strictEqual(price, 0);
   });
 
   it("returns 0 when response has no attributes", async () => {
     globalThis.fetch = mockFetch({ data: {} });
 
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    const price = await baseOhlcv(POOL, TIMESTAMP);
     assert.strictEqual(price, 0);
   });
 
   it("returns 0 on network error", async () => {
     globalThis.fetch = _mockFetchError("network timeout");
 
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    const price = await baseOhlcv(POOL, TIMESTAMP);
     assert.strictEqual(price, 0);
   });
 
@@ -324,7 +336,7 @@ describe("GeckoTerminal _fetchGeckoTerminalOhlcv", () => {
       },
     });
 
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TIMESTAMP);
+    const price = await baseOhlcv(POOL, TIMESTAMP);
     assert.strictEqual(price, 0);
   });
 });
@@ -370,7 +382,7 @@ describe("GeckoTerminal OHLCV cascade (day → hour → minute)", () => {
       otherCalls++;
       return { ok: true, status: 200, json: async () => ({}) };
     };
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TS);
+    const price = await baseOhlcv(POOL, TS);
     assert.strictEqual(price, 0.11);
     assert.strictEqual(dayCalls, 1, "day called once");
     assert.strictEqual(otherCalls, 0, "should not cascade when day succeeds");
@@ -387,7 +399,7 @@ describe("GeckoTerminal OHLCV cascade (day → hour → minute)", () => {
         },
       },
     });
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TS);
+    const price = await baseOhlcv(POOL, TS);
     assert.strictEqual(price, 0.55);
   });
 
@@ -403,7 +415,7 @@ describe("GeckoTerminal OHLCV cascade (day → hour → minute)", () => {
         },
       },
     });
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TS);
+    const price = await baseOhlcv(POOL, TS);
     assert.strictEqual(price, 0.0105);
   });
 
@@ -417,7 +429,7 @@ describe("GeckoTerminal OHLCV cascade (day → hour → minute)", () => {
         json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
       };
     };
-    const price = await _fetchGeckoTerminalOhlcv(POOL, TS);
+    const price = await baseOhlcv(POOL, TS);
     assert.strictEqual(price, 0);
     assert.strictEqual(calls, 3, "should try all 3 timeframes");
   });
@@ -493,7 +505,7 @@ describe("GeckoTerminal OHLCV cascade (day → hour → minute)", () => {
         json: async () => ({ data: { attributes: { ohlcv_list: [] } } }),
       };
     };
-    const price = await _fetchGeckoTerminalOhlcv(POOL, blockTs);
+    const price = await baseOhlcv(POOL, blockTs);
     assert.strictEqual(
       price,
       0.00155,
@@ -503,27 +515,29 @@ describe("GeckoTerminal OHLCV cascade (day → hour → minute)", () => {
 });
 
 describe("GeckoTerminal fetchHistoricalPriceGecko", () => {
-  it("returns both base and quote prices", async () => {
-    let callIndex = 0;
-    const candles = [
-      [[1700000000, 0.1, 0.12, 0.09, 0.5, 1000]],
-      [[1700000000, 1.0, 1.05, 0.95, 1.02, 2000]],
-    ];
-
-    globalThis.fetch = async () => {
-      const ohlcv = candles[callIndex] || [];
-      callIndex += 1;
+  it("takes no price without the pool's tokens to tell base from quote", async () => {
+    /*-
+     *  Which of GeckoTerminal's base and quote is token0 is learned from
+     *  the pool's tokens. Without them the two prices could only be
+     *  guessed, and a guess swaps them for some pools; test/
+     *  price-fetcher-orientation.test.js covers the read once they are
+     *  known.
+     */
+    const urls = [];
+    globalThis.fetch = async (url) => {
+      urls.push(url);
       return {
         ok: true,
         json: async () => ({
-          data: { attributes: { ohlcv_list: ohlcv } },
+          data: { attributes: { ohlcv_list: [[1700000000, 1, 1, 1, 1, 1]] } },
         }),
       };
     };
 
     const { price0, price1 } = await fetchHistoricalPriceGecko(POOL, TIMESTAMP);
-    assert.strictEqual(price0, 0.5, "base token price");
-    assert.strictEqual(price1, 1.02, "quote token price");
+    assert.strictEqual(price0, 0);
+    assert.strictEqual(price1, 0);
+    assert.ok(urls.every((u) => !u.includes("/ohlcv/")));
   });
 
   it("returns zeros when both calls fail", async () => {
@@ -532,81 +546,5 @@ describe("GeckoTerminal fetchHistoricalPriceGecko", () => {
     const { price0, price1 } = await fetchHistoricalPriceGecko(POOL, TIMESTAMP);
     assert.strictEqual(price0, 0);
     assert.strictEqual(price1, 0);
-  });
-});
-
-// ── Cascade logging ─────────────────────────────────────────────────────────
-
-describe("Cascade logging", () => {
-  let _origLog, _origWarn, captured;
-  const { format } = require("node:util");
-
-  function startCapture() {
-    captured = [];
-    _origLog = console.log;
-    _origWarn = console.warn;
-    console.log = (...a) => captured.push(format(...a));
-    console.warn = (...a) => captured.push(format(...a));
-  }
-  function stopCapture() {
-    console.log = _origLog;
-    console.warn = _origWarn;
-  }
-
-  it("logs the source that succeeded and the abbreviated address", async () => {
-    let calls = 0;
-    globalThis.fetch = async () => {
-      calls++;
-      // Moralis branch is gated by API key (none in tests) → returns 0.
-      // First real call is GeckoTerminal: return a valid price.
-      return {
-        ok: true,
-        json: async () => ({
-          data: {
-            attributes: {
-              token_prices: { [TOKEN.toLowerCase()]: "0.42" },
-            },
-          },
-        }),
-      };
-    };
-
-    startCapture();
-    try {
-      const price = await fetchTokenPriceUsd(TOKEN);
-      assert.strictEqual(price, 0.42);
-    } finally {
-      stopCapture();
-    }
-    // At least one log line should reference the abbreviated token address.
-    const flat = captured.join("\n");
-    const short = `${TOKEN.slice(0, 6)}\u2026${TOKEN.slice(-4)}`;
-    assert.ok(
-      flat.includes(short),
-      `expected log to contain abbreviated address ${short}\n${flat}`,
-    );
-    assert.ok(
-      flat.includes("GeckoTerminal ok") || flat.includes("DexScreener ok"),
-      `expected an "ok" success line\n${flat}`,
-    );
-    assert.ok(calls >= 1, "should have hit at least one source");
-  });
-
-  it("logs miss for each failed source and final 'All sources failed'", async () => {
-    globalThis.fetch = async () => {
-      throw new Error("network down");
-    };
-    startCapture();
-    try {
-      const price = await fetchTokenPriceUsd(TOKEN);
-      assert.strictEqual(price, 0);
-    } finally {
-      stopCapture();
-    }
-    const flat = captured.join("\n");
-    assert.ok(
-      flat.includes("All sources failed"),
-      `expected final failure summary\n${flat}`,
-    );
   });
 });

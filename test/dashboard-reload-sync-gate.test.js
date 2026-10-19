@@ -24,14 +24,19 @@ require("global-jsdom/register");
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { indexHtmlDocument } = require("./helpers/index-html");
+const { learnUiSettings } = require("./helpers/ui-settings");
 
 const SHOWN = "9mm-pos-mgr-is-shown";
 
 let applySyncGate;
+let reloadDurationText;
 let frag;
 
 before(async () => {
-  ({ applySyncGate } = await import("../public/dashboard-reload-flow.js"));
+  ({ applySyncGate, reloadDurationText } =
+    await import("../public/dashboard-reload-flow.js"));
+  // As at startup: the reload's longest wait is a setting the server sends.
+  await learnUiSettings();
 });
 
 /** A fresh copy of the real confirm template. */
@@ -123,5 +128,20 @@ describe("Reload Current Position needs a managed position", () => {
   it("treats a missing managed flag as unmanaged", () => {
     applySyncGate(frag, { synced: true });
     assert.equal(go().disabled, true, "absent is not managed");
+  });
+});
+
+describe("how long the dialogs say a reload may take", () => {
+  it("words the shipped four-hour wait as the help words a span", () => {
+    assert.equal(reloadDurationText(), "4 hours");
+  });
+
+  it("words the wait in force, an operator's included", async () => {
+    await learnUiSettings({ reloadMaxWaitMs: 2 * 60 * 60 * 1000 });
+    try {
+      assert.equal(reloadDurationText(), "2 hours");
+    } finally {
+      await learnUiSettings();
+    }
   });
 });

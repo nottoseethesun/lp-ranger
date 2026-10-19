@@ -31,21 +31,37 @@ const RETIRE_DEBOUNCE_MS = GUARANTEED_DASHBOARD_HAS_POLLED_MS;
 
 const NOW = 1_700_000_000_000;
 
-/** Build a happy-path input object — override fields per-test. */
+/**
+ * Build a happy-path input object — override fields per-test. A position
+ * whose fixture status is "running" is in the managed set too, as it is
+ * once a poll for it has landed; a test of the two disagreeing sets
+ * `positionManaged` itself.
+ */
 function ins(overrides) {
-  return {
+  const inputs = {
     hasActive: true,
     isClosed: false,
     isNft: true,
     posState: { status: "stopped" },
     syncComplete: true,
     walletUnlocked: true,
-    manageInFlight: false,
+    manageInFlight: null,
+    managedCheckPending: false,
     nowMs: NOW,
     retireDebounceMs: RETIRE_DEBOUNCE_MS,
     ...overrides,
   };
+  if (!("positionManaged" in overrides))
+    inputs.positionManaged = inputs.posState?.status === "running";
+  return inputs;
 }
+
+// The labels the Manage click and the re-open click give their buttons.
+const STARTING = {
+  text: "Managing…",
+  title: "Waiting for the server to start managing this position.",
+};
+const REOPEN_CHECK = { title: "Checking position for re-open…" };
 
 // ── No-active branch ─────────────────────────────────────────────────
 
@@ -63,9 +79,81 @@ test("no active position: button + badge + pd disabled with select-first", () =>
 
 // ── manage-in-flight branch ──────────────────────────────────────────
 
-test("manage in-flight: returns null (applier skips, preserves optimistic UI)", () => {
-  const s = computeManageUI(ins({ manageInFlight: true }));
-  assert.equal(s, null);
+test("manage in-flight: draws the click's label, disabled", () => {
+  const s = computeManageUI(ins({ manageInFlight: STARTING }));
+  assert.equal(s.buttonText, "Managing…");
+  assert.equal(s.buttonDisabled, true);
+  assert.equal(s.buttonTitle, STARTING.title);
+  assert.equal(s.badgeText, "Not Actively Managed");
+});
+
+test("manage in-flight over a managed position: the label, never an enabled Stop", () => {
+  /*-
+   *  Manage is clicked on one position, and the operator switches to a
+   *  managed position and back while the request runs. Left as the
+   *  managed position drew it, the button would be an enabled Stop
+   *  Managing, and a click would send Stop for the position still
+   *  starting. So every paint draws the click's label, disabled.
+   */
+  const s = computeManageUI(
+    ins({ posState: { status: "running" }, manageInFlight: STARTING }),
+  );
+  assert.equal(s.buttonText, "Managing…");
+  assert.equal(s.buttonDisabled, true);
+});
+
+test("manage in-flight with no text of its own: keeps the button's text", () => {
+  const s = computeManageUI(
+    ins({ isClosed: true, manageInFlight: REOPEN_CHECK }),
+  );
+  assert.equal(s.buttonText, "Manage");
+  assert.equal(s.buttonDisabled, true);
+  assert.equal(s.buttonTitle, REOPEN_CHECK.title);
+  // Over a managed position the text kept is Stop's, so neither is assumed.
+  const managed = computeManageUI(
+    ins({ posState: { status: "running" }, manageInFlight: REOPEN_CHECK }),
+  );
+  assert.equal(managed.buttonText, "Stop Managing");
+  assert.equal(managed.buttonDisabled, true);
+});
+
+// ── Managed check pending (just switched to) ─────────────────────────
+
+test("managed check unanswered: disabled until the server answers", () => {
+  const s = computeManageUI(
+    ins({ posState: { status: "running" }, managedCheckPending: true }),
+  );
+  assert.equal(s.buttonText, "Stop Managing");
+  assert.equal(s.buttonDisabled, true);
+  assert.equal(
+    s.buttonTitle,
+    "Asking the server whether this position is managed…",
+  );
+});
+
+test("a click's label wins over an unanswered managed check", () => {
+  const s = computeManageUI(
+    ins({ manageInFlight: STARTING, managedCheckPending: true }),
+  );
+  assert.equal(s.buttonText, "Managing…");
+  assert.equal(s.buttonTitle, STARTING.title);
+});
+
+test("decides Manage or Stop from the managed set, not the last poll", () => {
+  /*-
+   *  Right after a switch the last poll describes the previous position.
+   *  The managed set is keyed by position and holds the server's answer.
+   */
+  const stale = computeManageUI(
+    ins({ posState: { status: "running" }, positionManaged: false }),
+  );
+  assert.equal(stale.buttonText, "Manage");
+  assert.equal(stale.badgeManaged, false);
+  const managed = computeManageUI(
+    ins({ posState: { status: "stopped" }, positionManaged: true }),
+  );
+  assert.equal(managed.buttonText, "Stop Managing");
+  assert.equal(managed.badgeManaged, true);
 });
 
 // ── posState null (pre-first-poll) branch ────────────────────────────
@@ -210,6 +298,64 @@ test("closed + rebalancePaused: disabled with auto-retiring tooltip (intentional
   assert.match(s.buttonTitle, /Re-open just failed/);
 });
 
+test("closed + rebalancePaused: names the main reason and the log file the server writes", () => {
+  const s = computeManageUI(
+    ins({
+      isClosed: true,
+      posState: {
+        status: "running",
+        rebalancePaused: true,
+        rebalanceError:
+          "Swap aborted: price impact 3.20% exceeds slippage 1.00%. Raise it.",
+        logFilePath: "logs/lp-ranger.log",
+      },
+    }),
+  );
+  assert.match(
+    s.buttonTitle,
+    /^Re-open just failed: the swap's price impact was above your Slippage setting\./,
+  );
+  assert.match(s.buttonTitle, /Details are in logs\/lp-ranger\.log\.$/);
+});
+
+test("closed + rebalancePaused: points to the terminal while logging to a file is off", () => {
+  const s = computeManageUI(
+    ins({
+      isClosed: true,
+      posState: {
+        status: "running",
+        rebalancePaused: true,
+        rebalanceError: "insufficient gas for the mint",
+        logFilePath: null,
+      },
+    }),
+  );
+  assert.match(s.buttonTitle, /the wallet is short of gas/);
+  assert.match(
+    s.buttonTitle,
+    /Details are in the terminal LP Ranger runs in\.$/,
+  );
+});
+
+test("closed + rebalancePaused: quotes an error it does not recognise, to its first sentence", () => {
+  const s = computeManageUI(
+    ins({
+      isClosed: true,
+      posState: {
+        status: "running",
+        rebalancePaused: true,
+        rebalanceError:
+          "Nonce 9 was taken by another transaction, hash= 0xabc. More detail.",
+      },
+    }),
+  );
+  assert.match(
+    s.buttonTitle,
+    /Re-open just failed: Nonce 9 was taken by another transaction, hash= 0xabc\./,
+  );
+  assert.doesNotMatch(s.buttonTitle, /More detail/);
+});
+
 test("closed + lastRetiredAt within debounce: disabled with debounce tooltip", () => {
   const s = computeManageUI(
     ins({
@@ -346,7 +492,6 @@ test("pd button enabled with view-details tooltip when active position present",
   ];
   for (const v of variants) {
     const s = computeManageUI(v);
-    if (s === null) continue;
     assert.equal(
       s.pdBtnDisabled,
       false,

@@ -98,17 +98,25 @@ function _provider() {
   };
 }
 
+/*-
+ *  Today, so the history is priced from the fallback prices these tests
+ *  pass: an earlier day's unread price stays unread (src/position-history.js),
+ *  and what is tested here is the scan windows, which a priced history
+ *  is what reaches.
+ */
+const TODAY_SEC = Math.floor(Date.now() / 1000);
+
 /** Rebalance chain naming this NFT's mint and its replacement. */
 function _events({ withClose }) {
   const evts = [
-    { newTokenId: TOKEN_ID, blockNumber: MINT_BLOCK, timestamp: 1_700_000_000 },
+    { newTokenId: TOKEN_ID, blockNumber: MINT_BLOCK, timestamp: TODAY_SEC },
   ];
   if (withClose)
     evts.push({
       oldTokenId: TOKEN_ID,
       newTokenId: "12346",
       blockNumber: CLOSE_BLOCK,
-      timestamp: 1_700_010_000,
+      timestamp: TODAY_SEC,
     });
   return evts;
 }
@@ -211,12 +219,18 @@ describe("closed-NFT history scans are bounded to that NFT's life", () => {
     });
   });
 
-  describe("the current NFT", () => {
-    it("still scans to the chain head, having no replacement", async () => {
-      const head = await _run({ withClose: false });
-      assert.ok(head.length > 0);
-      const last = Math.max(...head.map((c) => c.toBlock));
-      assert.equal(last, LATEST, "an unretired NFT must scan to the head");
+  describe("an NFT with no close on record", () => {
+    it("is not priced at today's prices, so nothing is scanned for it", async () => {
+      /*-
+       *  Its close may have been on any day. Valued at today's prices,
+       *  its exit and fees would look real and be wrong; unread, they
+       *  stay unknown and the Per-Day table shows a dash. The scans'
+       *  missing upper bound is pinned by the retired NFT above.
+       */
+      const scans = await _run({ withClose: false });
+      assert.deepEqual(scans, []);
+      assert.equal(_ctx.result.token0UsdPriceAtClose, null);
+      assert.equal(_ctx.result.exitValueUsd, null);
     });
   });
 });

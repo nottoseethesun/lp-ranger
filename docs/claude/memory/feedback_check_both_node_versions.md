@@ -1,11 +1,11 @@
 ---
 name: feedback_check_both_node_versions
-description: "`npm run check` runs on whichever Node is on PATH; CI runs a 22/24 matrix. Green locally never means green in CI. Node 22 lives at ~/.nvm/versions/node/v22.23.1/bin/node — run the suite under it too before pushing."
+description: "`npm run check` runs on whichever Node is on PATH; CI runs a 22/24 matrix. Green locally never means green in CI. Node 22 lives at ~/.nvm/versions/node/v22.23.1/bin — run the whole gate under it too (PATH first), never the raw suite, which writes operator caches."
 metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-30T23:30:57.839Z
+  modified: 2026-10-17T20:10:32.495Z
 ---
 
 `npm run check` exercises **one** Node version: whichever is on `PATH`,
@@ -13,11 +13,23 @@ which on this machine is v24. `.github/workflows/ci.yml` runs
 `node-version: ["22", "24"]`. So a local pass says nothing about half
 of CI.
 
-The second one is already installed:
+The second one is already installed. Run the whole gate under it, so the
+tests get the gate's protection of operator state:
 
 ```bash
-~/.nvm/versions/node/v22.23.1/bin/node --test --test-concurrency=24 test/*.test.js
+PATH=$HOME/.nvm/versions/node/v22.23.1/bin:$PATH npm run check
 ```
+
+`scripts/check.js` spawns `node` from `PATH`, so this runs every test on
+Node 22, inside the backup and restore of `app-config/user-configurable/`,
+`app-data/` and every `tmp/*.json`.
+
+**Never the raw suite instead** (`node --test test/*.test.js`), not even
+inside `wipe-settings`. That wrapper does not cover most of `tmp/`, and on
+2026-10-17 a raw Node 22 run wrote three test-fixture symbols into the
+operator's `tmp/token-symbol-cache.json`. They were removed by key, which
+reproduced the file's earlier checksum exactly; see
+[[feedback_test_commands]].
 
 **Why:** on 2026-09-30 a branch went up green locally and CI failed
 every case in one new test file on Node 22 while Node 24 passed. The

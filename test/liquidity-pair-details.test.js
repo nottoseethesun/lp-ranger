@@ -217,7 +217,7 @@ describe("liquidity-pair-details cache", () => {
     Module._load = function (request, parent, ...rest) {
       if (request === "./price-fetcher" || request.endsWith("/price-fetcher")) {
         return {
-          fetchHistoricalPriceGecko: async (_pool, _ts, _chain, opts) => {
+          fetchHistoricalPriceGecko: async (_pool, _ts, opts) => {
             observed = opts;
             return { price0: 1, price1: 2 };
           },

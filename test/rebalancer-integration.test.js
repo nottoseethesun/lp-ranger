@@ -9,6 +9,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
+// Before anything that reads a price loads: prices come from a fixed table.
+require("./helpers/price-stand-ins");
 const { executeRebalance } = require("../src/rebalancer");
 const { priceToTick, nearestUsableTick } = require("../src/range-math");
 

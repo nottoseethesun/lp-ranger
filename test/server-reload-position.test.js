@@ -19,6 +19,9 @@ const {
   _resetBotState,
 } = require("../src/server-reload-position");
 const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
+const epochCache = require("../src/epoch-cache");
+const config = require("../src/config");
+const { eventCachePath } = require("../src/cache-store");
 
 /*- Every test that hits `loadConfig`/`saveConfig` (bot-config-v2) needs
  *  the config file to live in a tmp dir so real user state is never
@@ -246,6 +249,66 @@ describe("_resetBotState", () => {
     /*- Settings preserved. */
     assert.strictEqual(state.slippagePctToken0, 0.75);
     assert.strictEqual(state.autoCompoundEnabled, true);
+  });
+});
+
+// ── Any chain ───────────────────────────────────────────────────────
+
+describe("POST /api/position/reload — on a chain other than PulseChain", () => {
+  it("clears the epoch-cache entry the bot wrote, keyed by that chain", async () => {
+    /*-
+     *  The cache file is redirected so the operator's is never touched,
+     *  and the active chain is switched for this case alone. The entry
+     *  is written the way the bot's own persist path writes it, with no
+     *  chain of its own: the epoch cache supplies the active one.
+     */
+    const cachePath = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "lp-ranger-reload-")),
+      "pnl-epochs-cache.json",
+    );
+    epochCache._setCachePath(cachePath);
+    const wallet = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
+    const pos = _mockPosition();
+    const savedChain = config.CHAIN_NAME;
+    config.CHAIN_NAME = "pulsechain-testnet";
+    try {
+      const key = `pulsechain-testnet-${wallet}-${config.POSITION_MANAGER}-${pos.tokenId}`;
+      const written = {
+        contract: config.POSITION_MANAGER,
+        wallet,
+        token0: pos.token0,
+        token1: pos.token1,
+        fee: pos.fee,
+      };
+      epochCache.setCachedEpochs(written, {
+        closedEpochs: [{ id: 1 }],
+        liveEpoch: null,
+      });
+      const onDisk = Object.keys(JSON.parse(fs.readFileSync(cachePath)));
+      assert.deepStrictEqual(
+        onDisk.map((k) => k.split(".")[0]),
+        ["pulsechain-testnet"],
+        "the entry is keyed by the active chain",
+      );
+      const { deps, responses } = _mockDeps({
+        body: { positionKey: key },
+        states: new Map([[key, { activePosition: pos }]]),
+        positionMgr: _mockPositionMgr({ get: (k) => ({ key: k }) }),
+      });
+      await createReloadPositionHandler(deps)({}, {});
+      assert.strictEqual(responses[0].code, 200, JSON.stringify(responses));
+      assert.strictEqual(epochCache.getCachedEpochs(written), null);
+    } finally {
+      /*-
+       *  Reload also empties the pool's event cache, which leaves an
+       *  empty file for this made-up pool under tmp/.
+       */
+      fs.rmSync(
+        eventCachePath(pos, config.CHAIN_NAME, config.POSITION_MANAGER, wallet),
+        { force: true },
+      );
+      config.CHAIN_NAME = savedChain;
+    }
   });
 });
 

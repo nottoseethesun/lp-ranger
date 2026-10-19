@@ -78,7 +78,7 @@ describe("_handleApiConfig — global-only", () => {
   it("applies multiple global keys without positionKey", async () => {
     const deps = makeDeps({
       readJsonBody: async () => ({
-        triggerType: "timeout",
+        gasFeePct: 2,
         rpcUrls: ["http://custom"],
       }),
     });
@@ -86,9 +86,9 @@ describe("_handleApiConfig — global-only", () => {
     const res = makeRes();
     await h._handleApiConfig({}, res);
     assert.strictEqual(res._status, 200);
-    assert.strictEqual(res._body.applied.triggerType, "timeout");
+    assert.strictEqual(res._body.applied.gasFeePct, 2);
     assert.deepStrictEqual(res._body.applied.rpcUrls, ["http://custom"]);
-    assert.strictEqual(deps.diskConfig.global.triggerType, "timeout");
+    assert.strictEqual(deps.diskConfig.global.gasFeePct, 2);
     assert.deepStrictEqual(deps.diskConfig.global.rpcUrls, ["http://custom"]);
   });
 });

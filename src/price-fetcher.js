@@ -2,12 +2,20 @@
  * @file price-fetcher.js
  * @module price-fetcher
  * @description
- * Fetches USD prices for tokens on PulseChain for the LP Ranger.
+ * Fetches USD prices for tokens on the active chain for the LP Ranger.
  *
  * Uses three price sources in priority order: Moralis (primary, requires
  * API key, most reliable for meme tokens), GeckoTerminal (free, rate-limited
  * 30/min), and DexScreener (free, but drops tokens with no 24h LP activity).
- * Results are cached in memory with a 60-second TTL.
+ * Results are cached in memory for `priceCacheTtlMs` in
+ * bot-config-defaults.json (`moveCacheTtlMs` during a rebalance or
+ * compound), and each service's base url is in price-services.json.
+ *
+ * Each service names chains its own way, so the active chain's entry in
+ * chains.json gives its id at each (`priceServices`), and "" where a
+ * service does not cover the chain; that service is then not asked.
+ * Nothing here names a chain. The one lookup off the active chain, the
+ * dust-unit reference asset, carries its own ids in dust-threshold.json.
  *
  * GeckoTerminal rate limiting
  * ──────────────────────────
@@ -21,55 +29,32 @@
  *
  * @example
  * const { fetchTokenPriceUsd } = require('./price-fetcher');
- * const price = await fetchTokenPriceUsd('0xA1077a...', { chain: 'pulsechain' });
+ * const price = await fetchTokenPriceUsd(tokenAddress);
  * log.info(`Token price: $${price}`);
  */
 
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
 const {
   getHistoricalPrice,
   setHistoricalPrice,
   flushPriceCache,
   toUtcDayKey,
 } = require("./price-cache");
-const { getApiKey, isServiceEnabled } = require("./api-key-holder");
-
-/**
- * The Moralis key, but only when the operator has left Moralis on.
- *
- * One gate rather than an `&& enabled` at each of the three call sites
- * below — the question "may we call Moralis?" has exactly one answer,
- * and three copies of it is three chances for them to drift.
- *
- * Returns null when the key is absent OR the operator has switched it
- * off, which is precisely when the caller should fall through to
- * GeckoTerminal.
- * @returns {string|null}
+/*-
+ *  The current-price services and the cascade's order live in
+ *  `price-sources-current.js`, split out to hold this file under the
+ *  500-line cap.
  */
-function _moralisKey() {
-  if (!isServiceEnabled("moralis")) return null;
-  return getApiKey("moralis");
-}
-
-/**
- * Moralis as a price-source entry, or nothing at all when it is not
- * usable.
- *
- * Returns an empty list rather than a source that returns 0, because
- * the cascade logs a zero as "Moralis miss — no data". That reads as
- * "Moralis was asked and had nothing", which is indistinguishable from
- * a real miss and left an operator who had just switched Moralis off
- * watching lines that said it was still being consulted. A source that
- * is not in the list produces no line, which is the truth.
- *
- * @param {Function} fn  The fetcher to run when Moralis IS usable.
- * @returns {Array<{name: string, fn: Function}>}  One entry, or none.
- */
-function _moralisSource(fn) {
-  return _moralisKey() ? [{ name: "Moralis", fn }] : [];
-}
+const {
+  currentPriceSources,
+  _moralisKey,
+  _moralisSource,
+  _fetchDexScreener,
+  _fetchMoralisCurrent,
+} = require("./price-sources-current");
 const { geckoRateLimit } = require("./gecko-rate-limit");
 const { retryOn429 } = require("./price-source-backoff");
 const {
@@ -99,6 +84,8 @@ const {
   logDustCacheHit,
   logDustPausedCached,
 } = require("./price-fetcher-dedup");
+const { GECKO_TERMINAL_API, MORALIS_API } = require("./price-service-urls");
+const { cacheKey } = require("./cache-store");
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -114,104 +101,11 @@ const _MOVE_TTL_MS = getMoveCacheTtlMs();
 
 /**
  * In-memory price cache.
- * Keys are `{chain}:{tokenAddress}` (lower-cased).
+ * Keys are the canonical `chain-token` (`cacheKey` in `src/cache-store.js`).
  * Values are `{ price: number, ts: number }`.
  * @type {Map<string, { price: number, ts: number }>}
  */
 const _cache = new Map();
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Build a deterministic cache key for a given chain and token address.
- * @param {string} chain        - Chain identifier (e.g. 'pulsechain').
- * @param {string} tokenAddress - ERC-20 contract address.
- * @returns {string} Cache key.
- */
-function _cacheKey(chain, tokenAddress) {
-  return `${chain}:${tokenAddress.toLowerCase()}`;
-}
-
-// ── DexScreener ──────────────────────────────────────────────────────────────
-
-/**
- * Fetch USD price for a token from the DexScreener API.
- *
- * Filters the returned pairs to those on the requested chain and selects the
- * pair with the highest USD liquidity.
- *
- * @param {string} tokenAddress - ERC-20 contract address.
- * @param {string} [chain='pulsechain'] - Chain identifier used to filter pairs.
- * @returns {Promise<number>} USD price (0 if unavailable or on error).
- */
-async function _fetchDexScreener(tokenAddress, chain = "pulsechain") {
-  const url = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
-
-  if (!res.ok) {
-    return 0;
-  }
-
-  const json = await res.json();
-  const pairs = json?.pairs;
-
-  if (!Array.isArray(pairs) || pairs.length === 0) {
-    return 0;
-  }
-
-  // Filter to the requested chain.
-  const chainPairs = pairs.filter((p) => p.chainId === chain);
-
-  if (chainPairs.length === 0) {
-    return 0;
-  }
-
-  // Select the pair with the highest USD liquidity.
-  const best = chainPairs.reduce((a, b) => {
-    const liqA = Number(a?.liquidity?.usd ?? 0);
-    const liqB = Number(b?.liquidity?.usd ?? 0);
-    return liqB > liqA ? b : a;
-  });
-
-  const price = Number(best?.priceUsd ?? 0);
-  return Number.isFinite(price) ? price : 0;
-}
-
-// ── GeckoTerminal (current price) ────────────────────────────────────────────
-
-/**
- * Fetch current USD price for a token from the GeckoTerminal simple price API.
- *
- * Uses the same rate limiter as the OHLCV endpoint to share the 30 calls/min
- * budget.  Returns 0 if the token is not found or on error.
- *
- * @param {string} tokenAddress - ERC-20 contract address.
- * @param {string} [network='pulsechain'] - GeckoTerminal network identifier.
- * @returns {Promise<number>} USD price (0 if unavailable).
- */
-async function _fetchGeckoTerminalCurrent(
-  tokenAddress,
-  network = "pulsechain",
-) {
-  await geckoRateLimit();
-  const url =
-    `https://api.geckoterminal.com/api/v2/simple/networks/${network}` +
-    `/token_price/${tokenAddress.toLowerCase()}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
-  if (!res.ok) return 0;
-  const json = await res.json();
-  const prices = json?.data?.attributes?.token_prices;
-  if (!prices) return 0;
-  const price = Number(prices[tokenAddress.toLowerCase()]);
-  return Number.isFinite(price) && price > 0 ? price : 0;
-}
 
 // ── price source chain ──────────────────────────────────────────────────────
 
@@ -221,12 +115,7 @@ async function _fetchGeckoTerminalCurrent(
 // ── main entry point ─────────────────────────────────────────────────────────
 
 /**
- * @typedef {Object} FetchTokenPriceOpts
- * @property {string} [chain='pulsechain']  Chain identifier.
- */
-
-/**
- * Fetch the current USD price for a token on PulseChain.
+ * Fetch the current USD price for a token on the active chain.
  *
  * Resolution order:
  *  1. Return cached value if still within the TTL window.
@@ -235,16 +124,16 @@ async function _fetchGeckoTerminalCurrent(
  *  4. Try DexScreener (free, no API key — drops tokens with no 24h activity).
  *  5. Return 0 if all sources fail or return no data.
  *
- * All network errors are caught and logged via `console.warn` so that
- * callers never receive a rejected promise.
+ * A service the chain's entry gives no id for is skipped. All network
+ * errors are caught and logged via `console.warn` so that callers never
+ * receive a rejected promise.
  *
- * @param {string}              tokenAddress - ERC-20 contract address.
- * @param {FetchTokenPriceOpts} [opts={}]    - Optional configuration.
+ * @param {string} tokenAddress - ERC-20 contract address.
  * @returns {Promise<number>} USD price (0 if unavailable).
  */
-async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
-  const chain = opts.chain ?? "pulsechain";
-  const key = _cacheKey(chain, tokenAddress);
+async function fetchTokenPriceUsd(tokenAddress) {
+  const chain = config.CHAIN_NAME;
+  const key = cacheKey(chain, tokenAddress);
   const cached = _cache.get(key);
   /*- Idle gate: when paused AND not inside a `withFreshPricesAllowed`
    *  scope, return the last known cached value (or 0 on cold start) and
@@ -274,17 +163,18 @@ async function fetchTokenPriceUsd(tokenAddress, opts = {}) {
   const pending = getInflight(key, tokenAddress);
   if (pending) return pending;
 
-  const fetchPromise = tryPriceSources(
-    [
-      ..._moralisSource(() => _fetchMoralisCurrent(tokenAddress, chain)),
-      {
-        name: "GeckoTerminal",
-        fn: () => _fetchGeckoTerminalCurrent(tokenAddress, chain),
-      },
-      { name: "DexScreener", fn: () => _fetchDexScreener(tokenAddress, chain) },
-    ],
-    { token: tokenAddress, chain },
-  ).then((price) => {
+  const services = config.CHAIN.priceServices;
+  const sources = currentPriceSources(tokenAddress, services);
+  /*-
+   *  A chain no price service covers has no source to ask, so there is
+   *  no price and nothing failed: the cascade would still log "All
+   *  sources failed" for every token on every poll.
+   */
+  if (sources.length === 0) return 0;
+  const fetchPromise = tryPriceSources(sources, {
+    token: tokenAddress,
+    chain,
+  }).then((price) => {
     if (price > 0) _cache.set(key, { price, ts: Date.now() });
     return price;
   });
@@ -361,7 +251,7 @@ async function _fetchGeckoOhlcvAtTimeframe(
   const dayStart = Math.floor(timestamp / 86400) * 86400;
   const before = dayStart + 86400;
   const url =
-    `https://api.geckoterminal.com/api/v2/networks/${network}` +
+    `${GECKO_TERMINAL_API}/networks/${network}` +
     `/pools/${poolAddress}/ohlcv/${timeframe}` +
     `?before_timestamp=${before}&limit=1&currency=usd&token=${token}`;
   /*- GeckoTerminal enforces its own limit on top of our in-process one,
@@ -408,15 +298,15 @@ async function _fetchGeckoOhlcvAtTimeframe(
  *
  * @param {string} poolAddress  V3 pool contract address.
  * @param {number} timestamp    Unix seconds of the target moment.
- * @param {'base'|'quote'} [token='base'] Which pool token to price.
- * @param {string} [network='pulsechain'] GeckoTerminal network identifier.
+ * @param {'base'|'quote'} token Which pool token to price.
+ * @param {string} network      GeckoTerminal's id for the pool's chain.
  * @returns {Promise<number>}  USD close price (0 if unavailable at any tf).
  */
 async function _fetchGeckoTerminalOhlcv(
   poolAddress,
   timestamp,
-  token = "base",
-  network = "pulsechain",
+  token,
+  network,
 ) {
   const attempts = [];
   for (const tf of ["day", "hour", "minute"]) {
@@ -454,12 +344,12 @@ async function _fetchGeckoTerminalOhlcv(
  * Try Moralis historical API for any zero-priced tokens.
  * @returns {{ price0: number, price1: number }}
  */
-async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
+async function _moralisFallback(p0, p1, t0, t1, blockNumber, moralisChain) {
   let price0 = p0,
     price1 = p1;
   if (!blockNumber || (price0 > 0 && price1 > 0)) return { price0, price1 };
   if (price0 === 0 && t0) {
-    price0 = await _fetchMoralisHistorical(t0, blockNumber, network);
+    price0 = await _fetchMoralisHistorical(t0, blockNumber, moralisChain);
     if (price0 > 0)
       log.info(
         "[price-fetcher] Moralis historical fallback for token0=%s",
@@ -467,7 +357,7 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
       );
   }
   if (price1 === 0 && t1) {
-    price1 = await _fetchMoralisHistorical(t1, blockNumber, network);
+    price1 = await _fetchMoralisHistorical(t1, blockNumber, moralisChain);
     if (price1 > 0)
       log.info(
         "[price-fetcher] Moralis historical fallback for token1=%s",
@@ -478,33 +368,29 @@ async function _moralisFallback(p0, p1, t0, t1, blockNumber, network) {
 }
 
 /**
- * Fetch historical USD prices for both tokens in a pool from GeckoTerminal.
- * When `token0Address` and `token1Address` are provided, results are cached
- * to disk (via price-cache) keyed by token contract address + UTC date.
- *
- * @param {string} poolAddress  - V3 pool contract address.
- * @param {number} timestamp    - Unix seconds of the target date.
- * @param {string} [network='pulsechain'] - GeckoTerminal network identifier.
- * @param {object} [opts]       - Optional token addresses for disk caching.
- * @param {string} [opts.token0Address] - Token0 contract address.
- * @param {string} [opts.token1Address] - Token1 contract address.
- * @param {number} [opts.blockNumber]   - Block number for Moralis fallback.
- * @param {boolean} [opts.refresh]      - Fetch even when the price is cached,
- *   and overwrite the cached entry with what comes back.
- * @returns {Promise<{price0: number, price1: number}>} Historical USD prices.
- */
-/**
  * Fetch GeckoTerminal OHLCV with the correct base/quote orientation for the
  * pool. GeckoTerminal's base/quote ordering is NOT guaranteed to match a
  * Uniswap v3 pool's token0/token1 — for some pools they're swapped, which
  * silently produces wildly wrong prices. We resolve the orientation once per
  * pool via the pool-info endpoint and cache the result on disk.
+ *
+ * When the orientation cannot be learned — the lookup was refused, timed
+ * out, or named a base token that is neither of the pool's — no price is
+ * taken from GeckoTerminal at all. Guessing would be right for most pools
+ * and would swap the two prices for the rest, and a historical price is
+ * cached with no expiry, so a wrong one would stand until Re-scan Prices.
+ * Zeros are not cached, so a later read asks again.
  */
 async function _geckoForToken0Token1(poolAddr, ts, network, t0, t1) {
   const orient = await getGeckoPoolOrientation(network, poolAddr, t0, t1);
   flushGeckoPoolCache();
-  // Default to "normal" when the orientation lookup fails: most pools
-  // are, so the fallback is right more often than it is wrong.
+  if (orient === null) {
+    log.warn(
+      "[price-fetcher] GeckoTerminal orientation unknown for pool %s — no historical price from it this time",
+      poolAddr,
+    );
+    return { p0: 0, p1: 0 };
+  }
   const flipped = orient === "flipped";
   const p0 = await _fetchGeckoTerminalOhlcv(
     poolAddr,
@@ -522,53 +408,89 @@ async function _geckoForToken0Token1(poolAddr, ts, network, t0, t1) {
 }
 
 /** Apply Moralis historical for any zero-priced tokens (when key available). */
-async function _moralisHistoricalLeg(p0, p1, t0, t1, blockNumber, network) {
+async function _moralisHistoricalLeg(
+  p0,
+  p1,
+  t0,
+  t1,
+  blockNumber,
+  moralisChain,
+) {
   let r0 = p0,
     r1 = p1;
   if (r0 === 0 && t0)
-    r0 = await _fetchMoralisHistorical(t0, blockNumber, network);
+    r0 = await _fetchMoralisHistorical(t0, blockNumber, moralisChain);
   if (r1 === 0 && t1)
-    r1 = await _fetchMoralisHistorical(t1, blockNumber, network);
+    r1 = await _fetchMoralisHistorical(t1, blockNumber, moralisChain);
   return { p0: r0, p1: r1 };
 }
 
-/** Try Moralis first when API key is available, then GeckoTerminal for zeros. */
+/**
+ * Try Moralis first when API key is available, then GeckoTerminal for
+ * zeros. A service the chain's entry gives no id for is not asked.
+ */
 async function _fetchHistoricalPair(
   poolAddr,
   ts,
-  network,
+  services,
   t0,
   t1,
   c0,
   c1,
   blockNumber,
 ) {
+  const { moralisChain, geckoTerminalNetwork } = services;
   const useMoralis = _moralisKey() && blockNumber;
   let p0 = c0 ?? 0,
     p1 = c1 ?? 0;
   if (useMoralis) {
-    const m = await _moralisHistoricalLeg(p0, p1, t0, t1, blockNumber, network);
+    const m = await _moralisHistoricalLeg(
+      p0,
+      p1,
+      t0,
+      t1,
+      blockNumber,
+      moralisChain,
+    );
     p0 = m.p0;
     p1 = m.p1;
   }
   const need0 = p0 === 0 && c0 === null;
   const need1 = p1 === 0 && c1 === null;
-  if (need0 || need1) {
-    const gt = await _geckoForToken0Token1(poolAddr, ts, network, t0, t1);
+  if ((need0 || need1) && geckoTerminalNetwork !== "") {
+    const gt = await _geckoForToken0Token1(
+      poolAddr,
+      ts,
+      geckoTerminalNetwork,
+      t0,
+      t1,
+    );
     if (need0) p0 = gt.p0;
     if (need1) p1 = gt.p1;
   }
   if (!useMoralis)
-    return _moralisFallback(p0, p1, t0, t1, blockNumber, network);
+    return _moralisFallback(p0, p1, t0, t1, blockNumber, moralisChain);
   return { price0: p0, price1: p1 };
 }
 
-async function fetchHistoricalPriceGecko(
-  poolAddress,
-  timestamp,
-  network = "pulsechain",
-  opts = {},
-) {
+/**
+ * Fetch historical USD prices for both tokens in a pool on the active
+ * chain. When `token0Address` and `token1Address` are provided, results are
+ * cached to disk (via price-cache) under the chain, keyed by token contract
+ * address + UTC date.
+ *
+ * @param {string} poolAddress  - V3 pool contract address.
+ * @param {number} timestamp    - Unix seconds of the target date.
+ * @param {object} [opts]       - Optional token addresses for disk caching.
+ * @param {string} [opts.token0Address] - Token0 contract address.
+ * @param {string} [opts.token1Address] - Token1 contract address.
+ * @param {number} [opts.blockNumber]   - Block number for Moralis fallback.
+ * @param {boolean} [opts.refresh]      - Fetch even when the price is cached,
+ *   and overwrite the cached entry with what comes back.
+ * @returns {Promise<{price0: number, price1: number}>} Historical USD prices.
+ */
+async function fetchHistoricalPriceGecko(poolAddress, timestamp, opts = {}) {
+  const chain = config.CHAIN_NAME;
   // Block-scoped key: block numbers are immutable, so no date prefix needed.
   // Date-scoped key: used by epoch P&L callers that don't have a block number.
   const utcKey = opts.blockNumber
@@ -582,13 +504,14 @@ async function fetchHistoricalPriceGecko(
    *  only way a re-value reaches a new number; whatever comes back is
    *  written over the old entry below. */
   const useCache = opts.refresh !== true;
-  const c0 = t0 && useCache ? getHistoricalPrice(network, t0, utcKey) : null;
-  const c1 = t1 && useCache ? getHistoricalPrice(network, t1, utcKey) : null;
+  const c0 = t0 && useCache ? getHistoricalPrice(chain, t0, utcKey) : null;
+  const c1 = t1 && useCache ? getHistoricalPrice(chain, t1, utcKey) : null;
   if (c0 !== null && c1 !== null) return { price0: c0, price1: c1 };
+  const services = config.CHAIN.priceServices;
   const { price0, price1 } = await _fetchHistoricalPair(
     poolAddress,
     timestamp,
-    network,
+    services,
     t0,
     t1,
     c0,
@@ -596,52 +519,13 @@ async function fetchHistoricalPriceGecko(
     opts.blockNumber,
   );
   // Persist to disk cache
-  if (t0 && price0 > 0) setHistoricalPrice(network, t0, utcKey, price0);
-  if (t1 && price1 > 0) setHistoricalPrice(network, t1, utcKey, price1);
+  if (t0 && price0 > 0) setHistoricalPrice(chain, t0, utcKey, price0);
+  if (t1 && price1 > 0) setHistoricalPrice(chain, t1, utcKey, price1);
   if (t0 || t1) flushPriceCache();
   return { price0, price1 };
 }
 
-// ── Moralis (current + historical by block) ─────────────────────────────
-
-/** Map GeckoTerminal/internal chain names to Moralis chain identifiers. */
-const _MORALIS_CHAINS = { pulsechain: "0x171", eth: "0x1" };
-
-/**
- * Fetch current USD price from the Moralis Token API.
- * Requires a decrypted Moralis API key in api-key-holder.
- *
- * @param {string} tokenAddress - ERC-20 contract address.
- * @param {string} [chain='pulsechain'] - Internal chain name.
- * @returns {Promise<number>} USD price (0 if unavailable).
- */
-async function _fetchMoralisCurrent(tokenAddress, chain = "pulsechain") {
-  const apiKey = _moralisKey();
-  if (!apiKey) return 0;
-  const chainHex = _MORALIS_CHAINS[chain];
-  if (!chainHex) return 0;
-  const url =
-    `https://deep-index.moralis.io/api/v2.2/erc20` +
-    `/${tokenAddress}/price?chain=${chainHex}&include=percent_change`;
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json", "X-API-Key": apiKey },
-    });
-    if (!res.ok) return 0;
-    const json = await res.json();
-    const price = Number(json?.usdPrice ?? 0);
-    return Number.isFinite(price) && price > 0 ? price : 0;
-  } catch (err) {
-    log.warn(
-      "[price-fetcher] Moralis current error token=%s chain=%s — %s",
-      _formatToken(tokenAddress),
-      chain,
-      err.message ?? err,
-    );
-    return 0;
-  }
-}
+// ── Moralis (historical by block) ───────────────────────────────────────
 
 /**
  * Fetch a historical USD price from the Moralis Token API by block number.
@@ -649,22 +533,18 @@ async function _fetchMoralisCurrent(tokenAddress, chain = "pulsechain") {
  *
  * @param {string} tokenAddress - ERC-20 contract address.
  * @param {number} blockNumber  - Block number for the historical price.
- * @param {string} [chain='pulsechain'] - Internal chain name.
+ * @param {string} chain - Moralis's hex id for the token's chain; "" for a
+ *   chain Moralis does not cover, which answers 0 without asking.
  * @returns {Promise<number>} USD price (0 if unavailable).
  */
-async function _fetchMoralisHistorical(
-  tokenAddress,
-  blockNumber,
-  chain = "pulsechain",
-) {
+async function _fetchMoralisHistorical(tokenAddress, blockNumber, chain) {
   const apiKey = _moralisKey();
   if (!apiKey) return 0;
-  const chainHex = _MORALIS_CHAINS[chain];
-  if (!chainHex) return 0;
+  if (!chain) return 0;
   const url =
-    `https://deep-index.moralis.io/api/v2.2/erc20` +
+    `${MORALIS_API}/erc20` +
     `/${tokenAddress}/price` +
-    `?chain=${chainHex}&to_block=${blockNumber}`;
+    `?chain=${chain}&to_block=${blockNumber}`;
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -722,7 +602,7 @@ function _loadDustPriceSources() {
     const json = loadMergedDefaults(_DUST_THRESHOLD_FILENAME);
     if (!Array.isArray(json?.priceSourceTokens)) return [];
     return json.priceSourceTokens.filter(
-      (t) => t && t.address && t.chain && t.dexScreenerChain,
+      (t) => t && t.address && t.moralisChain && t.dexScreenerChain,
     );
   } catch (err) {
     log.warn(
@@ -764,16 +644,21 @@ async function fetchDustUnitPriceUsd() {
   }
   const tokens = _loadDustPriceSources();
   for (const tok of tokens) {
-    const price = await tryPriceSources(
-      [
-        ..._moralisSource(() => _fetchMoralisCurrent(tok.address, tok.chain)),
-        {
-          name: "DexScreener",
-          fn: () => _fetchDexScreener(tok.address, tok.dexScreenerChain),
-        },
-      ],
-      { token: tok.address, symbol: tok.symbol, chain: tok.chain },
+    const moralis = _moralisSource(() =>
+      _fetchMoralisCurrent(tok.address, tok.moralisChain),
     );
+    const sources = [
+      ...moralis,
+      {
+        name: "DexScreener",
+        fn: () => _fetchDexScreener(tok.address, tok.dexScreenerChain),
+      },
+    ];
+    const price = await tryPriceSources(sources, {
+      token: tok.address,
+      symbol: tok.symbol,
+      chain: tok.dexScreenerChain,
+    });
     if (price > 0) {
       log.info(
         "[dust-unit-price] %s = $%s / unit (cached %d min)",
@@ -799,14 +684,15 @@ function _resetDustUnitPriceCache() {
  * fetch hits the cascade.  Used by move paths (auto/manual rebalance,
  * auto/manual compound) right before `withFreshPricesAllowed` so the
  * move executes against on-chain-fresh prices even if the cache is warm.
+ * The tokens are the active chain's, as every cached price is.
  *
- * @param {Array<{token: string, chain?: string}>} tokens
+ * @param {Array<{token: string}>} tokens
  */
 function invalidatePriceCacheFor(tokens) {
   if (!Array.isArray(tokens)) return;
   for (const t of tokens) {
     if (!t || !t.token) continue;
-    _cache.delete(_cacheKey(t.chain ?? "pulsechain", t.token));
+    _cache.delete(cacheKey(config.CHAIN_NAME, t.token));
   }
 }
 
@@ -823,11 +709,8 @@ module.exports = {
   unpausePriceLookups,
   withFreshPricesAllowed,
   invalidatePriceCacheFor,
-  _fetchDexScreener,
-  _fetchGeckoTerminalCurrent,
   _fetchGeckoTerminalOhlcv,
   _fetchGeckoOhlcvAtTimeframe,
-  _fetchMoralisCurrent,
   _fetchMoralisHistorical,
   _resetDustUnitPriceCache,
   _resetPauseStateForTests,

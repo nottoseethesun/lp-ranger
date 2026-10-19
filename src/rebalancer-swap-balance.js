@@ -1,0 +1,133 @@
+/**
+ * @file src/rebalancer-swap-balance.js
+ * @module rebalancer-swap-balance
+ * @description
+ * What a swap delivered, read as the rise in the recipient's balance of
+ * the token bought. Split from `src/rebalancer-swap.js` at the 500-line
+ * cap; that module hands `balanceDiff` to both swap routes, the
+ * aggregator and the V3 router, which run their send and confirmation
+ * inside it.
+ *
+ * The balance is read once before the swap and once after it. The read
+ * after it is the one that matters most, because by then the swap has
+ * happened and cannot be undone: a failure there that let `swapIfNeeded`
+ * fall back to the other route would swap the same balance twice. So
+ * that read asks every endpoint before it gives up, and an error it
+ * gives up with is marked `swapLanded`, which `swapIfNeeded` reads as
+ * "no fallback".
+ */
+
+"use strict";
+
+const { ERC20_ABI } = require("./rebalancer-pools");
+const { readBotConfigDefaults } = require("./bot-config-defaults");
+const { spentGasOf, carryingGas } = require("./spent-gas");
+const sendTx = require("./send-transaction");
+const { noteRpcResult } = require("./rpc-out-of-service");
+const { retryRead } = require("./rpc-read-retry");
+
+/*-
+ *  The budget of the balance read after a swap has landed, shared with
+ *  pool state and the re-open check's wallet read:
+ *  `boundedReadAttemptsPerEndpoint` and `boundedReadRetryDelayMs` in
+ *  bot-config-defaults.json. The delay is `let`, set through
+ *  `_setLandedReadDelayForTests`, so unit tests can drop it to zero.
+ */
+const _BOUNDED_READ = readBotConfigDefaults();
+const _ATTEMPTS_PER_URL = _BOUNDED_READ.boundedReadAttemptsPerEndpoint;
+let _RETRY_DELAY_MS = _BOUNDED_READ.boundedReadRetryDelayMs;
+
+/** Test-only helper: override the wait before one endpoint is asked again. */
+function _setLandedReadDelayForTests(ms) {
+  _RETRY_DELAY_MS = ms;
+}
+
+/**
+ * The recipient's balance of the token bought, read once the swap has
+ * landed.
+ *
+ * Asked as pool state is asked: each endpoint in service up to
+ * `boundedReadAttemptsPerEndpoint` times, any error counting as the
+ * endpoint's, every outcome reported to the app's failover so that
+ * selection moves off an endpoint whose failure rate says it should.
+ * An ordinary read fails over only when an endpoint cannot be reached,
+ * and fails at once when one answers with an error; this read asks the
+ * others either way, because the swap behind it cannot be undone. Only
+ * once that budget is spent does the last error come back, for
+ * `balanceDiff` to mark `swapLanded`.
+ *
+ * @param {object} ethersLib  ethers, for the token contract.
+ * @param {string} tokenOut   Address of the token bought.
+ * @param {string} recipient  Wallet the bought token is paid to.
+ * @returns {Promise<bigint>}
+ */
+function _landedBalance(ethersLib, tokenOut, recipient) {
+  return retryRead({
+    tag: "swap",
+    label: `balanceOf(${tokenOut}) after the swap`,
+    run: (provider) =>
+      new ethersLib.Contract(tokenOut, ERC20_ABI, provider).balanceOf(
+        recipient,
+      ),
+    /*-
+     *  The loop needs a failure to enter on, and nothing has been asked
+     *  yet; only `isFailoverable` reads it.
+     */
+    err: new Error("balance after the swap not read yet"),
+    isFailoverable: () => true,
+    failover: sendTx.failoverToNextRPC,
+    current: sendTx.getCurrentRPC,
+    urlOf: sendTx.urlOf,
+    note: (provider, ok) => noteRpcResult(sendTx.urlOf(provider), ok),
+    /*-
+     *  Floored at one, as pool state's is, so a layer nobody
+     *  initialised throws that fault by name from `current()`.
+     */
+    maxAttempts: Math.max(1, sendTx.endpointCount() * _ATTEMPTS_PER_URL),
+    delayMs: _RETRY_DELAY_MS,
+  });
+}
+
+/**
+ * Run a swap and report what it delivered, as the rise in the recipient's
+ * balance of the token bought.
+ *
+ * The balance is read once before the swap and once after it, so the
+ * figure is what reached the wallet. A balance that did not rise reports
+ * zero rather than a negative amount. The aggregator swap and the V3
+ * router swap are handed this function and run their send and
+ * confirmation inside it; a swap that throws passes its error through
+ * unchanged, with whatever gas it carries. The read after the swap is
+ * `_landedBalance`, which asks every endpoint before it gives up. One
+ * that fails even so carries the swap's gas instead, and is marked
+ * `swapLanded`: the swap happened, so `swapIfNeeded` must not send
+ * another of the same balance through a fallback route.
+ *
+ * @param {object} ethersLib  ethers, for the token contract.
+ * @param {string} tokenOut   Address of the token bought.
+ * @param {string} recipient  Wallet the bought token is paid to.
+ * @param {object} prov       Provider for the read before the swap.
+ * @param {() => Promise<object>} fn  Sends the swap and resolves to its
+ *   result.
+ * @returns {Promise<object>} The swap's result, with `amountOut` set to
+ *   the balance gained.
+ */
+async function balanceDiff(ethersLib, tokenOut, recipient, prov, fn) {
+  const outC = new ethersLib.Contract(tokenOut, ERC20_ABI, prov);
+  const before = await outC.balanceOf(recipient);
+  const result = await fn();
+  let diff;
+  try {
+    diff = await carryingGas(
+      spentGasOf(result),
+      async () =>
+        (await _landedBalance(ethersLib, tokenOut, recipient)) - before,
+    );
+  } catch (err) {
+    err.swapLanded = true;
+    throw err;
+  }
+  return { ...result, amountOut: diff > 0n ? diff : 0n };
+}
+
+module.exports = { balanceDiff, _setLandedReadDelayForTests };

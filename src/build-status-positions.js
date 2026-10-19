@@ -21,7 +21,11 @@
 
 "use strict";
 
-const { resolveRangeOverrideEnabled } = require("./range-override");
+const {
+  resolveRangeOverrideEnabled,
+  resolveRebalanceOffsetPct,
+  fullRangeSetting,
+} = require("./range-override");
 
 /**
  * Settings keys that flow through to the dashboard for *unmanaged*
@@ -36,10 +40,8 @@ const _UNMANAGED_SETTINGS_KEYS = [
   "fullRangeRebalanceEnabled",
   "slippagePctToken0",
   "slippagePctToken1",
-  "checkIntervalSec",
   "minRebalanceIntervalMin",
   "maxRebalancesPerDay",
-  "gasStrategy",
   "priceOverride0",
   "priceOverride1",
   "priceOverrideForce",
@@ -84,6 +86,18 @@ function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg, deps) {
      *  rebalance time can never drift apart. */
     positions[key].rangeOverrideEnabled =
       resolveRangeOverrideEnabled(posConfig);
+    /*-
+     *  And the offset the next rebalance uses, for the Rebalance Now
+     *  preview: `offsetToken0Pct` above is the saved value alone, which
+     *  the Bot Settings field shows.
+     */
+    positions[key].rebalanceOffsetToken0Pct =
+      resolveRebalanceOffsetPct(posConfig);
+    /*-
+     *  The Full-Range checkbox's flag, the install's default standing in
+     *  for one the position has not saved.
+     */
+    positions[key].fullRangeRebalanceEnabled = fullRangeSetting(posConfig);
   }
   for (const [key, posConfig] of Object.entries(diskConfig.positions)) {
     if (positions[key]) continue;
@@ -91,6 +105,8 @@ function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg, deps) {
     for (const k of _UNMANAGED_SETTINGS_KEYS)
       if (posConfig[k] !== undefined) s[k] = posConfig[k];
     s.rangeOverrideEnabled = resolveRangeOverrideEnabled(posConfig);
+    s.rebalanceOffsetToken0Pct = resolveRebalanceOffsetPct(posConfig);
+    s.fullRangeRebalanceEnabled = fullRangeSetting(posConfig);
     /*- For positions that the user has explicitly stopped (or that
      *  auto-retired after a failed re-open attempt), publish a
      *  terminal sync state.  Rationale: there is no live bot loop

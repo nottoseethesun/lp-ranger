@@ -41,9 +41,10 @@ describe("openapi.json is in sync with the server", () => {
     /*- A scan that silently found nothing would report "in sync" for an
      *  empty spec.  Pin non-trivial counts so the gate cannot pass by
      *  looking at the wrong files. */
-    const { routeCount, configKeyCount } = checkOpenApiSync();
+    const { routeCount, configKeyCount, uiSettingCount } = checkOpenApiSync();
     assert.ok(routeCount > 25, `only ${routeCount} routes found`);
     assert.ok(configKeyCount > 30, `only ${configKeyCount} config keys found`);
+    assert.ok(uiSettingCount > 10, `only ${uiSettingCount} settings found`);
     assert.ok(registeredRoutes().size > 25);
     assert.ok(specOperations(spec).size > 25);
   });
@@ -100,6 +101,25 @@ describe("openapi.json sync gate — the invariants it enforces", () => {
     });
     assert.equal(r.ok, false);
     assert.ok(r.problems.some((p) => p.includes("notARealKey")));
+  });
+
+  /** The response schema of `GET /api/ui-defaults`. */
+  const uiSettings = (s) =>
+    s.paths["/api/ui-defaults"].get.responses["200"].content["application/json"]
+      .schema.properties;
+
+  it("catches a dashboard setting the route sends but the spec omits", () => {
+    const r = withSpec((s) => delete uiSettings(s).soundsEnabled);
+    assert.equal(r.ok, false);
+    assert.ok(r.problems.some((p) => p.includes("soundsEnabled")));
+  });
+
+  it("catches a documented dashboard setting the route does not send", () => {
+    const r = withSpec((s) => {
+      uiSettings(s).notASetting = { type: "integer" };
+    });
+    assert.equal(r.ok, false);
+    assert.ok(r.problems.some((p) => p.includes("notASetting")));
   });
 
   it("catches an operation with no summary or no responses", () => {

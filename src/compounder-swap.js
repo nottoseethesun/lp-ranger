@@ -21,32 +21,36 @@
 "use strict";
 
 const { log } = require("./log");
+const config = require("./config");
+const { logCtx } = require("./logger");
 const { computeDesiredAmounts, swapIfNeeded } = require("./rebalancer-swap");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { resolveSlippagePct } = require("./slippage-resolver");
-
-/*- The shipped slippage default is no longer read here: the fallback
- *  when a token has no setting of its own belongs to
- *  `src/slippage-resolver.js`, which is where a rebalance gets it too. */
 const {
   estimateSwapGasUsd,
   shouldSkipSwap,
   gasFeePctToRatio,
 } = require("./swap-gates");
 
-/** Abbreviated address: 0x4e44…61A */
-function _abbr(addr) {
-  if (!addr || addr.length < 10) return addr || "?";
-  return addr.slice(0, 6) + "\u2026" + addr.slice(-3);
-}
-
-/** Build a standard log context prefix matching compounder.js. */
-function _ctx(opts) {
-  const wallet = _abbr(opts.recipient);
-  const nft = "#" + opts.tokenId;
-  const s0 = opts.token0Symbol || "Token0";
-  const s1 = opts.token1Symbol || "Token1";
-  return wallet + " " + nft + " " + s0 + "/" + s1;
+/**
+ * The compound's log context: the six fields every compound, rebalance
+ * and swap line carries, from the compound's own options. `compounder.js`
+ * uses it too, so the compound's lines and its swap's lines name the
+ * position the same way.
+ *
+ * @param {object} opts  Compound options: `recipient` (the wallet),
+ *   `positionManagerAddress`, `tokenId` and the two token symbols.
+ * @returns {string}
+ */
+function compoundLogCtx(opts) {
+  return logCtx({
+    chain: config.CHAIN_NAME,
+    wallet: opts.recipient,
+    factory: opts.positionManagerAddress,
+    tokenId: opts.tokenId,
+    symbol0: opts.token0Symbol,
+    symbol1: opts.token1Symbol,
+  });
 }
 
 const _NOOP = Object.freeze({
@@ -73,13 +77,13 @@ async function _evalGates(signer, opts, desired) {
   const decIn = is0to1 ? opts.decimals0 : opts.decimals1;
   const priceInUsd = await fetchTokenPriceUsd(tokenInAddr);
   const swapUsd = (Number(desired.swapAmount) / 10 ** decIn) * priceInUsd;
-  const provider = signer.provider ?? signer;
+  const provider = signer.provider;
   const gasUsd = await estimateSwapGasUsd(provider);
   const maxRatio = gasFeePctToRatio(opts.gasFeePct);
   const gate = await shouldSkipSwap({ swapUsd, gasUsd, maxRatio });
   log.info(
     "[compound] %s ratio-swap gate: swap=$%s gas=$%s ratio=%s max=%s%% — %s",
-    _ctx(opts),
+    compoundLogCtx(opts),
     swapUsd.toFixed(4),
     gasUsd.toFixed(4),
     gate.gasRatio.toFixed(4),
@@ -97,10 +101,12 @@ async function _fireSwap(signer, ethersLib, opts, desired, is0to1, ps) {
     amountIn: desired.swapAmount,
     tokenIn: is0to1 ? opts.token0 : opts.token1,
     tokenOut: is0to1 ? opts.token1 : opts.token0,
-    /*- The same answer a rebalance would get for this swap: the
-     *  destination token's own setting, or the shipped default when it
-     *  is unset. A compound and a rebalance move the same pair through
-     *  the same router, so they cannot answer this differently. */
+    /*-
+     *  The same answer a rebalance would get for this swap: the
+     *  destination token's own setting, or the default when it is
+     *  unset. A compound and a rebalance move the same pair through
+     *  the same router, so they cannot answer this differently.
+     */
     slippagePct: resolveSlippagePct(opts, is0to1),
     currentPrice: ps.price,
     decimalsIn: is0to1 ? opts.decimals0 : opts.decimals1,
@@ -110,6 +116,7 @@ async function _fireSwap(signer, ethersLib, opts, desired, is0to1, ps) {
     symbolIn: is0to1 ? opts.token0Symbol : opts.token1Symbol,
     symbolOut: is0to1 ? opts.token1Symbol : opts.token0Symbol,
     approvalMultiple: opts.approvalMultiple,
+    logCtx: compoundLogCtx(opts),
   });
 }
 
@@ -134,7 +141,7 @@ async function swapForCompound(signer, ethersLib, opts, amount0, amount1) {
   if (!_hasRatioInputs(opts)) {
     log.info(
       "[compound] %s ratio-swap skipped: poolState/tickRange not provided",
-      _ctx(opts),
+      compoundLogCtx(opts),
     );
     return { ..._NOOP };
   }
@@ -152,7 +159,7 @@ async function swapForCompound(signer, ethersLib, opts, amount0, amount1) {
   if (!desired.needsSwap) {
     log.info(
       "[compound] %s ratio-swap skipped: collected amounts already match tick ratio",
-      _ctx(opts),
+      compoundLogCtx(opts),
     );
     return { ..._NOOP, gateReason: "no-swap-needed" };
   }
@@ -162,11 +169,11 @@ async function swapForCompound(signer, ethersLib, opts, amount0, amount1) {
   }
   const result = await _fireSwap(signer, ethersLib, opts, desired, is0to1, ps);
   return {
-    gasCostWei: result.gasCostWei || 0n,
-    txHash: result.txHash || null,
+    gasCostWei: result.gasCostWei,
+    txHash: result.txHash,
     gateReason: null,
     swapped: true,
   };
 }
 
-module.exports = { swapForCompound };
+module.exports = { swapForCompound, compoundLogCtx };

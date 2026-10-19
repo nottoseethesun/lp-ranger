@@ -37,10 +37,12 @@
  *
  * RPC behaviour:
  *   - Uses config.RPC_URL (chain default if env unset).
- *   - 10_000-block chunks with 250 ms inter-chunk throttle (matches
- *     event-scanner.js conventions to avoid endpoint saturation).
+ *   - Chunks of the app's `getLogsChunkSize`, two requests each, with a
+ *     pause after each chunk of two of the app's
+ *     `globalRPCRequestRateIntervalMS`, so this tool spends an endpoint's
+ *     patience no faster than the app does.
  *   - Block-time lookups: 50 ms throttle, sequential (one per block).
- *   - 5-year scan on PulseChain ≈ 1_580 chunks × ~250 ms ≈ 7 min,
+ *   - `--help` gives the length of a full scan at the configured values,
  *     plus N × 50 ms for blocks containing events.  Pass a smaller
  *     yearsBack to shorten.
  *
@@ -49,7 +51,8 @@
  *
  * Arguments:
  *   walletAddress — required, EIP-55 or lowercased 0x-prefixed 20-byte hex
- *   yearsBack     — optional, integer or float (default 5)
+ *   yearsBack     — optional, integer or float (default: the app's
+ *                   `historyLookbackYears`)
  *
  * Examples:
  *   node util/diagnostic/show-rebalance-chain.js \
@@ -76,6 +79,13 @@ process.chdir(
 const { ethers } = require("ethers");
 const config = require("../../src/config");
 const { PM_ABI } = require("../../src/pm-abi");
+const {
+  BLOCKS_PER_YEAR,
+  LOOKBACK_YEARS,
+  historyFloorBlock,
+} = require("../../src/history-lookback");
+const { _DEFAULT_CHUNK_SIZE } = require("../../src/get-logs-chunked");
+const { readBotConfigDefaults } = require("../../src/bot-config-defaults");
 const { Command, InvalidArgumentError } = require("commander");
 const { sleep, addrTopic, fmtTs, fetchTimestamps } = require("./_helpers");
 
@@ -114,27 +124,39 @@ function buildProgram() {
         "position-manager Transfer events.",
     )
     .argument("<walletAddress>", "EIP-55 or lowercased hex", parseWallet)
-    .argument("[yearsBack]", `how far back to scan (default ${DEFAULT_YEARS})`)
-    .addHelpText(
-      "after",
-      "\nA five-year PulseChain scan is roughly 1,580 chunks at ~250 ms —\n" +
-        "about seven minutes — plus 50 ms per block holding an event. Pass\n" +
-        "a smaller yearsBack to shorten it.\n" +
-        "\nExit codes:\n  0  completed\n  1  invalid arguments\n",
-    );
+    .argument("[yearsBack]", `how far back to scan (default ${LOOKBACK_YEARS})`)
+    .addHelpText("after", _scanLengthText() + EXIT_CODES_TEXT);
 }
 
-/** Block time on PulseChain ≈ 10 s.  Used to estimate the start block. */
-const BLOCK_TIME_SEC = 10;
+const EXIT_CODES_TEXT =
+  "\nExit codes:\n  0  completed\n  1  invalid arguments\n";
 
-/** Default lookback when not specified. */
-const DEFAULT_YEARS = 5;
+// Block span per getLogs call: the app's own `getLogsChunkSize`.
+const CHUNK_SIZE = _DEFAULT_CHUNK_SIZE;
 
-/** Chunk size for getLogs. */
-const CHUNK_SIZE = 10000;
+/*-
+ *  Pause after each chunk. A chunk is two requests, and the app spaces
+ *  every request by `globalRPCRequestRateIntervalMS`; this tool has a
+ *  provider of its own, outside the app's queue, so it waits the same
+ *  two spacings itself.
+ */
+const CHUNK_DELAY_MS =
+  2 * readBotConfigDefaults().globalRPCRequestRateIntervalMS;
 
-/** Throttle between RPC chunks (ms) — matches event-scanner.js. */
-const CHUNK_DELAY_MS = 250;
+/**
+ * Say how long a scan over the default lookback takes at the configured
+ * chunk size and pause, for `--help`.
+ * @returns {string}
+ */
+function _scanLengthText() {
+  const chunks = Math.ceil((LOOKBACK_YEARS * BLOCKS_PER_YEAR) / CHUNK_SIZE);
+  const minutes = Math.max(1, Math.round((chunks * CHUNK_DELAY_MS) / 60_000));
+  return (
+    `\nA ${LOOKBACK_YEARS}-year scan is roughly ${chunks} chunks at ` +
+    `${CHUNK_DELAY_MS} ms — about ${minutes} minutes — plus 50 ms per ` +
+    "block holding an\nevent. Pass a smaller yearsBack to shorten it.\n"
+  );
+}
 
 const ZERO_TOPIC = "0x" + "0".repeat(64);
 
@@ -275,12 +297,11 @@ function renderTransfers(logs, tsMap) {
 async function main(argv = process.argv.slice(2)) {
   const program = buildProgram().parse(argv, { from: "user" });
   const [wallet, yearsArg] = program.args;
-  const years = Number(yearsArg) || DEFAULT_YEARS;
+  const years = Number(yearsArg) || LOOKBACK_YEARS;
   const checksummed = ethers.getAddress(wallet);
   const provider = new ethers.JsonRpcProvider(config.RPC_URL);
   const head = await provider.getBlockNumber();
-  const blocksBack = Math.round((years * 365.25 * 24 * 3600) / BLOCK_TIME_SEC);
-  const fromBlock = Math.max(1, head - blocksBack);
+  const fromBlock = Math.max(1, historyFloorBlock(head, years));
   renderHeader({
     wallet: checksummed,
     rpcUrl: config.RPC_URL,

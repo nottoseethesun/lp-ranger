@@ -8,6 +8,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { _poll } = require("./_bot-loop-helpers");
+const { updateHodlBaseline } = require("../src/bot-recorder-baseline");
 
 describe("pollCycle compound gates", () => {
   it("does not trigger compound when autoCompound disabled and no force", async () => {
@@ -119,14 +120,14 @@ describe("atomic config write", () => {
     const { saveConfig, loadConfig } = require("../src/bot-config-v2");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "atomic-test-"));
     const cfg = {
-      global: { triggerType: "oor" },
+      global: { gasFeePct: 2 },
       positions: { k1: { status: "running", compoundedAmount0: 10 } },
     };
     saveConfig(cfg, dir);
     const loaded = loadConfig(dir);
     assert.equal(loaded.positions.k1.status, "running");
     assert.equal(loaded.positions.k1.compoundedAmount0, 10);
-    assert.equal(loaded.global.triggerType, "oor");
+    assert.equal(loaded.global.gasFeePct, 2);
     const files = fs.readdirSync(dir);
     assert.ok(!files.some((f) => f.endsWith(".tmp")));
     fs.rmSync(dir, { recursive: true });
@@ -334,10 +335,9 @@ describe("bot-recorder helpers", () => {
     assert.equal(s.liquidity, "0");
   });
 
-  it("_updateHodlBaseline sets baseline from result", () => {
-    const { _updateHodlBaseline } = require("../src/bot-recorder");
+  it("updateHodlBaseline sets baseline from result", () => {
     const botState = {};
-    _updateHodlBaseline(
+    updateHodlBaseline(
       botState,
       {
         amount0Minted: 1000000000000000000n,

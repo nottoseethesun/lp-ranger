@@ -74,11 +74,6 @@ describe("chart-providers.readChartProviders — happy path", () => {
       dextools: "DexTools",
     });
   });
-
-  it("falls back to pulsechain when chain name is unknown", () => {
-    const out = readChartProviders("not-a-real-chain");
-    assert.equal(out.length, 3);
-  });
 });
 
 describe("chart-providers._buildProvidersList — malformed entries", () => {

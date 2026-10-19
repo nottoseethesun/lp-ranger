@@ -13,18 +13,25 @@ import {
   fmtDuration,
   cloneTpl,
 } from "./dashboard-helpers.js";
-import { posStore, isPositionManaged } from "./dashboard-positions.js";
-import { throttle, applyPolledMinInterval } from "./dashboard-throttle.js";
+import { posStore, isPositionManaged } from "./dashboard-positions-store.js";
+import {
+  throttle,
+  applyPolledMinInterval,
+  forgetLoopThrottle,
+} from "./dashboard-throttle.js";
 import {
   _activeToken1Symbol,
   updateRangePctLabels,
   positionRangeVisual,
-} from "./dashboard-data-kpi.js";
+} from "./dashboard-data-range.js";
 import { showPerPositionAlerts } from "./dashboard-alerts.js";
 import {
   currentUnclaimedFees,
   unmanagedUnclaimedFees,
 } from "./dashboard-data-kpi-fees.js";
+import { uiSetting } from "./dashboard-ui-settings.js";
+import { activeChainDisplayName } from "./dashboard-chain.js";
+import { POSITION_DIALOG_ATTRIBUTE } from "./dashboard-position-dialogs.js";
 
 /**
  * Create and append a modal overlay to the document body. The shell
@@ -32,10 +39,24 @@ import {
  * <template>; bodyHtml is still injected via innerHTML on the body div
  * — Phase 2 of the html-cleanup pass will convert callers to pass a
  * DocumentFragment instead of a string.
+ *
+ * A notice answers something done to the position on screen, so a
+ * switch to another closes it (dashboard-position-dialogs.js). An alert
+ * the server raises names its own position, whichever is on screen, and
+ * shows once, so its caller passes `positionDialog: false` and a switch
+ * leaves it open.
+ *
+ * @param {string|null} id
+ * @param {string} cssClass
+ * @param {string} title
+ * @param {string} bodyHtml
+ * @param {{positionDialog?: boolean}} [opts]
  */
-export function _createModal(id, cssClass, title, bodyHtml) {
+export function _createModal(id, cssClass, title, bodyHtml, opts = {}) {
   const o = document.createElement("div");
   o.className = "9mm-pos-mgr-modal-overlay";
+  if (opts.positionDialog !== false)
+    o.setAttribute(POSITION_DIALOG_ATTRIBUTE, "");
   if (id) o.id = id;
   const frag = cloneTpl("tplStatusModal");
   if (frag) {
@@ -57,11 +78,20 @@ function _short(addr) {
 
 /** Build a one-line position label: pair + PM + NFT + fee + chain + wallet. */
 export function _posLabel() {
-  const a = posStore.getActive();
+  return posLabelOf(posStore.getActive());
+}
+
+/**
+ * The one-line label of position `a`, as `_posLabel` gives the one on
+ * screen: for an event about a position that may no longer be there.
+ * @param {object|null|undefined} a  A posStore entry.
+ * @returns {string}  "" for none.
+ */
+export function posLabelOf(a) {
   if (!a) return "";
   const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
   const pm = botConfig.pmName || _short(a.contractAddress);
-  const c = botConfig.chainName || "PulseChain",
+  const c = activeChainDisplayName(),
     fee = a.fee ? (a.fee / 10000).toFixed(2) + "%" : "";
   return (
     pair +
@@ -69,8 +99,7 @@ export function _posLabel() {
     " \u00B7 NFT #" +
     a.tokenId +
     (fee ? " \u00B7 " + fee : "") +
-    " \u00B7 " +
-    c +
+    (c ? " \u00B7 " + c : "") +
     " \u00B7 " +
     _short(a.walletAddress)
   );
@@ -87,21 +116,41 @@ export function _posContextHtml() {
   if (!a) return "";
   const frag = cloneTpl("tplPosContext");
   if (!frag) return "";
-  const pair = (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?");
-  const pm = botConfig.pmName || _short(a.contractAddress);
-  const fee = a.fee ? (a.fee / 10000).toFixed(2) + "% fee" : "";
-  const c = botConfig.chainName || "PulseChain";
-  frag.querySelector('[data-tpl="pair"]').textContent = pair;
-  frag.querySelector('[data-tpl="pm"]').textContent = pm ? " on " + pm : "";
-  frag.querySelector('[data-tpl="tokenId"]').textContent = a.tokenId;
-  frag.querySelector('[data-tpl="fee"]').textContent = fee
-    ? " \u00B7 " + fee
-    : "";
-  frag.querySelector('[data-tpl="chain"]').textContent = c;
-  frag.querySelector('[data-tpl="wallet"]').textContent = a.walletAddress || "";
+  _fillPosContext(frag, {
+    pair: (a.token0Symbol || "?") + "/" + (a.token1Symbol || "?"),
+    pm: botConfig.pmName || _short(a.contractAddress),
+    tokenId: a.tokenId,
+    fee: a.fee ? (a.fee / 10000).toFixed(2) + "% fee" : "",
+    wallet: a.walletAddress || "",
+  });
   const wrap = document.createElement("div");
   wrap.appendChild(frag);
   return wrap.innerHTML;
+}
+
+/**
+ * Write a position's identity into a `tplPosContext` fragment: the one
+ * way every dialog's position line is filled, for the position on screen
+ * and for one a server alert names alike. The pair and its provider,
+ * then the NFT and its fee tier, then the chain and the wallet, a middle
+ * dot between the figures on a line. The chain's name is blank until the
+ * first poll names it, and its dot goes with it rather than standing
+ * alone before the wallet.
+ * @param {DocumentFragment} frag  A clone of `tplPosContext`.
+ * @param {{pair: string, pm: string, tokenId: string, fee: string,
+ *   wallet: string}} p  The figures; `pm` and `fee` may be empty.
+ */
+export function _fillPosContext(frag, { pair, pm, tokenId, fee, wallet }) {
+  const set = (slot, text) => {
+    frag.querySelector(`[data-tpl="${slot}"]`).textContent = text;
+  };
+  const chain = activeChainDisplayName();
+  set("pair", pair);
+  set("pm", pm ? " on " + pm : "");
+  set("tokenId", tokenId);
+  set("fee", fee ? " · " + fee : "");
+  set("chain", chain ? chain + " · " : "");
+  set("wallet", wallet);
 }
 
 /** Append position label to a title via em-dash. */
@@ -121,20 +170,26 @@ export function _logCtx(key, st) {
   const _s = (f) => ap[f] || pe?.[f] || "?";
   const pair = _s("token0Symbol") + "/" + _s("token1Symbol");
   const pm = botConfig.pmName,
-    c = botConfig.chainName || "PulseChain";
+    c = activeChainDisplayName();
   const fee = ap.fee ? (ap.fee / 10000).toFixed(2) + "%" : "";
+  /*-
+   *  Read from the right: a chain name may itself hold a dash
+   *  (`pulsechain-testnet`), so the wallet is third from the end.
+   */
   const parts = key.split("-");
+  const tokenId = parts.pop();
+  parts.pop();
+  const wallet = parts.pop();
   return (
     "\n" +
     pair +
     (pm ? " on " + pm : "") +
     " \u00B7 NFT #" +
-    parts.pop() +
+    tokenId +
     (fee ? " \u00B7 " + fee : "") +
+    (c ? " \u00B7 " + c : "") +
     " \u00B7 " +
-    c +
-    " \u00B7 " +
-    _short(parts[1] || "")
+    _short(wallet || "")
   );
 }
 
@@ -153,7 +208,7 @@ function _activeTokenNames() {
 /** Update token composition bar and labels. */
 export function _updateComposition(d) {
   if (!d.positionStats) return;
-  const r0 = d.positionStats.compositionRatio ?? 0.5;
+  const r0 = d.positionStats.compositionRatio;
   const c0 = g("c0"),
     c1 = g("c1");
   if (c0) c0.style.width = (r0 * 100).toFixed(1) + "%";
@@ -365,8 +420,6 @@ export function _updateBotStatus(d) {
      *  [[project_split_rebalance_paused_flag]] for a future cleanup
      *  PR; for now the prose layer carries the discipline. */
     _setStatusPill("status-pill danger", "dot red", "ABORTED");
-  } else if (d.halted) {
-    _setStatusPill("status-pill danger", "dot red", "HALTED");
   } else if (d.running) {
     _setStatusPill("status-pill active", "dot green", "RUNNING");
   } else {
@@ -377,44 +430,56 @@ export function _updateBotStatus(d) {
   if (tag && d.updatedAt) {
     const ms = Date.now() - new Date(d.updatedAt).getTime();
     const ago = Math.floor(ms / 1000);
-    tag.textContent = ago < 5 ? "just now" : ago + "s ago";
+    tag.textContent =
+      ago < uiSetting("lastCheckJustNowSec") ? "just now" : ago + "s ago";
     tag.title = fmtDateTime(d.updatedAt);
   }
   const ll = g("lastCheckLabel");
   if (ll && d.updatedAt) ll.textContent = fmtDateTime(d.updatedAt);
 }
 
-/*-
+/**
  * Server is the source of truth for the throttle counters. Sync them
  * back into the client `throttle` object so the badge in
  * dashboard-throttle.js renders correctly without depending on HTML
- * input defaults. Without this, an empty inMaxReb input at init
- * leaves throttle.dailyMax = 0, and `0 >= 0` paints a false CAPPED
- * badge.
+ * input defaults. Until this first runs the daily cap is unknown, and
+ * the badge shows a dash.
  */
-function _syncClientThrottle(ts, cnt, savedMinIntervalMin) {
-  if (!ts) return;
-  throttle.dailyCount = cnt;
-  if (typeof ts.dailyMax === "number") throttle.dailyMax = ts.dailyMax;
-  if (typeof ts.doublingActive === "boolean")
-    throttle.doublingActive = ts.doublingActive;
-  if (typeof ts.doublingCount === "number")
-    throttle.doublingCount = ts.doublingCount;
-  if (typeof ts.currentWaitMs === "number")
-    throttle.currentWaitMs = ts.currentWaitMs;
-  if (typeof ts.lastRebTime === "number") throttle.lastRebTime = ts.lastRebTime;
+function _syncClientThrottle(ts, cnt, savedMinIntervalMin, dailyMax) {
+  /*-
+   *  Start from nothing known, so no figure of the position on screen
+   *  before stays on as this one's. With no snapshot at all the
+   *  position's bot loop has not reported yet (it starts behind the
+   *  startup stagger, or the wallet is locked), and the badge shows a
+   *  dash until it has.
+   */
+  forgetLoopThrottle();
+  if (ts !== undefined && ts !== null) {
+    throttle.dailyCount = cnt;
+    throttle.dailyMax = dailyMax;
+    if (typeof ts.doublingActive === "boolean")
+      throttle.doublingActive = ts.doublingActive;
+    if (typeof ts.doublingCount === "number")
+      throttle.doublingCount = ts.doublingCount;
+    if (typeof ts.currentWaitMs === "number")
+      throttle.currentWaitMs = ts.currentWaitMs;
+    if (typeof ts.lastRebTime === "number")
+      throttle.lastRebTime = ts.lastRebTime;
+    // The bot's next daily reset, at midnight UTC, which the cap waits on.
+    if (typeof ts.dailyResetAt === "number")
+      throttle.dailyResetAt = ts.dailyResetAt;
+  }
   /*- The SAVED per-position config value in the same payload is fresh
    *  the moment the Save round-trip lands, whereas `ts.minIntervalMs`
    *  is the bot's last pollCycle snapshot — stale for up to
    *  CHECK_INTERVAL_SEC after a Save (POST /api/config neither kicks
    *  the bot poll nor reconfigures the live throttle).  Prefer the
-   *  config value; fall back to the snapshot when config is absent.
-   *  `applyPolledMinInterval` additionally honors the one-shot
-   *  `data-skip-next-poll` marker, which covers the race where a sweep
-   *  reads the payload before the Save POST has been persisted. */
-  const savedMs = Number(savedMinIntervalMin) * 60 * 1000;
+   *  config value; fall back to the snapshot when config is absent. */
+  const saved =
+    typeof savedMinIntervalMin === "number" &&
+    Number.isFinite(savedMinIntervalMin);
   applyPolledMinInterval(
-    Number.isFinite(savedMs) && savedMs >= 60_000 ? savedMs : ts.minIntervalMs,
+    saved ? savedMinIntervalMin * 60 * 1000 : ts?.minIntervalMs,
   );
 }
 
@@ -482,6 +547,25 @@ function _renderTodaySub(d, ts) {
   );
 }
 
+/**
+ * The day's cap in force: the position's saved Max Rebalances / Day, or
+ * the install's default, as the status answer carries it. That copy is
+ * fresh the moment a Save lands; the throttle snapshot beside it changes
+ * only at the bot's next check, which is also when the bot starts using
+ * the new cap. The snapshot stands in when the answer has no cap, and
+ * null, which the KPI shows as a dash, when neither does.
+ * @param {object} d  The position's status answer.
+ * @param {object|undefined} ts  Its throttle snapshot.
+ * @returns {number|null}
+ */
+function _dailyMaxOf(d, ts) {
+  const saved = d.maxRebalancesPerDay;
+  if (typeof saved === "number" && Number.isFinite(saved)) return saved;
+  if (ts !== undefined && ts !== null && typeof ts.dailyMax === "number")
+    return ts.dailyMax;
+  return null;
+}
+
 /** Update the daily rebalance count KPI and lifetime count. */
 export function _updateThrottleKpis(d) {
   const a = posStore.getActive();
@@ -500,20 +584,24 @@ export function _updateThrottleKpis(d) {
       : ts
         ? ts.dailyCount
         : 0;
-  _syncClientThrottle(ts, cnt, d.minRebalanceIntervalMin);
-  const max = (ts && ts.dailyMax) || d.maxRebalancesPerDay || null;
+  const max = _dailyMaxOf(d, ts);
+  _syncClientThrottle(ts, cnt, d.minRebalanceIntervalMin, max);
   _renderTodayKpi(g("kpiToday"), cnt, max);
   _renderTodaySub(d, ts);
 }
 
-/** Sync the auto-compound toggle, badge, and threshold from server status data. */
 let _suppressAutoCompoundUntil = 0;
 
-/** Suppress auto-compound sync for a brief window (e.g. after Stop Managing). */
-export function suppressAutoCompoundSync(ms) {
-  _suppressAutoCompoundUntil = Date.now() + (ms || 5000);
+/**
+ * Stop syncing the auto-compound toggle from status polls for
+ * `autoCompoundSyncHoldMs`, so a poll answered before the server took in
+ * a Stop Managing cannot switch the toggle back on.
+ */
+export function suppressAutoCompoundSync() {
+  _suppressAutoCompoundUntil = Date.now() + uiSetting("autoCompoundSyncHoldMs");
 }
 
+/** Sync the auto-compound toggle, badge, and threshold from server status data. */
 export function _syncAutoCompound(d) {
   if (Date.now() < _suppressAutoCompoundUntil) return;
   const on = !!d.autoCompoundEnabled;

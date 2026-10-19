@@ -11,11 +11,18 @@
 const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
+/*-
+ *  Before anything that reads a price loads: prices come from a fixed
+ *  table. The swap gate and the dust module load once and keep the
+ *  lookups they found then, whatever a later case stubs.
+ */
+require("./helpers/price-stand-ins");
 const POOLS_PATH = require.resolve("../src/rebalancer-pools");
 const SWAP_PATH = require.resolve("../src/rebalancer-swap");
 const PRICE_PATH = require.resolve("../src/price-fetcher");
 const DUST_PATH = require.resolve("../src/dust");
 const CORRECT_PATH = require.resolve("../src/rebalancer-correct");
+const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 /** Simple mock ethers library (just Contract factory with a lookup table). */
 function mkEthersLib(dispatch) {
@@ -32,7 +39,8 @@ function mkEthersLib(dispatch) {
  *
  * Scalar-valued fields (`desired`, `swapResult`, `isDustReturn`) accept
  * EITHER a single value (static) OR an array (one element per iteration
- * — the corrective rebalancer can now loop up to 3 times).
+ * — the corrective rebalancer loops up to `correctiveSwapMaxRounds`
+ * times).
  */
 function installStubs({
   poolState,
@@ -241,11 +249,13 @@ describe("correctivelyRebalanceIfNeeded", () => {
     assert.deepStrictEqual(res.swapSources, ["NineMM_V3"]);
   });
 
-  it("caps at 3 iterations and flags aboveThresholdAfterCap when residual persists", async () => {
-    /*- Every iteration fires a swap (needsSwap=true, isDust=false).
-     *  After the 3-iteration hard cap, residual is still above threshold
-     *  — so the rebalancer returns a warning signal instead of looping
-     *  forever. */
+  it("caps at the configured round limit and flags aboveThresholdAfterCap when residual persists", async () => {
+    /*-
+     *  Every iteration fires a swap (needsSwap=true, isDust=false).
+     *  After `correctiveSwapMaxRounds` rounds, residual is still above
+     *  threshold — so the rebalancer returns a warning signal instead of
+     *  looping forever.
+     */
     installStubs({
       poolState: {
         tick: 5,
@@ -280,14 +290,18 @@ describe("correctivelyRebalanceIfNeeded", () => {
       mkEthersLib(dispatch),
       CTX(),
     );
-    assert.strictEqual(_MAX_ITERATIONS, 3, "hard cap must stay at 3");
+    assert.strictEqual(
+      _MAX_ITERATIONS,
+      SHIPPED_DEFAULTS.correctiveSwapMaxRounds,
+      "the cap is bot-config-defaults.json → correctiveSwapMaxRounds",
+    );
     assert.strictEqual(res.skipped, false);
     assert.strictEqual(res.reason, "above-threshold-after-cap");
-    assert.strictEqual(res.iterations, 3);
+    assert.strictEqual(res.iterations, _MAX_ITERATIONS);
     assert.strictEqual(res.aboveThresholdAfterCap, true);
-    assert.strictEqual(res.txHashes.length, 3);
-    // Accumulated gas = 3 × 42n.
-    assert.strictEqual(res.gasCostWei, 126n);
+    assert.strictEqual(res.txHashes.length, _MAX_ITERATIONS);
+    // Accumulated gas = one round's 42n for every round.
+    assert.strictEqual(res.gasCostWei, 42n * BigInt(_MAX_ITERATIONS));
     // Accumulated output = 3 × 9.5e18.
     assert.strictEqual(res.extra1, 28_500_000_000_000_000_000n);
     assert.ok(
@@ -314,31 +328,31 @@ describe("_mergeSwapSources", () => {
 
   it("appends corrective count when both present and routes differ", () => {
     assert.strictEqual(
-      _mergeSwapSources("9mm Aggregator", ["9mm V3 Router"]),
-      "9mm Aggregator +1 corrective",
+      _mergeSwapSources("Watergun Aggregator", ["9mm V3 Router"]),
+      "Watergun Aggregator +1 corrective",
     );
     assert.strictEqual(
-      _mergeSwapSources("9mm Aggregator", ["A", "B"]),
-      "9mm Aggregator +2 corrective",
+      _mergeSwapSources("Watergun Aggregator", ["A", "B"]),
+      "Watergun Aggregator +2 corrective",
     );
   });
 
   /*- The common case: aggregator used for the primary swap and for every
-   *  corrective iteration.  Collapse to just "9mm Aggregator" rather than
-   *  "9mm Aggregator +3 corrective" which misleadingly suggests a
+   *  corrective iteration.  Collapse to just "Watergun Aggregator" rather than
+   *  "Watergun Aggregator +3 corrective" which misleadingly suggests a
    *  different route was taken for the corrective swaps. */
   it("collapses to single label when primary and all corrective entries match", () => {
     assert.strictEqual(
-      _mergeSwapSources("9mm Aggregator", ["9mm Aggregator"]),
-      "9mm Aggregator",
+      _mergeSwapSources("Watergun Aggregator", ["Watergun Aggregator"]),
+      "Watergun Aggregator",
     );
     assert.strictEqual(
-      _mergeSwapSources("9mm Aggregator", [
-        "9mm Aggregator",
-        "9mm Aggregator",
-        "9mm Aggregator",
+      _mergeSwapSources("Watergun Aggregator", [
+        "Watergun Aggregator",
+        "Watergun Aggregator",
+        "Watergun Aggregator",
       ]),
-      "9mm Aggregator",
+      "Watergun Aggregator",
     );
   });
 
@@ -350,8 +364,8 @@ describe("_mergeSwapSources", () => {
    *  collapse to the single route label (no "(corrective)" suffix). */
   it("collapses corrective-only when every entry matches", () => {
     assert.strictEqual(
-      _mergeSwapSources(null, ["9mm Aggregator", "9mm Aggregator"]),
-      "9mm Aggregator",
+      _mergeSwapSources(null, ["Watergun Aggregator", "Watergun Aggregator"]),
+      "Watergun Aggregator",
     );
   });
 });
@@ -383,7 +397,6 @@ describe("_swapAndAdjust — swapSources propagation", () => {
       filename: GATES_PATH,
       loaded: true,
       exports: {
-        MAX_SWAP_GAS_RATIO: 0.01,
         estimateSwapGasUsd: async () => 0,
         gasFeePctToRatio: () => 0.01,
         shouldSkipSwap: async () => ({
@@ -430,12 +443,12 @@ describe("_swapAndAdjust — swapSources propagation", () => {
         amountOut: 500n,
         txHash: "0xabc",
         gasCostWei: 100n,
-        swapSources: "9mm Aggregator",
+        swapSources: "Watergun Aggregator",
       },
       async () => {
         const { _swapAndAdjust } = require("../src/rebalancer-execute");
         const out = await _swapAndAdjust({}, {}, ctx("token0to1"));
-        assert.strictEqual(out.swapSources, "9mm Aggregator");
+        assert.strictEqual(out.swapSources, "Watergun Aggregator");
         assert.strictEqual(out.extra1, 500n);
         assert.strictEqual(out.extra0, 0n);
       },

@@ -26,26 +26,25 @@ const {
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 const { applyInitialResidual } = require("./bot-pnl-initial-residual");
 
-/*- The shipped default, read once at load.  `readBotConfigDefaults()`
+/*-
+ *  The shipped default, read once at load.  `readBotConfigDefaults()`
  *  merges the JSON from disk on every call and this resolves once per
  *  position per poll cycle, so reading it per call would put file I/O
  *  on the poll path.  Reading once is also the semantics the setting's
  *  group documents: override it in the user-configurable file and
- *  restart. */
-const _SHIPPED_BALANCED_MULTIPLIER = (() => {
-  try {
-    const d = readBotConfigDefaults();
-    return typeof d.pricePauseExceptionPollWindowMultiple === "number"
-      ? d.pricePauseExceptionPollWindowMultiple
-      : 10;
-  } catch {
-    return 10;
-  }
-})();
+ *  restart. The reader does not throw. The shipped file it starts from
+ *  holds this setting, held to its range by
+ *  `test/shipped-config-values.test.js`, and startup refuses an
+ *  override outside that range.
+ */
+const _SHIPPED_BALANCED_MULTIPLIER =
+  readBotConfigDefaults().pricePauseExceptionPollWindowMultiple;
 
-/*- Resolve the balanced-notifier fetch-window multiplier.  Order of
- *  precedence: explicit override in the merged cfg → the shipped
- *  default read at load → built-in fallback (10). */
+/**
+ * Resolve the balanced-notifier fetch-window multiplier.  Order of
+ * precedence: explicit override in the merged cfg → the shipped
+ * default read at load.
+ */
 function _resolveBalancedMultiplier(deps) {
   const gc = deps._getConfig;
   const explicit = gc && gc("pricePauseExceptionPollWindowMultiple");
@@ -413,11 +412,16 @@ async function overridePnlWithRealValues(
   }
 }
 
-/** Estimate gas cost in USD for a rebalance (~800k gas). */
+/**
+ * Estimate a rebalance's gas cost in USD before it starts: the chain's
+ * `estimatedRebalanceGasUnits` in chains.json, at the network's current
+ * gas price and the native token's current price.
+ */
 async function estimateGasCostUsd(provider) {
   try {
     const f = await provider.getFeeData();
-    const c = (f.gasPrice ?? 0n) * 800_000n;
+    const units = BigInt(config.CHAIN.estimatedRebalanceGasUnits);
+    const c = (f.gasPrice ?? 0n) * units;
     const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
     return (Number(c) / 1e18) * p;
   } catch {
@@ -426,54 +430,64 @@ async function estimateGasCostUsd(provider) {
 }
 
 /**
- * The native token's USD price for a gas charge.
- *
- * With no `when`, the current price — right for gas being spent now,
- * which is every live rebalance, compound and cancel.
- *
- * With a `when`, the price on that day, so a charge from months ago is
- * valued at what it cost rather than at today's market. The current
- * price is the fallback rather than zero: `actualGasCostUsd` answers 0
- * on failure, and a positive wei amount costing $0 is read downstream as
- * "price unknown", which drops that epoch from the Per-Day table
- * entirely. A slightly-off figure beats a vanished row.
- */
-async function _nativePriceForGas(when) {
-  const token = config.CHAIN.nativeWrappedToken;
-  const at = when !== undefined && when !== null ? when.timestamp : undefined;
-  if (at !== undefined && at !== null) {
-    const historical = await fetchHistoricalTokenPriceUsd(token, {
-      timestamp: at,
-      blockNumber: when.blockNumber,
-      refresh: when.refresh === true,
-    });
-    if (historical > 0) return historical;
-    log.warn(
-      "[bot] gas: no historical native price for ts=%s — valuing at today's",
-      at,
-    );
-  }
-  return fetchTokenPriceUsd(token);
-}
-
-/**
- * Compute actual gas cost in USD from total PLS spent (in wei).
+ * Compute actual gas cost in USD from total PLS spent (in wei), at the
+ * native token's current price: right for gas being spent now, which is
+ * every live rebalance, compound and cancel.
  *
  * @param {bigint|number} gasCostWei  Native token spent, in wei.
- * @param {object} [when]             When the gas was spent. Omit for now.
- * @param {number} [when.timestamp]   Unix seconds of the charge.
- * @param {number} [when.blockNumber] Block of the charge, for Moralis.
- * @param {boolean} [when.refresh]    Read past the price cache and
- *   replace what it holds, rather than trusting a cached day.
  * @returns {Promise<number>} USD cost, or 0 when no price could be had.
  */
-async function actualGasCostUsd(gasCostWei, when) {
+async function actualGasCostUsd(gasCostWei) {
   try {
-    const p = await _nativePriceForGas(when);
+    const p = await fetchTokenPriceUsd(config.CHAIN.nativeWrappedToken);
     return (Number(gasCostWei) / 1e18) * p;
   } catch {
     return 0;
   }
+}
+
+/**
+ * The gas a closed period spent, in USD at the native token's price on
+ * the day it was spent, so a charge from months ago is valued at what it
+ * cost rather than at today's market.
+ *
+ * Null when that day's price cannot be read. The Per-Day table then
+ * shows a dash for the period's gas, and for the Profit and Net P&L that
+ * subtract it, rather than a figure at today's price.
+ *
+ * @param {bigint|number} gasCostWei  Native token spent, in wei.
+ * @param {object} when               When the gas was spent.
+ * @param {number} when.timestamp     Unix seconds of the charge.
+ * @param {number} [when.blockNumber] Block of the charge, for Moralis.
+ * @param {boolean} [when.refresh]    Read past the price cache and
+ *   replace what it holds, rather than trusting a cached day.
+ * @returns {Promise<number|null>} USD cost, or null when the day's price
+ *   could not be read.
+ */
+async function pastGasCostUsd(gasCostWei, when) {
+  let price = 0;
+  try {
+    price = await fetchHistoricalTokenPriceUsd(
+      config.CHAIN.nativeWrappedToken,
+      {
+        timestamp: when.timestamp,
+        blockNumber: when.blockNumber,
+        refresh: when.refresh === true,
+      },
+    );
+  } catch (err) {
+    log.warn(
+      "[bot] gas: native price for ts=%s: %s",
+      when.timestamp,
+      err.message,
+    );
+  }
+  if (price > 0) return (Number(gasCostWei) / 1e18) * price;
+  log.warn(
+    "[bot] gas: no native price for ts=%s — its Per-Day gas shows a dash",
+    when.timestamp,
+  );
+  return null;
 }
 
 /** Fetch token prices, applying per-position overrides when fetcher returns 0. */
@@ -694,6 +708,7 @@ module.exports = {
   overridePnlWithRealValues,
   estimateGasCostUsd,
   actualGasCostUsd,
+  pastGasCostUsd,
   updatePnlAndStats,
   _maxAmount,
   _totalLifetimeDeposit,

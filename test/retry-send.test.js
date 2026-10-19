@@ -1,18 +1,30 @@
 "use strict";
 /**
  * @file test/retry-send.test.js
- * @description Unit tests for `_retrySend` in src/tx-retry.js (also
- * re-exported by src/rebalancer-pools.js for back-compat) — covers the
+ * @description Unit tests for `_retrySend` in src/tx-retry.js — covers the
  * three classifier buckets (transient, terminal-nonce-unused,
  * terminal-nonce-consumed), NonceManager reset behaviour, the
- * `retryingTxWithSameNonce` opt for explicit-nonce replacements, and
- * back-compat with the legacy numeric third-arg calling convention.
+ * `retryingTxWithSameNonce` opt for explicit-nonce replacements, and the
+ * retry count, which is app-runtime.json's `tx.sendRetries`: five here,
+ * an operator's own, not the three that ship, so a count written into
+ * the code fails.
  */
+
+const fs = require("fs");
+const path = require("path");
+const { makeTestTempFolder } = require("../src/test-temp-folders");
+
+const SETTINGS_DIR = makeTestTempFolder("retry-send-settings");
+fs.writeFileSync(
+  path.join(SETTINGS_DIR, "app-runtime.json"),
+  JSON.stringify({ tx: { sendRetries: 5 } }),
+);
+process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
 
-const { _retrySend } = require("../src/rebalancer-pools");
+const { _retrySend } = require("../src/tx-retry");
 
 describe("_retrySend", () => {
   it("returns immediately on success", async () => {
@@ -26,11 +38,13 @@ describe("_retrySend", () => {
       () =>
         _retrySend(() => {
           attempts++;
-          return Promise.reject(new Error("already known"));
+          return Promise.reject(
+            new Error("replacement transaction underpriced"),
+          );
         }, "test"),
-      { message: "already known" },
+      { message: "replacement transaction underpriced" },
     );
-    assert.strictEqual(attempts, 1, "must not retry on already-known");
+    assert.strictEqual(attempts, 1, "must not retry on a consumed nonce");
   });
 
   it("recovers from nonce-too-low by resetting NonceManager and retrying once", async () => {
@@ -199,23 +213,10 @@ describe("_retrySend", () => {
         ),
       { message: /ECONNRESET/ },
     );
-    assert.strictEqual(attempts, 4); // 1 original + 3 retries
-    assert.strictEqual(resets, 4); // reset before each retry + final exhaustion reset
-  });
-
-  it("accepts legacy numeric third arg (baseDelayMs) for back-compat", async () => {
-    let attempts = 0;
-    const result = await _retrySend(
-      () => {
-        attempts++;
-        if (attempts < 2) return Promise.reject(new Error("socket hang up"));
-        return Promise.resolve("ok");
-      },
-      "test",
-      10, // legacy calling convention
-    );
-    assert.strictEqual(result, "ok");
-    assert.strictEqual(attempts, 2);
+    // The original send, then each of the five retries.
+    assert.strictEqual(attempts, 6);
+    // A reset before each retry, and one more on giving up.
+    assert.strictEqual(resets, 6);
   });
 
   it("treats unknown errors as terminal (no retry, no reset)", async () => {

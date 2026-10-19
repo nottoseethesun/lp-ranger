@@ -24,7 +24,10 @@ const { test, before } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createApiStatusHandler } = require("../src/handle-api-status");
+const { primaryRouteLabel } = require("../src/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/server-moralis");
 const config = require("../src/config");
+const APP_RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
 let flattenV2Status;
 
@@ -50,6 +53,8 @@ async function realStatusBody() {
     actualGasCostUsd: async () => 0,
     getLpProviderDisplayName: () => "9mm v3",
     managedKeys: () => [],
+    primaryRouteLabel,
+    moralisEnabledIn,
     jsonResponse: (_res, _code, b) => {
       body = b;
     },
@@ -86,10 +91,11 @@ test("those values are NOT under a surviving `.global`", async () => {
   assert.equal(flat.global, undefined, "flattened status has no .global");
 });
 
-test("the poll cadence is the 2.5x heartbeat value, not a literal", async () => {
+test("the has-polled wait is the poll interval times the configured polls", async () => {
   const flat = await flatStatus();
+  const polls = APP_RUNTIME.dashboard.pollsBeforeAssumedSeen;
   assert.equal(
     flat.guaranteedDashboardHasPolledMs,
-    flat.dashboardPollIntervalMs * 2.5,
+    Math.round(flat.dashboardPollIntervalMs * polls),
   );
 });

@@ -4,43 +4,69 @@
  * @file util/diagnostic/check-rpc-health.js
  * @description
  * Ask one RPC endpoint whether it is healthy, and print the answer as a
- * table of seven checks: that it responds at all, that it is PulseChain,
- * that it has a latest block and can describe it, that it is not still
- * syncing, that the chain is advancing, and that its transaction pool
- * answers.
+ * table of seven checks: that it responds at all, that it serves the
+ * chain it should, that it has a latest block and can describe it, that
+ * it is not still syncing, that the chain is advancing, and that its
+ * transaction pool answers.
  *
- * Defaults to `https://rpc-pulsechain.g4mm4.io`, the endpoint the app
- * prefers, and `--rpc-endpoint <url>` points it at any other. Each of
- * the app's endpoints is a separate host, so a health question is always
- * about one of them — which is why the endpoint under test is printed
- * above the table rather than left to be inferred.
+ * The chain is an entry of the shipped `chains.json` — the app's default
+ * chain (`app-runtime.json` → `defaults.chain`) unless `--chain <name>`
+ * names another — and gives both the chain id the endpoint must report
+ * and the endpoint probed by default, the chain's first. `--rpc-endpoint
+ * <url>` points it at any other. Each of the app's endpoints is a
+ * separate host, so a health question is always about one of them —
+ * which is why the endpoint under test is printed above the table rather
+ * than left to be inferred.
  *
  * **It imports nothing from `src/`** — only `_helpers`, which is itself
- * dependency-free. That is deliberate and worth keeping. Reaching for
- * `config.RPC_URLS` to get the default would load the app's config,
- * which opens the log file and reads operator settings, so the tool
- * could no longer be run against a live install without disturbing it.
- * As written it makes plain HTTP requests and touches nothing on disk,
- * so it is safe to run while Production is up — which is the moment its
- * answer is wanted. The cost is that the default endpoint is a second
- * literal beside the one in `chains.json`, paid knowingly.
+ * dependency-free, and the two shipped JSON files, read as data. That is
+ * deliberate and worth keeping. Loading the app's config would open the
+ * log file and read operator settings, so the tool could no longer be
+ * run against a live install without disturbing it. As written it makes
+ * plain HTTP requests and writes nothing to disk, so it is safe to run
+ * while Production is up — which is the moment its answer is wanted. The
+ * cost is that an operator's own override of `chains.json` is not read;
+ * `--rpc-endpoint` covers an endpoint only an override names.
  *
  * Exit status is 0 when every check passes and 1 otherwise, so it can
  * gate a shell script.
  *
  * Usage:
  *   node util/diagnostic/check-rpc-health.js
- *   node util/diagnostic/check-rpc-health.js --rpc-endpoint https://rpc.pulsechain.com
+ *   node util/diagnostic/check-rpc-health.js --rpc-endpoint <url>
+ *   node util/diagnostic/check-rpc-health.js --chain <chains.json entry>
  */
 
 const { Command, InvalidArgumentError } = require("commander");
 const { sleep } = require("./_helpers");
+const CHAINS = require("../../app-config/app-defaults-for-user-configurable/chains.json");
+const APP_RUNTIME = require("../../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
-/** The endpoint used when `--rpc-endpoint` is not given: the app's first. */
-const DEFAULT_RPC = "https://rpc-pulsechain.g4mm4.io";
+/** The chain checked when `--chain` is not given: the app's default. */
+const DEFAULT_CHAIN = APP_RUNTIME.defaults.chain;
 
-const EXPECTED_CHAIN_ID = "0x171"; // 369
 const TIMEOUT_MS = 10000;
+
+/**
+ * Accept a `--chain` value, or reject it naming the flag.
+ * @param {string} value  The raw option value.
+ * @returns {string}  The same value, once it names a chains.json entry.
+ * @throws {InvalidArgumentError} When it does not.
+ */
+function parseChain(value) {
+  if (!value.startsWith("_") && Object.hasOwn(CHAINS, value)) return value;
+  throw new InvalidArgumentError(`not a chain in chains.json: ${value}`);
+}
+
+/**
+ * The endpoint probed when `--rpc-endpoint` is not given: the chain's
+ * first, the one the app prefers.
+ * @param {string} chainName  A chains.json entry.
+ * @returns {string}
+ */
+function defaultEndpoint(chainName) {
+  return CHAINS[chainName].rpc.urls[0];
+}
 
 /**
  * Accept an `--rpc-endpoint` value, or reject it naming the flag.
@@ -84,17 +110,22 @@ function buildProgram() {
     .name("check-rpc-health")
     .description(
       "Ask one RPC endpoint whether it is serving.\n\n" +
-        "Seven checks, each timed: reachability, chain 369, latest block,\n" +
-        "block detail, sync state, block progression (after a 3 s wait),\n" +
-        "and transaction pool. A failing check is recorded and the run\n" +
-        "continues, since which parts still work is the useful part.",
+        "Seven checks, each timed: reachability, the chain's id, latest\n" +
+        "block, block detail, sync state, block progression (after a 3 s\n" +
+        "wait), and transaction pool. A failing check is recorded and the\n" +
+        "run continues, since which parts still work is the useful part.",
+    )
+    .option(
+      "--chain <name>",
+      "the chains.json entry the endpoint should serve",
+      parseChain,
+      DEFAULT_CHAIN,
     )
     .option(
       "--rpc-endpoint <url>",
-      "endpoint to probe; one per run, because a health answer applies " +
-        "to one host only",
+      "endpoint to probe (default: the chain's first in chains.json); one " +
+        "per run, because a health answer applies to one host only",
       parseEndpoint,
-      DEFAULT_RPC,
     )
     .addHelpText(
       "after",
@@ -204,9 +235,10 @@ function blockAge(timestampHex) {
  * early is less informative than one that says which parts still work.
  *
  * @param {string} endpoint  The RPC URL to probe.
+ * @param {object} chain     The chains.json entry it should serve.
  * @returns {Promise<object[]>}  One `{name, ok, latencyMs, …}` per check.
  */
-async function runChecks(endpoint) {
+async function runChecks(endpoint, chain) {
   const checks = [];
   const call = (method, params) => rpc(endpoint, method, params);
 
@@ -237,18 +269,20 @@ async function runChecks(endpoint) {
     return response.result;
   });
 
-  await check("Correct PulseChain network", async () => {
+  await check(`Correct ${chain.displayName} network`, async () => {
     const [chainId, networkId] = await Promise.all([
       call("eth_chainId"),
       call("net_version"),
     ]);
 
-    if (chainId.result.toLowerCase() !== EXPECTED_CHAIN_ID) {
-      throw new Error(`Expected chain 369, got ${chainId.result}`);
+    if (chainId.result.toLowerCase() !== "0x" + chain.chainId.toString(16)) {
+      throw new Error(`Expected chain ${chain.chainId}, got ${chainId.result}`);
     }
 
-    if (networkId.result !== "369") {
-      throw new Error(`Expected network 369, got ${networkId.result}`);
+    if (networkId.result !== String(chain.chainId)) {
+      throw new Error(
+        `Expected network ${chain.chainId}, got ${networkId.result}`,
+      );
     }
 
     return {
@@ -441,13 +475,15 @@ async function main(argv = process.argv.slice(2)) {
    *  to stdout and exiting 0, and refuses a bad option value with a
    *  message naming it. */
   const program = buildProgram().parse(argv, { from: "user" });
-  const endpoint = program.opts().rpcEndpoint;
+  const { chain, rpcEndpoint } = program.opts();
+  const endpoint =
+    rpcEndpoint === undefined ? defaultEndpoint(chain) : rpcEndpoint;
   /*- Taken before the first request, not at print time: the run spans
    *  several seconds of network calls plus a deliberate three-second
    *  wait for block progression, and the moment that matters for lining
    *  this up against a log is when it started asking. */
   const startedAt = new Date();
-  const checks = await runChecks(endpoint);
+  const checks = await runChecks(endpoint, CHAINS[chain]);
   process.exitCode = report(endpoint, startedAt, checks) === 0 ? 0 : 1;
 }
 
@@ -462,7 +498,9 @@ if (require.main === module) {
 }
 
 module.exports = {
-  DEFAULT_RPC,
+  DEFAULT_CHAIN,
+  defaultEndpoint,
+  parseChain,
   parseEndpoint,
   buildProgram,
   rpc,

@@ -9,15 +9,17 @@
 ## Plain language
 
 Every request the app makes to the blockchain waits in one queue and
-leaves one at a time, four per second. That pace exists to stay inside
-what a public endpoint will tolerate from one machine.
+leaves one at a time, one every 222 ms as shipped
+(`globalRPCRequestRateIntervalMS`), about four and a half a second. That
+pace exists to stay inside what a public endpoint will tolerate from one
+machine.
 
 But the app is configured with three endpoints, run by three different
 operators. Each of them polices only the traffic that arrives at its own
-door. Queueing all three behind a single four-per-second budget spends
-one endpoint's allowance and leaves the other two idle. Spreading reads
-across all three would finish a history rebuild in roughly a third of
-the time without asking any one of them for more than it allows today.
+door. Queueing all three behind a single budget spends one endpoint's
+allowance and leaves the other two idle. Spreading reads across all
+three would finish a history rebuild in roughly a third of the time
+without asking any one of them for more than it allows today.
 
 ## Detail
 
@@ -67,21 +69,22 @@ all three. It scales on contention with no tuning knob.
 Two things are assumed above and neither is verified:
 
 - **Per-endpoint ceilings differ.** `rpc.pulsechain.box` is documented at
-  50 requests per 10 seconds — 5/s. Running a lane at 4/s puts it at 80%
-  of that, so lanes want per-endpoint intervals rather than one shared
-  number.
+  50 requests per 10 seconds — 5/s. A lane at today's pace runs at about
+  90% of that, so lanes want per-endpoint intervals rather than one
+  shared number.
 - **The three operators are independent.** The domains suggest it. If any
   two sit behind shared infrastructure, the fan-out buys less than three
   lanes' worth.
 
 Both are answered by a throwaway script that hits the other two endpoints
-at 4/s for a minute and watches for a 429. Run that first; if one
-complains, there is no design question left to have.
+at today's pace for a minute and watches for a 429. Run that first; if
+one complains, there is no design question left to have.
 
 ## Why this is not the first lever to reach for
 
 It triples throughput while leaving the waste in place. The request
 *count* is the actual cost driver, and
 [Merge Per-Topic Log Queries Into One Call Per Chunk](project_merge_per_topic_log_queries.md)
-halves it for a change contained to two functions. Same wall-clock win,
-and it does not touch the path every read travels.
+cuts it to between a half and a third, for a change contained to three
+functions. A similar wall-clock win, and it does not touch the path
+every read travels.

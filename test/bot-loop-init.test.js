@@ -9,6 +9,21 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+/*-
+ *  Token symbols resolved here are fixtures. They go to a file of this
+ *  test's own, not the operator's cache, which nothing expires. Set
+ *  before anything loads src/token-symbol-cache.js, which reads it once.
+ */
+const SYMBOL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "bot-loop-init-"));
+process.env.TOKEN_SYMBOL_CACHE_PATH = path.join(
+  SYMBOL_DIR,
+  "token-symbol-cache.json",
+);
+after(() => fs.rmSync(SYMBOL_DIR, { recursive: true, force: true }));
 
 describe("bot-loop _initPnlTracker", () => {
   let _initPnlTracker;
@@ -157,14 +172,18 @@ describe("bot-loop _tryInitPnlTracker", () => {
           }),
           estimateGasCostUsd: async () => 0,
           actualGasCostUsd: async () => 0,
+          pastGasCostUsd: async () => 0,
           addPoolShare: async () => {},
         };
       }
-      if (id === "./rebalancer") {
+      if (id === "./rebalancer-pools") {
         return {
+          ..._origRequire2.apply(this, arguments),
           getPoolState: async () => _mockPoolState,
-          executeRebalance: async () => ({}),
         };
+      }
+      if (id === "./rebalancer") {
+        return { executeRebalance: async () => ({}) };
       }
       if (id === "./epoch-cache") {
         return {
@@ -306,8 +325,9 @@ describe("bot-loop _tryInitPnlTracker", () => {
           overridePnlWithRealValues: () => {},
         };
       }
-      if (id === "./rebalancer") {
+      if (id === "./rebalancer-pools") {
         return {
+          ..._origRequire2.apply(this, arguments),
           getPoolState: async () => {
             throw new Error("fail");
           },
