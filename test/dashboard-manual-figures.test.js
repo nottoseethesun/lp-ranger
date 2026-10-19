@@ -8,12 +8,13 @@
  *
  *   The manual's build writes the shipped figures into every
  *   `<span data-figure="name">`, the shared Impermanent Loss Guard
- *   section's included. The served copy loads
- *   `public/dashboard-manual-figures.js`, which asks
+ *   section's included. The served copy loads the build's stamped bundle
+ *   of `public/dashboard-manual-figures.js`, which asks
  *   `GET /api/help-figures` and rewrites each span; the Pages build drops
- *   the tag that loads it. Each half is checked here: the module under
- *   jsdom with a scripted fetch, the built manual for its spans, and the
- *   Pages spec for the rewrite.
+ *   the tag that loads it, and makes the stylesheets relative and
+ *   unstamped. Each half is checked here: the module under jsdom with a
+ *   scripted fetch, the built manual for its spans and its tag, and the
+ *   Pages build's own page writer.
  */
 
 require("global-jsdom/register");
@@ -30,8 +31,8 @@ const MANUAL = fs.readFileSync(
   path.join(ROOT, "public", "help-and-user-manual.html"),
   "utf8",
 );
-const TAG =
-  '<script type="module" src="/dashboard-manual-figures.js"></script>';
+// The bundle the build makes of the module, stamped like every script.
+const TAG = /<script src="\/dist\/manual-figures\.js\?v=\d+" defer><\/script>/;
 
 let mod;
 const warned = [];
@@ -77,8 +78,8 @@ function spanTexts(name) {
 }
 
 describe("the manual the app serves", () => {
-  it("loads the module that fills its figures", () => {
-    assert.ok(MANUAL.includes(TAG));
+  it("loads the bundle that fills its figures, stamped", () => {
+    assert.match(MANUAL, TAG);
   });
 
   it("puts every figure in a span, the shared section's included", () => {
@@ -146,12 +147,15 @@ describe("the copy GitHub Pages publishes", () => {
       p.src.endsWith("help-and-user-manual.html"),
     );
     const out = makeTestTempFolder("pages");
-    writePage(manual, spec.sharedRewrites, out);
+    writePage(manual, spec, out);
     const published = fs.readFileSync(
       path.join(out, "help-and-user-manual.html"),
       "utf8",
     );
-    assert.ok(!published.includes("dashboard-manual-figures.js"));
+    assert.ok(!published.includes("manual-figures.js"));
+    assert.ok(!published.includes("?v="), "no stamp left for a static host");
+    for (const css of [...spec.sharedSheets, manual.css])
+      assert.ok(published.includes(`href="${css}"`), `${css} is relative`);
     assert.match(
       published,
       /<span data-figure="ilgDefaultPct">[^<]+<\/span>/,

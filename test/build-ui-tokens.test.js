@@ -25,6 +25,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { readPxToken, renderCss } = require("../scripts/build-ui-tokens");
+const { stampPage } = require("../scripts/cache-bust");
 
 const ROOT = path.join(__dirname, "..");
 const UI_LAYOUT = path.join(
@@ -282,9 +283,6 @@ test("cache-bust stamps the generated stylesheet", () => {
   /*- Regenerated on every build, so a browser holding the old copy
    *  would keep a stale --dialog-max-h after an operator edits the
    *  JSON. */
-  const src = fs.readFileSync(
-    path.join(ROOT, "scripts", "cache-bust.js"),
-    "utf8",
-  );
-  assert.match(src, /ui-tokens\.css\?v=/);
+  const html = fs.readFileSync(INDEX_HTML, "utf8");
+  assert.match(stampPage(html, 42), /href="ui-tokens\.css\?v=42"/);
 });

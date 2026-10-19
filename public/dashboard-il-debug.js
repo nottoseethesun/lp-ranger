@@ -64,12 +64,19 @@ function _fmt(v, decimals = 6) {
     .replace(/\.?0+$/, "");
 }
 
-/** Format USD value — scientific notation for very small prices. */
+/**
+ * Format a USD value to the cent. Below one cent, scientific notation to
+ * four significant digits, trailing zeros dropped, so a coin priced in
+ * billionths of a dollar still fits its row.
+ */
 function _usd(v) {
   if (v === null || v === undefined) return "\u2014";
   const abs = Math.abs(v);
-  if (abs > 0 && abs < 0.01) return "$" + abs.toExponential();
-  return (v < 0 ? "-" : "") + "$" + abs.toFixed(2);
+  const figure =
+    abs > 0 && abs < 0.01
+      ? abs.toExponential(3).replace(/\.?0+e/, "e")
+      : abs.toFixed(2);
+  return (v < 0 ? "-" : "") + "$" + figure;
 }
 
 /** Format USD to nearest hundredth of a cent (4 decimal places). */

@@ -87,9 +87,9 @@ resetting local state.
 | Command | Flags | Description | Example |
 | ------- | ----- | ----------- | ------- |
 | `api-doc` | — | Serve the Scalar API reference at `http://localhost:5556`. | `npm run api-doc` |
-| `build` | — | Full build: version stamp, manual and disclosure content, UI tokens, the esbuild bundle, cache-bust stamps, inlined SVGs. | `npm run build` |
+| `build` | — | Full build: version stamp, manual and disclosure content, UI tokens, the esbuild bundles (the dashboard's and the User Manual's), a cache-bust stamp on every script and stylesheet the pages load, inlined SVGs. | `npm run build` |
 | `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run build-and-start -- --log-file --delete-pre-existing-log-file` · `npm run build-and-start -- --log-file /tmp/burn-in.log` · `npm run build-and-start -- --help` |
-| `build:watch` | — | esbuild in watch mode. Rebuilds the bundle on change; skips the one-off generators `build` runs. | `npm run build:watch` |
+| `build:watch` | — | esbuild in watch mode. Rebuilds both bundles on change; skips the one-off generators `build` runs. | `npm run build:watch` |
 | `clean` | — | Full reset to fresh-clone state: wallet, bot config, API keys, rebalance log, every `tmp/` cache, logs and build artifacts. Rebuild before starting again. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clean` |
 | `clean:log` | — | Empty the log-to-file output (`logs/lp-ranger.log`, or the `path` in `logging.json`) in place, if inside the install folder. Safe while the server runs. See [Housekeeping](#housekeeping). | `npm run clean:log` |
 | `debug` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Start the server under `node --inspect`. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run debug` · `npm run debug -- --log-file --delete-pre-existing-log-file` · `npm run debug -- --help` |

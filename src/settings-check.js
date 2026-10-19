@@ -119,7 +119,11 @@ function _resolveFiles(shippedDir, userDir, problems) {
 }
 
 /**
- * Every problem with an install's settings.
+ * The settings an install runs on, read as the app reads them: each
+ * JSON settings file with the operator's copy over the shipped one,
+ * `.env`'s values with the environment over them, and bot-config.json's
+ * text. `settingsProblems` checks what this returns, and the
+ * `print-resolved-settings` diagnostic prints it.
  *
  * @param {object} [o]  Where to read from; the install's own places
  *   unless a test points elsewhere.
@@ -129,9 +133,13 @@ function _resolveFiles(shippedDir, userDir, problems) {
  * @param {object} [o.env]            The environment, over `.env`'s values
  *   as it is when the app loads `.env`.
  * @param {string} [o.botConfigFile]  bot-config.json.
- * @returns {string[]}
+ * @returns {{shipped: object, resolved: object, envText: (string|undefined),
+ *   env: object, botText: (string|undefined), problems: string[]}}
+ *   `resolved` holds each settings file by name; `problems` names each
+ *   copy that is not valid JSON (the shipped file stands in for it) and
+ *   each file in the operator's folder the app never reads.
  */
-function settingsProblems({
+function resolveSettings({
   shippedDir = DEFAULTS_DIR,
   userDir = USER_DIR,
   envFile = path.resolve(".env"),
@@ -141,6 +149,28 @@ function settingsProblems({
   const problems = [];
   const { shipped, resolved } = _resolveFiles(shippedDir, userDir, problems);
   problems.push(..._strayFiles(userDir));
+  const envText = _read(envFile);
+  // As the app loads `.env`: what the environment already sets stands.
+  const fileEnv = envText === undefined ? {} : dotenv.parse(envText);
+  return {
+    shipped,
+    resolved,
+    envText,
+    env: { ...fileEnv, ...env },
+    botText: _read(botConfigFile),
+    problems,
+  };
+}
+
+/**
+ * Every problem with an install's settings.
+ *
+ * @param {object} [where]  Where to read from, as for `resolveSettings`.
+ * @returns {string[]}
+ */
+function settingsProblems(where) {
+  const { shipped, resolved, envText, env, botText, problems } =
+    resolveSettings(where);
   const chains = resolved["chains.json"];
   for (const file of Object.keys(SETTINGS_FILE_RULES))
     problems.push(
@@ -150,21 +180,14 @@ function settingsProblems({
       }),
     );
   problems.push(...agreementProblems((file) => resolved[file]));
-  const envText = _read(envFile);
   if (envText !== undefined) problems.push(...envFileProblems(envText));
-  // As the app loads `.env`: what the environment already sets stands.
-  const fileEnv = envText === undefined ? {} : dotenv.parse(envText);
   problems.push(
-    ...envProblems(
-      { ...fileEnv, ...env },
-      {
-        chains,
-        appRuntime: resolved["app-runtime.json"],
-        botDefaults: resolved["bot-config-defaults.json"],
-      },
-    ),
+    ...envProblems(env, {
+      chains,
+      appRuntime: resolved["app-runtime.json"],
+      botDefaults: resolved["bot-config-defaults.json"],
+    }),
   );
-  const botText = _read(botConfigFile);
   if (botText !== undefined)
     problems.push(
       ...botConfigProblems(botText, {
@@ -216,6 +239,7 @@ function refuseToStartOnBadSettings({
 }
 
 module.exports = {
+  resolveSettings,
   settingsProblems,
   problemsReport,
   refuseToStartOnBadSettings,

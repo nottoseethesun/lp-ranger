@@ -9,17 +9,18 @@
  *   state and the fetch responses through a `globalThis.fetch` stub.
  *
  *   The wrapper attaches the cached CSRF token to every mutating
- *   request and, on a 403 whose body identifies an expired or unknown
- *   token, refreshes the token and retries the request once.  This
- *   closes the burn-in-observed drop where Chrome's setInterval
- *   throttling on a hidden tab let the held token age past the 60-min
- *   server TTL.
+ *   request and, on a 403 refusing that token for any reason the server
+ *   gives (src/csrf-refusals.js), refreshes the token and sends the
+ *   request once more. A restart is the common case: the server's new
+ *   secret makes every token the page held invalid. A 403 for any other
+ *   reason is returned as it came.
  */
 
 require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { CSRF_REFUSALS } = require("../src/csrf-refusals");
 
 let mod;
 
@@ -105,57 +106,37 @@ describe("fetchWithCsrf", () => {
     assert.strictEqual(_fetchCalls.length, 1);
   });
 
-  it("refreshes and retries once on 403 with Expired CSRF token", async () => {
-    let firstCall = true;
-    _fetchResponder = async (url) => {
-      if (url === "/api/csrf-token") {
-        return makeRes(200, {
-          token: "fresh-token",
-          refreshIntervalMs: 60_000,
-        });
-      }
-      if (firstCall) {
-        firstCall = false;
-        return makeRes(403, { ok: false, error: "Expired CSRF token" });
-      }
-      return makeRes(200, { ok: true });
-    };
-    const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
-    assert.strictEqual(r.status, 200);
-    // Two /api/foo calls + one /api/csrf-token refresh.
-    const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");
-    assert.strictEqual(fooCalls.length, 2);
-    assert.strictEqual(
-      fooCalls[1].init.headers["x-csrf-token"],
-      "fresh-token",
-      "retry must use the freshly refreshed token",
-    );
-  });
-
-  it("refreshes and retries once on 403 with Unknown CSRF token", async () => {
-    let firstCall = true;
-    _fetchResponder = async (url) => {
-      if (url === "/api/csrf-token") {
-        return makeRes(200, {
-          token: "fresh-token",
-          refreshIntervalMs: 60_000,
-        });
-      }
-      if (firstCall) {
-        firstCall = false;
-        return makeRes(403, { ok: false, error: "Unknown CSRF token" });
-      }
-      return makeRes(200, { ok: true });
-    };
-    const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
-    assert.strictEqual(r.status, 200);
-    const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");
-    assert.strictEqual(fooCalls.length, 2);
-  });
+  for (const reason of Object.values(CSRF_REFUSALS))
+    it(`refreshes and retries once on 403 with ${reason}`, async () => {
+      let firstCall = true;
+      _fetchResponder = async (url) => {
+        if (url === "/api/csrf-token") {
+          return makeRes(200, {
+            token: "fresh-token",
+            refreshIntervalMs: 60_000,
+          });
+        }
+        if (firstCall) {
+          firstCall = false;
+          return makeRes(403, { ok: false, error: reason });
+        }
+        return makeRes(200, { ok: true });
+      };
+      const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
+      assert.strictEqual(r.status, 200);
+      // Two /api/foo calls + one /api/csrf-token refresh.
+      const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");
+      assert.strictEqual(fooCalls.length, 2);
+      assert.strictEqual(
+        fooCalls[1].init.headers["x-csrf-token"],
+        "fresh-token",
+        "retry must use the freshly refreshed token",
+      );
+    });
 
   it("does not retry on 403 with a different reason", async () => {
     _fetchResponder = async () =>
-      makeRes(403, { ok: false, error: "Invalid CSRF token" });
+      makeRes(403, { ok: false, error: "Forbidden" });
     const r = await mod.fetchWithCsrf("/api/foo", { method: "POST" });
     assert.strictEqual(r.status, 403);
     const fooCalls = _fetchCalls.filter((c) => c.url === "/api/foo");

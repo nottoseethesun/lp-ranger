@@ -1431,10 +1431,10 @@ The figures reach the copy three ways:
 - **The manual's own prose** wraps each figure in
   `<span data-figure="name">…</span>`. The manual build writes the
   shipped figures in, and the GitHub Pages copy keeps them. The copy the
-  app serves loads
+  app serves loads the build's stamped bundle of
   [`public/dashboard-manual-figures.js`](../public/dashboard-manual-figures.js),
-  which rewrites the spans from `GET /api/help-figures`; the Pages build
-  drops that tag.
+  `public/dist/manual-figures.js`, which rewrites the spans from
+  `GET /api/help-figures`; the Pages build drops that tag.
 - **The dashboard's static help** in `index.html` holds empty
   `<span data-figure="name"></span>` elements, filled by
   [`public/dashboard-help-figures.js`](../public/dashboard-help-figures.js)
@@ -1488,8 +1488,9 @@ Opening `public/screenshot-gallery.html` in a browser therefore shows a
 page with no images whatsoever.
 
 [`scripts/build-pages-site.js`](../scripts/build-pages-site.js) assembles
-those pieces into a target directory, rewriting the absolute CSS hrefs
-(`/style.css`) to relative ones.
+those pieces into a target directory, rewriting the absolute, stamped CSS
+hrefs (`/style.css?v=…`) to relative ones and dropping the manual's
+script, which asks the running app.
 [`scripts/show-gallery.js`](../scripts/show-gallery.js) calls it with
 `tmp/gallery-preview/` (gitignored) and serves the result. What you see
 locally is what Pages will show — literally, because the deploy runs the
@@ -1666,6 +1667,13 @@ and each tool's own `argv` scanner are gone.
   It reads files only, so it is safe while the server runs; run it from
   the install's folder. Exit status 0 when every setting passes, 1
   otherwise. See [Checking the Settings](configuration.md#checking-the-settings).
+- `print-resolved-settings.js` — Prints the settings the install runs
+  on: the `.env` variables LP Ranger reads, with the environment over
+  them, then each JSON settings file by name, the operator's copy over
+  the shipped one, as raw JSON. A secret is named as set, never shown.
+  It reads them through `resolveSettings` in `src/settings-check.js`,
+  the reading the validator above checks. Reads files only; run it from
+  the install's folder.
 
 Audited under `npm run audit:security` and `npm run audit:secrets` —
 same bar as `src/`. Tests live in **`util/test/`** — one directory for
@@ -3958,7 +3966,8 @@ semver string as input. Summary of its steps:
    lockfile's top-level ranges now match the pinned `package.json`.
    `--ignore-scripts` prevents lifecycle scripts from running during
    lockfile regeneration (relevant for supply-chain safety).
-8. **Build the bundle** — `npm run build` produces `public/dist/bundle.js`.
+8. **Build the bundles** — `npm run build` produces `public/dist/bundle.js`
+   and the User Manual's `public/dist/manual-figures.js`.
 9. **Bump `package.json` version** via `npm version --no-git-tag-version`.
 10. **Commit** the pinned `package.json`, regenerated lockfile, the
     new `.npmrc`, and the built bundle to the release branch.
@@ -3985,8 +3994,9 @@ A user who downloads `lp-ranger-X.Y.Z.tar.gz` gets:
   `package.json`, so the entire transitive graph is also frozen.
 - `.npmrc` — `save-exact=true`, so any subsequent local
   `npm install` also produces exact pins.
-- `public/dist/bundle.js` — **prebuilt** browser bundle, so the
-  user's machine never runs esbuild on potentially compromised source.
+- `public/dist/` — **prebuilt** browser bundles, the dashboard's and
+  the User Manual's, so the user's machine never runs esbuild on
+  potentially compromised source.
 - All `src/`, `public/`, `docs/`, config — as committed to the
   release branch.
 

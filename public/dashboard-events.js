@@ -351,17 +351,9 @@ export function bindAllEvents() {
   if (mgd) mgd.addEventListener("change", () => renderPosBrowser());
   const cld = g("posClosedToggle");
   if (cld) cld.addEventListener("change", () => renderPosBrowser());
-  const ntb = g("posNewTabToggle");
-  if (ntb) ntb.addEventListener("change", () => {});
 
   /* ── Header buttons ───────────────────── */
-  document.querySelectorAll("header .pos-browser-btn").forEach((b) => {
-    const t = b.textContent;
-    if (t.includes("\u{1F4C2}") || t.includes("Position"))
-      b.addEventListener("click", openPosBrowser);
-    else if (t.includes("\u27F3") || t.includes("Scan"))
-      b.addEventListener("click", scanPositions);
-  });
+  _click("posBrowserBtn", openPosBrowser);
   _qa(".hwbtn", "click", openWalletModal);
   _click("settingsBtn", toggleSettingsPopover);
   _click("donateBtn", () => _show("donateOverlay"));
@@ -399,8 +391,6 @@ export function bindAllEvents() {
   /* ── Wallet strip ─────────────────────── */
   _click("wsRevealBtn", openRevealModal);
   _click("wsClearBtn", clearWalletUI);
-  const ps = document.querySelector(".ws-pos-summary");
-  if (ps) ps.addEventListener("click", openPosBrowser);
 
   /* ── Privacy toggle ───────────────────── */
   const priv = g("privacySwitch");

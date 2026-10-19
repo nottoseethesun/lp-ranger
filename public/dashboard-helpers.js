@@ -19,6 +19,8 @@ import { UTC_LABEL } from "../src/utc-timestamp.js";
  *  own; see `_csrfRefreshIntervalMs`.
  */
 import CSRF_DEFAULTS from "../app-config/app-defaults-for-user-configurable/csrf.json" with { type: "json" };
+// The server's reasons for refusing a token; see `fetchWithCsrf`.
+import { CSRF_REFUSALS } from "../src/csrf-refusals.js";
 import {
   uiSetting,
   uiSettingsLoaded,
@@ -762,34 +764,23 @@ export function csrfRefreshIntervalMs() {
 }
 
 /*-
- *  fetch wrapper that auto-attaches the CSRF token and, on a 403 whose
- *  body identifies an aged-out token, fetches a fresh token once and
- *  retries the original request.  Centralises the recovery so every
- *  dashboard POST/DELETE survives the throttled-background-timer case
- *  where Chrome's setInterval coalescing on a hidden tab let the held
- *  token age past the 60-min server TTL (see `app-config/app-defaults-for-user-configurable/csrf.json`).
+ *  fetch wrapper that attaches the CSRF token and, on a 403 refusing
+ *  that token, fetches a fresh token and sends the request once more,
+ *  at once. Every refusal the server gives (`CSRF_REFUSALS`,
+ *  src/csrf-refusals.js) means the page holds no token this server
+ *  process accepts: none yet, one signed by a secret the server no
+ *  longer has (a restart makes a new one), or one past its lifetime,
+ *  forgotten or not. A fresh token cures each, so each gets the retry.
+ *  A token can outlive its lifetime because Chrome slows a hidden tab's
+ *  timers, which can hold off the page's own refresh.
  *
- *  Two server-side reason strings are treated as the same root cause:
- *    - "Expired CSRF token"  — token still in `_issued` map, past TTL.
- *    - "Unknown CSRF token"  — token cryptographically valid but no
- *                              longer in `_issued` (server pruned it).
- *  Pruning only ever drops already-expired tokens (see `_pruneExpired`
- *  in `src/server-csrf.js`), so "Unknown" is "Expired AND forgotten" —
- *  the recovery is identical: refresh + retry once.  Treating both the
- *  same closes the gap that left `Unknown` requests dropped silently
- *  (observed in burn-in logs).
+ *  GET callers use plain `fetch`: the server checks the token only on
+ *  other methods.
  *
- *  GET-only callers can keep using plain `fetch` — the CSRF guard in
- *  `src/server-csrf.js` only runs for non-GET methods.
- *
- *  Reads body.error rather than just the status to avoid retrying on
- *  unrelated 403s (e.g. a future authz check).  Reason strings come from
- *  `verifyToken` in `src/server-csrf.js`.
+ *  The retry reads the answer's `error`, not only its status, so a 403
+ *  for any other reason is returned as it came.
  */
-const _CSRF_RETRY_REASONS = new Set([
-  "Expired CSRF token",
-  "Unknown CSRF token",
-]);
+const _CSRF_RETRY_REASONS = new Set(Object.values(CSRF_REFUSALS));
 
 export async function fetchWithCsrf(url, init = {}) {
   const initWithToken = {

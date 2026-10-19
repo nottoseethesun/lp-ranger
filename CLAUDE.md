@@ -25,7 +25,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 - **Bot (headless):** `bot.js` — standalone bot without dashboard UI
 - **Dashboard:** `public/index.html` + external CSS (`style.css`, `9mm-pos-mgr.css`, `fonts.css`, generated `ui-tokens.css`) + 84 modular `dashboard-*.js` files bundled by esbuild into `public/dist/bundle.js`
 - **Client-side routing:** Navigo (pushState) — bookmarkable URLs like `/:wallet/:contract/:tokenId`
-- **Build:** esbuild bundles dashboard JS + ethers.js + navigo from npm; fonts self-hosted via `@fontsource` (no CDN dependencies)
+- **Build:** esbuild bundles dashboard JS + ethers.js + navigo from npm, and the User Manual's script on its own; every script and stylesheet a page loads carries the build's `?v=` stamp; fonts self-hosted via `@fontsource` (no CDN dependencies)
 - **On-chain:** ethers.js v6.7.1, @uniswap/v3-sdk ~3.28.0 + jsbi (exact ratio math)
 - **Concurrency:** async-mutex (rebalance lock for nonce-safe TX serialization across positions)
 - **Formatting:** Prettier, gated by `npm run lint` (which the husky
@@ -55,6 +55,8 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 ├── scripts/lint-svg.js           # Strict XML + no-id-attributes validator for public/icons/*.svg (see docs/engineering.md § SVG Assets)
 ├── scripts/inline-svgs.js        # Build-time inliner: composes public/dist/index.html by replacing `data-svg=…` placeholders with `ui-*.svg` contents
 ├── scripts/build-ui-tokens.js    # Build-time JSON→CSS bridge: writes public/ui-tokens.css (custom properties only) from ui-defaults_layout.json
+├── scripts/build-bundles.js      # esbuild: one bundle per page, the dashboard's (dist/bundle.js) and the User Manual's (dist/manual-figures.js); --watch for build:watch
+├── scripts/cache-bust.js         # Stamps the build's time on every script and stylesheet the public/*.html pages load: the server lets a browser keep anything but HTML for a year
 ├── scripts/stop.js               # npm stop: SIGTERM to the PID in tmp/lp-ranger.pid, lsof-by-port fallback (force-stop: exits within 3 s, cutting off a rebalance under way)
 ├── scripts/gentle-stop.js        # npm run gentle-stop: once GET /api/is-position-being-adjusted (asked every 5 min) says no, ask the server to stop itself (POST /api/shutdown)
 ├── scripts/reset-wallet.js       # Delete wallet file + scrub WALLET_PASSWORD from .env
@@ -101,7 +103,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 │   ├── dashboard-help-figures.js # This install's help figures, asked of GET /api/help-figures at startup; fills index.html's data-figure spans when they land
 │   ├── dashboard-ask-server.js   # Asks the server a startup question until it answers (the chain, the dashboard settings, the help figures)
 │   ├── dashboard-figure-elements.js # Writes help figures into data-figure elements; shared by the dashboard and the served manual
-│   ├── dashboard-manual-figures.js # Loaded by the served User Manual to refill its figures with the install's own; the Pages copy drops it
+│   ├── dashboard-manual-figures.js # Bundled into dist/manual-figures.js, which the served User Manual loads to refill its figures with the install's own; the Pages copy drops it
 │   ├── dashboard-chain-storage.js # The browser's per-chain localStorage copies; reads and writes nothing until the server names the chain
 │   ├── style.css                 # Core dashboard styles (extracted from index.html)
 │   ├── 9mm-pos-mgr.css           # Semantic utility classes, all prefixed `9mm-pos-mgr-`
@@ -111,6 +113,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 │   ├── ui-tokens.css             # GENERATED (gitignored) — :root custom properties from ui-defaults_layout.json; e.g. --dialog-max-h
 │   ├── dashboard-ui-settings.js  # Dashboard settings the server sends (GET /api/ui-defaults), asked for after the chain, before polling; read only through uiSetting(key)
 │   ├── dist/bundle.js            # esbuild output (gitignored, built from dashboard-init.js)
+│   ├── dist/manual-figures.js    # esbuild output (gitignored, built from dashboard-manual-figures.js) for the User Manual
 │   ├── ethers-adapter.js         # ES module adapter: re-exports ethers from npm
 │   ├── dashboard-helpers.js      # Shared utilities: g(), act(), fmtMs(), fmtDateTime(), fmtCountdown(), botConfig
 │   ├── dashboard-wallet.js       # Wallet state, known-wallet registry, on-chain activity check
@@ -179,6 +182,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 │   ├── server-scan.js            # LP position scan route handlers with cache integration + symbol resolution
 │   ├── server-pid.js             # Server PID file (tmp/lp-ranger.pid): write on startup, remove whenever the process exits; read by npm stop
 │   ├── server-address.js         # Where the server listens (PORT, HOST): the app and the stop scripts read it one way, the scripts nothing else
+│   ├── csrf-refusals.js          # Each reason the server refuses a CSRF token; dependency-free, so the dashboard retries every one of them once with a fresh token
 │   ├── event-scanner.js          # On-chain rebalance history via Transfer events (lookback: historyLookbackYears)
 │   ├── history-lookback.js       # Where a history scan begins: historyLookbackYears at the chain's blockTimeSec, one answer for every scan
 │   ├── pool-scanner.js           # Consolidated entry point for pool rebalance history scan with per-pool locking
@@ -315,8 +319,8 @@ Full reference — every command, its flags, and a copy-pasteable example
 used ones:
 
 ```bash
-npm run build          # esbuild bundle + cache-bust stamp (bundle.js?v=<ms>)
-npm run build:watch    # esbuild in watch mode (rebuilds on file change)
+npm run build          # esbuild bundles + a cache-bust stamp (?v=<ms>) on every script and stylesheet the pages load
+npm run build:watch    # esbuild in watch mode (rebuilds both bundles on file change)
 npm run copy-fonts     # Copy WOFF2 font files from node_modules to public/fonts/
 npm start              # node server.js only (no build — run `npm run build` first)
 npm run build-and-start # build + start in one command

@@ -24,6 +24,7 @@ const {
   loadMergedDefaults,
   loadShippedDefaults,
 } = require("./load-merged-defaults");
+const { CSRF_REFUSALS } = require("./csrf-refusals");
 
 const _tokens = new Tokens();
 
@@ -106,14 +107,14 @@ function createToken() {
  * @returns {{ valid: boolean, reason?: string }}
  */
 function verifyToken(token) {
-  if (!token) return { valid: false, reason: "Missing x-csrf-token header" };
+  if (!token) return { valid: false, reason: CSRF_REFUSALS.missing };
   if (!_tokens.verify(_secret, token))
-    return { valid: false, reason: "Invalid CSRF token" };
+    return { valid: false, reason: CSRF_REFUSALS.invalid };
   const issuedAt = _issued.get(token);
-  if (!issuedAt) return { valid: false, reason: "Unknown CSRF token" };
+  if (!issuedAt) return { valid: false, reason: CSRF_REFUSALS.unknown };
   const { tokenTtlMs } = readCsrfTunable();
   if (Date.now() - issuedAt > tokenTtlMs)
-    return { valid: false, reason: "Expired CSRF token" };
+    return { valid: false, reason: CSRF_REFUSALS.expired };
   return { valid: true };
 }
 

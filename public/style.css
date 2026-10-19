@@ -702,25 +702,6 @@ body::before{
   opacity:0.4;
 }
 
-.ws-pos-summary{
-  display:flex;
-  align-items:center;
-  gap:9px;
-  padding:5px 12px;
-  background:var(--bg);
-  border:1px solid var(--border);
-  border-radius:8px;
-  font-size:18px;
-  cursor:pointer;
-  transition:all .2s;
-}
-
-.ws-pos-summary:hover{
-  border-color:var(--accent);
-  color:var(--accent);
-}
-
-
 .ws-reveal-btn{
   height:53px;
   padding:0 12px;

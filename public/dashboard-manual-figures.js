@@ -4,16 +4,18 @@
  *
  *   The manual's build writes the shipped figures into each
  *   `<span data-figure="name">`, and those are what the copy GitHub
- *   Pages publishes shows. The copy this app serves loads this module,
+ *   Pages publishes shows. The copy this app serves runs this module,
  *   which asks the server for the install's own figures
  *   (`GET /api/help-figures`: the shipped settings, with the operator's
  *   overrides and `.env` on top) and writes each into its span, so the
  *   manual states the figures in force. If the server does not answer,
  *   the shipped figures stay, and the console says why.
  *
- *   Loaded by the manual alone, as a module straight from the server
- *   rather than through the dashboard's bundle. The Pages build removes
- *   the tag that loads it, since a static copy has no server to ask.
+ *   The build bundles it on its own (`scripts/build-bundles.js`) into
+ *   `public/dist/manual-figures.js`, which the manual loads with the
+ *   build's stamp, as every page loads its scripts. The Pages build
+ *   removes the tag that loads it, since a static copy has no server to
+ *   ask.
  */
 
 import { writeFigures } from "./dashboard-figure-elements.js";

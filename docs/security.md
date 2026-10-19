@@ -269,26 +269,22 @@ To change either value, put it in an override copy at
 `app-config/user-configurable/csrf.json` and restart the server; the
 dashboard takes the new `refreshIntervalMs` with its next token.
 
-**Silent retry on aged-out tokens.** Even with the dedicated refresh
-timer, Chrome can throttle a hidden tab's `setInterval` hard enough that
-the held token ages past TTL before the next scheduled refresh fires.
-`fetchWithCsrf` in `public/dashboard-helpers.js` covers that case: when
-a `403` body identifies the token as either `"Expired CSRF token"` or
-`"Unknown CSRF token"`, the wrapper refreshes the token and retries the
-original request once.
-
-The two reasons share a root cause:
+**Silent retry on a refused token.** `fetchWithCsrf` in
+`public/dashboard-helpers.js` answers a `403` that refuses its token by
+fetching a fresh token and sending the request once more, at once. It
+does so for every refusal the server gives, listed in
+`src/csrf-refusals.js`, which `verifyToken` and the dashboard both read:
 
 | Server reason | Meaning |
 | --- | --- |
-| `Expired CSRF token` | Token still in `_issued`, but past `tokenTtlMs`. |
-| `Unknown CSRF token` | Token cryptographically valid (issued by this server) but no longer in `_issued` — i.e. expired *and* already pruned by `_pruneExpired` (which runs only when `_issued.size >= 500` and only deletes tokens already past TTL). |
+| `Missing x-csrf-token header` | The page held no token yet. |
+| `Invalid CSRF token` | Not signed by this server process's secret. A restart makes a new secret, so every token a page held before it reads this way. |
+| `Unknown CSRF token` | Signed by this process but no longer in `_issued`: past `tokenTtlMs` and already pruned by `_pruneExpired`, which runs only when `_issued.size >= 500` and deletes only tokens past TTL. |
+| `Expired CSRF token` | Still in `_issued`, but past `tokenTtlMs`. Chrome can slow a hidden tab's timers enough to hold off the page's refresh past it. |
 
-Both must therefore be treated as retryable. Which of the two a stale
-token produces depends only on whether `_pruneExpired` happened to have
-run, which is a function of total issued-token count and says nothing
-about the client. Retrying one and not the other would make recovery
-depend on server-side bookkeeping the client cannot observe.
+Each means the page holds no token this process accepts, and a fresh
+token cures each, so each is retried. A refused retry is returned to
+the caller as it came. A `403` for any other reason is not retried.
 
 **Retry observability.** Server-side, `handleCsrf` keeps a small ring
 buffer of the most recent 403 per `(method, url)` (windowed at 30 s).
@@ -719,8 +715,9 @@ Uniswap v3 SDK's numeric output, server JSON, on-chain event data, and
 user-entered amounts that are either numeric or already-validated
 addresses. There is no external script tag in
 `public/index.html` — fonts are self-hosted via `@fontsource`, and the
-only bundled JavaScript is `public/dist/bundle.js` produced by esbuild
-from the audited `public/dashboard-*.js` sources. Copy-to-clipboard
+only bundled JavaScript is `public/dist/bundle.js`, with the User
+Manual's `public/dist/manual-figures.js`, produced by esbuild from the
+audited `public/dashboard-*.js` sources. Copy-to-clipboard
 operations use `textContent`, never `innerHTML`, so pasted wallet
 addresses cannot be reflected as executable markup. The custom rule
 [`9mm/no-interpolated-innerhtml`](../eslint-rules/no-interpolated-innerhtml.js)
@@ -985,7 +982,7 @@ against, not whatever the caret range might newly resolve to at
 release time. The workflow then regenerates
 `package-lock.json` against the pinned `package.json` with
 `--ignore-scripts`, writes an `.npmrc` with `save-exact=true`, and
-ships a prebuilt `public/dist/bundle.js` so the end user's machine
+ships the prebuilt bundles in `public/dist/` so the end user's machine
 never runs esbuild on potentially-compromised source. The tarball
 users download from GitHub Releases is therefore byte-identical
 across installs on the same tag.

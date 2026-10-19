@@ -2,9 +2,8 @@
  * @file dashboard-figure-elements.js
  * @description Writes the help's figures into the page elements that
  *   name them. Shared by the dashboard (`dashboard-help-figures.js`) and
- *   the User Manual (`dashboard-manual-figures.js`). The manual loads it
- *   straight from the server rather than through the dashboard's bundle,
- *   so it imports nothing.
+ *   the User Manual (`dashboard-manual-figures.js`), and built into each
+ *   one's bundle.
  */
 
 /**

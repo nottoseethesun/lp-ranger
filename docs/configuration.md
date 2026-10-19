@@ -163,6 +163,17 @@ there are any. The test suite checks only the files that ship, so local
 and CI results agree; this is how your own copies, `.env` and
 `bot-config.json` are checked.
 
+To see the values it checks:
+
+```sh
+node util/diagnostic/print-resolved-settings.js
+```
+
+It prints the `.env` variables LP Ranger reads, with the environment
+over them, then each JSON settings file by name, your copy over the
+shipped one, as raw JSON. It names the private key and the wallet
+password as set, and never shows them.
+
 ---
 
 ## Environment Variables
