@@ -3,12 +3,12 @@
 /**
  * @file util/bookkeeping/coins-in-transactions-on-wallet/dates.js
  * @description
- * The calendar side of a wallet's bookkeeping report: reading the dates
- * and the time zone the operator names, turning a range of whole days in
- * that zone into the instants it starts and ends, and writing an instant
- * as that zone's wall clock. Node's own `Intl` knows every IANA time zone
- * and its daylight-saving rules, so the report needs nothing installed for
- * them.
+ * The calendar side of a wallet's bookkeeping report: the time zones it
+ * takes, reading the dates and the time zone the operator names, turning
+ * a range of whole days in that zone into the instants it starts and ends,
+ * and writing an instant as that zone's wall clock. Node's own `Intl` holds
+ * the IANA time zone database and its daylight-saving rules, so the report
+ * needs nothing installed for them.
  */
 
 const { InvalidArgumentError } = require("commander");
@@ -34,19 +34,48 @@ function parseDate(value) {
 }
 
 /**
- * Accept an IANA time zone name, such as America/Chicago, or reject it
- * naming the option. `Intl` refuses a name it does not know.
+ * Every time zone a report takes, sorted: the names Node's time zone
+ * database lists (`Intl.supportedValuesOf`), each a region such as
+ * America/Chicago, and UTC, which that list leaves out. A designation such
+ * as CDT is not among them: one can name several clocks (CST is US
+ * Central, China and Cuba Standard Time), and each of a report's days must
+ * start at one known midnight. `Intl` itself would let some through, the
+ * legacy EST among them, so the report checks names against this list,
+ * never against `Intl`.
+ * @returns {string[]}
+ */
+function validTimeZones() {
+  return [...Intl.supportedValuesOf("timeZone"), "UTC"].sort();
+}
+
+/** Each valid time zone, by its name in lower case. */
+const VALID_BY_LOWER_CASE = new Map(
+  validTimeZones().map((zone) => [zone.toLowerCase(), zone]),
+);
+
+/**
+ * Whether a name is on the list of valid time zones, in any letter case.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isValidTimeZone(name) {
+  return VALID_BY_LOWER_CASE.has(name.toLowerCase());
+}
+
+/**
+ * Accept a time zone from the valid list, in any letter case, or reject it
+ * naming the option and the way to see the list.
  * @param {string} value  The raw option value.
- * @returns {string}  The same value.
- * @throws {InvalidArgumentError} When it is not a time zone.
+ * @returns {string}  The zone as the list spells it.
+ * @throws {InvalidArgumentError} When it is not on the list.
  */
 function parseTimeZone(value) {
-  try {
-    Intl.DateTimeFormat("en-US", { timeZone: value });
-  } catch {
-    throw new InvalidArgumentError(`not a time zone: ${value}`);
-  }
-  return value;
+  const zone = VALID_BY_LOWER_CASE.get(value.toLowerCase());
+  if (zone !== undefined) return zone;
+  throw new InvalidArgumentError(
+    `not a valid time zone: ${value}. Run with --list-valid-timezones ` +
+      "to see every valid one.",
+  );
 }
 
 /**
@@ -162,6 +191,8 @@ function formatIn(ms, timeZone) {
 
 module.exports = {
   parseDate,
+  validTimeZones,
+  isValidTimeZone,
   parseTimeZone,
   localTimeZone,
   offsetAt,

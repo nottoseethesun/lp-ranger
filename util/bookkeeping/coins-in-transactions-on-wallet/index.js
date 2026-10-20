@@ -28,16 +28,26 @@
  * the positions whose records this install holds: a position never
  * managed or viewed here has nothing in its files.
  *
+ * The time zone is a full name from the list dates.js keeps, such as
+ * America/Chicago, or UTC; a three-letter designation such as CDT is
+ * refused, since one can name several clocks. `--list-valid-timezones`
+ * prints the list, and every refusal of a time zone points to it.
+ *
  * The chain, endpoint and position manager are chosen as in
  * coins-in-transaction.js, whose option parsers it shares. It imports
  * nothing from `src/` but the dependency-free composite-key.js, so it is
- * safe to run while LP Ranger runs.
+ * safe to run while LP Ranger runs. `--help` prints the rest: the csv's
+ * columns, which transactions it lists, an example (help.js).
  *
- * Exit status is 0 when the csv was written, and 1 when it was not.
+ * Exit status is 0 when the csv was written or the time zones were
+ * listed, and 1 when the arguments were refused or the csv was not
+ * written.
  *
  * Usage:
  *   node util/bookkeeping/coins-in-transactions-on-wallet --wallet <address>
  *        --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD> --time-zone <zone>
+ *   node util/bookkeeping/coins-in-transactions-on-wallet --list-valid-timezones
+ *   node util/bookkeeping/coins-in-transactions-on-wallet --help
  */
 
 const fs = require("fs");
@@ -57,7 +67,15 @@ const {
   makeProvider,
   positionManagerOf,
 } = require("../coins-in-transaction");
-const { parseDate, parseTimeZone, localTimeZone, rangeIn } = require("./dates");
+const {
+  parseDate,
+  validTimeZones,
+  isValidTimeZone,
+  parseTimeZone,
+  localTimeZone,
+  rangeIn,
+} = require("./dates");
+const { HELP_AFTER } = require("./help");
 const { recordsNear } = require("./moves");
 const {
   SPACING_MS,
@@ -76,13 +94,21 @@ const APP_DATA_DIR = path.resolve(__dirname, "../../../app-data");
 /** Seconds in the month a drain search covers when nothing bounds it. */
 const MONTH_SEC = 30 * 24 * 60 * 60;
 
+/** The options a report cannot run without, by key and as help spells them. */
+const REQUIRED = [
+  ["wallet", "--wallet <address>"],
+  ["startDate", "--start-date <YYYY-MM-DD>"],
+  ["endDate", "--end-date <YYYY-MM-DD>"],
+];
+
 /**
  * Describe the command line, so Commander both parses it and renders
  * `--help` from the same declaration.
  *
- * `--time-zone` is required, but declared as an option so that its
- * absence can be refused with the computer's own zone offered
- * (`readOptions`).
+ * The required options are declared as plain options and checked in
+ * `readOptions`, so that `--list-valid-timezones` works on its own, as
+ * `--help` does, and a missing time zone can be refused with the
+ * computer's own zone offered.
  *
  * @returns {Command}  Configured, not yet parsed.
  */
@@ -95,25 +121,30 @@ function buildProgram() {
         "coins it moved and the gas it paid. Starts from what app-data/ " +
         "records, then reads the chain; sends nothing.",
     )
-    .requiredOption(
+    .option(
       "--wallet <address>",
-      "the wallet whose transactions to list",
+      "the wallet whose transactions to list (required)",
       parseAddress,
     )
-    .requiredOption(
+    .option(
       "--start-date <YYYY-MM-DD>",
-      "the range's first day",
+      "the range's first day (required)",
       parseDate,
     )
-    .requiredOption(
+    .option(
       "--end-date <YYYY-MM-DD>",
-      "the range's last day, included",
+      "the range's last day, included (required)",
       parseDate,
     )
     .option(
       "--time-zone <zone>",
-      "the time zone the days are in, such as America/Chicago (required)",
+      "the time zone the days are in, a full name such as America/Chicago, " +
+        "or UTC (required)",
       parseTimeZone,
+    )
+    .option(
+      "--list-valid-timezones",
+      "print every name --time-zone takes, one per line, and exit",
     )
     .option(
       "--chain <name>",
@@ -132,18 +163,31 @@ function buildProgram() {
         "chain's, from chains.json)",
       parseAddress,
     )
-    .addHelpText(
-      "after",
-      "\nThe csv is written to app-data/util/bookkeeping/.\nHow it finds " +
-        "the transactions: docs/bookkeeping-for-coins-in-transactions.md\n\n" +
-        "Exit status: 0 when the csv was written, 1 when it was not.",
-    );
+    .addHelpText("after", HELP_AFTER);
 }
 
 /**
- * Parse and check the arguments. A missing time zone is refused with the
- * computer's own zone offered, and a range that ends before it starts is
- * refused; Commander prints either refusal and exits 1.
+ * The refusal of a run with no time zone: it offers the computer's own
+ * zone when that zone is on the list, and names the way to see the list.
+ * @returns {string}
+ */
+function missingTimeZone() {
+  const local = localTimeZone();
+  const offer = isValidTimeZone(local)
+    ? ` This computer's time zone is ${local}; to use it, pass ` +
+      `--time-zone ${local}.`
+    : "";
+  return (
+    `error: required option '--time-zone <zone>' not specified.${offer} ` +
+    "Run with --list-valid-timezones to see every valid time zone."
+  );
+}
+
+/**
+ * Parse and check the arguments. `--list-valid-timezones` needs nothing
+ * else. Otherwise each required option must be there, a missing time zone
+ * is refused with the computer's own zone offered, and a range that ends
+ * before it starts is refused; Commander prints each refusal and exits 1.
  *
  * @param {string[]} argv  Arguments after the node/script pair.
  * @param {Command} [program]  The command; tests pass one that throws
@@ -153,14 +197,12 @@ function buildProgram() {
 function readOptions(argv, program = buildProgram()) {
   program.parse(argv, { from: "user" });
   const opts = program.opts();
-  if (opts.timeZone === undefined) {
-    const local = localTimeZone();
-    program.error(
-      "error: required option '--time-zone <zone>' not specified. This " +
-        `computer's time zone is ${local}; to use it, pass ` +
-        `--time-zone ${local}`,
-    );
+  if (opts.listValidTimezones === true) return opts;
+  for (const [key, flags] of REQUIRED) {
+    if (opts[key] === undefined)
+      program.error(`error: required option '${flags}' not specified`);
   }
+  if (opts.timeZone === undefined) program.error(missingTimeZone());
   if (opts.startDate > opts.endDate) {
     program.error(
       `error: --start-date ${opts.startDate} is after --end-date ` +
@@ -383,7 +425,8 @@ async function rowsOfMove(provider, move, ctx) {
 
 /**
  * Parse the arguments, find the transactions, write the csv, and say
- * where it is.
+ * where it is; or, asked for `--list-valid-timezones`, print each time
+ * zone the report takes on a line of its own and do nothing else.
  *
  * @param {string[]} [argv]  Arguments after the node/script pair.
  * @param {{makeProvider?: Function, appDataDir?: string,
@@ -393,6 +436,11 @@ async function rowsOfMove(provider, move, ctx) {
  */
 async function main(argv = process.argv.slice(2), deps = {}) {
   const opts = readOptions(argv);
+  if (opts.listValidTimezones === true) {
+    console.log(validTimeZones().join("\n"));
+    process.exitCode = 0;
+    return;
+  }
   const chain = CHAINS[opts.chain];
   const positionManager = positionManagerOf(opts, chain);
   if (positionManager === "") {
@@ -474,6 +522,7 @@ if (require.main === module) {
 module.exports = {
   APP_DATA_DIR,
   buildProgram,
+  missingTimeZone,
   readOptions,
   reportPath,
   describe,

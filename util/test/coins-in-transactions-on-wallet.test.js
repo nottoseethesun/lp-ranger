@@ -36,6 +36,10 @@ const {
   reportPath,
   main,
 } = require("../bookkeeping/coins-in-transactions-on-wallet");
+const {
+  validTimeZones,
+  isValidTimeZone,
+} = require("../bookkeeping/coins-in-transactions-on-wallet/dates");
 
 const CHAIN = "pulsechain";
 const { cacheTag: CACHE_TAG, nativeCurrencySymbol: NATIVE } = CHAINS[CHAIN];
@@ -377,13 +381,20 @@ test("the run refuses a chain with no position manager", async () => {
 
 /* ---------- arguments ---------- */
 
-/** A program that throws instead of exiting, and keeps what it prints. */
+/**
+ * A program that throws instead of exiting, and keeps what it prints to
+ * stdout and to stderr.
+ */
 function quiet() {
   const printed = [];
+  const shown = [];
   const program = buildProgram()
     .exitOverride()
-    .configureOutput({ writeErr: (s) => printed.push(s) });
-  return { program, printed };
+    .configureOutput({
+      writeErr: (s) => printed.push(s),
+      writeOut: (s) => shown.push(s),
+    });
+  return { program, printed, shown };
 }
 
 const ARGS = [
@@ -399,11 +410,87 @@ test("a missing time zone is refused, offering the computer's own", () => {
   const { program, printed } = quiet();
   const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
   assert.throws(() => readOptions(ARGS, program), { exitCode: 1 });
-  assert.match(
-    printed.join(""),
-    /required option '--time-zone <zone>' not specified/,
+  const message = printed.join("");
+  assert.match(message, /required option '--time-zone <zone>' not specified/);
+  assert.match(message, /Run with --list-valid-timezones/);
+  assert.equal(
+    message.includes(`pass --time-zone ${local}.`),
+    isValidTimeZone(local),
   );
-  assert.ok(printed.join("").includes(`pass --time-zone ${local}`));
+});
+
+test("a designation or an unknown zone is refused, pointing to the list", () => {
+  for (const zone of ["CDT", "EST", "Mars/Olympus"]) {
+    const { program, printed } = quiet();
+    const argv = [...ARGS, "--time-zone", zone];
+    assert.throws(() => readOptions(argv, program), { exitCode: 1 });
+    assert.match(
+      printed.join(""),
+      /not a valid time zone: .*--list-valid-timezones/,
+    );
+  }
+});
+
+test("each required option is refused by name when it is missing", () => {
+  for (const [i, flags] of [
+    [0, "--wallet <address>"],
+    [2, "--start-date <YYYY-MM-DD>"],
+    [4, "--end-date <YYYY-MM-DD>"],
+  ]) {
+    const { program, printed } = quiet();
+    const argv = [
+      ...ARGS.slice(0, i),
+      ...ARGS.slice(i + 2),
+      "--time-zone",
+      "UTC",
+    ];
+    assert.throws(() => readOptions(argv, program), { exitCode: 1 });
+    assert.equal(
+      printed.join(""),
+      `error: required option '${flags}' not specified\n`,
+    );
+  }
+});
+
+test("--list-valid-timezones needs no other option", () => {
+  const opts = readOptions(["--list-valid-timezones"], quiet().program);
+  assert.equal(opts.listValidTimezones, true);
+});
+
+test("--list-valid-timezones prints every valid zone, one a line, and writes nothing", async () => {
+  const dir = makeTestTempFolder("bookkeeping-wallet");
+  const prior = process.exitCode;
+  try {
+    const { out, err } = await captureConsole(() =>
+      main(["--list-valid-timezones"], { appDataDir: dir }),
+    );
+    assert.equal(process.exitCode, 0);
+    assert.deepEqual(err, []);
+    assert.deepEqual(out.join("\n").split("\n"), validTimeZones());
+  } finally {
+    process.exitCode = prior;
+  }
+  assert.equal(fs.existsSync(path.join(dir, "util")), false);
+});
+
+test("--help names --list-valid-timezones and gives the whole reference", () => {
+  const { program, shown } = quiet();
+  assert.throws(() => program.parse(["--help"], { from: "user" }), {
+    code: "commander.helpDisplayed",
+    exitCode: 0,
+  });
+  const help = shown.join("");
+  for (const part of [
+    "--list-valid-timezones",
+    "Time zones:",
+    "The csv:",
+    "token0_principal,",
+    "Which transactions:",
+    "Example:",
+    "Exit status:",
+  ]) {
+    assert.ok(help.includes(part), part);
+  }
 });
 
 test("a range that ends before it starts is refused", () => {
@@ -423,13 +510,13 @@ test("a range that ends before it starts is refused", () => {
   );
 });
 
-test("the options are read, the time zone's with them", () => {
+test("the options are read, the time zone's as the list spells it", () => {
   const opts = readOptions(
-    [...ARGS, "--time-zone", "Asia/Kolkata"],
+    [...ARGS, "--time-zone", "asia/tokyo"],
     quiet().program,
   );
   assert.equal(opts.wallet, WALLET);
-  assert.equal(opts.timeZone, "Asia/Kolkata");
+  assert.equal(opts.timeZone, "Asia/Tokyo");
   assert.equal(opts.chain, CHAIN);
 });
 

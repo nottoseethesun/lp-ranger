@@ -17,6 +17,8 @@ const { InvalidArgumentError } = require("commander");
 
 const {
   parseDate,
+  validTimeZones,
+  isValidTimeZone,
   parseTimeZone,
   localTimeZone,
   offsetAt,
@@ -36,14 +38,41 @@ test("parseDate takes a real date written YYYY-MM-DD, and nothing else", () => {
   }
 });
 
-test("parseTimeZone takes an IANA name and refuses an unknown one", () => {
-  assert.equal(parseTimeZone("America/Chicago"), "America/Chicago");
-  assert.equal(parseTimeZone("UTC"), "UTC");
-  assert.throws(() => parseTimeZone("Mars/Olympus"), /not a time zone/);
+test("validTimeZones lists Node's zones and UTC, sorted, and no designation", () => {
+  const zones = validTimeZones();
+  assert.deepEqual(zones, [...zones].sort());
+  assert.ok(zones.includes("America/Chicago"));
+  assert.ok(zones.includes("UTC"));
+  assert.deepEqual(
+    zones.filter((zone) => !zone.includes("/")),
+    ["UTC"],
+  );
+  assert.equal(zones.length, Intl.supportedValuesOf("timeZone").length + 1);
 });
 
-test("localTimeZone names a zone parseTimeZone takes", () => {
-  assert.equal(parseTimeZone(localTimeZone()), localTimeZone());
+test("parseTimeZone takes a listed name in any case, spelled as listed", () => {
+  assert.equal(parseTimeZone("America/Chicago"), "America/Chicago");
+  assert.equal(parseTimeZone("america/chicago"), "America/Chicago");
+  assert.equal(parseTimeZone("utc"), "UTC");
+  assert.equal(isValidTimeZone("AMERICA/CHICAGO"), true);
+});
+
+test("parseTimeZone refuses designations, and points to the list", () => {
+  // Intl itself takes the legacy EST; the list does not.
+  for (const bad of ["CDT", "CST", "EST", "IST", "Mars/Olympus", ""]) {
+    assert.throws(
+      () => parseTimeZone(bad),
+      /not a valid time zone: .*Run with --list-valid-timezones/,
+      bad,
+    );
+    assert.equal(isValidTimeZone(bad), false);
+  }
+});
+
+test("localTimeZone names this computer's zone, as Intl reports it", () => {
+  const local = localTimeZone();
+  assert.equal(local, Intl.DateTimeFormat().resolvedOptions().timeZone);
+  if (isValidTimeZone(local)) assert.equal(parseTimeZone(local), local);
 });
 
 test("offsetAt reads a zone's offset, daylight saving included", () => {

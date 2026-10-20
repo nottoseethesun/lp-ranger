@@ -98,6 +98,49 @@ function parseAddress(value) {
 }
 
 /**
+ * The part of `--help` printed after the list of options: each field of
+ * the json object, how to read its amounts, examples and the exit status.
+ */
+const HELP_AFTER = `
+The json object:
+  hash, blockNumber  the transaction and its block
+  from, to           who sent it, and the address it was sent to
+  status             "succeeded" or "reverted": a reverted transaction moved
+                     nothing, and still paid its gas
+  kind               "reverted" for a reverted one; else "drain", "mint",
+                     "deposit", "collect", "decrease" or "burn" when the
+                     position manager took part; else "swap", "approval",
+                     "cancel" (sent from the wallet to itself),
+                     "transfer out", "transfer in" or "other"
+  gasPaid            the gas paid, in the chain's own coin, raw (18 decimals)
+  liquidity          the position manager's IncreaseLiquidity,
+                     DecreaseLiquidity and Collect events: event, nftId,
+                     amount0, amount1
+  nftTransfers       NFTs minted, from the zero address, or burned, to it:
+                     nftId, from, to
+  fees               for a drain, each NFT's Collect less its
+                     DecreaseLiquidity: nftId, amount0, amount1
+  transfers          the wallet's coin transfers: coin, direction ("out" or
+                     "in"), amount
+  approvals          allowances the wallet gave: coin, spender, amount
+
+  Every amount is a string of raw digits: divide it by 10 to the power of
+  its coin's decimals. amount0 is the pool's token0, and amount1 its token1.
+
+Examples:
+  node util/bookkeeping/coins-in-transaction.js <hash> --wallet <address>
+  node util/bookkeeping/coins-in-transaction.js <hash> --wallet <address> \\
+       --rpc-endpoint <url>
+
+It reads one receipt, imports nothing from src/ and writes nothing, so it is
+safe to run while LP Ranger runs. What each kind of transaction moves:
+docs/bookkeeping-for-coins-in-transactions.md
+
+Exit status: 0 when the receipt was read, 1 when it was not: a transaction
+not yet mined or on another chain, or an endpoint that did not answer.
+`;
+
+/**
  * Describe the command line, so Commander both parses it and renders
  * `--help` from the same declaration.
  *
@@ -115,10 +158,14 @@ function buildProgram() {
         "transfers and approvals, and the gas paid. Reads the " +
         "transaction's receipt and sends nothing.",
     )
-    .argument("<hash>", "the transaction's hash", parseHash)
+    .argument(
+      "<hash>",
+      "the transaction's hash: 0x and 64 hex digits",
+      parseHash,
+    )
     .requiredOption(
       "--wallet <address>",
-      "the wallet whose coins to count",
+      "the wallet whose coins to count (required)",
       parseAddress,
     )
     .option(
@@ -138,13 +185,7 @@ function buildProgram() {
         "from chains.json)",
       parseAddress,
     )
-    .addHelpText(
-      "after",
-      "\nAmounts are raw: divide each by 10 to the power of its coin's " +
-        "decimals.\nWhat each kind of transaction moves: " +
-        "docs/bookkeeping-for-coins-in-transactions.md\n\n" +
-        "Exit status: 0 when the receipt was read, 1 when it was not.",
-    );
+    .addHelpText("after", HELP_AFTER);
 }
 
 /**

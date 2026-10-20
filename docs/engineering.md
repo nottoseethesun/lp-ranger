@@ -2046,7 +2046,14 @@ explains it.
   one row per transaction, to `app-data/util/bookkeeping/`, and prints
   where. It takes `--wallet`, `--start-date` and `--end-date`, and
   requires `--time-zone`, offering the computer's own zone when it is
-  missing. It starts from what `app-data/` records (`moves.js`): the
+  missing. The time zone must be on the list `dates.js` keeps: the names
+  Node's `Intl.supportedValuesOf("timeZone")` gives, each a region such
+  as America/Chicago, and UTC. Three-letter designations such as CDT are
+  refused, since one can name several clocks, and so is the legacy EST,
+  which `Intl` itself would take. `--list-valid-timezones` prints the
+  list, one per line, with no other option needed, and each refusal of a
+  time zone points to it. `--help` carries the full reference, kept as
+  text in `help.js`. It starts from what `app-data/` records (`moves.js`): the
   rebalances in the event caches and the rebalance log, and the compounds
   in the position records. For each, it finds the first transaction by
   searching the position manager's logs for the NFT, then lists every

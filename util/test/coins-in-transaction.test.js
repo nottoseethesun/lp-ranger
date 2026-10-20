@@ -139,6 +139,31 @@ test("the command line refuses a missing wallet or a bad value", () => {
   }
 });
 
+test("--help and -h give the whole reference, with no hash or wallet needed", () => {
+  for (const flag of ["--help", "-h"]) {
+    const shown = [];
+    const program = buildProgram()
+      .exitOverride()
+      .configureOutput({ writeOut: (s) => shown.push(s) });
+    assert.throws(() => program.parse([flag], { from: "user" }), {
+      code: "commander.helpDisplayed",
+      exitCode: 0,
+    });
+    const help = shown.join("");
+    for (const part of [
+      "Usage: coins-in-transaction [options] <hash>",
+      "--wallet <address>",
+      "The json object:",
+      "nftTransfers",
+      "Every amount is a string of raw digits",
+      "Examples:",
+      "Exit status:",
+    ]) {
+      assert.ok(help.includes(part), `${flag}: ${part}`);
+    }
+  }
+});
+
 /* ---------- reading logs ---------- */
 
 test("liquidityEvent reads the position manager's three events", () => {

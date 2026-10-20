@@ -563,9 +563,15 @@ the LP Ranger folder:
 node util/bookkeeping/coins-in-transactions-on-wallet --wallet <wallet address> --start-date 2026-10-01 --end-date 2026-10-31 --time-zone America/Chicago
 ```
 
-The dates are whole days in the time zone named, and the end date is
-included. `--time-zone` takes an IANA name, such as `America/Chicago` or
-`UTC`; without one, the tool stops and names the computer's own zone.
+The dates are whole days in the time zone named, daylight saving
+included, and the end date is included. `--time-zone` takes a full time
+zone name, such as `America/Chicago`, or `UTC`. It refuses three-letter
+designations such as `CDT`, because one can name several clocks: `CST`
+is US Central, China and Cuba Standard Time. `--list-valid-timezones`
+prints every name it takes, one per line, and each refusal points to it.
+Without `--time-zone`, the tool stops and names the computer's own zone.
+`--help` gives the full reference, columns included.
+
 The file goes to `app-data/util/bookkeeping/`, named for the wallet, the
 dates and the time zone, and the tool's last line says where. It asks
 the endpoint at LP Ranger's own pace, so a day with eight rebalances and
