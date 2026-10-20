@@ -56,6 +56,7 @@ sequence.
       - [Scenario-Reproduction Scripts](#scenario-reproduction-scripts)
     - [Update Utilities](#update-utilities)
     - [Cache Utilities](#cache-utilities)
+    - [Bookkeeping Utilities](#bookkeeping-utilities)
 - [The app-config Directory](#the-app-config-directory)
 - [Bot Config Defaults](#bot-config-defaults)
 - [Security](#security) → [`docs/security.md`](security.md)
@@ -2009,6 +2010,32 @@ pool-address-keyed disk caches in `app-data/scan-cache/`.
 
   # Full reference:
   node util/cache/clean-pool-cache.js --help
+  ```
+
+#### Bookkeeping Utilities
+
+`util/bookkeeping/` holds tools for bookkeeping in coins, transaction by
+transaction, as
+[`docs/bookkeeping-for-coins-in-transactions.md`](bookkeeping-for-coins-in-transactions.md)
+explains it.
+
+- `coins-in-transaction.js` — Prints what one transaction moved for a
+  wallet. It asks one rpc endpoint for the transaction's receipt, and
+  nothing else, then prints the position manager's `IncreaseLiquidity`,
+  `DecreaseLiquidity` and `Collect` events, the wallet's coin `Transfer`
+  events out and in, and the gas paid. For a drain, it also prints the
+  fees: the `Collect` amounts less the `DecreaseLiquidity` ones. The
+  chain is a `chains.json` entry, the app's default unless `--chain`
+  names another. That entry gives the endpoint, unless `--rpc-endpoint`
+  names another, and the position manager, unless `--position-manager`
+  names another. Like `check-rpc-health.js`, whose option parsers it
+  shares, it imports nothing from `src/` and writes nothing, so it is
+  safe to run while the server runs. Exit status 0 when the receipt was
+  read, 1 otherwise. Its tests are in
+  `util/test/coins-in-transaction.test.js`.
+
+  ```bash
+  node util/bookkeeping/coins-in-transaction.js <transaction hash> --wallet <wallet address>
   ```
 
 ---

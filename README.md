@@ -455,6 +455,9 @@ line you can copy — see
 entry point also answers `--help`, for example
 `npm run build-and-start -- --help`.
 
+**For bookkeeping** — how many coins each liquidity transaction moved — see
+**[`docs/bookkeeping-for-coins-in-transactions.md`](docs/bookkeeping-for-coins-in-transactions.md)**.
+
 ---
 
 ## License
