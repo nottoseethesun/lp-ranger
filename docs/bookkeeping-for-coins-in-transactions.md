@@ -332,14 +332,17 @@ deposit as part of a rebalance, not as a compound.
 that it need not read it again. LP Ranger can rebuild any of these
 files, so treat them as copies of chain data. Three of them help here:
 
-| File                       | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `event-cache-*.json`       | One file per pool, named for the chain, position manager, wallet, coins and fee tier. It holds one entry, and under that entry's `value`, `events` lists every NFT the wallet minted in the pool after its first, paired with the NFT before it (`oldTokenId`, `newTokenId`), with the mint's `txHash`, `blockNumber` and `timestamp`. Beside `events`, `chainFirstTokenId` and `chainFirstMintBlock` give the chain's first NFT and the block it was minted in. |
-| `pnl-epochs-cache.json`    | One entry per pool, keyed by the chain, position manager, wallet, coins and fee tier, joined by dots. Under `lifetimeHodlAmounts`, `deposits` lists the coins that came into the pool's chain of NFTs from outside it, as raw amounts (`raw0`, `raw1`), with the block of the mint or deposit that took them in. The first entry is the first NFT's mint.                                                                                                        |
-| `lp-position-cache-*.json` | One file per position manager and wallet. Under `positions`, every NFT the wallet holds at that position manager, drained ones included, with its two coins, their symbols and its fee tier. A `liquidity` of `"0"` means drained.                                                                                                                                                                                                                               |
+| File                       | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `event-cache-*.json`       | One file per pool and wallet, named for the chain, position manager, wallet, coins and fee tier. Under its one entry's `value`, `events` lists the pool's rebalances, each new NFT paired with the one it replaced (`oldTokenId`, `newTokenId`), with the new NFT's mint as `txHash`, `blockNumber` and `timestamp`. Beside `events`, `chainFirstTokenId` and `chainFirstMintBlock` give the chain's first NFT and the block it was minted in. [Rebalance Event Caches](engineering.md#rebalance-event-caches) describes the file in full. |
+| `pnl-epochs-cache.json`    | One entry per pool, keyed by the chain, position manager, wallet, coins and fee tier, joined by dots. Under `lifetimeHodlAmounts`, `deposits` lists the coins that came into the pool's chain of NFTs from outside it, as raw amounts (`raw0`, `raw1`), with the block of the mint or deposit that took them in. The first entry is the first NFT's mint.                                                                                                                                                                                  |
+| `lp-position-cache-*.json` | One file per position manager and wallet. Under `positions`, every NFT the wallet holds at that position manager, drained ones included, with its two coins, their symbols and its fee tier. A `liquidity` of `"0"` means drained.                                                                                                                                                                                                                                                                                                         |
 
-The event cache names each rebalance's mint, even one from before the
-rebalance log began or one whose entry is missing. It does not name
+The event cache can name a rebalance's mint when the rebalance log
+cannot: one from before the log began, or one whose log entry is
+missing. It can miss a rebalance made by another install or by hand
+([How a Scan Fills a File](engineering.md#how-a-scan-fills-a-file));
+each rebalance this install makes adds its own record. It does not name
 drains. The other files in the folder hold prices, block times and
 similar, but no transaction amounts.
 
@@ -582,7 +585,10 @@ compounds takes about 40 seconds.
 The report starts from what `app-data/` records: the rebalances in the
 event caches and the rebalance log, and the compounds in the position
 records. It therefore covers the positions this install of LP Ranger
-has records for. For each rebalance or compound, it finds the first
+has records for. A rebalance made by another install or by hand, if the
+event caches missed it ([The Scan Caches](#the-scan-caches)), is in
+neither file, so the report leaves it out. For each rebalance or
+compound, it finds the first
 transaction by [Searching by NFT](#searching-by-nft): a rebalance's
 drain, or a compound's collect. It then lists everything the wallet
 sent from that block to the last, by

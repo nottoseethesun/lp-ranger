@@ -223,6 +223,8 @@ the speed-up phase-boundary race belonged to.
 
 - **An open page still treats the wallet as unlocked after the server restarts** — filed 2026-10-19 as [Show a Locked Wallet After the Server Restarts](../../roadmap/nice-to-haves/project_wallet_state_after_restart.md), by user decision: "that's a nice-to-have: File it. The user can always reload if confused. Yes, it would be nice but it's only common sense to reload a web app if you restarted the entire server." Found in the 2026-10-19 dialog sweep: restarted without `WALLET_PASSWORD`, the server's wallet is locked while the open page keeps Unlock Wallet disabled and Manage enabled, since the page reads the wallet's state only when it loads; the server refuses the Manage. Reloading shows the unlock dialog.
 
+- **A pool's event cache with no rebalances is not rewritten by a scan that reads no NFT transfer** — noted 2026-10-20 while documenting the event caches (docs/engineering.md § Rebalance Event Caches, step 6): `lastBlock` stays, so each later scan reads those blocks again, and the entry lapses a year after its last write however often it is read. Costs rpc reads only, for a wallet whose NFTs have not moved since; no figure is wrong.
+
 - [PulseChain testnet exploration](project_pulsechain_testnet_exploration.md) — No 9mm V3 on Testnet v4. Replay plan from 9mm's own mainnet creation txs, testnet WPLS, gas at about 1 gwei, faucet. Deferred 2026-10-16 for swap and aggregator test coverage
 
 - [code cleanup nice-to-haves](project_code_cleanup_nice_to_haves.md) — Running list of polish items

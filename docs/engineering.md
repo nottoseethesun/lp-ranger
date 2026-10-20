@@ -40,6 +40,12 @@ sequence.
 - [Balanced-Band Telegram Notification](#balanced-band-telegram-notification)
 - [Dust Threshold](#dust-threshold)
 - [Lifetime History Lookback](#lifetime-history-lookback)
+- [Rebalance Event Caches](#rebalance-event-caches)
+  - [Where the Files Are](#where-the-files-are)
+  - [What a File Holds](#what-a-file-holds)
+  - [How a Scan Fills a File](#how-a-scan-fills-a-file)
+  - [When a File Changes](#when-a-file-changes)
+  - [What Reads the Files](#what-reads-the-files)
 - [Per-NFT Scan Windows](#per-nft-scan-windows)
   - [Cost](#cost)
   - [Batched chain reads](#batched-chain-reads)
@@ -53,6 +59,7 @@ sequence.
   - [Utilities](#utilities)
     - [Diagnostic Utilities](#diagnostic-utilities)
       - [Verifying a Reported USD Figure](#verifying-a-reported-usd-figure)
+      - [Checking One RPC Endpoint](#checking-one-rpc-endpoint)
       - [Scenario-Reproduction Scripts](#scenario-reproduction-scripts)
     - [Update Utilities](#update-utilities)
     - [Cache Utilities](#cache-utilities)
@@ -63,7 +70,9 @@ sequence.
 - [Check Report Artifacts](#check-report-artifacts)
 - [API Documentation](#api-documentation)
 - [`server.js`](#serverjs)
+- [Reading Configuration Values](#reading-configuration-values)
 - [RPC Failover](#rpc-failover)
+- [RPC Reachability at Startup](#rpc-reachability-at-startup)
 - [How Scans Survive RPC Failures](#how-scans-survive-rpc-failures)
 - [`getPoolState` Validation + RPC Retry](#getpoolstate-validation--rpc-retry)
 - [Closed-position Re-open Flow](#closed-position-re-open-flow)
@@ -985,30 +994,30 @@ scan** is answered by three layered bounds, resolved in order by
 
 3. **Disk cache** (subsequent runs resume from the last scanned block)
 
-   Results from a completed scan are persisted to
-   `app-data/scan-cache/event-cache-{cacheTag}-{contract}-{wallet}-{token0}-{token1}-{fee}.json`
-   (`cacheTag` is the chain's tag in `chains.json`, `pulse` on PulseChain)
-   via `cache-store.js`. On the next run `loadCache()` reads the cached
-   events and sets `scanFrom = lastScannedBlock + 1`, so only blocks
-   produced since the previous scan are queried. A 5-year first-time
-   scan issues ~1,750 chunked queries (9,000 blocks per chunk, every
-   request released by the global request queue — see
+   A scan stores what it found in the pool's event cache file, with
+   `lastBlock`, the last block it read
+   ([Rebalance Event Caches](#rebalance-event-caches)). The next scan
+   starts at the block after it, so only blocks produced since the
+   previous scan are queried. A 5-year first-time scan issues ~1,750
+   chunked queries (9,000 blocks per chunk, every request released by
+   the global request queue — see
    [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking));
    a warm-cache rescan on the same wallet issues a handful.
 
-   The cache is **not** invalidated on rebalance. A successful
-   rebalance sets `_needsFullRescan` (`src/bot-recorder.js`) and starts
-   the scan at once (`src/bot-cycle.js`), running the event and lifetime
-   scans together to pick up the newly minted NFT's mint event. The
-   30-minute `lifetimeRescanTimer` in `src/bot-loop.js` retries a scan
-   that did not finish. `clearPoolCache()` exists but runs only from the
-   Reload Current Position handler (`src/server-reload-position.js`).
+   The cache is **not** invalidated on rebalance. A successful rebalance
+   appends its own record to the file, sets `_needsFullRescan`
+   (`src/bot-recorder.js`) and starts the scan at once
+   (`src/bot-cycle.js`), running the event and lifetime scans together.
+   The `lifetimeRescanTimer` in `src/bot-loop.js`, every
+   `poll.lifetimeRescanCheckMs` (30 minutes as shipped), retries a scan
+   that did not finish. `clearPoolCache()` runs only from the Reload
+   Current Position handler (`src/server-reload-position.js`).
 
 In short: **we start as far back as the lookback (five years as
 shipped), but never before the pool itself was created, and never before
 the last cached scan.** The three bounds compose, so the actual
 `fromBlock` on any given call is
-`max(now - lookback, poolCreationBlock, lastCachedBlock + 1)`.
+`max(now - lookback, poolCreationBlock, lastBlock + 1)`.
 
 See also:
 
@@ -1019,6 +1028,156 @@ See also:
 - [`src/epoch-reconstructor.js`](../src/epoch-reconstructor.js) — turns
   rebalance events into P&L epochs
 - [`src/cache-store.js`](../src/cache-store.js) — disk cache with TTL
+
+---
+
+## Rebalance Event Caches
+
+A rebalance event cache is LP Ranger's list of the rebalances in one
+pool for one wallet: which NFT replaced which, and the transaction,
+block and time at which the new NFT arrived. LP Ranger needs that list
+for four things: the Rebalance Events table; the Per-Day P&L table's
+periods, one per NFT; the floor of each NFT's own history scan, which is
+its mint block ([Per-NFT Scan Windows](#per-nft-scan-windows)); and,
+after a restart, the count of the position's rebalances since midnight
+UTC, which the daily cap is checked against. The list comes from the
+chain, and a pool's first scan reads up to five years of blocks as
+shipped, in thousands of requests
+([Lifetime History Lookback](#lifetime-history-lookback)). So the list
+is kept on disk, and each later scan reads only the blocks since the one
+before. A deleted file is rebuilt by the next scan, which pays that cost
+again.
+
+### Where the Files Are
+
+Each file holds one wallet's list for one pool, in
+`app-data/scan-cache/`, and is named:
+
+```text
+event-cache-<cacheTag>-<position manager>-<wallet>-<token0>-<token1>-<fee>.json
+```
+
+`cacheTag` is the chain's tag in `chains.json`, `pulse` on PulseChain.
+The position manager and the wallet are cut to their first six hex
+digits and the two coins to their first eight, all in lower case. The
+fee tier is in millionths, so 2500 is 0.25%. For example,
+`event-cache-pulse-cc05bf-111111-95b30398-a1077a29-2500.json` is the
+PLSX/WPLS pool at 0.25% for a wallet whose address begins `0x111111`.
+`eventCachePath` in `src/cache-store.js` builds the name.
+
+### What a File Holds
+
+A file holds one entry, keyed by the same scope with whole, lower-case
+addresses:
+
+```text
+rebalance:<wallet>:<position manager>:<token0>-<token1>-<fee>
+```
+
+The entry is `{ value, expiresAt }`. `expiresAt` is the moment the entry
+lapses ([When a File Changes](#when-a-file-changes)), and `value` holds:
+
+| Field                                                                 | What it holds                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`                                                              | One record per rebalance, oldest first                                                                                                                                                                                                         |
+| `lastBlock`                                                           | The last block the scans have read; the next scan starts at the block after it                                                                                                                                                                 |
+| `chainFirstTokenId`, `chainFirstMintBlock`, `chainFirstMintTimestamp` | The first NFT minted to the wallet in the pool, and its mint. No record names it as a replacement, so its mint is kept here. Per-Day P&L's first row opens at it.                                                                              |
+| `firstMintTokenId`, `firstMintBlockNumber`, `firstMintTimestamp`      | The oldest NFT the wallet has held in the pool, minted to it or sent to it, and its mint. Lifetime Days counts from it, the wallet's coins left over from the first deposit are read at its block, and no NFT's history scan starts before it. |
+| `mintSchemaVersion`                                                   | `2`. An entry without it is from an older layout; the next scan ignores it and reads the pool's history again.                                                                                                                                 |
+
+Each record in `events` holds `index`, its place in time order from 1;
+`oldTokenId` and `newTokenId`; and the transaction that brought the new
+NFT to the wallet, which for an LP Ranger rebalance is its mint, as
+`txHash`, `blockNumber`, `timestamp` (Unix seconds) and `dateStr`.
+
+A record this install added at its own rebalance
+([When a File Changes](#when-a-file-changes)) differs in two ways. Its
+`timestamp` is when the rebalance finished, not its block's time. And it
+holds `swapSources`, the route the swap took, which the Rebalance Events
+table shows as Routed Via. A scan cannot read the route from the chain,
+so a file rebuilt by a scan has none, and Routed Via shows a dash for
+those rebalances; `app-data/rebalance_log.json` still holds each route
+([Show Swap Route Even If Only Blockchain Data Available](roadmap/nice-to-haves/project_route_via_chain_scan_gap.md)).
+
+### How a Scan Fills a File
+
+`scanRebalanceHistory` (`src/event-scanner.js`) fills a file, called
+through `scanPoolHistory` (`src/pool-scanner.js`). In order:
+
+1. **One scan per pool.** `scanPoolHistory` takes the pool's lock, so a
+   second caller waits until the first scan has finished. Different
+   pools scan at the same time.
+2. **Where to start.** The scan reads the entry. With one, it starts at
+   the block after `lastBlock`. With none, or one that has lapsed or is
+   of an older layout, it starts at the history floor
+   ([Lifetime History Lookback](#lifetime-history-lookback)). When
+   `lastBlock` is already the chain's head, there is nothing to read,
+   and the entry's records are the answer.
+3. **What it reads.** It reads the position manager's NFT `Transfer`
+   events to and from the wallet, in spans of `getLogsChunkSize` blocks,
+   and the time of each one's block.
+4. **This pool only.** It asks the position manager for each NFT's coins
+   and fee tier (`positions()`), and keeps the transfers of this pool's
+   NFTs. An NFT whose pool cannot be read, such as a burned one, is
+   dropped.
+5. **Pairing.** It pairs the transfers into rebalances, two ways:
+   - an NFT leaving the wallet and another arriving within
+     `rebalancePairingWindowSec` (five minutes as shipped);
+   - each remaining NFT minted to the wallet, with the one minted before
+     it: the way LP Ranger rebalances, draining the old NFT and keeping
+     it.
+6. **Writing.** It merges the new records with the entry's, one per
+   transaction, numbers them in time order, works out the first-mint
+   fields, and writes the entry back with `lastBlock` set to the last
+   block it read. When the blocks read hold no transfer of any of the
+   wallet's NFTs, only `lastBlock` changes; and if the entry has no
+   records either, nothing is written, so the next scan reads those
+   blocks again.
+
+A span the endpoint fails to answer is skipped, so the scan can finish.
+`lastBlock` then stops just before the first span skipped, so the next
+scan reads from there.
+
+Step 5 pairs only the transfers this scan read. A scan that starts after
+`lastBlock` therefore cannot pair the first new mint it reads, since that
+mint's predecessor is in the file rather than among them. Rebalances
+this install makes are unaffected, because each adds its record itself
+([When a File Changes](#when-a-file-changes)). A rebalance made by
+another install, or by hand, gets no record when it is that first new
+mint, until the pool's history is read again from the floor. The roadmap
+tracks this as
+[Avoid Edge-Case, Temporary Lag in Rebalance Data](roadmap/nice-to-haves/project_rebalance_data_lag.md).
+
+### When a File Changes
+
+- **A successful rebalance adds its record** (`appendToPoolCache`,
+  `src/pool-scanner.js`, called from `src/bot-loop.js`). It holds the
+  pool's lock while it writes, so a scan under way cannot overwrite the
+  record. It leaves `lastBlock` alone, so the scan the bot starts next
+  reads the blocks up to the mint, keeping one record per transaction.
+- **Each write renews the entry.** An entry not written for
+  `eventCacheTtlMs` (a year as shipped) lapses, and the next scan reads
+  the pool's history again from the floor.
+- **Clearing a file** makes the next scan read the pool's history again
+  from the floor too. Reload Current Position empties the position's
+  file (`clearPoolCache`, called from `src/server-reload-position.js`);
+  `node util/cache/clean-pool-cache.js` deletes one pool's files, for
+  every wallet ([Cache Utilities](#cache-utilities)); and
+  `npm run clear-blockchain-scan-cache` deletes every scan cache.
+
+Apart from the file, a finished scan is held in memory and handed to
+any caller asking for the same pool and wallet within `poolScanReuseMs`
+(a minute as shipped).
+
+### What Reads the Files
+
+- **The bot**, for each managed position (`src/bot-recorder.js`), and
+  **the dashboard's view of an unmanaged position**
+  (`src/position-details.js`), both through `scanPoolHistory`.
+- **The bookkeeping report**
+  (`util/bookkeeping/coins-in-transactions-on-wallet`), which reads the
+  files directly to list each rebalance
+  ([`docs/bookkeeping-for-coins-in-transactions.md`](bookkeeping-for-coins-in-transactions.md)).
 
 ---
 

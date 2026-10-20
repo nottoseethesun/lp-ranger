@@ -8,9 +8,10 @@
  * `app-data/` records describes:
  *
  * - every rebalance from the event caches in `scan-cache/`, each of which
- *   holds every mint in one pool's chain of NFTs with the NFT it
- *   replaced, and from `rebalance_log.json`, which adds the transactions
- *   and the coins' decimals for the rebalances this install made;
+ *   holds the mints recorded in one pool's chain of NFTs, each with the
+ *   NFT it replaced, and from `rebalance_log.json`, which adds the
+ *   transactions and the coins' decimals for the rebalances this install
+ *   made;
  * - every compound from each position's `compoundHistory` in
  *   `position-records.json`, one entry per deposit into an NFT after its
  *   mint;
