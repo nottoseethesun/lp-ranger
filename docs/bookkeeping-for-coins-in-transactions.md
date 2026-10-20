@@ -16,9 +16,10 @@ transaction's receipt that holds the amounts.
 LP Ranger records many of these amounts, and many transactions' hashes,
 in its `app-data/` folder. The guide explains what each file there
 holds, so that many figures need no rpc call. It then shows how to read
-the rest from the chain with few calls, and ends with step-by-step
+the rest from the chain with few calls, and gives step-by-step
 procedures for a rebalance, a compound, a failed attempt and the owner's
-own transactions.
+own transactions. It ends with a tool that runs those procedures for a
+range of days and writes the result as a csv file.
 
 ## Table of Contents
 
@@ -45,6 +46,9 @@ own transactions.
   - [Recording a Compound](#recording-a-compound)
   - [Recording a Failed Attempt](#recording-a-failed-attempt)
   - [Recording the Owner's Own Transactions](#recording-the-owners-own-transactions)
+- [A Wallet's Report for a Range of Days](#a-wallets-report-for-a-range-of-days)
+  - [What the Report Covers](#what-the-report-covers)
+  - [The Columns](#the-columns)
 
 ## Positions, Coins and Gas
 
@@ -357,18 +361,22 @@ record. In the receipt, keep:
 - the coins' `Transfer` events from or to the wallet.
 
 LP Ranger's `util/bookkeeping/coins-in-transaction.js` makes that call
-and prints both, with the gas. Run it from the LP Ranger folder:
+and prints what it found as a json object. Run it from the LP Ranger
+folder:
 
 ```sh
 node util/bookkeeping/coins-in-transaction.js <transaction hash> --wallet <wallet address>
 ```
 
-It asks the chain's first endpoint in `chains.json`, unless
-`--rpc-endpoint <url>` names another; `--help` lists every option. For a
-drain, it also prints the fees: the `Collect` amounts less the
-`DecreaseLiquidity` ones. It prints the gas in PLS and every coin amount
-raw, so divide each coin amount by 10 to the power of its coin's
-decimals. It only reads, so it is safe to run while LP Ranger runs.
+The object names the transaction's `kind`: `drain`, `swap`, `approval`,
+`mint`, `collect`, `deposit`, `cancel` or `reverted`, among others. It
+holds the position manager's events, the wallet's coin `transfers` and
+`approvals`, and the gas paid. For a drain, its `fees` are the `Collect`
+amounts less the `DecreaseLiquidity` ones. Every amount, the gas
+included, is raw: divide it by 10 to the power of its coin's decimals,
+18 for PLS. The tool asks the chain's first endpoint in `chains.json`,
+unless `--rpc-endpoint <url>` names another, and `--help` lists every
+option. It only reads, so it is safe to run while LP Ranger runs.
 
 ### Finding the Transactions the Files Do Not Name
 
@@ -447,6 +455,9 @@ the third the receiver.
 Wherever a step reads a receipt,
 `util/bookkeeping/coins-in-transaction.js` prints what the step needs
 from it ([One Receipt per Known Transaction](#one-receipt-per-known-transaction)).
+To run these steps for every rebalance and compound in a range of days
+at once, see
+[A Wallet's Report for a Range of Days](#a-wallets-report-for-a-range-of-days).
 
 ### Recording a Rebalance
 
@@ -540,3 +551,68 @@ them:
 
 If such a transaction paid or received PLS, see
 [Paying or Receiving PLS](#paying-or-receiving-pls).
+
+## A Wallet's Report for a Range of Days
+
+`util/bookkeeping/coins-in-transactions-on-wallet` runs the procedures
+above for every rebalance and compound of a wallet in a range of days.
+It writes the result as a csv file, one row per transaction. Run it from
+the LP Ranger folder:
+
+```sh
+node util/bookkeeping/coins-in-transactions-on-wallet --wallet <wallet address> --start-date 2026-10-01 --end-date 2026-10-31 --time-zone America/Chicago
+```
+
+The dates are whole days in the time zone named, and the end date is
+included. `--time-zone` takes an IANA name, such as `America/Chicago` or
+`UTC`; without one, the tool stops and names the computer's own zone.
+The file goes to `app-data/util/bookkeeping/`, named for the wallet, the
+dates and the time zone, and the tool's last line says where. It asks
+the endpoint at LP Ranger's own pace, so a day with eight rebalances and
+compounds takes about 40 seconds.
+
+### What the Report Covers
+
+The report starts from what `app-data/` records: the rebalances in the
+event caches and the rebalance log, and the compounds in the position
+records. It therefore covers the positions this install of LP Ranger
+has records for. For each rebalance or compound, it finds the first
+transaction by [Searching by NFT](#searching-by-nft): a rebalance's
+drain, or a compound's collect. It then lists everything the wallet
+sent from that block to the last, by
+[Searching by Wallet](#searching-by-wallet), so approvals, cancels and
+reverted tries are in it too. A transaction in those blocks that names
+another NFT, or moves or approves another pool's coins, belongs to
+another position and is left out. A deposit with no collect before it
+is coins the owner added, and is reported as a deposit.
+
+A rebalance or compound belongs to the range its last transaction falls
+in: the mint or the deposit. The report lists every transaction of it,
+so a rebalance that began late on the day before the range lists its
+first transactions too, with their own dates. Reports of back-to-back
+ranges therefore never share a transaction, and none falls between
+them.
+
+A failed compound's collect, with no deposit after it, is in no report.
+Its gas is in `failedMoveGas` ([The Position Records](#the-position-records)).
+
+### The Columns
+
+Amounts are in coins, divided by each coin's decimals exactly. An empty
+amount means nothing moved.
+
+| Column                                                 | What it holds                                                                                                                       |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `date`, `date_utc`                                     | The block's time, in the time zone named and in UTC                                                                                 |
+| `block`, `transaction`                                 | The block, and the transaction's hash                                                                                               |
+| `move`                                                 | `rebalance`, `compound` or `deposit`                                                                                                |
+| `nfts`                                                 | A rebalance's old and new NFT, or the NFT of a compound or deposit                                                                  |
+| `kind`                                                 | `drain`, `swap`, `approval`, `mint`, `collect`, `deposit`, `cancel` or `reverted`, or for transactions the owner sent, another kind |
+| `status`                                               | `succeeded` or `reverted`                                                                                                           |
+| `token0`, `token0_address`, `token1`, `token1_address` | The pool's two coins: each one's symbol and address                                                                                 |
+| `token0_out`, `token0_in`, `token1_out`, `token1_in`   | The coins that left and entered the wallet                                                                                          |
+| `token0_principal`, `token1_principal`                 | A drain's principal: its `DecreaseLiquidity` amounts                                                                                |
+| `token0_fees`, `token1_fees`                           | A drain's `Collect` less its principal, or a collect's whole `Collect`                                                              |
+| `gas_paid_PLS`                                         | The gas paid, in the chain's own coin, whose name the column carries                                                                |
+| `value_sent_PLS`                                       | PLS sent as the transaction's value, which LP Ranger's own transactions never do                                                    |
+| `other_coins`                                          | The wallet's transfers of coins outside the pool, raw, which LP Ranger's own transactions never make                                |

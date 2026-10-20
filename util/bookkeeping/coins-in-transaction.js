@@ -3,32 +3,36 @@
 /**
  * @file util/bookkeeping/coins-in-transaction.js
  * @description
- * Print what one transaction moved for a wallet, for bookkeeping in
- * coins: the position manager's liquidity events, the wallet's coin
- * transfers out and in, and the gas the transaction paid. It is the
+ * Read what one transaction moved for a wallet, for bookkeeping in coins,
+ * and return it as a json object: what kind of transaction it was, the
+ * position manager's liquidity events, the fees of any drain, the
+ * wallet's coin transfers and approvals, and the gas paid. It is the
  * receipt-reading step of `docs/bookkeeping-for-coins-in-transactions.md`,
- * which explains what each kind of liquidity transaction moves and where
- * LP Ranger's own files already record it.
+ * which explains what each kind of liquidity transaction moves.
  *
- * It asks one rpc endpoint for one thing, the transaction's receipt, and
- * reads two kinds of event from it. The position manager's
+ * `coinsInTransaction` asks a provider for one thing, the transaction's
+ * receipt, and reads its events. The position manager's
  * `IncreaseLiquidity`, `DecreaseLiquidity` and `Collect` events each give
- * both of a position's amounts. When a receipt holds a drain, a
- * `DecreaseLiquidity` and a `Collect` for one NFT, the fees are the
- * `Collect` amounts less the `DecreaseLiquidity` ones, and the tool
- * prints them too. A coin's `Transfer` event gives one movement of that
- * coin, and the tool keeps those from or to the wallet. Every amount
- * prints raw, as the chain records it, to be divided by 10 to the power
- * of its coin's decimals. The gas prints in the chain's own coin.
+ * both of a position's amounts, and its NFT `Transfer` events mark a mint,
+ * from the zero address, and a burn, to it. When a receipt holds a drain,
+ * a `DecreaseLiquidity` and a `Collect` for one NFT, the fees are the
+ * `Collect` amounts less the `DecreaseLiquidity` ones. A coin's `Transfer`
+ * event gives one movement of that coin and its `Approval` event an
+ * allowance; the object keeps those from or to the wallet. Every amount is
+ * a string of the raw digits the chain records, to be divided by 10 to the
+ * power of its coin's decimals. The gas is a raw amount of the chain's own
+ * coin, which has 18 decimals.
  *
- * The chain is an entry of the shipped `chains.json`: the app's default
- * chain, unless `--chain <name>` names another. That entry gives the
- * endpoint asked, its first unless `--rpc-endpoint <url>` names another,
- * and the position manager whose events are read, unless
- * `--position-manager <address>` names another. Like
- * `util/diagnostic/check-rpc-health.js`, whose option parsers it shares,
- * it imports nothing from `src/` and writes nothing, so it is safe to run
- * while LP Ranger runs.
+ * `util/bookkeeping/coins-in-transactions-on-wallet` calls it for every
+ * transaction of a wallet's rebalances and compounds. Run from a shell,
+ * this tool prints the object as json. The chain is an entry of the
+ * shipped `chains.json`: the app's default chain, unless `--chain <name>`
+ * names another. That entry gives the endpoint asked, its first unless
+ * `--rpc-endpoint <url>` names another, and the position manager whose
+ * events are read, unless `--position-manager <address>` names another.
+ * Like `util/diagnostic/check-rpc-health.js`, whose option parsers it
+ * shares, it imports nothing from `src/` and writes nothing, so it is safe
+ * to run while LP Ranger runs.
  *
  * Exit status is 0 when the receipt was read and printed, and 1 when it
  * was not.
@@ -52,17 +56,21 @@ const {
 /**
  * The events read from a receipt: the position manager's three liquidity
  * events, each carrying both of a position's amounts, and a coin's
- * `Transfer`, carrying one movement of one coin.
+ * `Transfer` and `Approval`, each about one coin.
  */
 const EVENTS = new ethers.Interface([
   "event IncreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
   "event DecreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
   "event Collect(uint256 indexed tokenId, address recipient, uint256 amount0, uint256 amount1)",
   "event Transfer(address indexed from, address indexed to, uint256 value)",
+  "event Approval(address indexed owner, address indexed spender, uint256 value)",
 ]);
 
 /** A log's first topic when it is a `Transfer`, whether a coin's or an NFT's. */
 const TRANSFER_TOPIC = EVENTS.getEvent("Transfer").topicHash;
+
+/** A log's first topic when it is an `Approval`, whether a coin's or an NFT's. */
+const APPROVAL_TOPIC = EVENTS.getEvent("Approval").topicHash;
 
 /** The position manager's events this tool reads. */
 const LIQUIDITY_EVENTS = ["IncreaseLiquidity", "DecreaseLiquidity", "Collect"];
@@ -102,10 +110,10 @@ function buildProgram() {
   return new Command()
     .name("coins-in-transaction")
     .description(
-      "Print what one transaction moved for a wallet: the position " +
-        "manager's liquidity events, the wallet's coin transfers out and " +
-        "in, and the gas paid. Reads the transaction's receipt and sends " +
-        "nothing.",
+      "Print, as json, what one transaction moved for a wallet: its " +
+        "kind, the position manager's liquidity events, the wallet's coin " +
+        "transfers and approvals, and the gas paid. Reads the " +
+        "transaction's receipt and sends nothing.",
     )
     .argument("<hash>", "the transaction's hash", parseHash)
     .requiredOption(
@@ -132,7 +140,7 @@ function buildProgram() {
     )
     .addHelpText(
       "after",
-      "\nAmounts print raw: divide each by 10 to the power of its coin's " +
+      "\nAmounts are raw: divide each by 10 to the power of its coin's " +
         "decimals.\nWhat each kind of transaction moves: " +
         "docs/bookkeeping-for-coins-in-transactions.md\n\n" +
         "Exit status: 0 when the receipt was read, 1 when it was not.",
@@ -150,30 +158,57 @@ function sameAddress(a, b) {
 }
 
 /**
+ * The address a 32-byte topic holds.
+ * @param {string} topic  A log topic holding an indexed address.
+ * @returns {string}  The address, EIP-55 checksummed.
+ */
+function topicAddress(topic) {
+  return ethers.getAddress(ethers.dataSlice(topic, 12));
+}
+
+/**
  * Read one of the position manager's logs as a liquidity event.
  *
- * Its `Transfer` logs are skipped first: they move NFTs, not coins, and
- * carry the NFT id as a fourth topic that the coin `Transfer` above
- * cannot decode.
+ * The three liquidity events carry two topics, the event and the NFT id.
+ * Any other log of the position manager's is skipped first: its NFT
+ * `Transfer` and `Approval` carry four topics, which the coin events above
+ * share a first topic with but cannot decode.
  *
  * @param {{topics: string[], data: string}} log  A log of the position manager's.
- * @returns {{name: string, tokenId: bigint, amount0: bigint, amount1: bigint}|null}
+ * @returns {{event: string, nftId: bigint, amount0: bigint, amount1: bigint}|null}
  *   The event, or null when the log is not a liquidity event.
  */
 function liquidityEvent(log) {
-  if (log.topics[0] === TRANSFER_TOPIC) return null;
+  if (log.topics.length !== 2) return null;
   const parsed = EVENTS.parseLog(log);
   if (parsed === null || !LIQUIDITY_EVENTS.includes(parsed.name)) return null;
   const { tokenId, amount0, amount1 } = parsed.args;
-  return { name: parsed.name, tokenId, amount0, amount1 };
+  return { event: parsed.name, nftId: tokenId, amount0, amount1 };
+}
+
+/**
+ * Read one of the position manager's logs as an NFT changing hands. A
+ * mint comes from the zero address and a burn goes to it.
+ *
+ * @param {{topics: string[]}} log  A log of the position manager's.
+ * @returns {{nftId: bigint, from: string, to: string}|null}
+ *   The transfer, or null when the log is not an NFT's `Transfer`.
+ */
+function nftTransfer(log) {
+  if (log.topics[0] !== TRANSFER_TOPIC || log.topics.length !== 4) return null;
+  return {
+    nftId: BigInt(log.topics[3]),
+    from: topicAddress(log.topics[1]),
+    to: topicAddress(log.topics[2]),
+  };
 }
 
 /**
  * Read a log as one of the wallet's coin transfers.
  *
  * A coin's `Transfer` has three topics. One with four is an NFT changing
- * hands, which moves no coin. A transfer from the wallet to itself
- * changes nothing, so it is left out too.
+ * hands, which moves no coin. A transfer from the wallet to itself changes
+ * nothing, so it is left out too.
  *
  * @param {{address: string, topics: string[], data: string}} log  Any log.
  * @param {string} wallet  The wallet's address.
@@ -192,6 +227,25 @@ function walletTransfer(log, wallet) {
     direction: out ? "out" : "in",
     amount: value,
   };
+}
+
+/**
+ * Read a log as an allowance the wallet gave a contract over one coin.
+ *
+ * Some coins emit an `Approval` whenever a contract spends the allowance,
+ * so a swap, mint or deposit can carry one too; only a transaction with
+ * nothing but approvals is an approval transaction (see `walletKind`).
+ *
+ * @param {{address: string, topics: string[], data: string}} log  Any log.
+ * @param {string} wallet  The wallet's address.
+ * @returns {{coin: string, spender: string, amount: bigint}|null}
+ *   The allowance, or null when the log is not one of the wallet's.
+ */
+function walletApproval(log, wallet) {
+  if (log.topics[0] !== APPROVAL_TOPIC || log.topics.length !== 3) return null;
+  const { owner, spender, value } = EVENTS.parseLog(log).args;
+  if (!sameAddress(owner, wallet)) return null;
+  return { coin: ethers.getAddress(log.address), spender, amount: value };
 }
 
 /**
@@ -216,124 +270,156 @@ function addAmounts(sum, event) {
  * `Collect` amounts less the `DecreaseLiquidity` ones. These are the fees
  * the NFT earned since it last collected.
  *
- * @param {Array<{name: string, tokenId: bigint, amount0: bigint, amount1: bigint}>} liquidity
+ * @param {Array<{event: string, nftId: bigint, amount0: bigint, amount1: bigint}>} liquidity
  *   The receipt's liquidity events.
- * @returns {Array<{tokenId: string, fee0: bigint, fee1: bigint}>}
+ * @returns {Array<{nftId: bigint, amount0: bigint, amount1: bigint}>}
  */
 function drainFees(liquidity) {
   const byNft = new Map();
-  for (const event of liquidity) {
-    const tokenId = String(event.tokenId);
-    const sums = byNft.get(tokenId) ?? { decrease: null, collect: null };
-    if (event.name === "DecreaseLiquidity")
-      sums.decrease = addAmounts(sums.decrease, event);
-    if (event.name === "Collect")
-      sums.collect = addAmounts(sums.collect, event);
-    byNft.set(tokenId, sums);
+  for (const e of liquidity) {
+    const sums = byNft.get(e.nftId) ?? { decrease: null, collect: null };
+    if (e.event === "DecreaseLiquidity")
+      sums.decrease = addAmounts(sums.decrease, e);
+    if (e.event === "Collect") sums.collect = addAmounts(sums.collect, e);
+    byNft.set(e.nftId, sums);
   }
   const fees = [];
-  for (const [tokenId, { decrease, collect }] of byNft) {
+  for (const [nftId, { decrease, collect }] of byNft) {
     if (decrease === null || collect === null) continue;
     fees.push({
-      tokenId,
-      fee0: collect.amount0 - decrease.amount0,
-      fee1: collect.amount1 - decrease.amount1,
+      nftId,
+      amount0: collect.amount0 - decrease.amount0,
+      amount1: collect.amount1 - decrease.amount1,
     });
   }
   return fees;
 }
 
 /**
- * Read the parts of a bookkeeping record from a receipt: what it says
- * the position manager did, which coins left and entered the wallet, and
- * the gas paid.
+ * The kind of a transaction that called the position manager, from its
+ * liquidity events and NFT transfers.
+ *
+ * @param {Array<{event: string}>} liquidity  Its liquidity events.
+ * @param {Array<{from: string, to: string}>} nfts  Its NFT transfers.
+ * @returns {string|null}  "drain", "mint", "deposit", "collect",
+ *   "decrease" or "burn", or null when the position manager did nothing.
+ */
+function liquidityKind(liquidity, nfts) {
+  const has = (name) => liquidity.some((e) => e.event === name);
+  if (has("DecreaseLiquidity") && has("Collect")) return "drain";
+  if (has("IncreaseLiquidity")) {
+    const minted = nfts.some((t) => t.from === ethers.ZeroAddress);
+    return minted ? "mint" : "deposit";
+  }
+  if (has("Collect")) return "collect";
+  if (has("DecreaseLiquidity")) return "decrease";
+  if (nfts.some((t) => t.to === ethers.ZeroAddress)) return "burn";
+  return null;
+}
+
+/**
+ * The kind of a transaction the position manager took no part in, from
+ * what it did to the wallet.
+ *
+ * @param {{from: string, to: string|null, transfers: object[], approvals: object[]}} parts
+ * @returns {string}  "cancel" (sent from the wallet to itself), "swap"
+ *   (one coin out, another in), "transfer out", "transfer in",
+ *   "approval" or "other".
+ */
+function walletKind({ from, to, transfers, approvals }) {
+  if (to !== null && sameAddress(from, to)) return "cancel";
+  const out = transfers.some((t) => t.direction === "out");
+  const into = transfers.some((t) => t.direction === "in");
+  if (out && into) return "swap";
+  if (out) return "transfer out";
+  if (into) return "transfer in";
+  if (approvals.length > 0) return "approval";
+  return "other";
+}
+
+/**
+ * Turn an object's bigint values into strings of their digits, so that
+ * json can carry them exactly.
+ * @param {object} item  An object whose values are bigints or strings.
+ * @returns {object}
+ */
+function digits(item) {
+  const out = {};
+  for (const [key, value] of Object.entries(item)) {
+    out[key] = typeof value === "bigint" ? String(value) : value;
+  }
+  return out;
+}
+
+/**
+ * Read a receipt into the json object this tool returns.
  *
  * @param {object} receipt  An ethers transaction receipt.
  * @param {{wallet: string, positionManager: string}} who
  *   The wallet's and the position manager's addresses.
- * @returns {{status: number, blockNumber: number, to: string|null,
- *   gasPaid: bigint, liquidity: object[], transfers: object[],
- *   fees: object[]}}
+ * @returns {object}  The transaction's record, every amount a string.
  */
 function readReceipt(receipt, { wallet, positionManager }) {
   const liquidity = [];
+  const nfts = [];
   const transfers = [];
+  const approvals = [];
   for (const log of receipt.logs) {
     if (sameAddress(log.address, positionManager)) {
       const event = liquidityEvent(log);
       if (event !== null) liquidity.push(event);
-    } else {
-      const transfer = walletTransfer(log, wallet);
-      if (transfer !== null) transfers.push(transfer);
+      const nft = nftTransfer(log);
+      if (nft !== null) nfts.push(nft);
+      continue;
     }
+    const transfer = walletTransfer(log, wallet);
+    if (transfer !== null) transfers.push(transfer);
+    const approval = walletApproval(log, wallet);
+    if (approval !== null) approvals.push(approval);
   }
+  const reverted = receipt.status !== 1;
+  const kind = reverted
+    ? "reverted"
+    : (liquidityKind(liquidity, nfts) ??
+      walletKind({ from: receipt.from, to: receipt.to, transfers, approvals }));
   return {
-    status: receipt.status,
+    hash: receipt.hash,
     blockNumber: receipt.blockNumber,
+    from: receipt.from,
     to: receipt.to,
+    status: reverted ? "reverted" : "succeeded",
+    kind,
     /*-
      *  ethers names the receipt's effectiveGasPrice `gasPrice`: the price
      *  this transaction paid for each unit of gas.
      */
-    gasPaid: receipt.gasUsed * receipt.gasPrice,
-    liquidity,
-    transfers,
-    fees: drainFees(liquidity),
+    gasPaid: String(receipt.gasUsed * receipt.gasPrice),
+    liquidity: liquidity.map(digits),
+    nftTransfers: nfts.map(digits),
+    fees: drainFees(liquidity).map(digits),
+    transfers: transfers.map(digits),
+    approvals: approvals.map(digits),
   };
 }
 
 /**
- * Print a record, raw amounts and all.
+ * Read one transaction's record: ask the provider for its receipt, and
+ * read that.
  *
- * A reverted transaction moved nothing, so only its gas is printed. Any
- * other prints the position manager's events, the fees of any drain, and
- * the wallet's coin transfers, saying "none" where a list is empty so
- * that an empty list is never mistaken for a missing one.
- *
- * @param {ReturnType<typeof readReceipt>} record  What `readReceipt` read.
- * @param {{hash: string, chainName: string, nativeSymbol: string}} where
- *   The transaction's hash, its chain, and that chain's own coin.
+ * @param {{getTransactionReceipt: Function}} provider  Where to ask.
+ * @param {{hash: string, wallet: string, positionManager: string}} what
+ *   The transaction, and the wallet and position manager to read it for.
+ * @returns {Promise<object|null>}  The record, or null when the endpoint
+ *   has no receipt: a transaction not yet mined, or on another chain.
  */
-function report(record, { hash, chainName, nativeSymbol }) {
-  console.log(
-    `Transaction ${hash} on ${chainName}, block ${record.blockNumber}, ` +
-      `sent to ${record.to}`,
-  );
-  console.log(
-    `Gas paid: ${ethers.formatEther(record.gasPaid)} ${nativeSymbol}`,
-  );
-  if (record.status !== 1) {
-    console.log("Status: reverted. It moved no coins and paid only its gas.");
-    return;
-  }
-  console.log("Status: succeeded");
-  console.log("");
-  console.log("The position manager's events (raw amounts):");
-  if (record.liquidity.length === 0) console.log("  none");
-  for (const e of record.liquidity) {
-    console.log(
-      `  ${e.name} NFT #${e.tokenId}: amount0 ${e.amount0}, amount1 ${e.amount1}`,
-    );
-  }
-  for (const f of record.fees) {
-    console.log(
-      `  Fees in NFT #${f.tokenId}'s Collect: amount0 ${f.fee0}, amount1 ${f.fee1}`,
-    );
-  }
-  console.log("");
-  console.log("The wallet's coin transfers (raw amounts):");
-  if (record.transfers.length === 0) console.log("  none");
-  for (const t of record.transfers) {
-    console.log(`  ${t.direction}: ${t.amount} of coin ${t.coin}`);
-  }
-  console.log("");
-  console.log(
-    "Divide each raw amount by 10 to the power of its coin's decimals.",
-  );
+async function coinsInTransaction(provider, { hash, wallet, positionManager }) {
+  const receipt = await provider.getTransactionReceipt(hash);
+  if (receipt === null) return null;
+  return readReceipt(receipt, { wallet, positionManager });
 }
 
 /**
- * Make the provider the receipt is asked of: one endpoint, told its chain
+ * Make the provider receipts are asked of: one endpoint, told its chain
  * up front, so that no request goes to asking the endpoint which chain it
  * serves.
  *
@@ -349,8 +435,21 @@ function makeProvider(endpoint, chainId) {
 }
 
 /**
- * Parse the arguments, read the receipt, print it, and set the exit
- * status.
+ * The position manager a run reads: the one `--position-manager` names,
+ * else the chain's in chains.json, which may be empty.
+ * @param {{positionManager?: string}} opts  The parsed options.
+ * @param {object} chain  The chain's chains.json entry.
+ * @returns {string}  An address, or "" when chains.json names none.
+ */
+function positionManagerOf(opts, chain) {
+  return opts.positionManager === undefined
+    ? chain.contracts.positionManager.address
+    : opts.positionManager;
+}
+
+/**
+ * Parse the arguments, read the receipt, print its record as json, and
+ * set the exit status.
  *
  * @param {string[]} [argv]  Arguments after the node/script pair.
  * @param {{makeProvider?: Function}} [deps]  How to make the provider;
@@ -368,10 +467,7 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   const [hash] = program.processedArgs;
   const opts = program.opts();
   const chain = CHAINS[opts.chain];
-  const positionManager =
-    opts.positionManager === undefined
-      ? chain.contracts.positionManager.address
-      : opts.positionManager;
+  const positionManager = positionManagerOf(opts, chain);
   if (positionManager === "") {
     console.error(
       `chains.json names no position manager for ${opts.chain}: ` +
@@ -387,8 +483,12 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   const make =
     deps.makeProvider === undefined ? makeProvider : deps.makeProvider;
   const provider = make(endpoint, chain.chainId);
-  const receipt = await provider.getTransactionReceipt(hash);
-  if (receipt === null) {
+  const record = await coinsInTransaction(provider, {
+    hash,
+    wallet: opts.wallet,
+    positionManager,
+  });
+  if (record === null) {
     console.error(
       `No receipt for ${hash} at ${endpoint}: it is not mined yet, ` +
         `or not on ${opts.chain}.`,
@@ -396,18 +496,14 @@ async function main(argv = process.argv.slice(2), deps = {}) {
     process.exitCode = 1;
     return;
   }
-  const record = readReceipt(receipt, { wallet: opts.wallet, positionManager });
-  report(record, {
-    hash,
-    chainName: opts.chain,
-    nativeSymbol: chain.nativeCurrencySymbol,
-  });
+  console.log(JSON.stringify(record, null, 2));
   process.exitCode = 0;
 }
 
 /*-
- *  Gated so requiring this file from a test does not ask an endpoint for
- *  a receipt, the same arrangement every tool under util/ uses.
+ *  Gated so requiring this file from a test, or from the wallet report
+ *  that calls coinsInTransaction, does not ask an endpoint for a receipt,
+ *  the same arrangement every tool under util/ uses.
  */
 if (require.main === module) {
   main().catch((error) => {
@@ -421,11 +517,17 @@ module.exports = {
   parseHash,
   parseAddress,
   buildProgram,
+  sameAddress,
   liquidityEvent,
+  nftTransfer,
   walletTransfer,
+  walletApproval,
   drainFees,
+  liquidityKind,
+  walletKind,
   readReceipt,
-  report,
+  coinsInTransaction,
   makeProvider,
+  positionManagerOf,
   main,
 };

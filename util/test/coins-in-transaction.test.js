@@ -4,15 +4,15 @@
  * @file util/test/coins-in-transaction.test.js
  * @description
  * Tests for `util/bookkeeping/coins-in-transaction.js`, the tool that
- * prints what one transaction moved for a wallet: the position manager's
- * liquidity events, the fees of any drain, the wallet's coin transfers
- * and the gas paid.
+ * reads what one transaction moved for a wallet and returns it as a json
+ * object: its kind, the position manager's liquidity events and NFT
+ * transfers, the fees of any drain, the wallet's coin transfers and
+ * approvals, and the gas paid.
  *
  * The receipts here are built from the same event declarations the tool
- * decodes, so every log is one a real receipt could hold: a drain's
- * `DecreaseLiquidity` and `Collect`, a mint's NFT `Transfer`, coin
- * `Transfer`s between the wallet and a pool. `main` is handed a provider
- * that answers from those receipts, so no test reaches the network.
+ * decodes, so every log is one a real receipt could hold. `main` and
+ * `coinsInTransaction` are handed a provider that answers from those
+ * receipts, so no test reaches the network.
  */
 
 const { test } = require("node:test");
@@ -21,18 +21,26 @@ const { ethers } = require("ethers");
 const { InvalidArgumentError } = require("commander");
 
 const { captureConsole } = require("./_capture");
+const {
+  eventLog,
+  nftLog: nftEvent,
+  receiptOf: receipt,
+} = require("./_bookkeeping-chain");
 const CHAINS = require("../../app-config/app-defaults-for-user-configurable/chains.json");
 const APP_RUNTIME = require("../../app-config/app-defaults-for-user-configurable/app-runtime.json");
 const {
-  EVENTS,
   parseHash,
   parseAddress,
   buildProgram,
   liquidityEvent,
+  nftTransfer,
   walletTransfer,
+  walletApproval,
   drainFees,
+  liquidityKind,
+  walletKind,
   readReceipt,
-  report,
+  coinsInTransaction,
   makeProvider,
   main,
 } = require("../bookkeeping/coins-in-transaction");
@@ -45,68 +53,23 @@ const COIN0 = "0x3333333333333333333333333333333333333333";
 const COIN1 = "0x4444444444444444444444444444444444444444";
 const OTHER = "0x5555555555555555555555555555555555555555";
 const HASH = "0x" + "ab".repeat(32);
+const ZERO = ethers.ZeroAddress;
 
 /* ---------- building receipts ---------- */
 
-/**
- * A log of one of the events the tool reads, as a receipt holds it.
- * @param {string} address  The contract that emitted it.
- * @param {string} name     The event's name in `EVENTS`.
- * @param {Array} values    The event's values, in order.
- * @returns {{address: string, topics: string[], data: string}}
- */
-function eventLog(address, name, values) {
-  const { topics, data } = EVENTS.encodeEventLog(name, values);
-  return { address, topics, data };
-}
+/** One of the position manager's NFT events (see `_bookkeeping-chain`). */
+const nftLog = (from, to, tokenId, name) =>
+  nftEvent(PM, from, to, tokenId, name);
 
 /**
- * A 32-byte topic holding an address or a number.
- * @param {string|bigint} value
- * @returns {string}
- */
-function topic(value) {
-  const hex = typeof value === "bigint" ? ethers.toBeHex(value) : value;
-  return ethers.zeroPadValue(hex, 32);
-}
-
-/**
- * The position manager's NFT `Transfer`: four topics, no data.
- * @param {string} from
- * @param {string} to
- * @param {bigint} tokenId
- * @returns {{address: string, topics: string[], data: string}}
- */
-function nftTransfer(from, to, tokenId) {
-  return {
-    address: PM,
-    topics: [
-      EVENTS.getEvent("Transfer").topicHash,
-      topic(from),
-      topic(to),
-      topic(tokenId),
-    ],
-    data: "0x",
-  };
-}
-
-/**
- * A receipt as ethers returns one, holding `logs`.
+ * A receipt sent from the wallet to the position manager, unless `fields`
+ * says otherwise.
  * @param {object[]} logs
- * @param {object} [fields]  Fields to set instead of the defaults.
+ * @param {object} [fields]
  * @returns {object}
  */
-function receiptOf(logs, fields = {}) {
-  return {
-    status: 1,
-    blockNumber: 1234,
-    to: PM,
-    gasUsed: 200000n,
-    gasPrice: 5000000000000000n,
-    logs,
-    ...fields,
-  };
-}
+const receiptOf = (logs, fields = {}) =>
+  receipt(logs, { hash: HASH, from: WALLET, to: PM, ...fields });
 
 /** A drain of NFT #7: principal 100 and 0, collected 103 and 9. */
 const DRAIN = receiptOf([
@@ -114,6 +77,15 @@ const DRAIN = receiptOf([
   eventLog(COIN0, "Transfer", [POOL, WALLET, 103n]),
   eventLog(COIN1, "Transfer", [POOL, WALLET, 9n]),
   eventLog(PM, "Collect", [7n, WALLET, 103n, 9n]),
+]);
+
+/** A mint of NFT #8, whose first coin spends its allowance as it moves. */
+const MINT = receiptOf([
+  eventLog(COIN0, "Approval", [WALLET, PM, 5n]),
+  eventLog(COIN0, "Transfer", [WALLET, POOL, 20n]),
+  eventLog(COIN1, "Transfer", [WALLET, POOL, 30n]),
+  nftLog(ZERO, WALLET, 8n),
+  eventLog(PM, "IncreaseLiquidity", [8n, 1n, 20n, 30n]),
 ]);
 
 /* ---------- arguments ---------- */
@@ -167,39 +139,40 @@ test("the command line refuses a missing wallet or a bad value", () => {
   }
 });
 
-/* ---------- reading a receipt ---------- */
+/* ---------- reading logs ---------- */
 
 test("liquidityEvent reads the position manager's three events", () => {
   for (const name of ["IncreaseLiquidity", "DecreaseLiquidity"]) {
     assert.deepEqual(liquidityEvent(eventLog(PM, name, [3n, 1n, 4n, 5n])), {
-      name,
-      tokenId: 3n,
+      event: name,
+      nftId: 3n,
       amount0: 4n,
       amount1: 5n,
     });
   }
   assert.deepEqual(
     liquidityEvent(eventLog(PM, "Collect", [3n, WALLET, 6n, 7n])),
-    { name: "Collect", tokenId: 3n, amount0: 6n, amount1: 7n },
+    { event: "Collect", nftId: 3n, amount0: 6n, amount1: 7n },
   );
 });
 
-test("liquidityEvent skips the NFT's Transfer and events it does not read", () => {
+test("liquidityEvent skips NFT transfers and NFT approvals", () => {
+  assert.equal(liquidityEvent(nftLog(ZERO, WALLET, 3n)), null);
+  assert.equal(liquidityEvent(nftLog(WALLET, OTHER, 3n, "Approval")), null);
+});
+
+test("nftTransfer reads a mint and a burn, and nothing else", () => {
+  assert.deepEqual(nftTransfer(nftLog(ZERO, WALLET, 9n)), {
+    nftId: 9n,
+    from: ZERO,
+    to: WALLET,
+  });
+  assert.equal(nftTransfer(nftLog(WALLET, ZERO, 9n)).to, ZERO);
+  assert.equal(nftTransfer(nftLog(WALLET, OTHER, 9n, "Approval")), null);
   assert.equal(
-    liquidityEvent(nftTransfer(ethers.ZeroAddress, WALLET, 3n)),
+    nftTransfer(eventLog(COIN0, "Transfer", [WALLET, POOL, 1n])),
     null,
   );
-  const approval = {
-    address: PM,
-    topics: [
-      ethers.id("Approval(address,address,uint256)"),
-      topic(WALLET),
-      topic(OTHER),
-      topic(3n),
-    ],
-    data: "0x",
-  };
-  assert.equal(liquidityEvent(approval), null);
 });
 
 test("walletTransfer keeps the coins the wallet sent and received", () => {
@@ -220,119 +193,179 @@ test("walletTransfer skips others' transfers, the wallet's to itself, and NFTs",
   const skipped = [
     eventLog(COIN0, "Transfer", [POOL, OTHER, 13n]),
     eventLog(COIN0, "Transfer", [WALLET, WALLET, 14n]),
-    nftTransfer(ethers.ZeroAddress, WALLET, 3n),
+    nftLog(ZERO, WALLET, 3n),
     eventLog(PM, "IncreaseLiquidity", [3n, 1n, 4n, 5n]),
   ];
   for (const log of skipped) assert.equal(walletTransfer(log, WALLET), null);
 });
 
+test("walletApproval keeps the wallet's own allowances, and nothing else", () => {
+  assert.deepEqual(
+    walletApproval(eventLog(COIN0, "Approval", [WALLET, OTHER, 15n]), WALLET),
+    { coin: COIN0, spender: OTHER, amount: 15n },
+  );
+  const skipped = [
+    eventLog(COIN0, "Approval", [OTHER, WALLET, 16n]),
+    nftLog(WALLET, OTHER, 3n, "Approval"),
+    eventLog(COIN0, "Transfer", [WALLET, OTHER, 17n]),
+  ];
+  for (const log of skipped) assert.equal(walletApproval(log, WALLET), null);
+});
+
+/* ---------- fees and kinds ---------- */
+
 test("drainFees is the Collect less the DecreaseLiquidity, NFT by NFT", () => {
   const fees = drainFees([
-    { name: "DecreaseLiquidity", tokenId: 7n, amount0: 100n, amount1: 0n },
-    { name: "Collect", tokenId: 7n, amount0: 103n, amount1: 9n },
-    { name: "Collect", tokenId: 8n, amount0: 1n, amount1: 2n },
-    { name: "IncreaseLiquidity", tokenId: 9n, amount0: 5n, amount1: 5n },
+    { event: "DecreaseLiquidity", nftId: 7n, amount0: 60n, amount1: 0n },
+    { event: "DecreaseLiquidity", nftId: 7n, amount0: 40n, amount1: 0n },
+    { event: "Collect", nftId: 7n, amount0: 103n, amount1: 9n },
+    { event: "Collect", nftId: 8n, amount0: 1n, amount1: 2n },
+    { event: "IncreaseLiquidity", nftId: 9n, amount0: 5n, amount1: 5n },
   ]);
-  assert.deepEqual(fees, [{ tokenId: "7", fee0: 3n, fee1: 9n }]);
+  assert.deepEqual(fees, [{ nftId: 7n, amount0: 3n, amount1: 9n }]);
 });
 
-test("drainFees adds up an NFT's events when a receipt holds several", () => {
-  const fees = drainFees([
-    { name: "DecreaseLiquidity", tokenId: 7n, amount0: 60n, amount1: 1n },
-    { name: "DecreaseLiquidity", tokenId: 7n, amount0: 40n, amount1: 1n },
-    { name: "Collect", tokenId: 7n, amount0: 50n, amount1: 4n },
-    { name: "Collect", tokenId: 7n, amount0: 53n, amount1: 5n },
-  ]);
-  assert.deepEqual(fees, [{ tokenId: "7", fee0: 3n, fee1: 7n }]);
+test("liquidityKind names what the position manager did", () => {
+  const e = (event) => ({ event });
+  const minted = [{ from: ZERO, to: WALLET }];
+  const burned = [{ from: WALLET, to: ZERO }];
+  const cases = [
+    [[e("DecreaseLiquidity"), e("Collect")], [], "drain"],
+    [[e("DecreaseLiquidity"), e("Collect")], burned, "drain"],
+    [[e("IncreaseLiquidity")], minted, "mint"],
+    [[e("IncreaseLiquidity")], [], "deposit"],
+    [[e("Collect")], [], "collect"],
+    [[e("DecreaseLiquidity")], [], "decrease"],
+    [[], burned, "burn"],
+    [[], [], null],
+  ];
+  for (const [liquidity, nfts, kind] of cases)
+    assert.equal(liquidityKind(liquidity, nfts), kind);
 });
 
-test("readReceipt reads a drain: its events, its fees, its coins and its gas", () => {
+test("walletKind names what any other transaction did to the wallet", () => {
+  const out = { direction: "out" };
+  const into = { direction: "in" };
+  const base = { from: WALLET, to: OTHER, transfers: [], approvals: [] };
+  const cases = [
+    [{ ...base, to: WALLET.toLowerCase() }, "cancel"],
+    [{ ...base, transfers: [out, into] }, "swap"],
+    [{ ...base, transfers: [out] }, "transfer out"],
+    [{ ...base, transfers: [into] }, "transfer in"],
+    [{ ...base, approvals: [{}] }, "approval"],
+    [base, "other"],
+    [{ ...base, to: null }, "other"],
+  ];
+  for (const [parts, kind] of cases) assert.equal(walletKind(parts), kind);
+});
+
+/* ---------- the record ---------- */
+
+test("readReceipt reads a drain as json: strings throughout, fees and all", () => {
   const record = readReceipt(DRAIN, {
     wallet: WALLET,
     positionManager: PM.toLowerCase(),
   });
-  assert.equal(record.status, 1);
-  assert.equal(record.blockNumber, 1234);
-  assert.equal(record.to, PM);
-  assert.equal(record.gasPaid, 200000n * 5000000000000000n);
-  assert.deepEqual(
-    record.liquidity.map((e) => e.name),
-    ["DecreaseLiquidity", "Collect"],
-  );
-  assert.deepEqual(record.fees, [{ tokenId: "7", fee0: 3n, fee1: 9n }]);
-  assert.deepEqual(record.transfers, [
-    { coin: COIN0, direction: "in", amount: 103n },
-    { coin: COIN1, direction: "in", amount: 9n },
-  ]);
+  assert.deepEqual(record, {
+    hash: HASH,
+    blockNumber: 1234,
+    from: WALLET,
+    to: PM,
+    status: "succeeded",
+    kind: "drain",
+    gasPaid: "1000000000000000000000",
+    liquidity: [
+      {
+        event: "DecreaseLiquidity",
+        nftId: "7",
+        amount0: "100",
+        amount1: "0",
+      },
+      { event: "Collect", nftId: "7", amount0: "103", amount1: "9" },
+    ],
+    nftTransfers: [],
+    fees: [{ nftId: "7", amount0: "3", amount1: "9" }],
+    transfers: [
+      { coin: COIN0, direction: "in", amount: "103" },
+      { coin: COIN1, direction: "in", amount: "9" },
+    ],
+    approvals: [],
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(record)), record);
 });
 
-test("readReceipt reads liquidity events only from the position manager", () => {
-  const record = readReceipt(
-    receiptOf([
-      nftTransfer(ethers.ZeroAddress, WALLET, 8n),
-      eventLog(PM, "IncreaseLiquidity", [8n, 1n, 20n, 30n]),
-      eventLog(OTHER, "IncreaseLiquidity", [8n, 1n, 99n, 99n]),
-      eventLog(COIN0, "Transfer", [WALLET, POOL, 20n]),
-      eventLog(COIN1, "Transfer", [WALLET, POOL, 30n]),
-    ]),
-    { wallet: WALLET, positionManager: PM },
-  );
-  assert.deepEqual(record.liquidity, [
-    { name: "IncreaseLiquidity", tokenId: 8n, amount0: 20n, amount1: 30n },
+test("readReceipt reads a mint, whose allowance spend leaves it a mint", () => {
+  const record = readReceipt(MINT, { wallet: WALLET, positionManager: PM });
+  assert.equal(record.kind, "mint");
+  assert.deepEqual(record.nftTransfers, [
+    { nftId: "8", from: ZERO, to: WALLET },
   ]);
-  assert.deepEqual(record.fees, []);
+  assert.deepEqual(record.approvals, [
+    { coin: COIN0, spender: PM, amount: "5" },
+  ]);
   assert.deepEqual(
     record.transfers.map((t) => [t.coin, t.direction, t.amount]),
     [
-      [COIN0, "out", 20n],
-      [COIN1, "out", 30n],
+      [COIN0, "out", "20"],
+      [COIN1, "out", "30"],
     ],
   );
 });
 
-/* ---------- printing ---------- */
-
-const WHERE = { hash: HASH, chainName: CHAIN, nativeSymbol: "PLS" };
-
-test("report prints a drain: events, fees, coins, and the gas in the chain's coin", async () => {
-  const record = readReceipt(DRAIN, { wallet: WALLET, positionManager: PM });
-  const { out } = await captureConsole(() => report(record, WHERE));
-  assert.equal(
-    out[0],
-    `Transaction ${HASH} on ${CHAIN}, block 1234, sent to ${PM}`,
+test("readReceipt reads liquidity events only from the position manager", () => {
+  const record = readReceipt(
+    receiptOf([eventLog(OTHER, "IncreaseLiquidity", [8n, 1n, 9n, 9n])]),
+    { wallet: WALLET, positionManager: PM },
   );
-  assert.equal(out[1], "Gas paid: 1000.0 PLS");
-  assert.equal(out[2], "Status: succeeded");
-  assert.ok(out.includes("  DecreaseLiquidity NFT #7: amount0 100, amount1 0"));
-  assert.ok(out.includes("  Collect NFT #7: amount0 103, amount1 9"));
-  assert.ok(out.includes("  Fees in NFT #7's Collect: amount0 3, amount1 9"));
-  assert.ok(out.includes(`  in: 103 of coin ${COIN0}`));
-  assert.ok(out.includes(`  in: 9 of coin ${COIN1}`));
-  assert.equal(
-    out.at(-1),
-    "Divide each raw amount by 10 to the power of its coin's decimals.",
-  );
+  assert.deepEqual(record.liquidity, []);
+  assert.equal(record.kind, "other");
 });
 
-test("report says none where a receipt moved nothing", async () => {
-  const record = readReceipt(receiptOf([]), {
-    wallet: WALLET,
-    positionManager: PM,
-  });
-  const { out } = await captureConsole(() => report(record, WHERE));
-  assert.equal(out.filter((line) => line === "  none").length, 2);
+test("readReceipt names approvals, cancels and reverted tries", () => {
+  const who = { wallet: WALLET, positionManager: PM };
+  const approval = readReceipt(
+    receiptOf([eventLog(COIN0, "Approval", [WALLET, OTHER, 1n])], {
+      to: COIN0,
+    }),
+    who,
+  );
+  assert.equal(approval.kind, "approval");
+  assert.equal(readReceipt(receiptOf([], { to: WALLET }), who).kind, "cancel");
+  const reverted = readReceipt(receiptOf([], { status: 0, to: OTHER }), who);
+  assert.equal(reverted.kind, "reverted");
+  assert.equal(reverted.status, "reverted");
+  assert.equal(reverted.gasPaid, "1000000000000000000000");
 });
 
-test("report prints only the gas of a reverted transaction", async () => {
-  const record = readReceipt(receiptOf([], { status: 0 }), {
-    wallet: WALLET,
-    positionManager: PM,
-  });
-  const { out } = await captureConsole(() => report(record, WHERE));
-  assert.deepEqual(out.slice(1), [
-    "Gas paid: 1000.0 PLS",
-    "Status: reverted. It moved no coins and paid only its gas.",
+test("readReceipt reads a burn, which clears the NFT's approval as it goes", () => {
+  const record = readReceipt(
+    receiptOf([nftLog(WALLET, ZERO, 9n, "Approval"), nftLog(WALLET, ZERO, 9n)]),
+    { wallet: WALLET, positionManager: PM },
+  );
+  assert.equal(record.kind, "burn");
+  assert.deepEqual(record.liquidity, []);
+  assert.deepEqual(record.nftTransfers, [
+    { nftId: "9", from: WALLET, to: ZERO },
   ]);
+});
+
+test("coinsInTransaction asks for the receipt, and says null without one", async () => {
+  const asked = [];
+  const provider = {
+    async getTransactionReceipt(hash) {
+      asked.push(hash);
+      return hash === HASH ? DRAIN : null;
+    },
+  };
+  const who = { wallet: WALLET, positionManager: PM };
+  const record = await coinsInTransaction(provider, { hash: HASH, ...who });
+  assert.equal(record.kind, "drain");
+  const other = "0x" + "cd".repeat(32);
+  assert.equal(
+    await coinsInTransaction(provider, { hash: other, ...who }),
+    null,
+  );
+  assert.deepEqual(asked, [HASH, other]);
 });
 
 /* ---------- the whole run ---------- */
@@ -366,7 +399,7 @@ async function run(argv, receipt) {
   }
 }
 
-test("main asks the chain's first endpoint for the receipt and prints it", async () => {
+test("main asks the chain's first endpoint and prints the record as json", async () => {
   const { out, err, exitCode, made } = await run(
     [HASH, "--wallet", WALLET],
     DRAIN,
@@ -380,11 +413,9 @@ test("main asks the chain's first endpoint for the receipt and prints it", async
   ]);
   assert.equal(exitCode, 0);
   assert.deepEqual(err, []);
-  assert.equal(
-    out[1],
-    `Gas paid: 1000.0 ${CHAINS[CHAIN].nativeCurrencySymbol}`,
-  );
-  assert.ok(out.includes("  Fees in NFT #7's Collect: amount0 3, amount1 9"));
+  const printed = JSON.parse(out.join("\n"));
+  assert.equal(printed.kind, "drain");
+  assert.deepEqual(printed.fees, [{ nftId: "7", amount0: "3", amount1: "9" }]);
 });
 
 test("main asks the endpoint and position manager the options name", async () => {
@@ -398,11 +429,13 @@ test("main asks the endpoint and position manager the options name", async () =>
       "--position-manager",
       OTHER,
     ],
-    receiptOf([eventLog(OTHER, "Collect", [4n, WALLET, 1n, 2n])]),
+    receiptOf([eventLog(OTHER, "Collect", [4n, WALLET, 1n, 2n])], {
+      to: OTHER,
+    }),
   );
   assert.equal(made[0].endpoint, "http://127.0.0.1:8545");
   assert.equal(exitCode, 0);
-  assert.ok(out.includes("  Collect NFT #4: amount0 1, amount1 2"));
+  assert.equal(JSON.parse(out.join("\n")).kind, "collect");
 });
 
 test("main says so, and exits 1, when there is no receipt", async () => {

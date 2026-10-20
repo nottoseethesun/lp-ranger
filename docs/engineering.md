@@ -2019,23 +2019,50 @@ transaction, as
 [`docs/bookkeeping-for-coins-in-transactions.md`](bookkeeping-for-coins-in-transactions.md)
 explains it.
 
-- `coins-in-transaction.js` — Prints what one transaction moved for a
-  wallet. It asks one rpc endpoint for the transaction's receipt, and
-  nothing else, then prints the position manager's `IncreaseLiquidity`,
-  `DecreaseLiquidity` and `Collect` events, the wallet's coin `Transfer`
-  events out and in, and the gas paid. For a drain, it also prints the
-  fees: the `Collect` amounts less the `DecreaseLiquidity` ones. The
-  chain is a `chains.json` entry, the app's default unless `--chain`
-  names another. That entry gives the endpoint, unless `--rpc-endpoint`
-  names another, and the position manager, unless `--position-manager`
-  names another. Like `check-rpc-health.js`, whose option parsers it
-  shares, it imports nothing from `src/` and writes nothing, so it is
-  safe to run while the server runs. Exit status 0 when the receipt was
-  read, 1 otherwise. Its tests are in
-  `util/test/coins-in-transaction.test.js`.
+- `coins-in-transaction.js` — Reads what one transaction moved for a
+  wallet and returns it as a json object, which it prints when run from
+  a shell. It asks one rpc endpoint for the transaction's receipt, and
+  nothing else. The object names the transaction's kind (drain, swap,
+  approval, mint, collect, deposit, cancel, reverted and others), and
+  holds the position manager's `IncreaseLiquidity`, `DecreaseLiquidity`
+  and `Collect` events, its NFT mints and burns, the wallet's coin
+  `Transfer` and `Approval` events, and the gas paid; for a drain, also
+  the fees, the `Collect` amounts less the `DecreaseLiquidity` ones.
+  Every amount is a string of raw digits. The chain is a `chains.json`
+  entry, the app's default unless `--chain` names another. That entry
+  gives the endpoint, unless `--rpc-endpoint` names another, and the
+  position manager, unless `--position-manager` names another. Like
+  `check-rpc-health.js`, whose option parsers it shares, it imports
+  nothing from `src/` and writes nothing, so it is safe to run while the
+  server runs. Exit status 0 when the receipt was read, 1 otherwise. Its
+  tests are in `util/test/coins-in-transaction.test.js`.
 
   ```bash
   node util/bookkeeping/coins-in-transaction.js <transaction hash> --wallet <wallet address>
+  ```
+
+- `coins-in-transactions-on-wallet/` — Writes a csv of every
+  transaction of a wallet's rebalances and compounds in a range of days,
+  one row per transaction, to `app-data/util/bookkeeping/`, and prints
+  where. It takes `--wallet`, `--start-date` and `--end-date`, and
+  requires `--time-zone`, offering the computer's own zone when it is
+  missing. It starts from what `app-data/` records (`moves.js`): the
+  rebalances in the event caches and the rebalance log, and the compounds
+  in the position records. For each, it finds the first transaction by
+  searching the position manager's logs for the NFT, then lists every
+  transaction the wallet sent from there to the last, by halving the
+  span on the wallet's transaction count (`chain.js`), and has
+  `coins-in-transaction.js` read each one. A move belongs to the range
+  its last transaction falls in, so back-to-back reports never share a
+  transaction. Requests are spaced by `globalRPCRequestRateIntervalMS`,
+  as the app's are, and it imports nothing from `src/` but the
+  dependency-free `composite-key.js`, so it is safe to run while the
+  server runs. Its tests are the `util/test/coins-in-transactions-on-wallet*.test.js`
+  suites, with stand-ins in `util/test/_bookkeeping-chain.js`.
+
+  ```bash
+  node util/bookkeeping/coins-in-transactions-on-wallet --wallet <wallet address> \
+       --start-date 2026-10-01 --end-date 2026-10-31 --time-zone America/Chicago
   ```
 
 ---
@@ -2081,7 +2108,8 @@ lp-ranger/
     ├── README.md             ← tracked
     ├── rebalance_log.json    ← runtime (gitignored) — historical P&L events
     ├── position-records.json ← runtime (gitignored) — each position's records
-    └── scan-cache/           ← runtime (gitignored) — the scan caches
+    ├── scan-cache/           ← runtime (gitignored) — the scan caches
+    └── util/bookkeeping/     ← runtime (gitignored) — the bookkeeping reports
 ```
 
 One home for each kind of data:
@@ -2094,6 +2122,9 @@ One home for each kind of data:
 - **`app-data/scan-cache/`** — what was read from the blockchain or a
   price service; rebuilt if deleted, at about an hour per position
   (`src/scan-cache-dir.js`).
+- **`app-data/util/bookkeeping/`** — the csv reports the bookkeeping
+  tools in `util/bookkeeping/` write, one per wallet, range of days and
+  time zone ([Bookkeeping Utilities](#bookkeeping-utilities)).
 - **`tmp/`** — only what is disposable, such as the server's PID file.
 
 `test/data-homes.test.js` fails the build when code puts data elsewhere.

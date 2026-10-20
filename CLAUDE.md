@@ -95,7 +95,8 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 │   ├── README.md                 #   Tracked. Points operators at where runtime data lives.
 │   ├── rebalance_log.json        #   Gitignored. JSON array of historical rebalance events.
 │   ├── position-records.json     #   Gitignored. Each position's records: HODL baseline, compounds, gas, deposit, residuals (src/position-records.js)
-│   └── scan-cache/               #   Gitignored. The scan caches (src/scan-cache-dir.js): rebuilt from the chain if deleted, at about an hour per position
+│   ├── scan-cache/               #   Gitignored. The scan caches (src/scan-cache-dir.js): rebuilt from the chain if deleted, at about an hour per position
+│   └── util/bookkeeping/         #   Gitignored. The csv reports util/bookkeeping/coins-in-transactions-on-wallet writes; the app never reads them
 ├── eslint-rules/
 │   └── no-separate-contract-calls.js  # Custom rule: require multicall for atomic EVM method pairs
 ├── stylelint-rules/
