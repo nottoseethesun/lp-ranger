@@ -56,12 +56,13 @@ const GLOBAL_KEYS = [
    */
   "priceCacheTtlMs",
   /*-
-   *  Multiplier that derives `_DUST_UNIT_PRICE_TTL_MS` from
+   *  Multiplier that derives the dust-unit price's cache lifetime
+   *  (`getDustUnitPriceCacheTtlMs`, src/price-fetcher-gate.js) from
    *  `priceCacheTtlMs` (`dust = price * multiplier`).  Default `30`
    *  reproduces the original 1-h dust-unit-price cache when paired with
    *  the 120000 ms price TTL default (120000 * 30 = 3_600_000 ms).
-   *  Must be a positive integer >= 1; a runtime assertion at module
-   *  load guards the integer-multiple invariant.
+   *  Must be a positive integer >= 1; a runtime assertion where the
+   *  lifetimes are worked out guards the integer-multiple invariant.
    */
   "dustUnitPriceCacheMultiplier",
   /*-

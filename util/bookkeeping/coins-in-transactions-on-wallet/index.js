@@ -5,7 +5,7 @@
  * @description
  * Write a csv of every transaction of a wallet's rebalances and compounds
  * in a range of days, one row per transaction, with the coins it moved and
- * the gas it paid: the procedures of
+ * the gas it paid, each with its value in USD: the procedures of
  * `docs/bookkeeping-for-coins-in-transactions.md`, run for a whole range.
  *
  * It starts from what `app-data/` records (moves.js): the rebalances in
@@ -21,23 +21,51 @@
  * approvals, cancels and reverted tries included. A transaction that
  * names another NFT, or moves or approves another pool's coins, is left
  * for its own move. `coins-in-transaction.js` reads each transaction, and
- * csv.js makes it a row.
+ * csv.js makes it a row. `../usd-prices.js`, which wraps LP Ranger's own
+ * price library, prices each coin the row shows and the chain's own coin
+ * for the gas. Moralis prices a coin at the transaction's block; where it
+ * has no price, CoinGecko, through GeckoTerminal, gives the UTC day's
+ * closing price. The library keeps one price per coin per UTC day. The
+ * Moralis key is opened with a password before the run reads anything
+ * (`../moralis-key.js`).
+ *
+ * The run ends at the last whole day: the last day that ended before the
+ * current UTC day began, along with the UTC day of its last hour. A UTC
+ * day's closing price is known only once that day ends. A range reaching
+ * past the last whole day is cut there, and one with no whole day writes
+ * nothing.
  *
  * The csv goes to `app-data/util/bookkeeping/`, named for the wallet, the
- * dates and the time zone, and the last line printed says where. It covers
- * the positions whose records this install holds: a position never
- * managed or viewed here has nothing in its files.
+ * dates and the time zone, and the last line printed says where; the
+ * prices fetched are kept in its `scan-cache/` folder. It covers the
+ * positions whose records this install holds: a position never managed or
+ * viewed here has nothing in its files.
+ *
+ * The run stops, writing no csv, when another run holds the cache of
+ * prices, the endpoint fails, a coin cannot be priced, or the Moralis key
+ * cannot be opened or is refused. It says which, with what to try: the
+ * other run's end, another rpc node, another price oracle, the key's
+ * password, or a new key. It moves to no other endpoint by itself.
  *
  * The time zone is a full name from the list dates.js keeps, such as
  * America/Chicago, or UTC; a three-letter designation such as CDT is
  * refused, since one can name several clocks. `--list-valid-timezones`
  * prints the list, and every refusal of a time zone points to it.
  *
- * The chain, endpoint and position manager are chosen as in
- * coins-in-transaction.js, whose option parsers it shares. It imports
- * nothing from `src/` but the dependency-free composite-key.js, so it is
- * safe to run while LP Ranger runs. `--help` prints the rest: the csv's
- * columns, which transactions it lists, an example (help.js).
+ * Every configuration value is LP Ranger's own, from the app's resolver
+ * (src/config.js), as in coins-in-transaction.js, whose option parsers it
+ * shares: the chain, LP Ranger's own unless `--blockchain` names another
+ * (../blockchain.js settles it before the resolver loads), the endpoint,
+ * the position manager, and the chain's coins. A run reads one
+ * blockchain, and says so when the configuration names more than one. It
+ * writes nothing of the app's, so it is safe to run while LP Ranger runs.
+ * Nothing it calls reads LP Ranger's settings through `loadConfig`, so a
+ * run leaves their backups alone. One run prices at a time: a run takes a
+ * lock on the cache of prices before it asks for the key
+ * (../price-cache-lock.js), and a run started meanwhile stops at once,
+ * saying which run holds it.
+ * `--help` prints the rest: the csv's columns, which transactions it
+ * lists, where the prices come from, an example (help.js).
  *
  * Exit status is 0 when the csv was written or the time zones were
  * listed, and 1 when the arguments were refused or the csv was not
@@ -53,27 +81,36 @@
 const fs = require("fs");
 const path = require("path");
 const { Command } = require("commander");
-const CHAINS = require("../../../app-config/app-defaults-for-user-configurable/chains.json");
+const { parseBlockchain, oneChainNotice } = require("../blockchain");
+const config = require("../../../src/config");
+const { parseEndpoint } = require("../../diagnostic/check-rpc-health");
 const {
-  DEFAULT_CHAIN,
-  defaultEndpoint,
-  parseChain,
-  parseEndpoint,
-} = require("../../diagnostic/check-rpc-health");
-const {
+  RPC_ADVICE,
   parseAddress,
   sameAddress,
   coinsInTransaction,
   makeProvider,
   positionManagerOf,
+  endpointOf,
+  blockchainMismatch,
 } = require("../coins-in-transaction");
+const { PRICE_ADVICE, cachePath, usdPriceOn } = require("../usd-prices");
+const {
+  PRICE_CACHE_LOCK_FILE,
+  takePriceCacheLock,
+} = require("../price-cache-lock");
+const { unlockMoralisKey } = require("../moralis-key");
 const {
   parseDate,
   validTimeZones,
   isValidTimeZone,
   parseTimeZone,
   localTimeZone,
+  nextDay,
   rangeIn,
+  formatIn,
+  wholeFrom,
+  lastWholeDay,
 } = require("./dates");
 const { HELP_AFTER } = require("./help");
 const { recordsNear } = require("./moves");
@@ -85,8 +122,9 @@ const {
   walletTransactionsIn,
   coinInfo,
   nftCoins,
+  markRpcFailure,
 } = require("./chain");
-const { columns, rowOf, toCsv } = require("./csv");
+const { columns, coinsToPrice, rowOf, toCsv } = require("./csv");
 
 /** The `app-data/` folder of the install this tool ships in. */
 const APP_DATA_DIR = path.resolve(__dirname, "../../../app-data");
@@ -118,8 +156,9 @@ function buildProgram() {
     .description(
       "Write a csv of every transaction of a wallet's rebalances and " +
         "compounds in a range of days, one row per transaction, with the " +
-        "coins it moved and the gas it paid. Starts from what app-data/ " +
-        "records, then reads the chain; sends nothing.",
+        "coins it moved and the gas it paid, each with its value in USD " +
+        "from Moralis, or CoinGecko where Moralis has none. Starts from " +
+        "what app-data/ records, then reads the chain; sends nothing.",
     )
     .option(
       "--wallet <address>",
@@ -147,20 +186,20 @@ function buildProgram() {
       "print every name --time-zone takes, one per line, and exit",
     )
     .option(
-      "--chain <name>",
-      "an entry of chains.json",
-      parseChain,
-      DEFAULT_CHAIN,
+      "--blockchain <name>",
+      "the blockchain to read, one the configuration names (default: " +
+        "LP Ranger's own, pulsechain as shipped)",
+      parseBlockchain,
     )
     .option(
       "--rpc-endpoint <url>",
-      "the endpoint to ask (default: the chain's first in chains.json)",
+      "the endpoint to ask (default: the one LP Ranger tries first)",
       parseEndpoint,
     )
     .option(
       "--position-manager <address>",
-      "the position manager whose positions to report (default: the " +
-        "chain's, from chains.json)",
+      "the position manager whose positions to report (default: LP " +
+        "Ranger's)",
       parseAddress,
     )
     .addHelpText("after", HELP_AFTER);
@@ -226,6 +265,42 @@ function reportPath(appDataDir, { wallet, startDate, endDate, timeZone }) {
 }
 
 /**
+ * The range a run reports: the one asked for, ending at the last whole
+ * day (dates.js `lastWholeDay`). A range that reaches past it is cut
+ * there, with a line saying so and when the next day becomes whole; a
+ * range with no whole day is refused, saying when its first day becomes
+ * whole.
+ *
+ * @param {{startDate: string, endDate: string, timeZone: string}} opts
+ *   The parsed options.
+ * @param {number} nowMs  The moment of the run, in milliseconds since 1970.
+ * @returns {{opts: object, note: (string|null)}|{refusal: string}}  The
+ *   options to run with and the line to print, or the refusal.
+ */
+function wholeDays(opts, nowMs) {
+  const { startDate, endDate, timeZone } = opts;
+  const last = lastWholeDay(nowMs, timeZone);
+  if (endDate <= last) return { opts, note: null };
+  const whenWhole = (date) =>
+    `${formatIn(wholeFrom(date, timeZone), timeZone)} ${timeZone}`;
+  if (startDate > last)
+    return {
+      refusal:
+        `No day of the range is whole yet, so no csv was written: ` +
+        `${startDate} becomes whole at ${whenWhole(startDate)}, once the ` +
+        "UTC day of its last hour has ended.",
+    };
+  const next = nextDay(last);
+  return {
+    opts: { ...opts, endDate: last },
+    note:
+      `The report ends at ${last}, the last whole day. ${next} becomes ` +
+      `whole at ${whenWhole(next)}, once the UTC day of its last hour has ` +
+      "ended.",
+  };
+}
+
+/**
  * How a move is named in the lines printed as the report runs.
  * @param {{type: string, nfts: string[]}} move
  * @returns {string}
@@ -275,6 +350,21 @@ async function lastOf(provider, move) {
   if (receipt === null) return null;
   const block = await provider.getBlock(receipt.blockNumber);
   return { blockNumber: receipt.blockNumber, endMs: block.timestamp * 1000 };
+}
+
+/**
+ * The error a run stops with when the endpoint has no receipt for a
+ * transaction it must hold: one LP Ranger read from a receipt when it
+ * recorded the move, or one the endpoint itself lists in a block. Either
+ * way the endpoint is missing data, so the error is marked as its
+ * failure, and the run suggests another rpc node rather than writing a
+ * csv without the transaction.
+ * @param {string} hash  The transaction's hash.
+ * @param {string} why  Why the endpoint must hold it.
+ * @returns {Error}
+ */
+function missingReceipt(hash, why) {
+  return markRpcFailure(new Error(`no receipt for ${hash}, ${why}`));
 }
 
 /**
@@ -353,15 +443,15 @@ async function poolOf(provider, move, ctx) {
 }
 
 /**
- * Make sure the run knows both of a pool's coins' symbols and decimals:
- * from `app-data/` where it records them, else from the coin.
+ * Make sure the run knows each coin's symbol and decimals: from
+ * `app-data/` where it records them, else from the coin.
  * @param {object} provider  A paced provider.
- * @param {{token0: string, token1: string}} pool
+ * @param {string[]} coins  The coins' addresses.
  * @param {object} ctx  The run's context.
  * @returns {Promise<void>}
  */
-async function learnCoins(provider, pool, ctx) {
-  for (const coin of [pool.token0, pool.token1]) {
+async function learnCoins(provider, coins, ctx) {
+  for (const coin of coins) {
     const key = coin.toLowerCase();
     if (ctx.info.has(key)) continue;
     let info = {
@@ -375,6 +465,24 @@ async function learnCoins(provider, pool, ctx) {
 }
 
 /**
+ * Each coin's USD price for a transaction, keyed by lower-cased address:
+ * from Moralis at its block, or from CoinGecko for its UTC day. The price
+ * library keeps one price per coin per UTC day once fetched, so the coins
+ * of a day's later rows cost no further request.
+ * @param {string[]} coins  The coins' addresses.
+ * @param {{timestamp: number, blockNumber: number}} moment  The
+ *   transaction's block time, in Unix seconds, and its block.
+ * @param {{usdPriceOn: Function}} ctx  The run's context.
+ * @returns {Promise<Map<string, number>>}
+ */
+async function pricesOn(coins, moment, ctx) {
+  const prices = new Map();
+  for (const coin of coins)
+    prices.set(coin.toLowerCase(), await ctx.usdPriceOn(coin, moment));
+  return prices;
+}
+
+/**
  * Every row of one move, or null when its last transaction falls outside
  * the range.
  *
@@ -382,18 +490,19 @@ async function learnCoins(provider, pool, ctx) {
  * @param {object} move
  * @param {object} ctx  The run's context.
  * @returns {Promise<Array<{block: number, nonce: number, cells: string[]}>|null>}
+ * @throws {Error} Marked `rpcFailure`, when the endpoint has no receipt
+ *   for the move's last transaction or for one it lists in the move's
+ *   blocks, since a csv without that transaction would look complete.
  */
 async function rowsOfMove(provider, move, ctx) {
   const last = await lastOf(provider, move);
-  if (last === null) {
-    console.log(`${describe(move)}: no receipt for ${move.lastHash}; skipped`);
-    return null;
-  }
+  if (last === null)
+    throw missingReceipt(move.lastHash, "which LP Ranger recorded as mined");
   if (last.endMs < ctx.range.startMs || last.endMs >= ctx.range.endMs)
     return null;
   const first = await firstBlockOf(provider, move, last.blockNumber, ctx);
   const pool = await poolOf(provider, move, ctx);
-  await learnCoins(provider, pool, ctx);
+  await learnCoins(provider, [pool.token0, pool.token1], ctx);
   const txs = await walletTransactionsIn(
     provider,
     ctx.wallet,
@@ -408,8 +517,18 @@ async function rowsOfMove(provider, move, ctx) {
       wallet: ctx.wallet,
       positionManager: ctx.positionManager,
     });
-    if (record === null || !belongsTo(record, move, pool)) continue;
+    if (record === null)
+      throw missingReceipt(
+        tx.hash,
+        `which the endpoint lists in block ${tx.blockNumber}`,
+      );
+    if (!belongsTo(record, move, pool)) continue;
     ctx.claimed.add(tx.hash);
+    const wanted = coinsToPrice(record, pool, move.nfts);
+    await learnCoins(provider, wanted, ctx);
+    const moment = { timestamp: tx.timestamp, blockNumber: tx.blockNumber };
+    const prices = await pricesOn(wanted, moment, ctx);
+    const nativePrice = await ctx.usdPriceOn(ctx.nativeCoin, moment);
     const cells = rowOf({
       tx,
       record,
@@ -417,6 +536,8 @@ async function rowsOfMove(provider, move, ctx) {
       pool,
       info: ctx.info,
       timeZone: ctx.timeZone,
+      prices,
+      nativePrice,
     });
     rows.push({ block: tx.blockNumber, nonce: tx.nonce, cells });
   }
@@ -424,14 +545,40 @@ async function rowsOfMove(provider, move, ctx) {
 }
 
 /**
- * Parse the arguments, find the transactions, write the csv, and say
- * where it is; or, asked for `--list-valid-timezones`, print each time
- * zone the report takes on a line of its own and do nothing else.
+ * What a run that stops on a failure prints: the error, and what to try.
+ * A coin with no price points to another price oracle, an endpoint that
+ * failed to another rpc node, and a Moralis key that could not be opened
+ * or was refused, or a lock another run holds, says itself what to do.
+ *
+ * @param {Error} error  Why the run stopped.
+ * @param {string} endpoint  The endpoint the run asked.
+ * @returns {string|null}  The lines, or null for any other error, which
+ *   is not one of these and is reported as it is.
+ */
+function failureText(error, endpoint) {
+  if (error.priceUnavailable === true)
+    return `${error.message}\n${PRICE_ADVICE}`;
+  if (error.rpcFailure === true)
+    return `${endpoint} failed: ${error.message}\n${RPC_ADVICE}`;
+  if (error.keyRefused === true) return error.message;
+  if (error.lockHeld === true) return error.message;
+  return null;
+}
+
+/**
+ * Parse the arguments, take the lock on the cache of prices, open the
+ * Moralis key, find the transactions, write the csv, say where it is, and
+ * release the lock; or, asked for `--list-valid-timezones`,
+ * print each time zone the report takes on a line of its own and do
+ * nothing else.
  *
  * @param {string[]} [argv]  Arguments after the node/script pair.
  * @param {{makeProvider?: Function, appDataDir?: string,
- *   spacingMs?: number}} [deps]  Tests pass a provider that answers
- *   without a network, their own `app-data/`, and no spacing.
+ *   spacingMs?: number, usdPriceOn?: Function, nowMs?: number,
+ *   unlockMoralisKey?: Function}} [deps]  Tests pass a provider that
+ *   answers without a network, their own `app-data/`, no spacing, a
+ *   stand-in for the price oracles, the moment of the run, and a stand-in
+ *   for opening the key.
  * @returns {Promise<void>}
  */
 async function main(argv = process.argv.slice(2), deps = {}) {
@@ -441,20 +588,62 @@ async function main(argv = process.argv.slice(2), deps = {}) {
     process.exitCode = 0;
     return;
   }
-  const chain = CHAINS[opts.chain];
-  const positionManager = positionManagerOf(opts, chain);
-  if (positionManager === "") {
-    console.error(
-      `chains.json names no position manager for ${opts.chain}: ` +
-        "pass --position-manager <address>",
-    );
+  const mismatch = blockchainMismatch(opts);
+  if (mismatch !== null) {
+    console.error(mismatch);
     process.exitCode = 1;
     return;
   }
-  const endpoint =
-    opts.rpcEndpoint === undefined
-      ? defaultEndpoint(opts.chain)
-      : opts.rpcEndpoint;
+  const notice = oneChainNotice(config.CHAIN_NAME);
+  if (notice !== null) console.error(notice);
+  const whole = wholeDays(
+    opts,
+    deps.nowMs === undefined ? Date.now() : deps.nowMs,
+  );
+  if (whole.refusal !== undefined) {
+    console.error(whole.refusal);
+    process.exitCode = 1;
+    return;
+  }
+  if (whole.note !== null) console.log(whole.note);
+  const endpoint = endpointOf(opts);
+  const unlock =
+    deps.unlockMoralisKey === undefined
+      ? unlockMoralisKey
+      : deps.unlockMoralisKey;
+  /*-
+   *  1 until the csv is written, so a run that ends any other way exits
+   *  1: a prompt for the key's password left unanswered when stdin closes
+   *  ends the process with nothing pending and no error.
+   */
+  process.exitCode = 1;
+  let release = null;
+  try {
+    release = takePriceCacheLock(cachePath(PRICE_CACHE_LOCK_FILE));
+    await unlock();
+    await writeReport(whole.opts, endpoint, deps);
+  } catch (error) {
+    const text = failureText(error, endpoint);
+    if (text === null) throw error;
+    console.error(text);
+    process.exitCode = 1;
+  } finally {
+    if (release !== null) release();
+  }
+}
+
+/**
+ * Find the transactions, price them, write the csv, and say where it is.
+ * The csv is written only once every row is in, so a run stopped by a
+ * failure leaves no part of one.
+ *
+ * @param {object} opts  The parsed options.
+ * @param {string} endpoint  The endpoint to ask.
+ * @param {object} deps  As `main` takes them.
+ * @returns {Promise<void>}
+ */
+async function writeReport(opts, endpoint, deps) {
+  const chain = config.CHAIN;
   const make =
     deps.makeProvider === undefined ? makeProvider : deps.makeProvider;
   const spacingMs = deps.spacingMs === undefined ? SPACING_MS : deps.spacingMs;
@@ -463,16 +652,17 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   const provider = pacedProvider(make(endpoint, chain.chainId), spacingMs);
   const range = rangeIn(opts.startDate, opts.endDate, opts.timeZone);
   const who = {
-    chain: opts.chain,
+    chain: config.CHAIN_NAME,
     cacheTag: chain.cacheTag,
     wallet: opts.wallet,
-    positionManager,
+    positionManager: positionManagerOf(opts),
   };
   const records = recordsNear(appDataDir, who, range);
   console.log(
     `${records.moves.length} rebalances and compounds in app-data/ end ` +
       `near ${opts.startDate} to ${opts.endDate}; reading the chain at ` +
-      endpoint,
+      `${endpoint}, and prices from Moralis, or CoinGecko where Moralis ` +
+      "has none",
   );
   const ctx = {
     ...records,
@@ -482,6 +672,8 @@ async function main(argv = process.argv.slice(2), deps = {}) {
     blocksPerMonth: Math.round(MONTH_SEC / chain.blockTimeSec),
     claimed: new Set(),
     info: new Map(),
+    nativeCoin: chain.nativeWrappedToken,
+    usdPriceOn: deps.usdPriceOn === undefined ? usdPriceOn : deps.usdPriceOn,
   };
   const rows = [];
   const counts = { rebalance: 0, compound: 0, deposit: 0 };
@@ -525,6 +717,7 @@ module.exports = {
   missingTimeZone,
   readOptions,
   reportPath,
+  wholeDays,
   describe,
   belongsTo,
   lastOf,
@@ -532,6 +725,9 @@ module.exports = {
   firstBlockOf,
   poolOf,
   learnCoins,
+  pricesOn,
   rowsOfMove,
+  failureText,
   main,
+  writeReport,
 };

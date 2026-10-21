@@ -189,6 +189,53 @@ function formatIn(ms, timeZone) {
   return `${w.year}-${w.month}-${w.day} ${w.hour}:${w.minute}:${w.second}`;
 }
 
+/** Milliseconds in a UTC day. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The day before a date.
+ * @param {string} date  YYYY-MM-DD.
+ * @returns {string}  YYYY-MM-DD.
+ */
+function previousDay(date) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day - 1))
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * The moment a day in a time zone becomes whole: the first UTC midnight
+ * at or after its end. A price is kept for a UTC day, and a UTC day's
+ * closing price is known only once that day has ended. So a day in a zone
+ * west of Greenwich, whose last hours fall on the next UTC day, waits for
+ * that UTC day to end too.
+ * @param {string} date  YYYY-MM-DD.
+ * @param {string} timeZone  An IANA time zone name.
+ * @returns {number}  Milliseconds since 1970 (UTC).
+ */
+function wholeFrom(date, timeZone) {
+  const end = midnightIn(nextDay(date), timeZone);
+  return Math.ceil(end / DAY_MS) * DAY_MS;
+}
+
+/**
+ * The last whole day in a time zone at a moment: the last day that ended,
+ * along with the UTC day of its last hour, before the moment's UTC day
+ * began. The day holding the moment just before that UTC midnight is
+ * whole only when it ends exactly there; otherwise the day before it is
+ * the last.
+ * @param {number} nowMs  The moment, in milliseconds since 1970 (UTC).
+ * @param {string} timeZone  An IANA time zone name.
+ * @returns {string}  YYYY-MM-DD.
+ */
+function lastWholeDay(nowMs, timeZone) {
+  const utcDayStart = Math.floor(nowMs / DAY_MS) * DAY_MS;
+  const w = wallClock(utcDayStart - 1, timeZone);
+  const date = `${w.year}-${w.month}-${w.day}`;
+  return wholeFrom(date, timeZone) <= utcDayStart ? date : previousDay(date);
+}
+
 module.exports = {
   parseDate,
   validTimeZones,
@@ -198,6 +245,9 @@ module.exports = {
   offsetAt,
   midnightIn,
   nextDay,
+  previousDay,
   rangeIn,
   formatIn,
+  wholeFrom,
+  lastWholeDay,
 };

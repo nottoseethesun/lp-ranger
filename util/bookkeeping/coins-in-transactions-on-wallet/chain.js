@@ -5,10 +5,18 @@
  * @description
  * The chain reads a wallet's bookkeeping report makes, few and spaced
  * out. Every request waits its turn, one every
- * `globalRPCRequestRateIntervalMS` (bot-config-defaults.json), the pace
- * LP Ranger keeps its own requests to, so a report run while the app runs
- * does not crowd the endpoints they share. A receipt or a block is read
+ * `globalRPCRequestRateIntervalMS`, the pace LP Ranger keeps its own
+ * requests to, so a report run while the app runs does not crowd the
+ * endpoints they share. That figure and the span of a log search,
+ * `getLogsChunkSize`, come from the app's resolver for
+ * bot-config-defaults.json (src/bot-config-defaults.js), so an operator's
+ * own value applies here as in the app. A receipt or a block is read
  * once, however often it is asked for.
+ *
+ * The report asks one endpoint and moves to no other. A request the
+ * endpoint fails is marked `rpcFailure`, so the report can say what failed
+ * and suggest another endpoint; a call the chain refuses, such as a coin
+ * with no `symbol()`, is an answer, not a failure, and is not marked.
  *
  * Three searches find what `app-data/` does not name, as the guide's
  * section on finding them describes:
@@ -24,9 +32,13 @@
  */
 
 const { ethers } = require("ethers");
+require("../blockchain");
 const { sleep } = require("../../diagnostic/_helpers");
 const { EVENTS, sameAddress } = require("../coins-in-transaction");
-const BOT_DEFAULTS = require("../../../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
+const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
+
+/** bot-config-defaults.json as LP Ranger resolves it, overrides applied. */
+const BOT_DEFAULTS = readBotConfigDefaults();
 
 /** The widest span of blocks one log search asks for, as LP Ranger's own do. */
 const SPAN = BOT_DEFAULTS.getLogsChunkSize;
@@ -42,8 +54,22 @@ const CALLS = new ethers.Interface([
 ]);
 
 /**
+ * What a provider threw, marked as the endpoint's failure. A call the chain
+ * refused (ethers' CALL_EXCEPTION) is the chain's answer, not a failure of
+ * the endpoint, and is passed on unmarked.
+ * @param {*} thrown  What the provider threw.
+ * @returns {Error}
+ */
+function markRpcFailure(thrown) {
+  const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+  if (error.code !== "CALL_EXCEPTION") error.rpcFailure = true;
+  return error;
+}
+
+/**
  * Wrap a provider so each request waits its turn and each receipt and
- * block is read once.
+ * block is read once, and a request the endpoint fails is marked
+ * `rpcFailure`.
  *
  * @param {object} provider  An ethers provider, or a stand-in.
  * @param {number} spacingMs  The least time between two requests.
@@ -60,10 +86,14 @@ function pacedProvider(provider, spacingMs) {
     if (nextAt > now) await sleep(nextAt - now);
     nextAt = Math.max(now, nextAt) + spacingMs;
   }
-  /** Ask the provider, in turn. */
+  /** Ask the provider, in turn, marking a failure as the endpoint's. */
   async function ask(name, args) {
     await turn();
-    return provider[name](...args);
+    try {
+      return await provider[name](...args);
+    } catch (thrown) {
+      throw markRpcFailure(thrown);
+    }
   }
   return {
     async getTransactionReceipt(hash) {
@@ -265,7 +295,8 @@ async function coinInfo(provider, coin) {
   let symbol;
   try {
     [symbol] = await ask(provider, coin, "symbol");
-  } catch {
+  } catch (error) {
+    if (error.rpcFailure === true) throw error;
     symbol = coin;
   }
   return { symbol, decimals };
@@ -286,6 +317,7 @@ async function nftCoins(provider, positionManager, nftId) {
 module.exports = {
   SPAN,
   SPACING_MS,
+  markRpcFailure,
   pacedProvider,
   nftLogsBefore,
   drainBlockBefore,

@@ -25,33 +25,40 @@
  *
  * `util/bookkeeping/coins-in-transactions-on-wallet` calls it for every
  * transaction of a wallet's rebalances and compounds. Run from a shell,
- * this tool prints the object as json. The chain is an entry of the
- * shipped `chains.json`: the app's default chain, unless `--chain <name>`
- * names another. That entry gives the endpoint asked, its first unless
- * `--rpc-endpoint <url>` names another, and the position manager whose
- * events are read, unless `--position-manager <address>` names another.
- * Like `util/diagnostic/check-rpc-health.js`, whose option parsers it
- * shares, it imports nothing from `src/` and writes nothing, so it is safe
- * to run while LP Ranger runs.
+ * this tool prints the object as json. Its configuration is LP Ranger's
+ * own, from the app's resolver (src/config.js), which reads the install's
+ * `.env` and settings. That gives the chain, LP Ranger's own unless
+ * `--blockchain <name>` names another the configuration names
+ * (./blockchain.js settles it before the resolver loads); the endpoint
+ * asked, the one LP Ranger tries first unless `--rpc-endpoint <url>`
+ * names another; and the position manager whose events are read, unless
+ * `--position-manager <address>` names another. It writes nothing, so it
+ * is safe to run while LP Ranger runs. It asks that one endpoint only:
+ * when the endpoint fails, the tool stops with the error and suggests
+ * another, rather than moving to one itself.
  *
  * Exit status is 0 when the receipt was read and printed, and 1 when it
  * was not.
  *
  * Usage:
  *   node util/bookkeeping/coins-in-transaction.js <hash> --wallet <address>
- *   node util/bookkeeping/coins-in-transaction.js <hash> --wallet <address> --chain <chains.json entry>
+ *   node util/bookkeeping/coins-in-transaction.js <hash> --wallet <address> --blockchain <name>
  *   node util/bookkeeping/coins-in-transaction.js <hash> --wallet <address> --rpc-endpoint <url>
  */
 
 const { Command, InvalidArgumentError } = require("commander");
 const { ethers } = require("ethers");
-const CHAINS = require("../../app-config/app-defaults-for-user-configurable/chains.json");
-const {
-  DEFAULT_CHAIN,
-  defaultEndpoint,
-  parseChain,
-  parseEndpoint,
-} = require("../diagnostic/check-rpc-health");
+const { parseBlockchain, oneChainNotice } = require("./blockchain");
+const config = require("../../src/config");
+const { parseEndpoint } = require("../diagnostic/check-rpc-health");
+
+/**
+ * What a run that stops on an endpoint's failure tells the user to do.
+ * Neither bookkeeping tool moves to another endpoint by itself.
+ */
+const RPC_ADVICE =
+  "If the problem is the rpc endpoint, consider trying a different rpc " +
+  "node with --rpc-endpoint <url>. This tool does not fail over to another.";
 
 /**
  * The events read from a receipt: the position manager's three liquidity
@@ -132,12 +139,17 @@ Examples:
   node util/bookkeeping/coins-in-transaction.js <hash> --wallet <address> \\
        --rpc-endpoint <url>
 
-It reads one receipt, imports nothing from src/ and writes nothing, so it is
-safe to run while LP Ranger runs. What each kind of transaction moves:
+The chain, the endpoint and the position manager are LP Ranger's own, from
+its configuration (.env and settings), unless an option names another. A run
+reads one blockchain; when the configuration names more than one, it says so.
+It reads one receipt and writes nothing, so it is safe to run while LP Ranger
+runs. What each kind of transaction moves:
 docs/bookkeeping-for-coins-in-transactions.md
 
 Exit status: 0 when the receipt was read, 1 when it was not: a transaction
-not yet mined or on another chain, or an endpoint that did not answer.
+not yet mined or on another chain, or an endpoint that failed. An endpoint
+that fails stops the run with its error; the tool moves to no other, so try
+a different rpc node with --rpc-endpoint.
 `;
 
 /**
@@ -169,20 +181,19 @@ function buildProgram() {
       parseAddress,
     )
     .option(
-      "--chain <name>",
-      "an entry of chains.json",
-      parseChain,
-      DEFAULT_CHAIN,
+      "--blockchain <name>",
+      "the blockchain to read, one the configuration names (default: " +
+        "LP Ranger's own, pulsechain as shipped)",
+      parseBlockchain,
     )
     .option(
       "--rpc-endpoint <url>",
-      "the endpoint to ask (default: the chain's first in chains.json)",
+      "the endpoint to ask (default: the one LP Ranger tries first)",
       parseEndpoint,
     )
     .option(
       "--position-manager <address>",
-      "the position manager whose events to read (default: the chain's, " +
-        "from chains.json)",
+      "the position manager whose events to read (default: LP Ranger's)",
       parseAddress,
     )
     .addHelpText("after", HELP_AFTER);
@@ -465,7 +476,7 @@ async function coinsInTransaction(provider, { hash, wallet, positionManager }) {
  * serves.
  *
  * @param {string} endpoint  The rpc url.
- * @param {number} chainId   The chain's id, from chains.json.
+ * @param {number} chainId   The chain's id, from LP Ranger's configuration.
  * @returns {ethers.JsonRpcProvider}
  */
 function makeProvider(endpoint, chainId) {
@@ -477,15 +488,43 @@ function makeProvider(endpoint, chainId) {
 
 /**
  * The position manager a run reads: the one `--position-manager` names,
- * else the chain's in chains.json, which may be empty.
+ * else LP Ranger's, which its configuration always names (it refuses to
+ * load without one).
  * @param {{positionManager?: string}} opts  The parsed options.
- * @param {object} chain  The chain's chains.json entry.
- * @returns {string}  An address, or "" when chains.json names none.
+ * @returns {string}  An address.
  */
-function positionManagerOf(opts, chain) {
+function positionManagerOf(opts) {
   return opts.positionManager === undefined
-    ? chain.contracts.positionManager.address
+    ? config.POSITION_MANAGER
     : opts.positionManager;
+}
+
+/**
+ * The endpoint a run asks: the one `--rpc-endpoint` names, else the one
+ * LP Ranger tries first: an endpoint added in its Bot Settings, else
+ * RPC_URL in `.env`, else the chain's first in chains.json.
+ * @param {{rpcEndpoint?: string}} opts  The parsed options.
+ * @returns {string}  The rpc url.
+ */
+function endpointOf(opts) {
+  return opts.rpcEndpoint === undefined ? config.RPC_URLS[0] : opts.rpcEndpoint;
+}
+
+/**
+ * Whether a run's `--blockchain` disagrees with the chain the
+ * configuration loaded. From a shell it never does, since ./blockchain.js
+ * read the same command line before the configuration loaded; a caller
+ * that hands `main` other arguments can make it.
+ * @param {{blockchain?: string}} opts  The parsed options.
+ * @returns {string|null}  The refusal, or null when they agree.
+ */
+function blockchainMismatch(opts) {
+  if (opts.blockchain === undefined || opts.blockchain === config.CHAIN_NAME)
+    return null;
+  return (
+    `--blockchain ${opts.blockchain} came after the configuration loaded ` +
+    `${config.CHAIN_NAME}; give it on the command line.`
+  );
 }
 
 /**
@@ -507,32 +546,38 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   const program = buildProgram().parse(argv, { from: "user" });
   const [hash] = program.processedArgs;
   const opts = program.opts();
-  const chain = CHAINS[opts.chain];
-  const positionManager = positionManagerOf(opts, chain);
-  if (positionManager === "") {
-    console.error(
-      `chains.json names no position manager for ${opts.chain}: ` +
-        "pass --position-manager <address>",
-    );
+  const mismatch = blockchainMismatch(opts);
+  if (mismatch !== null) {
+    console.error(mismatch);
     process.exitCode = 1;
     return;
   }
-  const endpoint =
-    opts.rpcEndpoint === undefined
-      ? defaultEndpoint(opts.chain)
-      : opts.rpcEndpoint;
+  /*-
+   *  On stderr, like every line but the record, so the json on stdout can
+   *  be redirected to a file whole.
+   */
+  const notice = oneChainNotice(config.CHAIN_NAME);
+  if (notice !== null) console.error(notice);
+  const endpoint = endpointOf(opts);
   const make =
     deps.makeProvider === undefined ? makeProvider : deps.makeProvider;
-  const provider = make(endpoint, chain.chainId);
-  const record = await coinsInTransaction(provider, {
-    hash,
-    wallet: opts.wallet,
-    positionManager,
-  });
+  const provider = make(endpoint, config.CHAIN.chainId);
+  let record;
+  try {
+    record = await coinsInTransaction(provider, {
+      hash,
+      wallet: opts.wallet,
+      positionManager: positionManagerOf(opts),
+    });
+  } catch (error) {
+    console.error(`${endpoint} failed: ${error.message}\n${RPC_ADVICE}`);
+    process.exitCode = 1;
+    return;
+  }
   if (record === null) {
     console.error(
       `No receipt for ${hash} at ${endpoint}: it is not mined yet, ` +
-        `or not on ${opts.chain}.`,
+        `or not on ${config.CHAIN_NAME}.`,
     );
     process.exitCode = 1;
     return;
@@ -554,6 +599,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  RPC_ADVICE,
   EVENTS,
   parseHash,
   parseAddress,
@@ -570,5 +616,7 @@ module.exports = {
   coinsInTransaction,
   makeProvider,
   positionManagerOf,
+  endpointOf,
+  blockchainMismatch,
   main,
 };

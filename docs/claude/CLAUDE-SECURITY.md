@@ -287,12 +287,33 @@ iterations. Plaintext keys exist only in memory during signing. The
 encrypted `app-config/user-configurable/wallet.json` and
 `app-config/user-configurable/api-keys.json` files are both gitignored.
 
+The bookkeeping report (`util/bookkeeping/moralis-key.js`) uses the
+app's own Moralis key, through the same store (`src/api-key-store.js`),
+so there is one key in one place. It never opens the wallet file; it
+asks for the wallet's password only because the app encrypts every api
+key with it, through a terminal prompt that shows nothing of what is
+typed (`src/ask-password.js`, shared with `--headless`, bot.js and
+scripts/import-wallet.js), never as an argument, which shell history and
+`ps` would keep; the password is kept nowhere, and the plain key only in
+memory for the run. With no key saved, it asks for one and saves it there,
+encrypted with the wallet's password typed twice. That password is not
+checked against the wallet's, since `src/wallet-manager.js` reads the
+wallet file as it loads, and the report never loads it. A test
+(`util/test/bookkeeping-moralis-key.test.js`) asks `git check-ignore`
+whether `app-config/user-configurable/api-keys.json` is ignored, so a
+change to `.gitignore` that would let it reach the remote fails the
+build.
+
 ### Wallet password persistence
 
 The wallet password — the passphrase the operator chose during
 import (via the dashboard UI or `node scripts/import-wallet.js`) —
 decrypts both `wallet.json` and every service entry in
-`api-keys.json`. One password, every secret.
+`api-keys.json`. One password, every secret. Clearing the wallet (the
+dashboard's Clear Wallet, or `npm run reset-wallet`) deletes only
+`wallet.json`: the api keys stay, under the old password, so a wallet
+imported again under a new password cannot open them until each is
+saved again. The Clear Wallet dialog warns of this.
 
 Three modes, in order of security recommendation:
 

@@ -192,6 +192,7 @@ const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
 const { setApiKey } = require("../../../src/api-key-holder");
 const { readEnv } = require("../../../src/env-settings");
 const { fetchTokenPriceUsd } = require("../../../src/price-fetcher");
+const { readPriceCacheSettings } = require("../../../src/price-fetcher-gate");
 const {
   _fetchMoralisCurrent,
   _fetchGeckoTerminalCurrent,
@@ -538,6 +539,11 @@ async function main(argv = process.argv.slice(2)) {
   }
   const { tokenId, posConfig, key } = resolveTarget(args);
   if (args.moralisKey) setApiKey("moralis", args.moralisKey);
+  /*-
+   *  The price cache's lifetimes, as LP Ranger's settings give them. A
+   *  tool's read leaves the app's backups of its settings files alone.
+   */
+  readPriceCacheSettings(true);
 
   console.log("=".repeat(96));
   console.log(`verify-compound-usd: ${key || "NFT #" + tokenId}`);

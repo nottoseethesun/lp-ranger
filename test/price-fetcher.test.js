@@ -15,8 +15,8 @@ const {
   _fetchGeckoTerminalOhlcv,
   _fetchGeckoOhlcvAtTimeframe,
   _cache,
-  _CACHE_TTL_MS,
 } = require("../src/price-fetcher");
+const { getPriceCacheTtlMs } = require("../src/price-fetcher-gate");
 const { _fetchDexScreener } = require("../src/price-sources-current");
 const {
   _resetForTest: _resetGeckoRateLimit,
@@ -270,7 +270,7 @@ describe("Cache expiry", () => {
     // Manually expire the cache entry by backdating its timestamp.
     const key = `pulsechain-${TOKEN.toLowerCase()}`;
     const entry = _cache.get(key);
-    entry.ts = Date.now() - _CACHE_TTL_MS - 1;
+    entry.ts = Date.now() - getPriceCacheTtlMs() - 1;
 
     const price2 = await fetchTokenPriceUsd(TOKEN);
     assert.strictEqual(price2, 2.0, "should fetch fresh price after TTL");

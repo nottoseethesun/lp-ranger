@@ -26,9 +26,8 @@ const {
   nftLog: nftEvent,
   receiptOf: receipt,
 } = require("./_bookkeeping-chain");
-const CHAINS = require("../../app-config/app-defaults-for-user-configurable/chains.json");
-const APP_RUNTIME = require("../../app-config/app-defaults-for-user-configurable/app-runtime.json");
 const {
+  RPC_ADVICE,
   parseHash,
   parseAddress,
   buildProgram,
@@ -42,11 +41,16 @@ const {
   readReceipt,
   coinsInTransaction,
   makeProvider,
+  positionManagerOf,
+  endpointOf,
+  blockchainMismatch,
   main,
 } = require("../bookkeeping/coins-in-transaction");
+const config = require("../../src/config");
+const { CHAIN_NAMES, oneChainNotice } = require("../bookkeeping/blockchain");
 
-const CHAIN = APP_RUNTIME.defaults.chain;
-const PM = CHAINS[CHAIN].contracts.positionManager.address;
+const CHAIN = config.CHAIN_NAME;
+const PM = config.POSITION_MANAGER;
 const WALLET = "0x1111111111111111111111111111111111111111";
 const POOL = "0x2222222222222222222222222222222222222222";
 const COIN0 = "0x3333333333333333333333333333333333333333";
@@ -113,13 +117,34 @@ test("parseAddress checksums an address and refuses anything else", () => {
   assert.throws(() => parseAddress("0x12"), /not an address: 0x12/);
 });
 
-test("the hash and the wallet are read, and the chain defaults to the app's", () => {
+test("the hash and the wallet are read, and no option overrides the configuration", () => {
   const program = parsed([HASH, "--wallet", WALLET.toLowerCase()]);
   assert.equal(program.processedArgs[0], HASH);
   assert.equal(program.opts().wallet, WALLET);
-  assert.equal(program.opts().chain, CHAIN);
+  assert.equal(program.opts().blockchain, undefined);
   assert.equal(program.opts().rpcEndpoint, undefined);
   assert.equal(program.opts().positionManager, undefined);
+});
+
+test("the configuration's values stand unless an option names another", () => {
+  assert.equal(positionManagerOf({}), PM);
+  assert.equal(positionManagerOf({ positionManager: OTHER }), OTHER);
+  assert.equal(endpointOf({}), config.RPC_URLS[0]);
+  assert.equal(
+    endpointOf({ rpcEndpoint: "http://127.0.0.1:8545" }),
+    "http://127.0.0.1:8545",
+  );
+});
+
+test("a --blockchain is refused only when it is not the one loaded", () => {
+  assert.equal(blockchainMismatch({}), null);
+  assert.equal(blockchainMismatch({ blockchain: CHAIN }), null);
+  const other = CHAIN_NAMES.find((name) => name !== CHAIN);
+  assert.ok(
+    blockchainMismatch({ blockchain: other }).startsWith(
+      `--blockchain ${other} came after the configuration loaded`,
+    ),
+  );
 });
 
 test("the command line refuses a missing wallet or a bad value", () => {
@@ -129,7 +154,7 @@ test("the command line refuses a missing wallet or a bad value", () => {
   for (const argv of [
     ["0x12", "--wallet", WALLET],
     [HASH, "--wallet", "0x12"],
-    [HASH, "--wallet", WALLET, "--chain", "no-such-chain"],
+    [HASH, "--wallet", WALLET, "--blockchain", "no-such-chain"],
     [HASH, "--wallet", WALLET, "--rpc-endpoint", "ftp://example.com"],
     [HASH, "--wallet", WALLET, "--position-manager", "0x12"],
   ]) {
@@ -399,7 +424,8 @@ test("coinsInTransaction asks for the receipt, and says null without one", async
  * Run `main` with a provider that answers from `receipt`, keeping the
  * exit status it sets out of the test process's own.
  * @param {string[]} argv
- * @param {object|null} receipt  What the provider answers.
+ * @param {object|Error|null} receipt  What the provider answers, or the
+ *   error it fails with.
  * @returns {Promise<{out: string[], err: string[], exitCode: number, made: object[]}>}
  */
 async function run(argv, receipt) {
@@ -409,6 +435,7 @@ async function run(argv, receipt) {
     return {
       async getTransactionReceipt(hash) {
         made.at(-1).hash = hash;
+        if (receipt instanceof Error) throw receipt;
         return receipt;
       },
     };
@@ -424,20 +451,27 @@ async function run(argv, receipt) {
   }
 }
 
-test("main asks the chain's first endpoint and prints the record as json", async () => {
+test("main asks LP Ranger's first endpoint and prints the record as json", async () => {
   const { out, err, exitCode, made } = await run(
     [HASH, "--wallet", WALLET],
     DRAIN,
   );
   assert.deepEqual(made, [
     {
-      endpoint: CHAINS[CHAIN].rpc.urls[0],
-      chainId: CHAINS[CHAIN].chainId,
+      endpoint: config.RPC_URLS[0],
+      chainId: config.CHAIN.chainId,
       hash: HASH,
     },
   ]);
   assert.equal(exitCode, 0);
-  assert.deepEqual(err, []);
+  /*-
+   *  The configuration names more than one chain, so the run says it
+   *  reads one, on stderr, leaving stdout the json alone.
+   */
+  assert.deepEqual(
+    err,
+    [oneChainNotice(CHAIN)].filter((line) => line !== null),
+  );
   const printed = JSON.parse(out.join("\n"));
   assert.equal(printed.kind, "drain");
   assert.deepEqual(printed.fees, [{ nftId: "7", amount0: "3", amount1: "9" }]);
@@ -467,30 +501,34 @@ test("main says so, and exits 1, when there is no receipt", async () => {
   const { out, err, exitCode } = await run([HASH, "--wallet", WALLET], null);
   assert.equal(exitCode, 1);
   assert.deepEqual(out, []);
-  assert.match(err[0], /^No receipt for 0xabab/);
-  assert.match(err[0], /not mined yet, or not on/);
+  const line = err.at(-1);
+  assert.match(line, /^No receipt for 0xabab/);
+  assert.ok(line.endsWith(`not mined yet, or not on ${CHAIN}.`), line);
 });
 
-test("main refuses a chain with no position manager unless one is named", async () => {
-  const noManager = Object.keys(CHAINS).find(
-    (name) =>
-      !name.startsWith("_") &&
-      CHAINS[name].contracts.positionManager.address === "",
+test("main stops when the endpoint fails, naming it and suggesting another", async () => {
+  const failure = Object.assign(new Error("connect ECONNREFUSED"), {
+    code: "NETWORK_ERROR",
+  });
+  const { out, err, exitCode } = await run([HASH, "--wallet", WALLET], failure);
+  assert.equal(exitCode, 1);
+  assert.deepEqual(out, []);
+  const text = err.join("\n");
+  assert.ok(
+    text.includes(`${config.RPC_URLS[0]} failed: connect ECONNREFUSED`),
   );
-  assert.ok(noManager, "chains.json has a chain with no position manager");
-  const refused = await run(
-    [HASH, "--wallet", WALLET, "--chain", noManager],
+  assert.ok(text.endsWith(RPC_ADVICE));
+});
+
+test("main refuses a --blockchain the configuration did not load", async () => {
+  const other = CHAIN_NAMES.find((name) => name !== CHAIN);
+  const { err, exitCode, made } = await run(
+    [HASH, "--wallet", WALLET, "--blockchain", other],
     DRAIN,
   );
-  assert.equal(refused.exitCode, 1);
-  assert.deepEqual(refused.made, []);
-  assert.match(refused.err[0], /pass --position-manager <address>/);
-  const named = await run(
-    [HASH, "--wallet", WALLET, "--chain", noManager, "--position-manager", PM],
-    DRAIN,
-  );
-  assert.equal(named.exitCode, 0);
-  assert.equal(named.made[0].chainId, CHAINS[noManager].chainId);
+  assert.equal(exitCode, 1);
+  assert.deepEqual(made, []);
+  assert.match(err[0], /came after the configuration loaded/);
 });
 
 test("makeProvider knows its chain without asking the endpoint", async () => {

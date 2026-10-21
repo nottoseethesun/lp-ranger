@@ -28,14 +28,16 @@
  *
  * Cache file: `app-data/scan-cache/gecko-pool-cache.json` (gitignored;
  * src/scan-cache-dir.js).
- * Lazy-loaded on first access; batched writes via dirty flag.
+ * Lazy-loaded on first access; batched writes via dirty flag, each of
+ * which reads the file as it is at that moment, lays this process's
+ * entries over it and replaces the file whole (src/shared-json-file.js),
+ * so a write keeps every entry the file held when it read it, as
+ * src/price-cache.js does.
  */
 
 "use strict";
 
 const { log } = require("./log");
-const fs = require("fs");
-const path = require("path");
 const config = require("./config");
 const { geckoRateLimit } = require("./gecko-rate-limit");
 const { retryOn429 } = require("./price-source-backoff");
@@ -45,6 +47,7 @@ const { loadMergedDefaults } = require("./load-merged-defaults");
 const { SETTING_BOUNDS } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
 const { scanCachePath } = require("./scan-cache-dir");
+const { readJsonObject, replaceJsonFile } = require("./shared-json-file");
 
 // Path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
@@ -58,11 +61,7 @@ let _dirty = false;
 /** Lazy-load the cache from disk. */
 function _ensureLoaded() {
   if (_cache !== null) return;
-  try {
-    _cache = JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
-  } catch {
-    _cache = {};
-  }
+  _cache = readJsonObject(_CACHE_PATH);
 }
 
 /** A pool's orientation key: the active chain, then the pool. */
@@ -351,12 +350,17 @@ async function getBestPoolForToken(network, tokenAddress) {
   return _cache[k];
 }
 
-/** Write the cache to disk if any new entries were added since last flush. */
+/**
+ * Write the cache to disk if any new entries were added since last flush:
+ * the file as it is now, with this process's entries over it. Memory then
+ * holds what the file does. A write that fails stays dirty, for the next.
+ */
 function flushGeckoPoolCache() {
-  if (!_dirty || !_cache) return;
+  if (!_dirty || _cache === null) return;
   try {
-    fs.mkdirSync(path.dirname(_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(_CACHE_PATH, JSON.stringify(_cache, null, 2), "utf8");
+    const merged = Object.assign(readJsonObject(_CACHE_PATH), _cache);
+    replaceJsonFile(_CACHE_PATH, merged);
+    _cache = merged;
     _dirty = false;
   } catch (err) {
     log.warn("[gecko-pool-cache] Could not write cache:", err.message);

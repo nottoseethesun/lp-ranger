@@ -49,6 +49,7 @@ const { log } = require("./src/log");
 require("./src/bot-banner");
 
 const { pausePriceLookups } = require("./src/price-fetcher");
+const { readPriceCacheSettings } = require("./src/price-fetcher-gate");
 
 /*- Headless default: pause price lookups at startup.  Without a server
  *  there is no idle tracker and no browser to drive pause/unpause, so
@@ -110,6 +111,7 @@ async function main() {
   }
 
   const diskConfig = loadConfig();
+  readPriceCacheSettings();
   const rebalanceLock = createRebalanceLock();
   const positionMgr = createPositionManager({
     rebalanceLock,

@@ -18,6 +18,7 @@ const { ethers } = require("ethers");
 const { EVENTS } = require("../bookkeeping/coins-in-transaction");
 const {
   SPAN,
+  markRpcFailure,
   pacedProvider,
   nftLogsBefore,
   drainBlockBefore,
@@ -320,6 +321,69 @@ test("coinInfo names a coin by its address when its symbol cannot be read", asyn
   assert.deepEqual(await coinInfo(provider, COIN), {
     symbol: COIN,
     decimals: 18n,
+  });
+});
+
+/* ---------- an endpoint that fails ---------- */
+
+test("markRpcFailure marks the endpoint's failures, not the chain's refusals", () => {
+  const down = markRpcFailure(
+    Object.assign(new Error("timeout"), { code: "TIMEOUT" }),
+  );
+  assert.equal(down.rpcFailure, true);
+  assert.equal(down.message, "timeout");
+  const refused = markRpcFailure(
+    Object.assign(new Error("execution reverted"), { code: "CALL_EXCEPTION" }),
+  );
+  assert.equal(refused.rpcFailure, undefined);
+  const odd = markRpcFailure("socket hang up");
+  assert.ok(odd instanceof Error);
+  assert.equal(odd.message, "socket hang up");
+  assert.equal(odd.rpcFailure, true);
+});
+
+test("pacedProvider passes on a failed request, marked as the endpoint's", async () => {
+  const paced = pacedProvider(
+    {
+      async getTransactionReceipt() {
+        throw Object.assign(new Error("connect ECONNREFUSED"), {
+          code: "NETWORK_ERROR",
+        });
+      },
+      async call() {
+        throw Object.assign(new Error("execution reverted"), {
+          code: "CALL_EXCEPTION",
+        });
+      },
+    },
+    0,
+  );
+  await assert.rejects(paced.getTransactionReceipt(hash(1)), {
+    message: "connect ECONNREFUSED",
+    rpcFailure: true,
+  });
+  await assert.rejects(paced.call({ to: COIN, data: "0x" }), (error) => {
+    assert.equal(error.rpcFailure, undefined);
+    return true;
+  });
+});
+
+test("coinInfo passes on an endpoint's failure rather than naming the coin", async () => {
+  const paced = pacedProvider(
+    {
+      async call({ data }) {
+        const name = CALLS.parseTransaction({ data }).name;
+        if (name === "decimals") return CALLS.encodeFunctionResult(name, [18]);
+        throw Object.assign(new Error("502 Bad Gateway"), {
+          code: "SERVER_ERROR",
+        });
+      },
+    },
+    0,
+  );
+  await assert.rejects(coinInfo(paced, COIN), {
+    message: "502 Bad Gateway",
+    rpcFailure: true,
   });
 });
 

@@ -5,7 +5,8 @@
 Every transaction behind an LP position moves coins, pays gas, or both.
 This guide shows how to find, for each one, how many of each coin left
 the wallet, how many came in, and how much PLS it paid in gas. It deals
-in coin amounts only, never in dollars.
+in coin amounts. Only the report at its end adds what each amount was
+worth in USD.
 
 It covers every kind of transaction a position involves: minting an NFT,
 depositing into one, draining it, collecting its fees, swapping one coin
@@ -19,7 +20,8 @@ holds, so that many figures need no rpc call. It then shows how to read
 the rest from the chain with few calls, and gives step-by-step
 procedures for a rebalance, a compound, a failed attempt and the owner's
 own transactions. It ends with a tool that runs those procedures for a
-range of days and writes the result as a csv file.
+range of days and writes the result as a csv file, with each amount's
+value in USD on its day.
 
 ## Table of Contents
 
@@ -48,6 +50,10 @@ range of days and writes the result as a csv file.
   - [Recording the Owner's Own Transactions](#recording-the-owners-own-transactions)
 - [A Wallet's Report for a Range of Days](#a-wallets-report-for-a-range-of-days)
   - [What the Report Covers](#what-the-report-covers)
+  - [The Prices](#the-prices)
+  - [The Moralis Key](#the-moralis-key)
+  - [The Last Whole Day](#the-last-whole-day)
+  - [When a Run Stops](#when-a-run-stops)
   - [The Columns](#the-columns)
 
 ## Positions, Coins and Gas
@@ -377,9 +383,17 @@ holds the position manager's events, the wallet's coin `transfers` and
 `approvals`, and the gas paid. For a drain, its `fees` are the `Collect`
 amounts less the `DecreaseLiquidity` ones. Every amount, the gas
 included, is raw: divide it by 10 to the power of its coin's decimals,
-18 for PLS. The tool asks the chain's first endpoint in `chains.json`,
-unless `--rpc-endpoint <url>` names another, and `--help` lists every
-option. It only reads, so it is safe to run while LP Ranger runs.
+18 for PLS.
+
+The tool's settings are LP Ranger's own: the blockchain, the position
+manager, and the endpoint LP Ranger tries first. It reads them as LP
+Ranger does, from `.env` and the settings in `app-config/`.
+`--blockchain <name>` reads another blockchain the configuration names,
+and `--rpc-endpoint <url>` asks another endpoint. A run reads one
+blockchain, and says so when the configuration names more than one. If
+the endpoint fails, the tool stops with the error and suggests trying
+another endpoint; it never moves to one by itself. `--help` lists every
+option. The tool only reads, so it is safe to run while LP Ranger runs.
 
 ### Finding the Transactions the Files Do Not Name
 
@@ -559,8 +573,8 @@ If such a transaction paid or received PLS, see
 
 `util/bookkeeping/coins-in-transactions-on-wallet` runs the procedures
 above for every rebalance and compound of a wallet in a range of days.
-It writes the result as a csv file, one row per transaction. Run it from
-the LP Ranger folder:
+It writes the result as a csv file, one row per transaction, with each
+amount's value in USD. Run it from the LP Ranger folder:
 
 ```sh
 node util/bookkeeping/coins-in-transactions-on-wallet --wallet <wallet address> --start-date 2026-10-01 --end-date 2026-10-31 --time-zone America/Chicago
@@ -575,10 +589,23 @@ prints every name it takes, one per line, and each refusal points to it.
 Without `--time-zone`, the tool stops and names the computer's own zone.
 `--help` gives the full reference, columns included.
 
+Its settings are LP Ranger's own, as for the tool in
+[One Receipt per Known Transaction](#one-receipt-per-known-transaction),
+and it takes the same `--blockchain`, `--rpc-endpoint` and
+`--position-manager` options.
+
+Each run asks for LP Ranger's wallet password, to open the Moralis api
+key LP Ranger keeps, and asks for the key too when none is saved yet
+([The Moralis Key](#the-moralis-key)). The
+report ends at the last whole day, which can be a day earlier than the
+date asked for ([The Last Whole Day](#the-last-whole-day)).
+
 The file goes to `app-data/util/bookkeeping/`, named for the wallet, the
 dates and the time zone, and the tool's last line says where. It asks
 the endpoint at LP Ranger's own pace, so a day with eight rebalances and
-compounds takes about 40 seconds.
+compounds takes about 40 seconds to read from the chain. Prices that
+CoinGecko gives take longer: priced by CoinGecko alone, that day took
+about seven minutes more the first time ([The Prices](#the-prices)).
 
 ### What the Report Covers
 
@@ -608,23 +635,128 @@ them.
 A failed compound's collect, with no deposit after it, is in no report.
 Its gas is in `failedMoveGas` ([The Position Records](#the-position-records)).
 
+### The Prices
+
+Prices come from Moralis, using LP Ranger's own price library, which
+prices a coin at the transaction's block. Where Moralis has no price for
+a coin, CoinGecko gives it, through its GeckoTerminal api: the coin's
+closing price on the transaction's UTC day. PLS is priced through WPLS,
+its wrapped form, so the gas and any PLS sent take WPLS's price.
+
+Each coin has one price per UTC day: the first one fetched, which every
+later transaction that day takes. Moralis could give each transaction
+the price at its own block. The library keeps prices by day instead, as
+LP Ranger uses them, so a day's transactions cost one request per coin.
+
+GeckoTerminal's free api has two limits. It reaches back only 180 days,
+so an older day's prices must come from Moralis. A coin Moralis cannot
+price on such a day stops the run, unless an earlier run kept that
+day's price. It also answers only a few requests a minute. The tool
+waits and asks again whenever it is refused for asking too often, which
+is why prices CoinGecko gives take minutes the first time.
+
+Each price is kept in `app-data/util/bookkeeping/scan-cache/` as it
+arrives. A later run asks only for the coins and days not yet kept, even
+after a run that stopped. These files are the tools' own: LP Ranger
+keeps its prices in `app-data/scan-cache/`, which the tools never write.
+
+One run prices at a time. A run takes a lock on these files as it starts,
+before it asks for the key, and releases it as it ends, whether it wrote
+its csv or stopped, Ctrl+C included. A run started meanwhile stops at
+once, saying which run holds the lock: two runs writing the files
+together could drop each other's newest prices, and running two saves
+little, since CoinGecko limits requests by IP address and Moralis by key.
+A run killed outright, by `kill -9` or the machine going down, cannot
+release the lock, so the next run says how to: delete the lock file it
+names, once no run is running.
+
+### The Moralis Key
+
+Moralis needs an api key, and the report uses LP Ranger's own: one key,
+kept in one place. LP Ranger keeps it in
+`app-config/user-configurable/api-keys.json`, as its Settings save it,
+encrypted with the wallet's password: AES-256-GCM, with the encryption
+key made from the password by PBKDF2-SHA512 at 600,000 rounds. Git
+ignores the file, so it never reaches the remote.
+
+The report needs neither the wallet nor its private key, and never opens
+the wallet file. It needs the password only because LP Ranger encrypts
+every api key with the wallet's password, so the prompt asks for the
+"Password for the Moralis api key (LP Ranger's wallet password)".
+
+Each run asks for that password, typed in the terminal, which shows
+nothing as it is typed. It is never an argument on the command line,
+which shell history would keep, and it is kept nowhere. The run opens
+the key with it, and asks Moralis about the key before pricing
+anything. Without that check, a key Moralis has stopped taking would
+leave CoinGecko to answer alone. The run would then stop only at the first day older than
+180 days. A key whose quota is used up still runs: CoinGecko answers
+until the quota resets.
+
+With no key saved yet, the run asks for it, and for the password twice.
+It saves the key in the same file only if Moralis takes it, and
+LP Ranger uses it from its next unlock. The password is not checked
+against the wallet's, so type the one the wallet unlocks with:
+LP Ranger cannot open a key saved under another. To enter another key,
+save it in LP Ranger's Settings.
+
+Clearing the wallet leaves the saved keys in place, encrypted with its
+password, as the Clear Wallet dialog warns. Import the wallet again
+under a new password, and the key still opens only with the old one. A
+run then says so: save the key again in LP Ranger's Settings, which
+encrypts it with the new password.
+
+### The Last Whole Day
+
+The report ends at the last whole day. A day is whole once it has ended,
+and so has the UTC day of its last hour. CoinGecko's closing price for a
+UTC day is known only once that day ends. In UTC, yesterday is whole.
+West of Greenwich, a day's last hours fall on the next UTC day. So a day
+in `America/Chicago` is whole at 7 pm the next day, or 6 pm in winter.
+East of Greenwich, a day in `Asia/Tokyo` is whole at 9 am the next day.
+
+A range that reaches past the last whole day is cut there. The tool
+says so before it starts, with the moment the next day becomes whole,
+and names the csv for the days it covers. A range with no whole day
+writes nothing, and says when its first day becomes whole.
+
+### When a Run Stops
+
+The tool asks one endpoint, and moves to no other. For prices it asks
+Moralis, then CoinGecko, and no third. When the endpoint fails, or
+neither oracle has a price for a coin, it stops with the error and
+writes no csv. It then suggests what to try: another endpoint, with
+`--rpc-endpoint`, or another price oracle. An endpoint that has no
+receipt for a transaction it must hold has failed too: one LP Ranger
+recorded as mined, or one the endpoint itself lists in a block. A csv
+without that transaction would look complete, so the run stops instead.
+
+A password that does not open the saved key stops the run. So does a key
+Moralis refuses, or a Moralis that does not answer the check. Each says
+what to do: run again with the wallet's password, save a new key in
+LP Ranger's Settings, or try again later.
+
 ### The Columns
 
-Amounts are in coins, divided by each coin's decimals exactly. An empty
-amount means nothing moved.
+Amounts are in coins, divided by each coin's decimals exactly. Each
+amount column is followed by its value in USD, in a column of the same
+name ending `_usd`. An empty cell means nothing moved, and a coin a row
+moves none of has no price in it.
 
-| Column                                                 | What it holds                                                                                                                       |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `date`, `date_utc`                                     | The block's time, in the time zone named and in UTC                                                                                 |
-| `block`, `transaction`                                 | The block, and the transaction's hash                                                                                               |
-| `move`                                                 | `rebalance`, `compound` or `deposit`                                                                                                |
-| `nfts`                                                 | A rebalance's old and new NFT, or the NFT of a compound or deposit                                                                  |
-| `kind`                                                 | `drain`, `swap`, `approval`, `mint`, `collect`, `deposit`, `cancel` or `reverted`, or for transactions the owner sent, another kind |
-| `status`                                               | `succeeded` or `reverted`                                                                                                           |
-| `token0`, `token0_address`, `token1`, `token1_address` | The pool's two coins: each one's symbol and address                                                                                 |
-| `token0_out`, `token0_in`, `token1_out`, `token1_in`   | The coins that left and entered the wallet                                                                                          |
-| `token0_principal`, `token1_principal`                 | A drain's principal: its `DecreaseLiquidity` amounts                                                                                |
-| `token0_fees`, `token1_fees`                           | A drain's `Collect` less its principal, or a collect's whole `Collect`                                                              |
-| `gas_paid_PLS`                                         | The gas paid, in the chain's own coin, whose name the column carries                                                                |
-| `value_sent_PLS`                                       | PLS sent as the transaction's value, which LP Ranger's own transactions never do                                                    |
-| `other_coins`                                          | The wallet's transfers of coins outside the pool, raw, which LP Ranger's own transactions never make                                |
+| Column                                                 | What it holds                                                                                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `date`, `date_utc`                                     | The block's time, in the time zone named and in UTC                                                                                                                 |
+| `block`, `transaction`                                 | The block, and the transaction's hash                                                                                                                               |
+| `move`                                                 | `rebalance`, `compound` or `deposit`                                                                                                                                |
+| `nfts`                                                 | A rebalance's old and new NFT, or the NFT of a compound or deposit                                                                                                  |
+| `kind`                                                 | `drain`, `swap`, `approval`, `mint`, `collect`, `deposit`, `cancel` or `reverted`, or for transactions the owner sent, another kind                                 |
+| `status`                                               | `succeeded` or `reverted`                                                                                                                                           |
+| `token0`, `token0_address`, `token1`, `token1_address` | The pool's two coins: each one's symbol and address                                                                                                                 |
+| `token0_usd_price`, `token1_usd_price`                 | Each of the pool's coins' USD price on the transaction's UTC day                                                                                                    |
+| `token0_out`, `token0_in`, `token1_out`, `token1_in`   | The coins that left and entered the wallet                                                                                                                          |
+| `token0_principal`, `token1_principal`                 | A drain's principal: its `DecreaseLiquidity` amounts                                                                                                                |
+| `token0_fees`, `token1_fees`                           | A drain's `Collect` less its principal, or a collect's whole `Collect`                                                                                              |
+| `gas_paid_PLS`                                         | The gas paid, in the chain's own coin, whose name the column carries                                                                                                |
+| `PLS_usd_price`, `gas_paid_usd`                        | That coin's USD price on the transaction's UTC day, and the gas paid in USD                                                                                         |
+| `value_sent_PLS`, `value_sent_usd`                     | PLS sent as the transaction's value, and its value in USD. LP Ranger's own transactions never send any                                                              |
+| `other_coins`                                          | The wallet's transfers of coins outside the pool, which LP Ranger's own transactions never make: each amount in whole coins, with its symbol, address and USD value |

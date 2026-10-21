@@ -89,16 +89,6 @@ const { cacheKey } = require("./cache-store");
 
 // ── constants ────────────────────────────────────────────────────────────────
 
-/** @type {number} Cache time-to-live in milliseconds.  Configurable via
- *  `priceCacheTtlMs` in `app-config/user-configurable/bot-config.json` global section.
- *  Read once at module-load time — restart to apply changes. */
-const _CACHE_TTL_MS = getPriceCacheTtlMs();
-/*- In-move TTL: the rebalance/compound pipeline reuses a same-token
- *  cache hit for this long inside a `withFreshPricesAllowed` scope.
- *  Replaces the original "bypass cache + dedup entirely in-move" pattern
- *  that produced a 4-6× burst per token per move. */
-const _MOVE_TTL_MS = getMoveCacheTtlMs();
-
 /**
  * In-memory price cache.
  * Keys are the canonical `chain-token` (`cacheKey` in `src/cache-store.js`).
@@ -143,13 +133,18 @@ async function fetchTokenPriceUsd(tokenAddress) {
     logPausedCached(tokenAddress, cached);
     return cached ? cached.price : 0;
   }
-  /*- Freshness window: 120 s outside a move (steady-state polling) vs
-   *  4 s inside a move (rebalance/compound pipeline).  The shorter
-   *  in-move TTL collapses the rapid-fire burst that the same pipeline
-   *  triggers when multiple stages each call fetchTokenPriceUsd for the
-   *  same token within seconds, while still re-fetching often enough
-   *  that a move-relevant on-chain price change shows up promptly. */
-  const ttl = inMove() ? _MOVE_TTL_MS : _CACHE_TTL_MS;
+  /*-
+   *  Freshness window: 120 s outside a move (steady-state polling) vs
+   *  4 s inside a move (rebalance/compound pipeline), as shipped
+   *  (`priceCacheTtlMs`, `moveCacheTtlMs`, as src/price-fetcher-gate.js
+   *  read them). The shorter in-move TTL collapses the rapid-fire burst
+   *  that the same pipeline triggers when multiple stages each call
+   *  fetchTokenPriceUsd for the same token within seconds, while still
+   *  re-fetching often enough that a move-relevant on-chain price change
+   *  shows up promptly. It replaced bypassing the cache inside a move,
+   *  which sent four to six requests per token per move.
+   */
+  const ttl = inMove() ? getMoveCacheTtlMs() : getPriceCacheTtlMs();
   if (cached && Date.now() - cached.ts < ttl) {
     logCacheHit(tokenAddress, cached);
     return cached.price;
@@ -578,10 +573,6 @@ async function _fetchMoralisHistorical(tokenAddress, blockNumber, chain) {
 
 const { loadMergedDefaults } = require("./load-merged-defaults");
 
-/** Long TTL — reference-asset prices (e.g. gold) move slowly.  Derived
- *  from `priceCacheTtlMs * dustUnitPriceCacheMultiplier` (defaults
- *  120_000 × 30 = 3_600_000 ms = 1 h).  Read once at module-load. */
-const _DUST_UNIT_PRICE_TTL_MS = getDustUnitPriceCacheTtlMs();
 let _dustUnitPriceCache = null; // { price, ts }
 
 /**
@@ -635,9 +626,13 @@ async function fetchDustUnitPriceUsd() {
     logDustPausedCached(_dustUnitPriceCache);
     return _dustUnitPriceCache ? _dustUnitPriceCache.price : 0;
   }
-  /*- Mirrors fetchTokenPriceUsd: dust-unit-price TTL outside a move,
-   *  the shorter in-move TTL inside one. */
-  const ttl = inMove() ? _MOVE_TTL_MS : _DUST_UNIT_PRICE_TTL_MS;
+  /*-
+   *  Mirrors fetchTokenPriceUsd. Outside a move, the dust-unit price's
+   *  long TTL, since reference-asset prices (e.g. gold) move slowly:
+   *  `priceCacheTtlMs * dustUnitPriceCacheMultiplier`, an hour as
+   *  shipped. Inside one, the shorter in-move TTL.
+   */
+  const ttl = inMove() ? getMoveCacheTtlMs() : getDustUnitPriceCacheTtlMs();
   if (_dustUnitPriceCache && Date.now() - _dustUnitPriceCache.ts < ttl) {
     logDustCacheHit(_dustUnitPriceCache);
     return _dustUnitPriceCache.price;
@@ -660,11 +655,12 @@ async function fetchDustUnitPriceUsd() {
       chain: tok.dexScreenerChain,
     });
     if (price > 0) {
+      const cachedMin = getDustUnitPriceCacheTtlMs() / 60000;
       log.info(
         "[dust-unit-price] %s = $%s / unit (cached %d min)",
         tok.symbol,
         price.toFixed(2),
-        _DUST_UNIT_PRICE_TTL_MS / 60000,
+        cachedMin,
       );
       _dustUnitPriceCache = { price, ts: Date.now() };
       return price;
@@ -715,6 +711,4 @@ module.exports = {
   _resetDustUnitPriceCache,
   _resetPauseStateForTests,
   _cache,
-  _CACHE_TTL_MS,
-  _DUST_UNIT_PRICE_TTL_MS,
 };

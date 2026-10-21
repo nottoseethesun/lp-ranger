@@ -21,9 +21,14 @@ const { eventLog, receiptOf, standInChain } = require("./_bookkeeping-chain");
 const { readReceipt } = require("../bookkeeping/coins-in-transaction");
 const {
   columns,
+  priceText,
+  usdValue,
+  usd,
   coins,
   moved,
   takenOut,
+  inPool,
+  coinsToPrice,
   otherCoins,
   rowOf,
   csvCell,
@@ -36,7 +41,11 @@ const {
   drainBlockOf,
   poolOf,
   learnCoins,
+  pricesOn,
+  failureText,
 } = require("../bookkeeping/coins-in-transactions-on-wallet");
+const { PRICE_ADVICE } = require("../bookkeeping/usd-prices");
+const { RPC_ADVICE } = require("../bookkeeping/coins-in-transaction");
 
 const PM = "0x2222222222222222222222222222222222222222";
 const WALLET = "0x1111111111111111111111111111111111111111";
@@ -86,6 +95,103 @@ test("columns name the gas and value in the chain's own coin", () => {
   assert.equal(names.at(-1), "other_coins");
 });
 
+test("columns follow each amount with its USD value, and give the prices", () => {
+  const names = columns("PLS");
+  for (const amount of [
+    "token0_out",
+    "token0_in",
+    "token1_out",
+    "token1_in",
+    "token0_principal",
+    "token1_principal",
+    "token0_fees",
+    "token1_fees",
+  ]) {
+    assert.equal(names[names.indexOf(amount) + 1], `${amount}_usd`, amount);
+  }
+  assert.equal(names[names.indexOf("token0_address") + 1], "token0_usd_price");
+  assert.equal(names[names.indexOf("token1_address") + 1], "token1_usd_price");
+  assert.deepEqual(
+    names.slice(names.indexOf("gas_paid_PLS"), names.indexOf("other_coins")),
+    [
+      "gas_paid_PLS",
+      "PLS_usd_price",
+      "gas_paid_usd",
+      "value_sent_PLS",
+      "value_sent_usd",
+    ],
+  );
+});
+
+test("priceText writes plain decimals, never an exponent, and empty for none", () => {
+  assert.equal(priceText(2), "2");
+  assert.equal(priceText(0.5), "0.5");
+  assert.equal(priceText(6.933786466e-8), "0.00000006933786466");
+  assert.equal(priceText(undefined), "");
+});
+
+test("usd values the coins at the price, with two to six decimals", () => {
+  assert.equal(usdValue(2500000000000000000n, 18, 2), "5.00");
+  assert.equal(usdValue(1n, 0, 0.0000314159), "0.000031");
+  assert.equal(usdValue(0n, 18, 2), "0.00");
+  assert.equal(usd(0n, 18, 2), "");
+  assert.equal(usd(1500000n, 6n, 0.5), "0.75");
+});
+
+test("coinsToPrice names the pool's coins a row shows and every other coin", () => {
+  assert.deepEqual(coinsToPrice(DRAIN, POOL_COINS, ["7"]), [COIN0, COIN1]);
+  assert.deepEqual(coinsToPrice(COLLECT, POOL_COINS, ["7"]), [COIN0, COIN1]);
+  const outside = recordOf([
+    eventLog(ELSEWHERE, "Transfer", [WALLET, POOL, 2n]),
+    eventLog(ELSEWHERE, "Transfer", [POOL, WALLET, 3n]),
+  ]);
+  assert.deepEqual(coinsToPrice(outside, POOL_COINS, ["7"]), [ELSEWHERE]);
+  const none = recordOf([]);
+  assert.deepEqual(coinsToPrice(none, POOL_COINS, ["7"]), []);
+  assert.equal(inPool(COIN0.toLowerCase(), POOL_COINS), true);
+  assert.equal(inPool(ELSEWHERE, POOL_COINS), false);
+});
+
+test("pricesOn asks for each coin's price at the transaction's block and time", async () => {
+  const asked = [];
+  const ctx = {
+    usdPriceOn: async (coin, moment) => {
+      asked.push([coin, moment]);
+      return coin === COIN0 ? 2 : 0.5;
+    },
+  };
+  const moment = { timestamp: 1760875200, blockNumber: 26_400_000 };
+  const prices = await pricesOn([COIN0, COIN1], moment, ctx);
+  assert.deepEqual(
+    [...prices.entries()],
+    [
+      [COIN0.toLowerCase(), 2],
+      [COIN1.toLowerCase(), 0.5],
+    ],
+  );
+  assert.deepEqual(asked, [
+    [COIN0, moment],
+    [COIN1, moment],
+  ]);
+});
+
+test("failureText says what to try for a price, an endpoint or the key, and nothing else", () => {
+  const price = Object.assign(new Error("no USD price"), {
+    priceUnavailable: true,
+  });
+  assert.equal(failureText(price, "http://e"), `no USD price\n${PRICE_ADVICE}`);
+  const rpc = Object.assign(new Error("timeout"), { rpcFailure: true });
+  assert.equal(
+    failureText(rpc, "http://e"),
+    `http://e failed: timeout\n${RPC_ADVICE}`,
+  );
+  const key = Object.assign(new Error("Moralis refused the api key."), {
+    keyRefused: true,
+  });
+  assert.equal(failureText(key, "http://e"), "Moralis refused the api key.");
+  assert.equal(failureText(new Error("a bug"), "http://e"), null);
+});
+
 test("coins divides by the decimals exactly, and leaves nothing empty", () => {
   assert.equal(coins(0n, 18), "");
   assert.equal(coins(1500000000000000000n, 18), "1.5");
@@ -122,14 +228,18 @@ test("takenOut splits a drain and counts a whole collect as fees", () => {
 test("otherCoins lists the wallet's transfers of coins outside the pool", () => {
   const record = recordOf([
     eventLog(COIN0, "Transfer", [WALLET, POOL, 1n]),
-    eventLog(ELSEWHERE, "Transfer", [WALLET, POOL, 2n]),
-    eventLog(ELSEWHERE, "Transfer", [POOL, WALLET, 3n]),
+    eventLog(ELSEWHERE, "Transfer", [WALLET, POOL, 2000000n]),
+    eventLog(ELSEWHERE, "Transfer", [POOL, WALLET, 3000000n]),
   ]);
+  const info = new Map([
+    [ELSEWHERE.toLowerCase(), { symbol: "CCC", decimals: 6 }],
+  ]);
+  const prices = new Map([[ELSEWHERE.toLowerCase(), 4]]);
   assert.equal(
-    otherCoins(record, POOL_COINS),
-    `out 2 of ${ELSEWHERE}; in 3 of ${ELSEWHERE}`,
+    otherCoins(record, POOL_COINS, info, prices),
+    `out 2.0 CCC of ${ELSEWHERE} ($8.00); in 3.0 CCC of ${ELSEWHERE} ($12.00)`,
   );
-  assert.equal(otherCoins(DRAIN, POOL_COINS), "");
+  assert.equal(otherCoins(DRAIN, POOL_COINS, info, prices), "");
 });
 
 test("rowOf writes PLS sent as the value, and coins from outside the pool", () => {
@@ -140,6 +250,7 @@ test("rowOf writes PLS sent as the value, and coins from outside the pool", () =
   const info = new Map([
     [COIN0.toLowerCase(), { symbol: "AAA", decimals: 18 }],
     [COIN1.toLowerCase(), { symbol: "BBB", decimals: 6n }],
+    [ELSEWHERE.toLowerCase(), { symbol: "CCC", decimals: 0 }],
   ]);
   const cells = rowOf({
     tx: {
@@ -152,14 +263,19 @@ test("rowOf writes PLS sent as the value, and coins from outside the pool", () =
     pool: POOL_COINS,
     info,
     timeZone: "UTC",
+    prices: new Map([[ELSEWHERE.toLowerCase(), 3]]),
+    nativePrice: 0.0002,
   });
   const row = Object.fromEntries(columns("PLS").map((c, i) => [c, cells[i]]));
   assert.equal(row.date, "2025-10-19 12:00:00");
   assert.equal(row.date_utc, "2025-10-19T12:00:00Z");
   assert.equal(row.kind, "deposit");
   assert.equal(row.value_sent_PLS, "2.5");
-  assert.equal(row.other_coins, `out 2 of ${ELSEWHERE}`);
+  assert.equal(row.value_sent_usd, "0.0005");
+  assert.equal(row.PLS_usd_price, "0.0002");
+  assert.equal(row.other_coins, `out 2 CCC of ${ELSEWHERE} ($6.00)`);
   assert.equal(row.token0, "AAA");
+  assert.deepEqual([row.token0_usd_price, row.token1_usd_price], ["", ""]);
 });
 
 test("csvCell quotes a cell holding a comma, a quote or a line break", () => {
@@ -335,8 +451,8 @@ test("poolOf takes a move's coins from the files before asking the chain", async
 test("learnCoins asks the chain only for a coin the files do not describe", async () => {
   const provider = callsProvider({ symbol: ["BBB"], decimals: [6] });
   const ctx = { ...CTX, info: new Map() };
-  await learnCoins(provider, POOL_COINS, ctx);
-  await learnCoins(provider, POOL_COINS, ctx);
+  await learnCoins(provider, [COIN0, COIN1], ctx);
+  await learnCoins(provider, [COIN0, COIN1], ctx);
   assert.deepEqual(ctx.info.get(COIN0.toLowerCase()), {
     symbol: "AAA",
     decimals: 18,

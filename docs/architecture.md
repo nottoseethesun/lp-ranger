@@ -532,10 +532,11 @@ scope, so it always gets a fresh price.
 Three global keys tune the caching. They are saved in `bot-config.json`'s
 global section, with their defaults in `bot-config-defaults.json`:
 `priceCacheTtlMs` (120000 as shipped), `dustUnitPriceCacheMultiplier` (30)
-and `moveCacheTtlMs` (4000, the cache's life inside a move). The
-dust-unit-price TTL is computed at module init as
-`priceCacheTtlMs × multiplier`, with a runtime assertion guarding the
-integer-multiple invariant.
+and `moveCacheTtlMs` (4000, the cache's life inside a move). The server
+and the bot read them as they start (`readPriceCacheSettings`,
+`src/price-fetcher-gate.js`); until a program reads them, each is its
+default. The dust-unit-price TTL is `priceCacheTtlMs × multiplier`, with
+a runtime assertion guarding the integer-multiple invariant.
 
 The browser-side flag (`isBrowserPaused()` in `public/dashboard-idle.js`)
 is also the gate for `playSound()` in `public/dashboard-sounds.js`:

@@ -6,9 +6,10 @@
  * Tests for the calendar side of the wallet bookkeeping report
  * (`util/bookkeeping/coins-in-transactions-on-wallet/dates.js`): reading
  * dates and time zones, turning a range of whole days in a zone into
- * instants, and writing an instant as that zone's wall clock. The cases
- * that matter most are the nights the clocks change, when a day is 23 or
- * 25 hours long.
+ * instants, writing an instant as that zone's wall clock, and the last
+ * whole day at a moment. The cases that matter most are the nights the
+ * clocks change, when a day is 23 or 25 hours long, and the zones whose
+ * days straddle two UTC days.
  */
 
 const { test } = require("node:test");
@@ -24,8 +25,11 @@ const {
   offsetAt,
   midnightIn,
   nextDay,
+  previousDay,
   rangeIn,
   formatIn,
+  wholeFrom,
+  lastWholeDay,
 } = require("../bookkeeping/coins-in-transactions-on-wallet/dates");
 
 const HOUR = 60 * 60 * 1000;
@@ -146,4 +150,65 @@ test("formatIn writes an instant as the zone's wall clock", () => {
     formatIn(Date.UTC(2026, 9, 19, 5), "America/Chicago"),
     "2026-10-19 00:00:00",
   );
+});
+
+test("previousDay crosses months and years", () => {
+  assert.equal(previousDay("2026-10-19"), "2026-10-18");
+  assert.equal(previousDay("2026-03-01"), "2026-02-28");
+  assert.equal(previousDay("2027-01-01"), "2026-12-31");
+});
+
+test("wholeFrom is the first UTC midnight at or after a day's end", () => {
+  assert.equal(wholeFrom("2026-10-19", "UTC"), Date.UTC(2026, 9, 20));
+  // Ends at 05:00 UTC on the 20th (CDT), so whole when the 20th ends.
+  assert.equal(
+    wholeFrom("2026-10-19", "America/Chicago"),
+    Date.UTC(2026, 9, 21),
+  );
+  // Ends at 15:00 UTC on the 19th, whole when that UTC day ends.
+  assert.equal(wholeFrom("2026-10-19", "Asia/Tokyo"), Date.UTC(2026, 9, 20));
+  // 2026-11-01 is 25 hours long in Chicago, ending at 06:00 UTC (CST).
+  assert.equal(
+    wholeFrom("2026-11-01", "America/Chicago"),
+    Date.UTC(2026, 10, 3),
+  );
+});
+
+test("lastWholeDay in UTC is yesterday", () => {
+  assert.equal(lastWholeDay(Date.UTC(2026, 9, 21, 0), "UTC"), "2026-10-20");
+  assert.equal(
+    lastWholeDay(Date.UTC(2026, 9, 21, 23, 59, 59, 999), "UTC"),
+    "2026-10-20",
+  );
+});
+
+test("lastWholeDay west of Greenwich waits for the UTC day of a day's last hour", () => {
+  const zone = "America/Chicago";
+  // 18:59 CDT on the 21st: the 20th's last hours are on the UTC 21st.
+  assert.equal(lastWholeDay(Date.UTC(2026, 9, 21, 23, 59), zone), "2026-10-19");
+  // 19:00 CDT on the 21st, the UTC 21st has ended: the 20th is whole.
+  assert.equal(lastWholeDay(Date.UTC(2026, 9, 22, 0), zone), "2026-10-20");
+  // 01:00 CDT on the 21st: yesterday has ended, its UTC day has not.
+  assert.equal(lastWholeDay(Date.UTC(2026, 9, 21, 6), zone), "2026-10-19");
+});
+
+test("lastWholeDay east of Greenwich waits for the UTC day a day ends in", () => {
+  const zone = "Asia/Tokyo";
+  // 09:00 on the 21st in Tokyo: the 20th ended at 15:00 UTC on the 20th.
+  assert.equal(lastWholeDay(Date.UTC(2026, 9, 21, 0), zone), "2026-10-20");
+  // 05:00 on the 22nd in Tokyo: the 21st ended, but its UTC day has not.
+  assert.equal(lastWholeDay(Date.UTC(2026, 9, 21, 20), zone), "2026-10-20");
+});
+
+test("every day up to lastWholeDay is whole, and the day after is not", () => {
+  const zones = ["UTC", "America/Chicago", "Asia/Tokyo", "Asia/Kolkata"];
+  for (const zone of zones) {
+    for (let hour = 0; hour < 48; hour += 1) {
+      const now = Date.UTC(2026, 10, 1, hour);
+      const last = lastWholeDay(now, zone);
+      const label = `${zone} at ${new Date(now).toISOString()}`;
+      assert.ok(wholeFrom(last, zone) <= now, label);
+      assert.ok(wholeFrom(nextDay(last), zone) > now, label);
+    }
+  }
 });

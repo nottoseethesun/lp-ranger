@@ -1,9 +1,11 @@
 # Show Swap Route Even If Only Blockchain Data Available
 
 > **Status:** Nice-to-have / polish — not a bug. The app works
-> correctly without this. Funds are never at risk. Production
-> installs always show the route correctly via the live path; the
-> em-dash only appears in dev-mirror or fresh-install views.
+> correctly without this. Funds are never at risk. An install shows the
+> route of each rebalance it makes; the em-dash appears for rebalances
+> read back from the chain: on a fresh install or a dev mirror, and for
+> every earlier rebalance after Reload Current Position or a cleared
+> scan cache.
 
 ## Plain language
 
@@ -22,7 +24,9 @@ logs don't carry route info. `public/dashboard-history.js` renders
 these as em-dash in the "Routed Via" column. The live path that does
 record the route, `appendToPoolCache`, runs only on the install that
 made the rebalance, so another machine, or a fresh install, gets every
-earlier row from the scanner, with an em-dash in each.
+earlier row from the scanner, with an em-dash in each. So does Reload
+Current Position, which empties the pool's event cache and rebuilds
+every row from the chain.
 
 ## Fix when prioritized
 

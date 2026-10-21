@@ -20,8 +20,6 @@ const {
   _resetPauseStateForTests,
   _resetDustUnitPriceCache,
   _cache,
-  _CACHE_TTL_MS,
-  _DUST_UNIT_PRICE_TTL_MS,
 } = require("../src/price-fetcher");
 const {
   _resetForTest: _resetGeckoRateLimit,
@@ -66,7 +64,7 @@ describe("pause / unpause", () => {
      *  NOT be called. */
     _cache.set("pulsechain-" + TOKEN.toLowerCase(), {
       price: 0.42,
-      ts: Date.now() - _CACHE_TTL_MS - 60_000,
+      ts: Date.now() - gate.getPriceCacheTtlMs() - 60_000,
     });
     let fetchCalls = 0;
     globalThis.fetch = async () => {
@@ -223,8 +221,10 @@ describe("invalidatePriceCacheFor", () => {
 
 describe("configurable TTLs", () => {
   it("dust TTL is an exact integer multiple of price TTL", () => {
+    const dustTtl = gate.getDustUnitPriceCacheTtlMs();
+    const priceTtl = gate.getPriceCacheTtlMs();
     assert.strictEqual(
-      _DUST_UNIT_PRICE_TTL_MS % _CACHE_TTL_MS,
+      dustTtl % priceTtl,
       0,
       "dust TTL must be an integer multiple of price TTL by construction",
     );
@@ -235,7 +235,7 @@ describe("configurable TTLs", () => {
      *  whatever bot-config has set.  Either it's the default 30 OR a
      *  user-set override.  Integer-multiple is the load-bearing
      *  invariant — ratio > 0 + integer suffices. */
-    const ratio = _DUST_UNIT_PRICE_TTL_MS / _CACHE_TTL_MS;
+    const ratio = gate.getDustUnitPriceCacheTtlMs() / gate.getPriceCacheTtlMs();
     assert.ok(Number.isInteger(ratio), "ratio is integer");
     assert.ok(ratio >= 1, "ratio is at least 1");
   });

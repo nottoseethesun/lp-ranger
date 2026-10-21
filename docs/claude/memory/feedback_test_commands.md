@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-10-19T18:30:24.554Z
+  modified: 2026-10-21T16:34:27.760Z
 ---
 
 # Running tests
@@ -124,6 +124,13 @@ stomp, the same copy would destroy the only good version.
 **How to apply:** wipe before a script that loads `src/`, restore after
 it, as separate tool calls. Check that the server is down first. A
 one-line `node -e` counts.
+
+**Since 2026-10-21** the gate reads nothing as it loads: its settings are
+read when a program calls `readPriceCacheSettings`, so loading it no
+longer copies the backups. The rule
+stands: a script that calls into `src/` can still write the operator's
+caches and records, and `scripts/clear-blockchain-scan-cache.js` still
+loads with backups.
 
 **Repeated 2026-10-18,** with harm: a `node -e` that required
 `src/server-positions.js` to compare key lists rewrote the backup. The

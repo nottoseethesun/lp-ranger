@@ -88,7 +88,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 │   └── user-configurable/        # Tracked dir, gitignored CONTENTS. Operator-specific runtime state.
 │       ├── README.md             #   Tracked. Points operators at the override workflow.
 │       ├── bot-config.json       #   Gitignored. Managed positions and per-position settings; the bot's records are in app-data/position-records.json
-│       ├── bot-config.backup.json#   Gitignored. Automatic snapshot created on every load (config-stomp safety net)
+│       ├── bot-config.backup.json#   Gitignored. Automatic snapshot made by each load as the server or bot starts (config-stomp safety net); a util/ tool that reads the price library's settings passes `skipBackups` (`readPriceCacheSettings`), so it never replaces it
 │       ├── wallet.json           #   Gitignored. AES-256-GCM encrypted wallet state
 │       └── api-keys.json         #   Gitignored. AES-256-GCM encrypted third-party API keys (Moralis, Telegram, etc.)
 ├── app-data/                     # Per-install runtime data (gitignored CONTENTS, tarball-excluded).
@@ -96,7 +96,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 │   ├── rebalance_log.json        #   Gitignored. JSON array of historical rebalance events.
 │   ├── position-records.json     #   Gitignored. Each position's records: HODL baseline, compounds, gas, deposit, residuals (src/position-records.js)
 │   ├── scan-cache/               #   Gitignored. The scan caches (src/scan-cache-dir.js): rebuilt from the chain if deleted, at about an hour per position
-│   └── util/bookkeeping/         #   Gitignored. The csv reports util/bookkeeping/coins-in-transactions-on-wallet writes; the app never reads them
+│   └── util/bookkeeping/         #   Gitignored. The csv reports util/bookkeeping/coins-in-transactions-on-wallet writes, and in scan-cache/ the prices it fetched, with the lock one run holds while it prices (util/bookkeeping/price-cache-lock.js); the app never reads them, and npm run clean keeps them. Its Moralis key is the app's own, in api-keys.json
 ├── eslint-rules/
 │   └── no-separate-contract-calls.js  # Custom rule: require multicall for atomic EVM method pairs
 ├── stylelint-rules/
@@ -226,6 +226,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 │   ├── ui-state.js               # Pure formatting helpers + DOM update routines
 │   ├── cache-store.js            # JSON file-based disk cache with TTL, scoped filenames (blockchain/contract/wallet)
 │   ├── scan-cache-dir.js         # Where every scan cache lives: app-data/scan-cache/, or under node --test a folder of the test process's own
+│   ├── shared-json-file.js       # A JSON file more than one process may write (the price caches): read as an object, replaced whole through a folder fs.mkdtempSync makes beside it
 │   ├── key-store.js              # AES-256-GCM encrypted private key storage (PBKDF2-SHA512)
 │   ├── residual-tracker.js       # Per-pool wallet residual tracking (tokens left after rebalance)
 │   ├── spent-gas.js              # Gas an attempt paid, carried as `gasCostWei` on its result or error; records a failed move's in the open period
@@ -345,7 +346,7 @@ npm run test:watch     # watch mode
 npm run check          # Combined lint (JS+CSS) + test + coverage check
 npm run reset-wallet   # Delete app-config/user-configurable/wallet.json + clear WALLET_PASSWORD from .env
 npm run clean          # Full reset to fresh-clone state: wallet, bot config, api keys, rebalance log,
-                       # every scan cache, logs, and build artifacts (rebuild before npm start)
+                       # every scan cache in app-data/scan-cache/, logs, and build artifacts (rebuild before npm start)
 npm run dev-clean      # Same, but keeps the price/block-time/gecko caches (they cost API quota)
 npm run clear-blockchain-scan-cache  # Empty app-data/scan-cache/ (every blockchain scan cache); refuses if the server is running
 npm run nuke           # Delete node_modules + package-lock.json for a clean reinstall
@@ -564,6 +565,7 @@ The event, LP-position and liquidity-pair caches name a chain by its `cacheTag` 
 ## Constraints to Maintain
 
 - **NEVER put cache data in a configuration file.** Files under `app-config/` hold only what the operator chooses. What is read from the blockchain or a price service, or worked out from it, goes in `app-data/scan-cache/` (its path from `scanCachePath`, `src/scan-cache-dir.js`); what the bot records about a position goes in `app-data/position-records.json` (`RECORD_POSITION_KEYS`); `tmp/` holds nothing worth keeping. `test/data-homes.test.js` fails the build otherwise.
+- **Only a program's entry point runs anything when it is loaded**: the file the program starts from (`server.js`, `bot.js`, a script, a `util/` tool's `index.js`, `public/dashboard-init.js`). Every other file's top level only declares: imports, constants, functions, classes, exports. A value a library needs from the settings is read by a function the entry point calls (e.g. `readPriceCacheSettings`, `src/price-fetcher-gate.js`). Code that predates this rule is changed one case at a time, when asked.
 - Every `src/` and `public/dashboard-*.js` file ≤ 500 non-comment lines of code
 - No function with cyclomatic complexity > 17
 - No `eslint-disable` directives for main lint rules; no `stylelint-disable` directives. Security lint rules (`9mm/no-number-from-bigint`, `9mm/no-secret-logging`) may use per-line `eslint-disable-next-line` with a documented `-- Safe: <reason>` comment

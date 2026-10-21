@@ -8,7 +8,8 @@
  *
  * Usage:
  *   node scripts/import-wallet.js
- *     → interactive prompts for private key and password
+ *     → interactive prompts for private key and password, which show
+ *       nothing of what is typed (src/ask-password.js)
  *
  *   echo "0xABC..." | node scripts/import-wallet.js --password mypass
  *     → reads private key from stdin, password from flag (scripted use)
@@ -21,7 +22,7 @@
 "use strict";
 
 const { log } = require("../src/log");
-const readline = require("readline");
+const { askPassword } = require("../src/ask-password");
 const { Wallet } = require("ethers");
 const { migrateAppConfig } = require("../src/migrate-app-config");
 
@@ -45,21 +46,13 @@ function flag(name) {
 
 const passwordFromFlag = flag("--password");
 
-// ── Interactive prompts ──────────────────────────────────────────────────────
-
-function createRl() {
-  return readline.createInterface({
-    input: process.stdin,
-    output: process.stderr,
-    terminal: process.stdin.isTTY !== false,
-  });
-}
-
-/** Prompt for a visible-text answer. */
-function ask(rl, prompt) {
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => resolve(answer.trim()));
-  });
+/**
+ * Ask for a secret, showing nothing of what is typed.
+ * @param {string} prompt
+ * @returns {Promise<string>}  The answer, trimmed.
+ */
+async function ask(prompt) {
+  return (await askPassword(prompt)).trim();
 }
 
 /** Read all of stdin as a single string (for piped input). */
@@ -87,13 +80,11 @@ function readStdin() {
   let password;
 
   if (process.stdin.isTTY) {
-    // Interactive — prompt for everything.
-    const rl = createRl();
+    // Interactive — prompt for everything, showing none of it.
     log.error("Import a wallet into LP Ranger (encrypted at rest).\n");
-    privateKey = await ask(rl, "Private key (0x-prefixed hex): ");
-    password = await ask(rl, "Encryption password: ");
-    const confirm = await ask(rl, "Confirm password: ");
-    rl.close();
+    privateKey = await ask("Private key (0x-prefixed hex): ");
+    password = await ask("Encryption password: ");
+    const confirm = await ask("Confirm password: ");
     // eslint-disable-next-line security/detect-possible-timing-attacks -- Safe: comparing two user-entered strings for confirmation, not verifying a secret
     if (password !== confirm) {
       log.error("Passwords do not match.");

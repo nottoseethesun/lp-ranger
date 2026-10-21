@@ -196,6 +196,89 @@ describe("price-cache", () => {
     );
     assert.equal(reloaded["pulsechain-0xabc-@26028850"].priceUsd, 0.001776);
   });
+
+  /**
+   * A second copy of the module, holding the same file: what another
+   * process keeping this cache has, such as a second run of the
+   * bookkeeping report.
+   */
+  function anotherProcess() {
+    const id = require.resolve("../src/price-cache");
+    const ours = require.cache[id];
+    delete require.cache[id];
+    const theirs = require("../src/price-cache");
+    require.cache[id] = ours;
+    return theirs;
+  }
+
+  const DAY = "2026-04-01T00:00";
+
+  it("keeps the prices another process wrote after this one read the file", () => {
+    const other = anotherProcess();
+    assert.equal(getHistoricalPrice("pulsechain", "0xone", DAY), null);
+    assert.equal(other.getHistoricalPrice("pulsechain", "0xtwo", DAY), null);
+    setHistoricalPrice("pulsechain", "0xone", DAY, 1);
+    other.setHistoricalPrice("pulsechain", "0xtwo", DAY, 2);
+    flushPriceCache();
+    other.flushPriceCache();
+    const onDisk = JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
+    assert.equal(onDisk[`pulsechain-0xone-${DAY}`].priceUsd, 1);
+    assert.equal(onDisk[`pulsechain-0xtwo-${DAY}`].priceUsd, 2);
+  });
+
+  it("takes the other process's prices into memory at its next write", () => {
+    const other = anotherProcess();
+    getHistoricalPrice("pulsechain", "0xone", DAY);
+    other.setHistoricalPrice("pulsechain", "0xtwo", DAY, 2);
+    other.flushPriceCache();
+    setHistoricalPrice("pulsechain", "0xone", DAY, 1);
+    flushPriceCache();
+    assert.equal(getHistoricalPrice("pulsechain", "0xtwo", DAY), 2);
+  });
+
+  it("puts back a price another write dropped from the file, at its next write", () => {
+    setHistoricalPrice("pulsechain", "0xone", DAY, 1);
+    flushPriceCache();
+    /*-
+     *  Another process's write that read the file before this one's
+     *  rename and landed after it: the file then lacks this one's price.
+     */
+    fs.writeFileSync(
+      _CACHE_PATH,
+      JSON.stringify({
+        [`pulsechain-0xtwo-${DAY}`]: { priceUsd: 2, cachedAt: "then" },
+      }),
+    );
+    setHistoricalPrice("pulsechain", "0xthree", DAY, 3);
+    flushPriceCache();
+    const onDisk = JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
+    assert.deepEqual(Object.keys(onDisk).sort(), [
+      `pulsechain-0xone-${DAY}`,
+      `pulsechain-0xthree-${DAY}`,
+      `pulsechain-0xtwo-${DAY}`,
+    ]);
+  });
+
+  it("writes its own price over the file's for the same key", () => {
+    const other = anotherProcess();
+    getHistoricalPrice("pulsechain", "0xone", DAY);
+    other.setHistoricalPrice("pulsechain", "0xone", DAY, 2);
+    other.flushPriceCache();
+    setHistoricalPrice("pulsechain", "0xone", DAY, 3);
+    flushPriceCache();
+    const onDisk = JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
+    assert.equal(onDisk[`pulsechain-0xone-${DAY}`].priceUsd, 3);
+  });
+
+  it("leaves no folder of its own beside the file after a write", () => {
+    setHistoricalPrice("pulsechain", "0xone", DAY, 1);
+    flushPriceCache();
+    const own = `.${path.basename(_CACHE_PATH)}-`;
+    const left = fs
+      .readdirSync(path.dirname(_CACHE_PATH))
+      .filter((name) => name.startsWith(own));
+    assert.deepEqual(left, []);
+  });
 });
 
 // ── gasNative in pnl-tracker ─────────────────────────────────────────────────

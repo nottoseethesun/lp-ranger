@@ -11,15 +11,25 @@
  * Deleted by `npm run clean`; preserved by `npm run dev-clean`.
  *
  * No TTL — historical prices never change.  Lazy-loaded on first access.
- * Batched writes via dirty flag: `set` marks dirty, `flush` writes only if needed.
+ * Batched writes via dirty flag: `set` marks dirty, `flush` writes only if
+ * needed. A write reads the file as it is at that moment, lays this
+ * process's prices over it, and replaces the file whole through a folder
+ * of its own (src/shared-json-file.js). So two processes can keep this
+ * file at once, as LP Ranger and a tool under util/ that prices through
+ * this library can. A write keeps every price the file held when it read
+ * it, and a write that a process stopped part way leaves the file as it
+ * was.
+ * A price the other process writes after that read and before this
+ * write's rename is dropped from the file. It stays in that process's
+ * memory, and its next write puts it back, so only a run's last new
+ * prices can be lost; a later run fetches them again.
  */
 
 "use strict";
 
 const { log } = require("./log");
-const fs = require("fs");
-const path = require("path");
 const { scanCachePath } = require("./scan-cache-dir");
+const { readJsonObject, replaceJsonFile } = require("./shared-json-file");
 
 // Cache path can be overridden via env var so tests cannot ever clobber the
 // production file, regardless of how the test is invoked.
@@ -33,12 +43,12 @@ let _dirty = false;
 /** Read the full cache from disk (lazy, once). */
 function _ensureLoaded() {
   if (_cache !== null) return;
-  try {
-    _cache = JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
-  } catch {
-    _cache = {};
+  _cache = readJsonObject(_CACHE_PATH);
+  const migrated = _migrateBlockKeys(_cache);
+  if (migrated > 0) {
+    log.info("[price-cache] Migrated %d block-scoped keys", migrated);
+    _dirty = true;
   }
-  _migrateBlockKeys();
 }
 
 /**
@@ -48,26 +58,28 @@ function _ensureLoaded() {
  * On collision (same block cached on multiple dates), keep the earliest
  * `cachedAt` entry — it is most likely the original historical fetch
  * rather than a same-day current-price fallback.
+ *
+ * Applied to the file read at load, and to the file read again at each
+ * write, so a write does not bring back a key the load moved.
+ * @param {Record<string, object>} entries  Changed in place.
+ * @returns {number}  How many old keys it moved.
  */
-function _migrateBlockKeys() {
+function _migrateBlockKeys(entries) {
   const re = /^(.+)-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(@\d+)$/;
   let migrated = 0;
-  for (const oldKey of Object.keys(_cache)) {
+  for (const oldKey of Object.keys(entries)) {
     const m = oldKey.match(re);
     if (!m) continue;
     const newKey = `${m[1]}-${m[2]}`;
-    const oldEntry = _cache[oldKey];
-    const existing = _cache[newKey];
+    const oldEntry = entries[oldKey];
+    const existing = entries[newKey];
     if (!existing || (oldEntry.cachedAt || "") < (existing.cachedAt || "")) {
-      _cache[newKey] = oldEntry;
+      entries[newKey] = oldEntry;
     }
-    delete _cache[oldKey];
+    delete entries[oldKey];
     migrated++;
   }
-  if (migrated > 0) {
-    log.info("[price-cache] Migrated %d block-scoped keys", migrated);
-    _dirty = true;
-  }
+  return migrated;
 }
 
 /**
@@ -128,12 +140,20 @@ function setHistoricalPrice(blockchain, tokenAddress, utcDateTime, priceUsd) {
   _dirty = true;
 }
 
-/** Write the cache to disk if any new prices were added since last flush. */
+/**
+ * Write the cache to disk if any new prices were added since last flush:
+ * the file as it is now, with this process's prices over it. Memory then
+ * holds what the file does, so prices another process kept are not
+ * fetched again. A write that fails stays dirty, for the next.
+ */
 function flushPriceCache() {
-  if (!_dirty || !_cache) return;
+  if (!_dirty || _cache === null) return;
   try {
-    fs.mkdirSync(path.dirname(_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(_CACHE_PATH, JSON.stringify(_cache, null, 2), "utf8");
+    const onDisk = readJsonObject(_CACHE_PATH);
+    _migrateBlockKeys(onDisk);
+    const merged = Object.assign(onDisk, _cache);
+    replaceJsonFile(_CACHE_PATH, merged);
+    _cache = merged;
     _dirty = false;
   } catch (err) {
     log.warn("[price-cache] Could not write cache:", err.message);

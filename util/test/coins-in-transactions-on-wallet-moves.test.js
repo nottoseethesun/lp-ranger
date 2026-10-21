@@ -18,7 +18,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { makeTestTempFolder } = require("../../src/test-temp-folders");
-const CHAINS = require("../../app-config/app-defaults-for-user-configurable/chains.json");
+const config = require("../../src/config");
 const {
   RECORD_MARGIN_MS,
   readJson,
@@ -32,9 +32,9 @@ const {
   recordsNear,
 } = require("../bookkeeping/coins-in-transactions-on-wallet/moves");
 
-const CHAIN = "pulsechain";
-const CACHE_TAG = CHAINS[CHAIN].cacheTag;
-const PM = CHAINS[CHAIN].contracts.positionManager.address;
+const CHAIN = config.CHAIN_NAME;
+const CACHE_TAG = config.CHAIN.cacheTag;
+const PM = config.POSITION_MANAGER;
 const WALLET = "0x1111111111111111111111111111111111111111";
 const LOOKALIKE = "0x1111110000000000000000000000000000000000";
 const COIN0 = "0x3333333333333333333333333333333333333333";

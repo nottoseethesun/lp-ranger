@@ -1,30 +1,61 @@
 /**
  * @file src/ask-password.js
- * @description Interactive password prompt on stdin. Shared by server.js
- * (--headless mode) and bot.js (headless bot). Writes the prompt to
- * stderr so stdout stays clean for piped output.
+ * @description
+ * A prompt on the terminal for a secret, such as a password or an api
+ * key, that shows nothing of what is typed. Shared by server.js
+ * (`--headless`), bot.js, scripts/import-wallet.js and the bookkeeping
+ * report's Moralis key (util/bookkeeping/moralis-key.js). The prompt goes
+ * to stderr, so stdout stays clean for piped output.
+ *
+ * Node has no option that hides what is typed, so this gives readline an
+ * output that shows nothing. With `terminal: true`, readline turns off
+ * the terminal's own echo (raw mode) and edits the line itself: it
+ * writes each key typed, and each redraw of the line, to its output.
+ * Here that output is a stream that drops whatever it is given. So the
+ * keys still edit the line, a backspace or a paste, and none of it
+ * reaches the screen. Only the prompt, written to stderr itself, and the
+ * line break after the answer appear.
  */
 
 "use strict";
 
 const readline = require("readline");
+const { Writable } = require("stream");
 
 /**
- * Prompt for a password on stdin.
- * @param {string} prompt  Text to display on stderr.
- * @returns {Promise<string>}  The entered password.
+ * A stream that takes whatever is written to it and shows none of it.
+ * @returns {Writable}
  */
-function askPassword(prompt) {
+function _showsNothing() {
+  return new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+}
+
+/**
+ * Ask for a secret on the terminal, showing nothing of what is typed.
+ * @param {string} prompt  Text written before the answer is typed.
+ * @param {{input?: import("stream").Readable,
+ *   output?: import("stream").Writable}} [streams]  Where the answer is
+ *   typed and where the prompt goes: stdin and stderr, unless a test
+ *   passes its own.
+ * @returns {Promise<string>}  What was typed, without the line end.
+ */
+function askPassword(prompt, streams = {}) {
+  const input = streams.input === undefined ? process.stdin : streams.input;
+  const output = streams.output === undefined ? process.stderr : streams.output;
   return new Promise((resolve) => {
     const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stderr,
+      input,
+      output: _showsNothing(),
       terminal: true,
     });
-    process.stderr.write(prompt);
+    output.write(prompt);
     rl.question("", (answer) => {
       rl.close();
-      process.stderr.write("\n");
+      output.write("\n");
       resolve(answer);
     });
   });

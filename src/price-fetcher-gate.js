@@ -16,10 +16,15 @@
  *  4. Headless `bot.js` start state — `pausePriceLookups()` is called at
  *     startup unless `--start-with-price-lookups-unpaused` is passed.
  *
- * TTLs are read once at module init via `loadConfig().global` with
- * fallback to `readBotConfigDefaults()`.  The dust-unit-price TTL is
- * derived as `priceTtl * multiplier`; an assertion guards the integer-
- * multiple invariant against future hand-edits.
+ * The three cache lifetimes come from bot-config.json's `global` section,
+ * with the defaults (`readBotConfigDefaults()`) for any it does not set.
+ * They are read when a program's entry point calls
+ * `readPriceCacheSettings`, never when this file is loaded; until then
+ * each is its default. The server and the bot call it as they start. A
+ * tool under util/ that needs them passes `skipBackups`, so its read
+ * leaves LP Ranger's backups of its settings files alone. The
+ * dust-unit-price TTL is derived as `priceTtl * multiplier`; an assertion
+ * guards the integer-multiple invariant against future hand-edits.
  */
 
 "use strict";
@@ -31,18 +36,21 @@ const { loadConfig } = require("./bot-config-v2");
 let _priceLookupsPaused = false;
 let _allowOverrideCount = 0;
 
-/*- Read the configurable TTLs once at module-load time.  No live
- *  reload — operators must restart to apply changes (matches how every
- *  other global key is consumed).  Falls back to bot-config-defaults
- *  when a key is missing or the disk file is unreadable. */
-function _loadTtlsAtInit() {
+/*-
+ *  The three cache lifetimes `readPriceCacheSettings` read from the
+ *  settings, or null until a program's entry point calls it.
+ */
+let _settingsTtls = null;
+
+/**
+ * The three cache lifetimes from bot-config.json's `global` section,
+ * each the default (bot-config-defaults.json) where the section does not
+ * set it.
+ * @param {object} cfg  The `global` section, or `{}` for the defaults.
+ * @returns {{priceTtl: number, dustTtl: number, moveTtl: number}}
+ */
+function _ttlsFrom(cfg) {
   const defaults = readBotConfigDefaults();
-  let cfg;
-  try {
-    cfg = loadConfig().global || {};
-  } catch {
-    cfg = {};
-  }
   const priceTtl =
     typeof cfg.priceCacheTtlMs === "number" && cfg.priceCacheTtlMs > 0
       ? cfg.priceCacheTtlMs
@@ -72,11 +80,37 @@ function _loadTtlsAtInit() {
   return { priceTtl, dustTtl, moveTtl };
 }
 
-const {
-  priceTtl: _PRICE_TTL_MS,
-  dustTtl: _DUST_TTL_MS,
-  moveTtl: _MOVE_TTL_MS,
-} = _loadTtlsAtInit();
+/**
+ * Read the price library's three cache lifetimes from bot-config.json's
+ * `global` section, for the rest of the run: the price cache's
+ * (`priceCacheTtlMs`), the dust-unit price's (that times
+ * `dustUnitPriceCacheMultiplier`) and the one inside a move
+ * (`moveCacheTtlMs`). A program's entry point calls it as it starts.
+ * There is no live reload: a change applies at the next start, as with
+ * every other global key. A setting that is missing, or a file that
+ * cannot be read, leaves the default.
+ *
+ * The read is `loadConfig`'s, which copies the settings files over their
+ * backups unless told not to. The server and the bot let it; a tool under
+ * util/ passes `skipBackups`, since its copy would replace the app's while
+ * LP Ranger runs.
+ * @param {boolean} [skipBackups]  True to make no backup copies, as
+ *   `loadConfig` takes it. Default false.
+ */
+function readPriceCacheSettings(skipBackups = false) {
+  let cfg;
+  try {
+    cfg = loadConfig(undefined, skipBackups).global || {};
+  } catch {
+    cfg = {};
+  }
+  _settingsTtls = _ttlsFrom(cfg);
+}
+
+/** The lifetimes read from the settings, or the defaults until then. */
+function _ttls() {
+  return _settingsTtls === null ? _ttlsFrom({}) : _settingsTtls;
+}
 
 /**
  * Idempotent — log only on transition.  The optional `reason` is a
@@ -152,17 +186,17 @@ function _resetPauseStateForTests() {
 
 /** Configured price-cache TTL (ms). */
 function getPriceCacheTtlMs() {
-  return _PRICE_TTL_MS;
+  return _ttls().priceTtl;
 }
 
 /** Configured dust-unit-price cache TTL (ms). */
 function getDustUnitPriceCacheTtlMs() {
-  return _DUST_TTL_MS;
+  return _ttls().dustTtl;
 }
 
 /** Configured in-move cache TTL (ms). */
 function getMoveCacheTtlMs() {
-  return _MOVE_TTL_MS;
+  return _ttls().moveTtl;
 }
 
 module.exports = {
@@ -171,6 +205,7 @@ module.exports = {
   isPaused,
   inMove,
   withFreshPricesAllowed,
+  readPriceCacheSettings,
   getPriceCacheTtlMs,
   getDustUnitPriceCacheTtlMs,
   getMoveCacheTtlMs,

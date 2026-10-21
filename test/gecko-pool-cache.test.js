@@ -279,4 +279,31 @@ describe("gecko-pool-cache", () => {
     assert.equal(a, "normal");
     assert.equal(b, "flipped");
   });
+
+  it("keeps the entries another process wrote after this one read the file", async () => {
+    global.fetch = async () => _mockPoolResponse("pulsechain", "0xtok0");
+    /*-
+     *  A second copy of the module, holding the same file: what another
+     *  process keeping this cache has.
+     */
+    const id = require.resolve("../src/gecko-pool-cache");
+    const ours = require.cache[id];
+    delete require.cache[id];
+    const other = require("../src/gecko-pool-cache");
+    require.cache[id] = ours;
+    await getGeckoPoolOrientation("pulsechain", "0xpoolA", "0xtok0", "0xtok1");
+    await other.getGeckoPoolOrientation(
+      "pulsechain",
+      "0xpoolB",
+      "0xtok0",
+      "0xtok1",
+    );
+    flushGeckoPoolCache();
+    other.flushGeckoPoolCache();
+    const onDisk = JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
+    assert.deepEqual(Object.keys(onDisk).sort(), [
+      `${config.CHAIN_NAME}-0xpoola`,
+      `${config.CHAIN_NAME}-0xpoolb`,
+    ]);
+  });
 });
