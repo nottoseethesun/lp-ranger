@@ -137,7 +137,8 @@ Example:
        --start-date 2026-10-01 --end-date 2026-10-31 \\
        --time-zone America/Chicago
 
-How it works: docs/bookkeeping-for-coins-in-transactions.md
+User manual: docs/util/bookkeeping-for-coins-in-transactions/user-manual.md
+How it works: docs/util/bookkeeping-for-coins-in-transactions/engineering.md
 
 Exit status: 0 when the csv was written or the time zones were listed, 1
 when the arguments were refused or the csv was not written.

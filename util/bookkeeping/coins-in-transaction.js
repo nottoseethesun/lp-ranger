@@ -7,7 +7,8 @@
  * and return it as a json object: what kind of transaction it was, the
  * position manager's liquidity events, the fees of any drain, the
  * wallet's coin transfers and approvals, and the gas paid. It is the
- * receipt-reading step of `docs/bookkeeping-for-coins-in-transactions.md`,
+ * receipt-reading step of
+ * `docs/util/bookkeeping-for-coins-in-transactions/engineering.md`,
  * which explains what each kind of liquidity transaction moves.
  *
  * `coinsInTransaction` asks a provider for one thing, the transaction's
@@ -144,7 +145,7 @@ its configuration (.env and settings), unless an option names another. A run
 reads one blockchain; when the configuration names more than one, it says so.
 It reads one receipt and writes nothing, so it is safe to run while LP Ranger
 runs. What each kind of transaction moves:
-docs/bookkeeping-for-coins-in-transactions.md
+docs/util/bookkeeping-for-coins-in-transactions/engineering.md
 
 Exit status: 0 when the receipt was read, 1 when it was not: a transaction
 not yet mined or on another chain, or an endpoint that failed. An endpoint

@@ -10,6 +10,7 @@ Code style and formatting: [docs/claude/CLAUDE-CODE-STYLE.md](docs/claude/CLAUDE
 Best practices: [docs/claude/CLAUDE-BEST-PRACTICES.md](docs/claude/CLAUDE-BEST-PRACTICES.md)
 Testing: [docs/claude/CLAUDE-TESTING.md](docs/claude/CLAUDE-TESTING.md)
 Every npm command, its flags and an example: [docs/npm-project-commands.md](docs/npm-project-commands.md)
+The bookkeeping tools in `util/bookkeeping/`, with their own user manual, commands and engineering reference: [docs/util/bookkeeping-for-coins-in-transactions/](docs/util/bookkeeping-for-coins-in-transactions/engineering.md)
 Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCLOSURES.md)
 Accumulated context — decisions, user preferences, open items: [docs/claude/memory/MEMORY.md](docs/claude/memory/MEMORY.md)
 

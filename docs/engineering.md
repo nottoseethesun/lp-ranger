@@ -63,7 +63,7 @@ sequence.
       - [Scenario-Reproduction Scripts](#scenario-reproduction-scripts)
     - [Update Utilities](#update-utilities)
     - [Cache Utilities](#cache-utilities)
-    - [Bookkeeping Utilities](#bookkeeping-utilities)
+    - [Bookkeeping Utilities](#bookkeeping-utilities) → [`util/bookkeeping-for-coins-in-transactions/`](util/bookkeeping-for-coins-in-transactions/engineering.md)
 - [The app-config Directory](#the-app-config-directory)
 - [Bot Config Defaults](#bot-config-defaults)
 - [Security](#security) → [`docs/security.md`](security.md)
@@ -1207,7 +1207,7 @@ any caller asking for the same pool and wallet within `poolScanReuseMs`
 - **The bookkeeping report**
   (`util/bookkeeping/coins-in-transactions-on-wallet`), which reads the
   files directly to list each rebalance
-  ([`docs/bookkeeping-for-coins-in-transactions.md`](bookkeeping-for-coins-in-transactions.md)).
+  ([Which Transactions It Lists](util/bookkeeping-for-coins-in-transactions/engineering.md#which-transactions-it-lists)).
 
 ---
 
@@ -2203,158 +2203,25 @@ pool-address-keyed disk caches in `app-data/scan-cache/`.
 
 #### Bookkeeping Utilities
 
-`util/bookkeeping/` holds tools for bookkeeping in coins, transaction by
-transaction, as
-[`docs/bookkeeping-for-coins-in-transactions.md`](bookkeeping-for-coins-in-transactions.md)
-explains it. Their settings are LP Ranger's own. They read them through
-the app's configuration resolver, `src/config.js`, so `.env` and the
-operator's settings files apply to them as to the app. The tools fail
-over to no other rpc endpoint. For prices they ask Moralis, then
-CoinGecko, and no third service. A failure stops the run with the error
-and a suggestion of what to try.
+**In a folder of their own.** `util/bookkeeping/` holds two tools for
+bookkeeping in coins, transaction by transaction: one reads a single
+transaction, and one writes a csv of a wallet's rebalances and compounds
+over a range of days, with each amount's value in USD. Their
+documentation is in `docs/util/bookkeeping-for-coins-in-transactions/`:
 
-- `blockchain.js` — Chooses the blockchain before the configuration
-  loads. `src/config.js` serves one chain, which it reads from
-  `CHAIN_NAME` as it loads, so every tool module that loads it requires
-  this one first. It reads `--blockchain <name>` from the command line,
-  refuses a name `chains.json` does not have, and sets `CHAIN_NAME`.
-  Without the option, the app's own chain stands. When `chains.json`
-  names more than one chain, each run says on stderr that it reads only
-  one, and which. Its tests are in
-  `util/test/bookkeeping-blockchain.test.js`.
-- `coins-in-transaction.js` — Reads what one transaction moved for a
-  wallet and returns it as a json object, which it prints when run from
-  a shell. It asks one rpc endpoint for the transaction's receipt, and
-  nothing else. The object names the transaction's kind (drain, swap,
-  approval, mint, collect, deposit, cancel, reverted and others), and
-  holds the position manager's `IncreaseLiquidity`, `DecreaseLiquidity`
-  and `Collect` events, its NFT mints and burns, the wallet's coin
-  `Transfer` and `Approval` events, and the gas paid; for a drain, also
-  the fees, the `Collect` amounts less the `DecreaseLiquidity` ones.
-  Every amount is a string of raw digits. The endpoint is the one the
-  app tries first (`config.RPC_URLS[0]`), unless `--rpc-endpoint` names
-  another. The position manager is the app's, unless
-  `--position-manager` names another. A `--blockchain` passed to `main`
-  in arguments other than the process's own command line comes too late
-  to choose the chain, so it is refused unless it names the chain
-  already loaded. It writes nothing, so it is safe to run while the
-  server runs. Exit status 0 when the receipt was read, 1 otherwise. Its
-  tests are in `util/test/coins-in-transaction.test.js`.
+| You want to | Go to |
+| ----------- | ----- |
+| Run a report and read its csv | [User Manual](util/bookkeeping-for-coins-in-transactions/user-manual.md) |
+| See each tool's options and exit status | [Commands](util/bookkeeping-for-coins-in-transactions/commands.md) |
+| Know how the tools work, module by module | [Engineering Reference](util/bookkeeping-for-coins-in-transactions/engineering.md) |
+| Record a transaction by hand | [Step by Step](util/bookkeeping-for-coins-in-transactions/engineering.md#step-by-step) |
 
-  ```bash
-  node util/bookkeeping/coins-in-transaction.js <transaction hash> --wallet <wallet address>
-  ```
-
-- `usd-prices.js` — A coin's USD price for a transaction, from the app's
-  own price library: `fetchHistoricalTokenPriceUsd`
-  (`src/historical-token-price.js`). It passes the transaction's block,
-  so the library asks Moralis first, for the price at that block.
-  GeckoTerminal answers only where Moralis has none, with the UTC day's
-  closing price, and its free api reaches back only 180 days. The library
-  keeps one price per coin per UTC day, the first it was given. A lookup
-  that finds no price throws, with `priceUnavailable` set, since a price
-  of zero would value the coins at nothing. The library reads its two
-  cache paths, `PRICE_CACHE_PATH` and `GECKO_POOL_CACHE_PATH`, as it
-  loads. This module sets both to `app-data/util/bookkeeping/scan-cache/`
-  first, so the tools never write the app's caches. One run of the
-  report at a time writes the tools' copies, under the lock
-  `price-cache-lock.js` takes. Under `node --test` both go to the test
-  process's own folder (`src/scan-cache-dir.js`). Its tests are in
-  `util/test/bookkeeping-usd-prices.test.js`.
-- `price-cache-lock.js` — One run of the report at a time prices. A run
-  takes a lock before it asks for the key: it creates
-  `price-caches.lock` beside the caches, which only one process can
-  create (`fs.openSync` with the `wx` flag), naming the process and
-  when. Two runs writing the caches together could drop each other's
-  newest prices, and two save little, since CoinGecko limits requests
-  by IP address and Moralis by key. The run removes the file as it
-  ends, on an error, and on SIGINT, SIGTERM or SIGHUP, ending with the
-  status a shell gives a process the signal stopped. A run started
-  meanwhile stops at once, saying which process holds the lock and
-  since when. A run killed outright (`kill -9`, the machine going down)
-  can neither remove the file nor print anything, so the next run says
-  how to release it: `ps -p` the process it names, and delete the file
-  if no such process runs. Its tests are in
-  `util/test/bookkeeping-price-cache-lock.test.js`, which stop a run in
-  a process of its own each of those ways.
-- `moralis-key.js` — The Moralis api key the report prices with, which
-  is the app's own: the report reads and saves it only through the app's
-  api-key store (`src/api-key-store.js`), in
-  `app-config/user-configurable/api-keys.json`, encrypted with the
-  wallet's password, so the dashboard and the report share one key. The
-  report needs neither the wallet nor its private key and never opens
-  the wallet file: the password opens only the key, and each prompt
-  says so ("Password for the Moralis api key (LP Ranger's wallet
-  password)"). Each run asks for it through the app's own prompt
-  (`src/ask-password.js`), which shows nothing of what is typed, never
-  as an argument, which shell history and `ps` would keep, and opens the
-  key. With no key saved, it asks for the
-  key and the password twice, asks Moralis whether it takes the key
-  (`pingMoralis`, `src/server-moralis.js`), and saves it only if so; the
-  server uses it from its next unlock. The password is not checked
-  against the wallet's: `src/wallet-manager.js` reads the wallet file as
-  it loads, which would have the report and its tests read that file.
-  The key goes into the in-memory `src/api-key-holder.js`, where the
-  price library reads it. Every run asks Moralis about the key once
-  before pricing, since the library answers a refused key by asking
-  CoinGecko alone. A key whose quota is used up still runs. A wrong
-  password, or a key Moralis refuses or cannot check, stops the run with
-  `keyRefused` set and a message saying what to do. A password that does
-  not open the key may be the wallet's own, after the wallet was cleared
-  and imported again under a new one, which leaves the saved keys under
-  the old password, so that message also says to save the key again in
-  Settings. Its tests are in
-  `util/test/bookkeeping-moralis-key.test.js`, against a store file of
-  the test process's own (`API_KEYS_FILE_PATH`).
-
-- `coins-in-transactions-on-wallet/` — Writes a csv of every
-  transaction of a wallet's rebalances and compounds in a range of days,
-  one row per transaction, to `app-data/util/bookkeeping/`, and prints
-  where. It takes `--wallet`, `--start-date` and `--end-date`, and
-  requires `--time-zone`, offering the computer's own zone when it is
-  missing. The time zone must be on the list `dates.js` keeps: the names
-  Node's `Intl.supportedValuesOf("timeZone")` gives, each a region such
-  as America/Chicago, and UTC. Three-letter designations such as CDT are
-  refused, since one can name several clocks, and so is the legacy EST,
-  which `Intl` itself would take. `--list-valid-timezones` prints the
-  list, one per line, with no other option needed, and each refusal of a
-  time zone points to it. `--help` carries the full reference, kept as
-  text in `help.js`. It starts from what `app-data/` records (`moves.js`): the
-  rebalances in the event caches and the rebalance log, and the compounds
-  in the position records. For each, it finds the first transaction by
-  searching the position manager's logs for the NFT, then lists every
-  transaction the wallet sent from there to the last, by halving the
-  span on the wallet's transaction count (`chain.js`), and has
-  `coins-in-transaction.js` read each one. Each row values its amounts
-  and its gas in USD at the prices `usd-prices.js` gives for the
-  transaction's block and day, and `csv.js` decides which coins a row
-  needs priced (`coinsToPrice`). The Moralis key is opened
-  (`moralis-key.js`) before the run reads anything. Until the csv is
-  written the exit status is 1, so a run whose prompt is left unanswered
-  when stdin closes exits 1 too. The run ends at the last whole day
-  (`lastWholeDay`, `dates.js`): the last day that ended before the
-  current UTC day began, along with the UTC day of its last hour. A UTC
-  day's closing price is known only once that day ends. A range reaching
-  past the last whole day is cut there, with a line saying so; one with
-  no whole day is refused before the key is asked for. A move belongs to
-  the range its last transaction falls in, so back-to-back reports never
-  share a transaction. Requests to the endpoint are spaced by
-  `globalRPCRequestRateIntervalMS`, as the app's are. An endpoint with no
-  receipt for a transaction LP Ranger recorded, or for one the endpoint
-  lists in a block, stops the run as the endpoint's failure, since a csv
-  without it would look complete. The csv is written only once every row
-  is in, so a run that stops leaves none. It writes nothing of the app's,
-  so it is safe to run while the server runs. Nothing it calls reads the
-  app's settings through `loadConfig`, so a run leaves their backups
-  alone: the historical prices it asks for use none of the price
-  library's cache lifetimes. Its tests are
-  the `util/test/coins-in-transactions-on-wallet*.test.js` suites, with
-  stand-ins in `util/test/_bookkeeping-chain.js`.
-
-  ```bash
-  node util/bookkeeping/coins-in-transactions-on-wallet --wallet <wallet address> \
-       --start-date 2026-10-01 --end-date 2026-10-31 --time-zone America/Chicago
-  ```
+Their settings are LP Ranger's own, read through `src/config.js`, so
+`.env` and the operator's settings files apply to them as to the app.
+They fail over to no other rpc endpoint, and for prices ask Moralis,
+then CoinGecko, and no third service. They write only under
+`app-data/util/bookkeeping/`, except a Moralis key typed into the
+report, which goes into the app's own key store.
 
 ---
 

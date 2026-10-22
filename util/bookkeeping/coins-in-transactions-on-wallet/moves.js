@@ -4,8 +4,9 @@
  * @file util/bookkeeping/coins-in-transactions-on-wallet/moves.js
  * @description
  * The rebalances and compounds LP Ranger has recorded for one wallet, read
- * from `app-data/` with no chain call, as the guide's section on what
- * `app-data/` records describes:
+ * from `app-data/` with no chain call, as the section on what `app-data/`
+ * records in docs/util/bookkeeping-for-coins-in-transactions/engineering.md
+ * describes:
  *
  * - every rebalance from the event caches in `scan-cache/`, each of which
  *   holds the mints recorded in one pool's chain of NFTs, each with the

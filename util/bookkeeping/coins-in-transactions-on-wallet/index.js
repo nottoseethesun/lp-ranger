@@ -6,7 +6,8 @@
  * Write a csv of every transaction of a wallet's rebalances and compounds
  * in a range of days, one row per transaction, with the coins it moved and
  * the gas it paid, each with its value in USD: the procedures of
- * `docs/bookkeeping-for-coins-in-transactions.md`, run for a whole range.
+ * `docs/util/bookkeeping-for-coins-in-transactions/engineering.md`, run
+ * for a whole range.
  *
  * It starts from what `app-data/` records (moves.js): the rebalances in
  * the event caches and the rebalance log, and the compounds in the

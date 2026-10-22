@@ -18,8 +18,9 @@
  * and suggest another endpoint; a call the chain refuses, such as a coin
  * with no `symbol()`, is an answer, not a failure, and is not marked.
  *
- * Three searches find what `app-data/` does not name, as the guide's
- * section on finding them describes:
+ * Three searches find what `app-data/` does not name, as the section on
+ * finding them in
+ * docs/util/bookkeeping-for-coins-in-transactions/engineering.md describes:
  *
  * - searching by NFT, for the latest of the position manager's events
  *   naming an NFT before a block: a rebalance's drain, a compound's

@@ -362,6 +362,8 @@ task.
 - [`docs/engineering.md` § Utilities](engineering.md#utilities) — the
   `node util/…` diagnostic, update and cache tools, which are not npm
   scripts.
+- [`docs/util/bookkeeping-for-coins-in-transactions/commands.md`](util/bookkeeping-for-coins-in-transactions/commands.md)
+  — the bookkeeping tools' commands, which are not npm scripts either.
 - [`docs/configuration.md`](configuration.md) — every environment
   variable and JSON tunable.
 - [`docs/claude/CLAUDE-CI.md`](claude/CLAUDE-CI.md) — the CI and merge

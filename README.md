@@ -455,8 +455,14 @@ line you can copy — see
 entry point also answers `--help`, for example
 `npm run build-and-start -- --help`.
 
-**For bookkeeping** — how many coins each liquidity transaction moved — see
-**[`docs/bookkeeping-for-coins-in-transactions.md`](docs/bookkeeping-for-coins-in-transactions.md)**.
+**For bookkeeping** — a csv of every transaction behind your positions,
+with the coins each moved and the gas it paid, valued in USD — see the
+bookkeeping tools'
+**[User Manual](docs/util/bookkeeping-for-coins-in-transactions/user-manual.md)**.
+Their commands are in
+[`commands.md`](docs/util/bookkeeping-for-coins-in-transactions/commands.md),
+and how they work in
+[`engineering.md`](docs/util/bookkeeping-for-coins-in-transactions/engineering.md).
 
 ---
 

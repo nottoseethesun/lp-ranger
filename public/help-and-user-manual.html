@@ -374,7 +374,7 @@
   <p>LP Ranger ships with some optional extra capabilities, such as per-transaction bookkeeping.</p>
 
   <h3 id="bookkeeping">Bookkeeping</h3>
-  <p>Bookkeeping in coins means recording each transaction behind a position by the coins it moved and the gas it paid. A guide covers every kind of transaction a position involves, and shows which amounts LP Ranger already records in <code>app-data/</code>, so that few need reading from the blockchain. Two command-line tools come with it: one reads a single transaction, and one writes a csv of a wallet&rsquo;s rebalances and compounds over a range of days, with each amount&rsquo;s value in USD on its day. For details, see <code>docs/bookkeeping-for-coins-in-transactions.md</code>.</p>
+  <p>Bookkeeping in coins means recording each transaction behind a position by the coins it moved and the gas it paid. LP Ranger ships with a set of utilities to assist with this bookkeeping, so that a user can get a per-transaction csv file summarizing their activity on their LP Ranger-managed liquidity positions. The set is comprised of two command-line tools: one reads a single transaction, and one writes a csv of a wallet&rsquo;s rebalances and compounds over a range of days, with each amount&rsquo;s value in USD on its day. For details, see the tools&rsquo; own user manual, <code>docs/util/bookkeeping-for-coins-in-transactions/user-manual.md</code>.</p>
 
   <h2 id="checking-for-updates">Checking for Updates</h2>
   <p>LP Ranger checks GitHub for newer releases every time you open the <strong>Check for Updates &amp; About</strong> dialog. Click the <strong>Settings</strong> gear icon at top right in the app, then click <strong>Check for Updates &amp; About</strong>.</p>
