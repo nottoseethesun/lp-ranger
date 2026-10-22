@@ -125,11 +125,21 @@ function _empty() {
  * place. The records are merged before the phantom purge, since a
  * managed position's slot in bot-config.json can hold its status alone
  * when everything else it has is a record.
+ *
+ * A load also copies each of the two files beside itself, as
+ * bot-config.backup.json and position-records.backup.json. The server and
+ * the bot load once as they start, so the copies hold the files as they
+ * were before that run saved anything: a way back from a save that went
+ * wrong. A caller that only reads a setting passes `skipBackups`, and
+ * leaves the copies as the last start made them. The price library does
+ * so as it loads (src/price-fetcher-gate.js), since a tool under util/
+ * loads it too and must not replace the app's copies.
  * @param {string} [dir]  Directory override (default: cwd).
+ * @param {boolean} [skipBackups]  True to make no copies. Default false.
  * @returns {object}       Config object (or empty structure if no file).
  */
-function loadConfig(dir) {
-  const cfg = _loadSettingsFile(_configPath(dir));
+function loadConfig(dir, skipBackups = false) {
+  const cfg = _loadSettingsFile(_configPath(dir), skipBackups);
   const records = readPositionRecords(dir);
   const count = Object.keys(records).length;
   if (count > 0) {
@@ -138,7 +148,7 @@ function loadConfig(dir) {
       count,
       positionRecordsPath(dir),
     );
-    backUpPositionRecords(dir);
+    if (skipBackups !== true) backUpPositionRecords(dir);
   }
   mergePositionRecords(cfg, records);
   _purgePhantomEntries(cfg);
@@ -149,9 +159,10 @@ function loadConfig(dir) {
  * Read bot-config.json, or an empty config when it is missing, empty or
  * not JSON.
  * @param {string} filePath
+ * @param {boolean} skipBackups  True to make no copy, as `loadConfig`.
  * @returns {{global: object, positions: object}}
  */
-function _loadSettingsFile(filePath) {
+function _loadSettingsFile(filePath, skipBackups) {
   try {
     const text = fs.readFileSync(filePath, "utf8");
     if (!text || text.trim().length === 0) {
@@ -171,7 +182,7 @@ function _loadSettingsFile(filePath) {
       text.length,
     );
     // Backup on load — safety net for config stomping investigation
-    if (posCount > 0) {
+    if (posCount > 0 && skipBackups !== true) {
       try {
         fs.copyFileSync(filePath, filePath.replace(".json", ".backup.json"));
       } catch {

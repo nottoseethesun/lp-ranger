@@ -96,7 +96,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [generic chain cache keys](feedback_generic_chain_cache_keys.md) — Key chain caches generically (e.g. by pool) so all positions share
 - [cache keys lead with the chain](feedback_cache_keys_lead_with_the_chain.md) — Every cache key starts with the chain (`cacheKey`); the chain can't change while a server runs
 - [never hard-code a chain](feedback_never_hard_code_a_chain.md) — Nothing in code true of one blockchain; chain facts live in chains.json, no fallbacks
-- [module self-announcement](feedback_module_self_announcement.md) — A module announces itself; B doesn't reach into A
+- [module self-announcement](feedback_module_self_announcement.md) — A module announces itself from its own start, never its load; B doesn't reach into A
 - [Moralis first](feedback_moralis_first.md) — Moralis is primary for historical prices when a key exists
 - [multiline comment style](feedback_multiline_comment_style.md) — `/*-` alone, text, `*/` alone; never stacked `//`; nearby code is no guide
 - [JSDoc style](feedback_jsdoc_style.md) — What it does, how it works, how it integrates: one flowing argument, terms defined before use, never a bug post-mortem
@@ -112,6 +112,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [never clear to force a recompute](feedback_never_clear_to_force_a_recompute.md) — Ask for the rebuild with a flag; overwrite, never delete first
 - [don't persist a correction](feedback_dont_persist_a_correction.md) — Ask whether the wrong value should be written at all
 - [no lazy loading](feedback_no_lazy_loading.md) — No `require()` inside functions
+- [only the entry point runs at load](feedback_only_the_entry_point_runs_at_load.md) — A module's top level only declares; files, env, argv, logs, timers and calls wait for the entry point's calls; breaches fixed one at a time, when asked
 - [no re-exports](feedback_no_reexports.md) — Import from the owning module
 - [unused exports are fine](feedback_unused_exports_are_fine.md) — An export nothing imports yet is composability, not a gap; never a finding, never deleted for knip
 - [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in the defaults file; no fallback values in JS or HTML; sweep any found into config JSON; ranges live in `setting-bounds.json`
@@ -131,6 +132,9 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [JSON Schema for settings](feedback_json_schema_for_settings.md) — Settings JSON validated by Ajv, every object refusing unnamed keys, bot-config.json too, from the Save check's schemas; ranges from `setting-bounds.json`; `.env` against an allowlist; a new key in an app-config file is a question for the user; LP Ranger's schemas are its own, never modeled on supe-ons
 - [where data lives](feedback_where_data_lives.md) — bot-config.json: settings only; records in `app-data/position-records.json`; scan caches in `app-data/scan-cache/`; `tmp/` disposable only
 - [docs don't restate checks](feedback_docs_dont_restate_checks.md) — A setting's entry gives its meaning and range once; no lists of refused values; "stops startup" said once
+- [docs always updated](feedback_docs_always_updated.md) — A doc a change makes stale is updated in the same change, without asking
+- [util tools keep to their own folders](feedback_util_tools_keep_to_their_own_folders.md) — A util/ tool writes only app-data/util/<tool>/, caches in its scan-cache/; never the app's files, except a secret the app also uses, kept only in the app's store
+- [util tools use core settings only](feedback_util_tools_use_core_settings_only.md) — A util/ tool reads core settings (chains, endpoints, keys), never app preferences such as the Moralis on/off switch
 - [one active position per pool](feedback_one_active_position_per_pool.md) — Period: no fallback between positions of a pool; every start and re-open path enforces it in the core, bot.js included
 - [no HTML in Markdown](feedback_no_html_in_markdown.md) — Pure Markdown, no inline HTML (MD033)
 - [links go direct](feedback_links_go_direct.md) — A redirecting link is replaced by its final address; check with curl's `%{redirect_url}`

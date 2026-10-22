@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
+  modified: 2026-10-21T16:34:29.413Z
 ---
 
 LP Ranger persists state to three distinct top-level directories,
@@ -39,7 +40,9 @@ of `app-config/`.
 - The auto-snapshot for `bot-config.json` (the config-stomp safety
   net per [[project-config-stomp-investigation]]) lives at
   `app-config/user-configurable/bot-config.backup.json` and
-  regenerates on every successful `loadConfig`. Don't propose
+  regenerates on every successful `loadConfig` that does not pass
+  `skipBackups` (the server's and the bot's at start; a util/ tool's
+  read of the price library's settings passes it, since 2026-10-21). Don't propose
   removing it without checking [[project-config-stomp-investigation]]
   first.
 - `migrate-app-config.js` handles legacy root-layout files (the

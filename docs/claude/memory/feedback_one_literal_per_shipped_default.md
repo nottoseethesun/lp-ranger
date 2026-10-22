@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
-  modified: 2026-10-18T03:15:23.887Z
+  modified: 2026-10-21T16:34:00.549Z
 ---
 
 For every config value the app ships with a default, there must be at
@@ -21,7 +21,8 @@ hardcoded anywhere.
 **No** env-var fallback literals in `parsePositiveInt(process.env.X,
 <literal>)`.  **No** "keep this in sync with the JSON" comments.
 Consumers source defaults via `loadShippedDefaults()` /
-`loadMergedDefaults()` at module init.  The shipped JSON is the sole
+`loadMergedDefaults()` when called, never as the module loads
+([[only-the-entry-point-runs-at-load]]).  The shipped JSON is the sole
 chokepoint; everything else reads from it.
 
 **Why:** Months of accreted duplication caused two real drifts that
@@ -45,7 +46,8 @@ collapsed all ~42 duplicates to single-source.
 - When **adding a new config value with a default**: put the literal
   ONLY in the appropriate shipped JSON under
   `app-config/app-defaults-for-user-configurable/`.  In code, read it
-  via `loadShippedDefaults("<filename>.json")` at module init.
+  via `loadShippedDefaults("<filename>.json")` in the function that
+  needs it, not as the module loads.
 - When **reviewing a diff**: any new `_FALLBACK` / `DEFAULT_*` object
   literal in a consumer module, or any new `parsePositiveInt(process.env.X,
   <numeric-literal>)` is a red flag — push back.

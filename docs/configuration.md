@@ -777,7 +777,7 @@ In `bot-config-defaults.json`.
 | Setting | Default | What it governs |
 | ------- | ------- | --------------- |
 | `historyLookbackYears` | `5` | How far back the rebalance-history and closed-position scans reach, turned into blocks at the chain's `blockTimeSec`. 1 to 20. |
-| `eventCacheTtlMs` | `31536000000` | How long the on-disk event cache keeps a pool's history after its last write (a year). Every scan and every rebalance writes it again. One hour to ten years. |
+| `eventCacheTtlMs` | `31536000000` | How long the on-disk event cache keeps a pool's history after its last write (a year); [When a File Changes](engineering.md#when-a-file-changes) says what writes it. One hour to ten years. |
 | `poolScanReuseMs` | `60000` | How long a finished scan is handed to the next view asking for the same pool and wallet, instead of scanning again. `0` turns reuse off; at most one hour. |
 | `rebalancePairingWindowSec` | `300` | The most seconds between an NFT leaving the wallet and a new one arriving for the two to be read as one rebalance. 1 to 86400. |
 | `feeDataLogIntervalMs` | `3600000` | How often the network's gas price is written to the log; `--verbose` logs every read. One second to one day. |

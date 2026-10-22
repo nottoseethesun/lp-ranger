@@ -125,4 +125,29 @@ describe("loading a position's slot", () => {
       read(positionRecordsPath(dir)),
     );
   });
+
+  it("copies bot-config.json beside itself", () => {
+    const dir = makeTestTempFolder("records");
+    saveConfig({ global: {}, positions: { [KEY]: slot() } }, dir);
+    loadConfig(dir);
+    assert.deepEqual(
+      read(path.join(dir, "bot-config.backup.json")),
+      read(path.join(dir, "bot-config.json")),
+    );
+  });
+
+  it("copies neither file when the caller skips the backups", () => {
+    const dir = makeTestTempFolder("records");
+    saveConfig({ global: {}, positions: { [KEY]: slot() } }, dir);
+    const cfg = loadConfig(dir, true);
+    assert.deepEqual(cfg.positions[KEY], slot(), "the load itself is whole");
+    assert.equal(
+      fs.existsSync(path.join(dir, "bot-config.backup.json")),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(path.join(dir, "position-records.backup.json")),
+      false,
+    );
+  });
 });

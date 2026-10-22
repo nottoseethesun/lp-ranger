@@ -172,6 +172,7 @@ const { buildGasStatusPayload } = require("./src/gas-monitor");
 const { actualGasCostUsd } = require("./src/bot-pnl-updater");
 const { userConfigurableRoutes } = require("./src/user-configurable-routes");
 const { createPauseInfra } = require("./src/server-pause");
+const { readPriceCacheSettings } = require("./src/price-fetcher-gate");
 const { createUnlockHandler } = require("./src/server-unlock");
 const { logVersionBanner } = require("./src/build-info");
 const sendTx = require("./src/send-transaction");
@@ -231,6 +232,12 @@ const MIME = {
 
 /** Bot config loaded from disk. */
 const _diskConfig = loadConfig();
+
+/*-
+ *  The price library's three cache lifetimes, read once as the server
+ *  starts (src/price-fetcher-gate.js).
+ */
+readPriceCacheSettings();
 
 const _managedAtStartup = managedKeys(_diskConfig);
 if (_managedAtStartup.length > 0)

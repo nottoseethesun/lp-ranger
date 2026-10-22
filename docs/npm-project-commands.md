@@ -90,7 +90,7 @@ resetting local state.
 | `build` | — | Full build: version stamp, manual and disclosure content, UI tokens, the esbuild bundles (the dashboard's and the User Manual's), a cache-bust stamp on every script and stylesheet the pages load, inlined SVGs. | `npm run build` |
 | `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run build-and-start -- --log-file --delete-pre-existing-log-file` · `npm run build-and-start -- --log-file /tmp/burn-in.log` · `npm run build-and-start -- --help` |
 | `build:watch` | — | esbuild in watch mode. Rebuilds both bundles on change, then stamps every page again, so a reloaded page loads the new bundle; skips the one-off generators `build` runs. | `npm run build:watch` |
-| `clean` | `--help`/`-h` | Full reset to fresh-clone state: wallet, bot config, API keys, position records, rebalance log, every scan cache, logs and build artifacts. Rebuild before starting again. Any other argument is refused before anything is stopped or deleted. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clean` · `npm run clean -- --help` |
+| `clean` | `--help`/`-h` | Full reset to fresh-clone state: wallet, bot config, API keys, position records, rebalance log, every scan cache in `app-data/scan-cache/`, logs and build artifacts. Rebuild before starting again. Any other argument is refused before anything is stopped or deleted. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clean` · `npm run clean -- --help` |
 | `clean:log` | — | Empty the log-to-file output (`logs/lp-ranger.log`, or the `path` in `logging.json`) in place, if inside the install folder. Safe while the server runs. See [Housekeeping](#housekeeping). | `npm run clean:log` |
 | `debug` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Start the server under `node --inspect`. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run debug` · `npm run debug -- --log-file --delete-pre-existing-log-file` · `npm run debug -- --help` |
 | `debug-attach` | — | Attach a debugger to an already-running server and print the URL to visit. | `npm run debug-attach` |
@@ -299,6 +299,9 @@ task.
   every scan cache in `app-data/scan-cache/`, `logs/*.log`, the build artifacts
   (`public/dist/`, `public/fonts/`, `public/ui-tokens.css`,
   `public/disclosure-content.js`) and `test/report-artifacts/`.
+  It leaves `app-data/util/bookkeeping/`, where the bookkeeping tools
+  keep their reports and the prices they fetched. The report's Moralis
+  key is the app's own, in `api-keys.json`, so a clean deletes it.
   Run `npm run build` before `npm start` afterwards — the prestart guard
   names the missing files if you forget.
   Implemented in [`scripts/clean.js`](../scripts/clean.js), which
@@ -359,6 +362,8 @@ task.
 - [`docs/engineering.md` § Utilities](engineering.md#utilities) — the
   `node util/…` diagnostic, update and cache tools, which are not npm
   scripts.
+- [`docs/util/bookkeeping-for-coins-in-transactions/commands.md`](util/bookkeeping-for-coins-in-transactions/commands.md)
+  — the bookkeeping tools' commands, which are not npm scripts either.
 - [`docs/configuration.md`](configuration.md) — every environment
   variable and JSON tunable.
 - [`docs/claude/CLAUDE-CI.md`](claude/CLAUDE-CI.md) — the CI and merge
