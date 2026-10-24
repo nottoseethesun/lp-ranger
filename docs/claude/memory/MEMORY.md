@@ -11,7 +11,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [branching](feedback_branching.md) — Never push to main: branch + PR, ONE branch at a time
 - [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push
 - [check both Node versions](feedback_check_both_node_versions.md) — `npm run check` runs one Node; CI runs 22 and 24. Run the gate under 22 too (`PATH=` Node 22 first), never the raw suite
-- [ci protocol](feedback_ci_protocol.md) — Never skip the local merge-to-main check
+- [ci protocol](feedback_ci_protocol.md) — Never skip the local merge-to-main check; "full c.i. to main" means all eight steps, the PR merge included
 - [full repo grep](feedback_full_repo_grep.md) — Renames and pattern audits grep the WHOLE repo
 - [git workflow](feedback_git_workflow.md) — No push/merge/rebase/delete-branch/release without OK
 - [never revert cache-bust stamps](feedback_never_revert_cache_bust_stamps.md) — The `?v=` stamp IS the invalidation; ship it
@@ -134,6 +134,10 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [where data lives](feedback_where_data_lives.md) — bot-config.json: settings only; records in `app-data/position-records.json`; scan caches in `app-data/scan-cache/`; `tmp/` disposable only
 - [docs don't restate checks](feedback_docs_dont_restate_checks.md) — A setting's entry gives its meaning and range once; no lists of refused values; "stops startup" said once
 - [docs always updated](feedback_docs_always_updated.md) — A doc a change makes stale is updated in the same change, without asking
+- [one home per fact in a doc set](feedback_doc_set_one_home_per_fact.md) — Quick Start in the user manual; an engineering doc's Commands section only points; user-facing rules live in the manual, the others refer
+- [util tool docs in docs/util](feedback_util_tool_docs_in_docs_util.md) — A util/ tool's docs: `docs/util/<folder>/` with user-manual.md, commands.md, engineering.md; move and rewrite in two commits
+- [terminal secrets never shown](feedback_terminal_secrets_never_shown.md) — Passwords, keys and api keys typed at a terminal never echo; always `src/ask-password.js`
+- [built-in before package](feedback_builtin_before_package.md) — Node's own way first, confirmed in its docs; else only a widely used npm package
 - [util tools keep to their own folders](feedback_util_tools_keep_to_their_own_folders.md) — A util/ tool writes only app-data/util/<tool>/, caches in its scan-cache/; never the app's files, except a secret the app also uses, kept only in the app's store
 - [util tools use core settings only](feedback_util_tools_use_core_settings_only.md) — A util/ tool reads core settings (chains, endpoints, keys), never app preferences such as the Moralis on/off switch
 - [one active position per pool](feedback_one_active_position_per_pool.md) — Period: no fallback between positions of a pool; every start and re-open path enforces it in the core, bot.js included
