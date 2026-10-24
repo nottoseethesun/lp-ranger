@@ -55,13 +55,18 @@ const MINT_ENTRY = {
   kind: "fresh",
 };
 
-/** The addition's entry, as the tally records one another wallet paid for. */
+/**
+ * The addition's entry, as the tally records one another wallet paid for,
+ * naming the NFT it went into, so the Current panel's deposit can add its
+ * own (src/lib/current-lp-deposit.js).
+ */
 const ADDITION_ENTRY = {
   raw0: "11000000000",
   raw1: "11000000000",
   block: 500,
   kind: "external",
   txHash: "0x1f4",
+  tokenId: "100",
 };
 
 /**
@@ -230,6 +235,23 @@ describe("the Lifetime tally — additions it saved before", () => {
           /*- One the rule this replaced filed under the mint. */
           { raw0: "500", raw1: "500", block: 10, kind: "external" },
         ],
+      },
+    });
+    assert.deepStrictEqual(result.deposits, [
+      MINT_ENTRY,
+      { ...ADDITION_ENTRY, usd: 12.5, fallback: false },
+    ]);
+  });
+
+  it("names the NFT on an entry saved before entries named one, keeping its price", async () => {
+    const { tokenId: _none, ...unnamed } = ADDITION_ENTRY;
+    const { result } = await tally(sweptNft(), {
+      receipts: { "0x1f4": paidBy(OTHER) },
+      cachedFreshDeposits: {
+        raw0: "0",
+        raw1: "0",
+        lastBlock: 10,
+        deposits: [MINT_ENTRY, { ...unnamed, usd: 12.5, fallback: false }],
       },
     });
     assert.deepStrictEqual(result.deposits, [

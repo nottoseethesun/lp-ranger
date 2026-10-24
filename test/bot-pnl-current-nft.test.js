@@ -128,6 +128,55 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     assert.strictEqual(snap.currentCompoundedUsd, 8, "the coins put back");
   });
 
+  it("publishes what Initial Deposit for This LP adds for liquidity another wallet put into the NFT", async () => {
+    /*-
+     *  The pool's deposit list holds the Lifetime scan's entry for it,
+     *  priced at its block; another NFT's entry and the deposits to the
+     *  wallet are not this NFT's additions.
+     */
+    const snap = {};
+    const deps = {
+      _botState: {
+        nftGasWeiByTokenId: { 12345: "1000000000000000" },
+        nftCompoundedAmountsByTokenId: { 12345: { amount0: 0, amount1: 0 } },
+        lifetimeHodlAmounts: {
+          deposits: [
+            { raw0: "9", raw1: "0", block: 5, kind: "fresh", usd: 900 },
+            {
+              raw0: "3",
+              raw1: "3",
+              block: 50,
+              kind: "external",
+              txHash: "0xe1",
+              tokenId: "12345",
+              usd: 25,
+              fallback: false,
+            },
+            {
+              raw0: "3",
+              raw1: "3",
+              block: 40,
+              kind: "external",
+              txHash: "0xe0",
+              tokenId: "999",
+              usd: 70,
+            },
+          ],
+        },
+      },
+      _lastPrice0: 2,
+      _lastPrice1: 1,
+    };
+    await applyCurrentNftFigures(
+      snap,
+      deps,
+      { tokenId: 12345 },
+      { decimals0: 0, decimals1: 0 },
+    );
+    assert.strictEqual(snap.currentDepositAddedUsd, 25);
+    assert.strictEqual(snap.currentDepositAddedFallback, false);
+  });
+
   it("publishes what Initial Deposit for This LP adds for the wallet's coins its compounds took in, each at its compound's prices", async () => {
     /*-
      *  The first compound deposited 10 of token0 and took 6 of it as its

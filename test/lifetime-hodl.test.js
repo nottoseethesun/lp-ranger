@@ -312,6 +312,7 @@ describe("lifetime-hodl", () => {
           block: 5000,
           kind: "external",
           txHash: "0x1388",
+          tokenId: "100",
         },
       ]);
     });

@@ -1690,9 +1690,11 @@ export function buildParamHelp(f) {
             "The USD value of the coins put into this specific LP " +
             "position: the baseline for this position&rsquo;s Net P&amp;L " +
             "in the Current panel. It counts the coins the position was " +
-            "minted with, at the prices of its mint, and the coins its " +
+            "minted with, at the prices of its mint, the coins its " +
             "compounds later took in from the wallet beyond their fees, " +
-            "each at the prices of that compound. A compound whose swap " +
+            "each at the prices of that compound, and any liquidity " +
+            "another wallet added to the position, at the price of its " +
+            "own block. A compound whose swap " +
             "runs deposits the wallet&rsquo;s whole balance of the " +
             "pool&rsquo;s two coins, so it can take in a deposit you sent " +
             "to the wallet, or coins a rebalance left there. Those coins " +

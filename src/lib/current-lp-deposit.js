@@ -3,28 +3,34 @@
  * @module current-lp-deposit
  * @description
  * What Initial Deposit for This LP, the Current panel's deposit, adds to
- * the coins an NFT was minted with: the coins its compounds took into it
- * from the wallet beyond their fees.
+ * the coins an NFT was minted with: the coins put into it since that it
+ * did not earn. They reach it two ways.
  *
  * A compound whose ratio swap runs deposits the wallet's whole balance of
  * the pool's two coins, so it can take in a deposit the owner sent, or
- * coins a rebalance left in the wallet (src/lib/compounded-coins.js). Those
- * coins were put into the NFT after its mint, and Current Value counts
- * them from then on. Initial Deposit for This LP counts them too, so the
+ * coins a rebalance left in the wallet (src/lib/compounded-coins.js). And
+ * another wallet can add liquidity to the NFT itself, which the Lifetime
+ * scan finds by the addition's receipt and enters in the pool's deposit
+ * list (`kind: "external"`, src/lib/lifetime-hodl.js). Either way the
+ * coins went into the NFT after its mint, and Current Value counts them
+ * from then on. Initial Deposit for This LP counts them too, so the
  * Current panel's Net P&L does not read them as the NFT's gain, as Total
- * Lifetime Deposit counts each deposit for the Lifetime panel.
+ * Lifetime Deposit counts them for the Lifetime panel.
  *
- * Each compound's coins are valued at its own prices, as the mint's coins
- * are at the mint's: the prices the bot recorded with the compound, else
- * the prices at its block, through the price cache a rebuild of the
- * compound list prices it with (`compoundPricesFor`,
+ * Each addition is valued at its own time, as the mint's coins are at the
+ * mint's. A compound's coins are valued at the prices the bot recorded with
+ * it, else the prices at its block, through the price cache a rebuild of
+ * the compound list prices it with (`compoundPricesFor`,
  * src/lib/compound-activity-figures.js), else today's prices, which flags
  * the figure as the mint's own missing price does. A compound whose record
  * does not tell its fees apart from the rest of its deposit adds nothing.
+ * Another wallet's addition is valued at the price Total Lifetime Deposit
+ * gave its entry at its block (src/lib/bot-deposit.js), and adds nothing
+ * until it is priced, as it adds nothing there.
  *
  * The bot's Current panel figures (src/lib/bot-pnl-current-nft.js) and the
  * unmanaged view (src/lib/position-details-quick.js,
- * src/lib/position-details.js) both ask `addedByCompounds`, so both report
+ * src/lib/position-details.js) both ask `addedSinceMint`, so both report
  * the same deposit for the same NFT.
  */
 
@@ -106,4 +112,58 @@ async function addedByCompounds(history, tokenId, decimals, pricesAt, today) {
   return { usd, fallback };
 }
 
-module.exports = { addedByCompounds };
+/**
+ * The dollars Initial Deposit for This LP adds to an NFT's minted coins
+ * for the liquidity other wallets added to it: the pool's deposit-list
+ * entries for those additions that name the NFT, at the prices Total
+ * Lifetime Deposit gave them. An entry not priced yet adds nothing.
+ *
+ * @param {object[]|undefined} deposits  The pool's deposit list
+ *   (`lifetimeHodlAmounts.deposits`).
+ * @param {string|number} tokenId  The NFT.
+ * @returns {{usd: number, fallback: boolean}}  `fallback` when an entry
+ *   was priced at today's prices, its block's being unknown.
+ */
+function addedByOthers(deposits, tokenId) {
+  let usd = 0;
+  let fallback = false;
+  for (const e of Array.isArray(deposits) ? deposits : []) {
+    if (!isPlainObject(e) || e.kind !== "external") continue;
+    if (String(e.tokenId) !== String(tokenId)) continue;
+    if (_isPrice(e.usd)) usd += e.usd;
+    if (e.fallback === true) fallback = true;
+  }
+  return { usd, fallback };
+}
+
+/**
+ * The dollars Initial Deposit for This LP adds to an NFT's minted coins:
+ * what its compounds took in from the wallet beyond their fees
+ * (`addedByCompounds`), and what other wallets added to it
+ * (`addedByOthers`).
+ *
+ * @param {{compoundHistory: object[]|undefined,
+ *   deposits: object[]|undefined}} lists  The position's compound list and
+ *   the pool's deposit list.
+ * @param {string|number} tokenId  The NFT.
+ * @param {{decimals0: number, decimals1: number}} decimals
+ * @param {Function|null|undefined} pricesAt  As for `addedByCompounds`.
+ * @param {{price0: number, price1: number}} today  This check's prices.
+ * @returns {Promise<{usd: number, fallback: boolean}>}
+ */
+async function addedSinceMint(lists, tokenId, decimals, pricesAt, today) {
+  const byCompounds = await addedByCompounds(
+    lists.compoundHistory,
+    tokenId,
+    decimals,
+    pricesAt,
+    today,
+  );
+  const byOthers = addedByOthers(lists.deposits, tokenId);
+  return {
+    usd: byCompounds.usd + byOthers.usd,
+    fallback: byCompounds.fallback || byOthers.fallback,
+  };
+}
+
+module.exports = { addedByCompounds, addedByOthers, addedSinceMint };

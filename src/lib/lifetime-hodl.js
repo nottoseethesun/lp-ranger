@@ -160,10 +160,13 @@ async function _walletPaidFor(il, reader) {
  * @param {Map<string, object>} recorded  The compounds LP Ranger
  *   recorded, from `recordedCompounds`.
  * @param {object|null} reader  From `_receiptReader`.
+ * @param {string} tokenId  The NFT, which each entry names, so the
+ *   Current panel can add its own to Initial Deposit for This LP
+ *   (src/lib/current-lp-deposit.js).
  * @returns {Promise<Array<{raw0: string, raw1: string, block: number,
- *   kind: "external", txHash: string}>>}
+ *   kind: "external", txHash: string, tokenId: string}>>}
  */
-async function _additionsPutIn(events, recorded, reader) {
+async function _additionsPutIn(events, recorded, reader, tokenId) {
   const { ilEvents, dlEvents } = events;
   if (ilEvents.length <= 1) return [];
   const entries = [];
@@ -176,6 +179,7 @@ async function _additionsPutIn(events, recorded, reader) {
       block: il.blockNumber,
       kind: "external",
       txHash: il.txHash,
+      tokenId: String(tokenId),
     });
   }
   return entries;
@@ -403,7 +407,12 @@ async function _processNft(i, tid, allNftEvents, ordered, opts, ctx) {
     ctx.deposits.push(...entries);
     if (mintIl.blockNumber > ctx.maxBlock) ctx.maxBlock = mintIl.blockNumber;
   }
-  const additions = await _additionsPutIn(events, ctx.recorded, ctx.reader);
+  const additions = await _additionsPutIn(
+    events,
+    ctx.recorded,
+    ctx.reader,
+    tid,
+  );
   for (const a of additions) {
     log.info(
       "[hodl] #%s addition another wallet paid for, block %d, TX %s: raw0=%s raw1=%s",

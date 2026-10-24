@@ -31,7 +31,7 @@ const {
   feesLeftInWallet,
 } = require("./compounded-coins");
 const { compoundPricesFor } = require("./compound-activity-figures");
-const { addedByCompounds } = require("./current-lp-deposit");
+const { addedSinceMint } = require("./current-lp-deposit");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const {
@@ -228,15 +228,20 @@ async function applyCurrentNftFigures(snap, deps, position, poolState) {
   snap.currentFeesLeftUsd = _priced(left, deps);
   /*- What Initial Deposit for This LP adds to the NFT's minted coins: the
    *  wallet's coins its compounds took in beyond their fees, each at its
-   *  compound's prices (src/lib/current-lp-deposit.js). */
+   *  compound's prices, and the liquidity other wallets added to it, at
+   *  the prices the deposit list gave it (src/lib/current-lp-deposit.js). */
+  const lists = {
+    compoundHistory: deps._botState?.compoundHistory,
+    deposits: deps._botState?.lifetimeHodlAmounts?.deposits,
+  };
   const pricesAt = compoundPricesFor(
     position,
     deps._botState,
     { poolAddress: poolState.poolAddress },
     false,
   );
-  const added = await addedByCompounds(
-    deps._botState?.compoundHistory,
+  const added = await addedSinceMint(
+    lists,
     tid,
     { decimals0: d0, decimals1: d1 },
     pricesAt,

@@ -1553,12 +1553,23 @@ bot recorded with it, else the price cache's at its block, as a rebuild
 of the compound list prices it (`compoundPricesFor`; a rebuild keeps no
 compound's prices), else today's, which flags the deposit as the mint's
 own missing price does. A compound whose record does not tell its fees
-apart adds nothing (`walletCoinsOf`). The bot publishes the addition as
-`currentDepositAddedUsd`, with `currentDepositAddedFallback`
-(`src/lib/bot-pnl-current-nft.js`); the unmanaged view works it out from
-the compound list the bot saved (`savedDepositAdded`), in its first
-step's Net P&L and on its second step's snapshot. A deposit the operator
-types in replaces the whole figure.
+apart adds nothing (`walletCoinsOf`). The deposit also counts the
+liquidity another wallet added to the NFT: the Lifetime scan enters each
+such addition in the pool's deposit list naming its NFT (`kind:
+"external"`, `tokenId`, `_additionsPutIn`), and the Current panel adds
+the current NFT's entries at the prices Total Lifetime Deposit gave them
+(`addedByOthers`); an entry not priced yet adds nothing, as it adds
+nothing there. Such coins never pass through the bot's wallet, so the
+deposit count cannot see them, and the scan works the deposit list out
+again only after a rebalance or a Reload Current Position: until then
+both panels read such an addition as a gain, a limit the user accepted
+and the User Manual's FAQ states (2026-10-24). The bot publishes the
+addition as `currentDepositAddedUsd`, with `currentDepositAddedFallback`
+(`addedSinceMint`, `src/lib/bot-pnl-current-nft.js`); the unmanaged view
+works it out from the compound list the bot saved and the pool's deposit
+list in the epoch cache (`savedDepositAdded`), in its first step's Net
+P&L and on its second step's snapshot. A deposit the operator types in
+replaces the whole figure.
 
 **A deposit that lands while the compound runs.** The owner's coins can
 reach the wallet between the two readings, while the collect or the

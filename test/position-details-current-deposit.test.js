@@ -23,6 +23,7 @@ const assert = require("node:assert/strict");
 const Module = require("module");
 const config = require("../src/lib/config");
 const { compositeKey } = require("../src/lib/bot-config-v2");
+const { setCachedLifetimeHodl } = require("../src/lib/epoch-cache");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -144,6 +145,51 @@ describe("an unmanaged position's Current deposit and Net P&L", () => {
     });
     assert.equal(d.entryValue, 50);
     assert.equal(d.netPnl, 30 - 50 + 5);
+  });
+
+  it("count liquidity another wallet added to the NFT, from the pool's deposit list the bot's scans saved", async () => {
+    const req = request();
+    const pool = {
+      contract: PM,
+      wallet: WALLET,
+      token0: req.token0,
+      token1: req.token1,
+      fee: req.fee,
+    };
+    setCachedLifetimeHodl(pool, {
+      lastBlock: 900,
+      deposits: [
+        { raw0: "1", raw1: "0", block: 10, kind: "fresh", usd: 100 },
+        {
+          raw0: "1",
+          raw1: "1",
+          block: 800,
+          kind: "external",
+          txHash: "0xe1",
+          tokenId: TOKEN_ID,
+          usd: 9,
+        },
+        {
+          raw0: "1",
+          raw1: "1",
+          block: 700,
+          kind: "external",
+          txHash: "0xe0",
+          tokenId: "776",
+          usd: 50,
+        },
+      ],
+    });
+    try {
+      const d = await details({
+        hodlBaseline: BASELINE,
+        compoundHistory: [COMPOUND],
+      });
+      assert.equal(d.entryValue, 100 + 6 + 9, "and $9 another wallet added");
+      assert.equal(d.netPnl, 30 - 115 + 5);
+    } finally {
+      setCachedLifetimeHodl(pool, null);
+    }
   });
 
   it("are the minted coins alone for a position the bot never managed", async () => {

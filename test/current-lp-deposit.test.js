@@ -13,7 +13,11 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { addedByCompounds } = require("../src/lib/current-lp-deposit");
+const {
+  addedByCompounds,
+  addedByOthers,
+  addedSinceMint,
+} = require("../src/lib/current-lp-deposit");
 
 const DECIMALS = { decimals0: 0, decimals1: 0 };
 const TODAY = { price0: 2, price1: 1 };
@@ -133,5 +137,69 @@ describe("addedByCompounds", () => {
       { usd: 12 + 15, fallback: false },
       "4 of token0 at $3, then 3 of token1 at $5",
     );
+  });
+});
+
+describe("addedByOthers", () => {
+  /** An entry the Lifetime scan made for liquidity another wallet added. */
+  const external = (over = {}) => ({
+    raw0: "5",
+    raw1: "5",
+    block: 600,
+    kind: "external",
+    txHash: "0xe1",
+    tokenId: "7",
+    usd: 40,
+    fallback: false,
+    ...over,
+  });
+
+  it("adds the NFT's additions by other wallets, at the prices Total Lifetime Deposit gave them", () => {
+    const deposits = [
+      { raw0: "100", raw1: "0", block: 10, kind: "fresh", usd: 900 },
+      external(),
+      external({ txHash: "0xe2", usd: 10, fallback: true }),
+      external({ txHash: "0xe3", tokenId: "8" }),
+      external({ txHash: "0xe4", tokenId: undefined }),
+    ];
+    assert.deepEqual(addedByOthers(deposits, 7), { usd: 50, fallback: true });
+  });
+
+  it("adds nothing for an entry not priced yet, as Total Lifetime Deposit adds nothing for it", () => {
+    assert.deepEqual(addedByOthers([external({ usd: undefined })], "7"), {
+      usd: 0,
+      fallback: false,
+    });
+    assert.deepEqual(addedByOthers(undefined, "7"), {
+      usd: 0,
+      fallback: false,
+    });
+  });
+});
+
+describe("addedSinceMint", () => {
+  it("is what the NFT's compounds took from the wallet and what other wallets added", async () => {
+    const got = await addedSinceMint(
+      {
+        compoundHistory: [compound({ price0: 3, price1: 5 })],
+        deposits: [
+          {
+            raw0: "5",
+            raw1: "5",
+            block: 600,
+            kind: "external",
+            txHash: "0xe1",
+            tokenId: "7",
+            usd: 40,
+            fallback: true,
+          },
+        ],
+      },
+      "7",
+      DECIMALS,
+      null,
+      TODAY,
+    );
+    assert.deepEqual(got, { usd: 12 + 40, fallback: true });
   });
 });

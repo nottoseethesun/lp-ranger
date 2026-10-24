@@ -38,7 +38,9 @@ const {
   feesLeftInWallet,
 } = require("./compounded-coins");
 const { compoundPricesFor } = require("./compound-activity-figures");
-const { addedByCompounds } = require("./current-lp-deposit");
+const { addedSinceMint } = require("./current-lp-deposit");
+const { getCachedLifetimeHodl } = require("./epoch-cache");
+const { parseCompositeKey } = require("./composite-key");
 const {
   mintBlocksByTokenId,
   scanFloorFor,
@@ -209,13 +211,16 @@ function savedFeesLeftUsd(diskConfig, posKey, tokenId, ps, price0, price1) {
  * What Initial Deposit for This LP adds to the NFT's minted coins: the
  * wallet's coins its compounds took in beyond their fees, from the
  * compound list the bot saved while it managed the position, each at its
- * compound's prices (src/lib/current-lp-deposit.js). The figure the bot
- * shows for the same NFT (src/lib/bot-pnl-current-nft.js); none for a
- * position the bot never managed.
+ * compound's prices, and the liquidity other wallets added to it, from
+ * the pool's deposit list the bot's scans saved in the epoch cache
+ * (src/lib/current-lp-deposit.js). The figure the bot shows for the same
+ * NFT (src/lib/bot-pnl-current-nft.js); none for a position the bot never
+ * managed.
  *
  * @param {object} diskConfig  Loaded bot config.
  * @param {string} posKey      Composite key for the position.
- * @param {object} position    The position: `tokenId`, `token0`, `token1`.
+ * @param {object} position    The position: `tokenId`, `token0`,
+ *   `token1`, `fee`.
  * @param {{decimals0: number, decimals1: number, poolAddress: string}} ps
  *   The pool's state.
  * @param {{price0: number, price1: number}} today  This answer's prices.
@@ -223,19 +228,31 @@ function savedFeesLeftUsd(diskConfig, posKey, tokenId, ps, price0, price1) {
  */
 function savedDepositAdded(diskConfig, posKey, position, ps, today) {
   const pos = getPositionConfig(diskConfig, posKey);
+  const key = parseCompositeKey(posKey);
+  const poolKnown =
+    key !== null &&
+    typeof position.token0 === "string" &&
+    typeof position.token1 === "string";
+  const saved = poolKnown
+    ? getCachedLifetimeHodl({
+        contract: key.contract,
+        wallet: key.wallet,
+        token0: position.token0,
+        token1: position.token1,
+        fee: position.fee,
+      })
+    : null;
+  const lists = {
+    compoundHistory: pos?.compoundHistory,
+    deposits: saved?.deposits,
+  };
   const pricesAt = compoundPricesFor(
     position,
     null,
     { poolAddress: ps.poolAddress },
     false,
   );
-  return addedByCompounds(
-    pos?.compoundHistory,
-    position.tokenId,
-    ps,
-    pricesAt,
-    today,
-  );
+  return addedSinceMint(lists, position.tokenId, ps, pricesAt, today);
 }
 
 module.exports = {
