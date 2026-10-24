@@ -9,7 +9,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 ## Workflow, git, CI & testing
 - [always build](feedback_always_build.md) — Edited src/client/web/? Run `npm run build`
 - [branching](feedback_branching.md) — Never push to main: branch + PR, ONE branch at a time
-- [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push
+- [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push; not again for code that just passed
 - [check both Node versions](feedback_check_both_node_versions.md) — `npm run check` runs one Node; CI runs 22 and 24. Run the gate under 22 too (`PATH=` Node 22 first), never the raw suite
 - [ci protocol](feedback_ci_protocol.md) — Never skip the local merge-to-main check; "full c.i. to main" means all eight steps, the PR merge included
 - [full repo grep](feedback_full_repo_grep.md) — Renames and pattern audits grep the WHOLE repo

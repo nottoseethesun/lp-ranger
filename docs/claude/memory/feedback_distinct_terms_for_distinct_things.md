@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-10-22T22:33:05.077Z
+  modified: 2026-10-24T22:38:11.075Z
 ---
 
 When explaining anything with more than two similar entities, define each
@@ -23,6 +23,20 @@ In this project the traps are real and specific:
 - **"first NFT"** can mean the oldest one the wallet ever held, or the
   earliest one in the inferred series. Those are different NFTs whenever
   the oldest arrived by transfer rather than by mint.
+- **"holding"** can mean a deposit, the wallet's coins (the residual), or
+  the coins a position's NFT stands for at the current price. Say "the
+  amount of WPLS in the position's NFT", "the wallet's WPLS" or "the
+  deposit", every time. On 2026-10-24 I wrote "its own holding is missing
+  from the total" for the third; the user: "'holding' - deposit,
+  residual, in the nft itself, what the f are you referring to?!"
+- **A definition's every sentence must be true of the defined term as its
+  subject.** Defining "the amount of a coin in a position's NFT", I wrote
+  "It's zero for one of the pool's two coins whenever the price is
+  outside the position's range": one coin's amount cannot be zero "for
+  one of two coins", so the sentence said the amount is zero out of
+  range. The user: "that sentence was just wrong, by the rules of
+  grammar." Write "outside the range the NFT contains only one of the
+  two coins, and none of the other."
 
 **Why:** the user had to ask the same question eight or nine times
 because each answer reused a term for a different thing, or left a
