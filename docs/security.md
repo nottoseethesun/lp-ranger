@@ -1062,15 +1062,16 @@ error, so real bugs are never silently swallowed.
 
 ### Graceful Shutdown
 
-`POST /api/shutdown` (CSRF-protected like every other mutating route)
-marks the app stopping for good, so no position starts and no
-rebalance or compound begins after it (`src/app-phase.js`). It then
-calls `positionMgr.stopAll()` and exits cleanly so nonces are not left
+`POST /api/stop-when-all-clear` (CSRF-protected like every other
+mutating route) marks the app stopping for good, so no position starts
+and no rebalance, compound or Reload begins after it
+(`src/app-phase.js`). It then calls `positionMgr.stopAll()`, waits for
+every scan still running, and exits cleanly so nonces are not left
 hanging. Each position's stop waits for a rebalance or compound under
-way, a position still starting included, so none is cut off. The
-recommended way is
-`npm run gentle-stop`: it waits out any rebalance or compound, then
-asks the server to stop itself through this route.
+way, a position still starting included, so none is cut off
+(`src/stop-when-all-clear.js`). A repeat of the request changes
+nothing. The recommended way is `npm run gentle-stop`, which sends it
+and prints what the server is still finishing.
 `npm stop` sends SIGTERM to the PID in `tmp/lp-ranger.pid`, running
 Ctrl+C's `shutdown` handler: a force-stop, exiting within three seconds
 whatever is under way. See

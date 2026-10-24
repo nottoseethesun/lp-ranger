@@ -18,8 +18,13 @@ const {
   addPoolShare,
 } = require("./bot-pnl-updater");
 const { getPositionBaseline } = require("./hodl-baseline");
+const { applyPriceOverrides } = require("./price-overrides");
 const { ilFigures } = require("./bot-pnl-il");
-const { savedNftCompoundedUsd } = require("./position-details-compound");
+const {
+  savedNftCompoundedUsd,
+  savedWalletCoinsPutIn,
+} = require("./position-details-compound");
+const { plusDeposits } = require("./counted-deposits");
 const {
   compositeKey,
   getPositionConfig,
@@ -161,6 +166,18 @@ async function _readFees(
   }
 }
 
+/**
+ * The coins the Current IL/G measures against: the NFT's minted coins,
+ * and the wallet's coins its compounds took in since (none when the
+ * caller passes none).
+ */
+function _curHodl(baseline, putIn) {
+  return plusDeposits(
+    { amount0: baseline.hodlAmount0, amount1: baseline.hodlAmount1 },
+    putIn ?? { amount0: 0, amount1: 0 },
+  );
+}
+
 /** Compute current-epoch P&L from baseline + prices. */
 function _currentPnl(
   baseline,
@@ -171,13 +188,16 @@ function _currentPnl(
   price1,
   residuals,
   compoundedUsd,
+  putIn,
 ) {
   const rUsd = residuals?.usd || 0;
   const pgl = entryValue > 0 ? value - entryValue : null;
   /*- Through `ilFigures` (src/bot-pnl-il.js), the one expression of the
    *  rule, so this figure matches what the bot tier reports for the same
    *  position — including taking this NFT's compounded fees out of the
-   *  LP value, which are liquidity the HODL side never had.
+   *  LP value, which are liquidity the HODL side never had, counting no
+   *  coin in the wallet, and adding the wallet's coins its compounds took
+   *  in since its mint to the coins it measures against.
    *
    *  Only the current-NFT figure is asked for here; the lifetime one
    *  needs a chain scan this fast path does not make, and
@@ -188,10 +208,7 @@ function _currentPnl(
         residualValueUsd: rUsd,
         price0,
         price1,
-        curHodl: {
-          amount0: baseline.hodlAmount0,
-          amount1: baseline.hodlAmount1,
-        },
+        curHodl: _curHodl(baseline, putIn),
         ltHodl: {},
         curCompoundedUsd: compoundedUsd,
         ltCompoundedUsd: 0,
@@ -213,17 +230,19 @@ function _currentPnl(
 
 /**
  * Apply the price overrides the server keeps for the position, saved
- * under its fully-qualified key by `POST /api/config`, as the bot applies
- * a managed position's. Force mode overrides even valid fetched prices.
+ * under its fully-qualified key by `POST /api/config`, by the same rule
+ * the bot applies to a managed position's (`applyPriceOverrides`,
+ * src/price-overrides.js): an override replaces a fetched price of zero
+ * or less, and any fetched price in force mode. This adapts that rule to
+ * the details path, which reads the saved settings as one object and
+ * replaces the prices in place.
  * @param {{price0: number, price1: number}} prices  Fetched; replaced in place.
  * @param {object} saved  The position's saved settings, `{}` when none.
  */
 function _applyPriceOverrides(prices, saved) {
-  const force = saved.priceOverrideForce === true;
-  if (saved.priceOverride0 > 0 && (force || prices.price0 <= 0))
-    prices.price0 = saved.priceOverride0;
-  if (saved.priceOverride1 > 0 && (force || prices.price1 <= 0))
-    prices.price1 = saved.priceOverride1;
+  const applied = applyPriceOverrides(prices, (key) => saved[key]);
+  prices.price0 = applied.price0;
+  prices.price1 = applied.price1;
 }
 
 /**
@@ -413,6 +432,7 @@ async function computeQuickDetails(
     price1,
     residuals,
     savedNftCompoundedUsd(diskConfig, posKey, position.tokenId, price0, price1),
+    savedWalletCoinsPutIn(diskConfig, posKey, position.tokenId, ps),
   );
   const poolState = {
     tick: ps.tick,

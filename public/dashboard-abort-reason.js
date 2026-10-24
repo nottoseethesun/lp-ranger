@@ -21,7 +21,8 @@ export function abortKind(message) {
     return "thin";
   if (m.includes("exceeds slippage")) return "slip";
   if (m.includes("insufficient gas")) return "gas";
-  if (m.includes("too volatile")) return "volatile";
+  // The bot's words for a rebalance the price outran (src/price-moved-stop.js).
+  if (m.includes("moved out of the new range")) return "volatile";
   return "";
 }
 
@@ -31,7 +32,7 @@ const _SUMMARIES = {
   thin: "the pool's liquidity is too thin",
   slip: "the swap's price impact was above your Slippage setting",
   gas: "the wallet is short of gas",
-  volatile: "the price was moving too fast",
+  volatile: "the price moved out of the new range",
 };
 
 /*-

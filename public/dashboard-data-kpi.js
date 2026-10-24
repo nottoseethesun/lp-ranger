@@ -116,6 +116,7 @@ const _CUR_KPI_IDS = [
   "kpiValue",
   "pnlFees",
   "pnlCompounded",
+  "pnlFeesLeft",
   "pnlGas",
   "pnlPrice",
   "pnlRealized",
@@ -227,6 +228,11 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   const curFees = _currentUnclaimedFees(d, curCompounded);
   setKpiValue("pnlFees", curFees);
   setKpiValue("pnlCompounded", curCompounded > 0 ? curCompounded : null);
+  /*- The fees this NFT's compounds collected and could not put back,
+   *  waiting in the wallet: in neither row above, nor in the IL/G, so
+   *  Profit adds them here. */
+  const curLeft = d.pnlSnapshot.currentFeesLeftUsd || 0;
+  setKpiValue("pnlFeesLeft", curLeft > 0 ? curLeft : null);
   /*-
    *  Prefer the per-NFT chain-scanned `currentGasUsd` (mint + standalone
    *  compound gas for the current NFT) over the per-epoch tracker sum so
@@ -263,7 +269,7 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
    *  src/bot-pnl-updater.js).  Same shape as the Lifetime figure. */
   _setProfitKpi(
     "curProfit",
-    curFees + curCompounded,
+    curFees + curCompounded + curLeft,
     curGas,
     d.pnlSnapshot.totalIL,
   );
@@ -442,8 +448,9 @@ function _renderPnlGas(curGas) {
 }
 
 /*- Unmanaged: phase 1 (_applyCurrentKpis) populates value/fees/price
- *  but doesn't touch Fees Compounded or Gas — those come from the
- *  per-NFT chain scan in phase 2 and would otherwise render as dash.
+ *  but doesn't touch Fees Compounded, Fees Left Over or Gas — those come
+ *  from phase 2 and would otherwise render as dash; Fees Left Over from
+ *  the compound list the bot saved while it managed the position.
  *  Both currentCompoundedUsd and currentGasUsd are computed by the
  *  unmanaged scan from chain (mint TX + standalone compound TXs at
  *  current native price), independent of any prior Manage cycle. */
@@ -451,6 +458,8 @@ function _applyUnmanagedSnapshotOverlay(d) {
   if (!d.pnlSnapshot) return;
   const curComp = d.pnlSnapshot.currentCompoundedUsd || 0;
   setKpiValue("pnlCompounded", curComp > 0 ? curComp : null);
+  const curLeft = d.pnlSnapshot.currentFeesLeftUsd || 0;
+  setKpiValue("pnlFeesLeft", curLeft > 0 ? curLeft : null);
   _renderPnlGas(d.pnlSnapshot.currentGasUsd || 0);
 }
 

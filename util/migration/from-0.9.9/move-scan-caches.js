@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * @file util/migration/move-scan-caches.js
+ * @file util/migration/from-0.9.9/move-scan-caches.js
  * @description
  * A migration step: move the scan caches an older release kept in
  * `tmp/` into `app-data/scan-cache/`, where this release keeps them

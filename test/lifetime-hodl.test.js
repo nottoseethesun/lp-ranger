@@ -239,6 +239,48 @@ describe("lifetime-hodl", () => {
       assert.strictEqual(r.amount1, 2300);
     });
 
+    it("tags each deposit: the wallet's coins at a mint, or added to an NFT", async () => {
+      /*-
+       *  Both are counted at the NFT's mint block. A rebalance's Activity
+       *  Log figures set aside only the wallet's coins that went into its
+       *  mint, so the tag is what tells them apart here, where the
+       *  rebalance's mint took in none and the owner later added
+       *  liquidity to the new NFT (src/rebalance-activity-figures.js).
+       */
+      const events = new Map();
+      events.set("50", {
+        ilEvents: [ilEvent(1000_00000000, 2000_00000000, 10)],
+        collectEvents: [colEvent(1000_00000000, 2000_00000000, 200)],
+        dlEvents: [dlEvent(1000, 150)],
+      });
+      events.set("100", {
+        ilEvents: [
+          ilEvent(1000_00000000, 2000_00000000, 210),
+          ilEvent(500_00000000, 300_00000000, 5000),
+        ],
+        collectEvents: [],
+        dlEvents: [],
+      });
+      const r = await computeLifetimeHodl(events, {
+        rebalanceEvents: [{ oldTokenId: "50", newTokenId: "100" }],
+        position: pos8,
+      });
+      assert.deepStrictEqual(r.deposits, [
+        {
+          raw0: "100000000000",
+          raw1: "200000000000",
+          block: 10,
+          kind: "fresh",
+        },
+        {
+          raw0: "50000000000",
+          raw1: "30000000000",
+          block: 210,
+          kind: "external",
+        },
+      ]);
+    });
+
     it("compound events excluded from accumulation", async () => {
       const events = new Map();
       events.set("100", {

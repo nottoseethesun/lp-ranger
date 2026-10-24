@@ -68,6 +68,15 @@ const AS_WRITTEN = {
       price1: 2,
       gasCostUsd: 0.01,
       trigger: "auto",
+      // The fees among the deposited coins (src/compounded-coins.js).
+      amount0Compounded: "400",
+      amount1Compounded: "2000",
+      // The fees the deposit could not take, left in the wallet.
+      amount0FeesLeft: "100",
+      amount1FeesLeft: "0",
+      // The Activity Log figures (src/compound-activity-figures.js).
+      feesCollected: { amount0: 0.5, amount1: 0.25 },
+      historical: { percentGainForPosition: 0.01 },
     },
     {
       timestamp: null,
@@ -77,6 +86,18 @@ const AS_WRITTEN = {
       amount1Deposited: "2",
       usdValue: 0,
       trigger: "historical",
+    },
+    // As a rebuild writes one whose figures could not be worked out.
+    {
+      timestamp: "2026-10-18T08:00:00.000Z",
+      txHash: "0x" + "ce".repeat(32),
+      tokenId: "157149",
+      amount0Deposited: "3",
+      amount1Deposited: "4",
+      usdValue: 0.5,
+      trigger: "unknown",
+      feesCollected: null,
+      historical: { percentGainForPosition: null },
     },
   ],
   compoundedAmount0: 12.5,
@@ -139,6 +160,32 @@ describe("a record of the wrong kind", () => {
       "compoundHistory",
       [{ amount0Deposited: 5, amount1Deposited: "1" }],
       /compoundHistory\[0\]\.amount0Deposited must be a whole number/,
+    );
+    const compound = AS_WRITTEN.compoundHistory[0];
+    refused(
+      "compoundHistory",
+      [{ ...compound, historical: { percentGainForPosition: -1 } }],
+      /compoundHistory\[0\]\.historical\.percentGainForPosition must be a percentage, at least 0/,
+    );
+    refused(
+      "compoundHistory",
+      [{ ...compound, historical: {} }],
+      /compoundHistory\[0\]\.historical\.percentGainForPosition is missing/,
+    );
+    refused(
+      "compoundHistory",
+      [{ ...compound, feesCollected: { amount0: "1", amount1: 1 } }],
+      /compoundHistory\[0\]\.feesCollected\.amount0 must be a number of coins/,
+    );
+    refused(
+      "compoundHistory",
+      [{ ...compound, amount1Compounded: 10 }],
+      /compoundHistory\[0\]\.amount1Compounded must be a whole number/,
+    );
+    refused(
+      "compoundHistory",
+      [{ ...compound, amount0FeesLeft: "-1" }],
+      /compoundHistory\[0\]\.amount0FeesLeft must be a whole number/,
     );
     refused("compoundedAmount0", "100", /must be a number of coins/);
     refused("compoundedAmount1", -1, /must be a number of coins/);

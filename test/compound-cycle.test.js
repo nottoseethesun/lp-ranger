@@ -52,11 +52,11 @@ describe("pollCycle compound gates", () => {
   });
 
   it("does not trigger auto-compound when _scanRunning is true", async () => {
-    /*- Reload / initial-scan gate for auto-compound: while
-     *  `_triggerScan` is running, the position's on-chain-derived
-     *  state is being rebuilt.  An auto-compound fired mid-scan
-     *  would race the reconstruction.  Manual (forced) compound
-     *  still bypasses this gate. */
+    /*- Reload / initial-scan gate for auto-compound: while a scan runs
+     *  (src/scan-state.js), the position's on-chain-derived state is
+     *  being rebuilt.  An auto-compound fired mid-scan would race the
+     *  reconstruction.  Manual (forced) compound still bypasses this
+     *  gate. */
     const { r } = await _poll(500, {
       botState: {
         rebalanceOutOfRangeThresholdPercent: 0,

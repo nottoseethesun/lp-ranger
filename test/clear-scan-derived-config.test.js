@@ -92,6 +92,11 @@ describe("clearScanDerivedConfig", () => {
     assert.equal(slot.autoCompoundEnabled, true);
     assert.deepEqual(slot.residuals, { amount0: "5" });
     assert.equal(slot.lastCompoundAt, "2026-09-15T17:53:11.894Z");
+    /*-
+     *  The next scan rebuilds the compound list, keeping each entry's
+     *  Auto or Manual and its Activity Log figures, so it stays for that.
+     */
+    assert.deepEqual(slot.compoundHistory, [{ txHash: "0x1" }]);
   });
 
   it("clears stopped positions as well as running ones", () => {
@@ -101,7 +106,7 @@ describe("clearScanDerivedConfig", () => {
     });
     const r = clearScanDerivedConfig({ dir });
     assert.equal(r.positions, 2);
-    assert.equal("compoundHistory" in read().positions[B], false);
+    assert.equal("compoundedAmount0" in read().positions[B], false);
   });
 
   it("leaves the global section untouched", () => {

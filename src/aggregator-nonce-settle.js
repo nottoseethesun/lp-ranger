@@ -168,7 +168,8 @@ async function settleNonce(provider, swapHash, cancel) {
  * @param {string} a.ctx        Log context.
  * @param {string} a.fromSym    Sell-token symbol.
  * @param {string} a.toSym      Buy-token symbol.
- * @returns {object|null} The swap's result when it landed, else null.
+ * @returns {object|null} The swap's result when it landed, its receipt
+ *   included (`receipt`, read for the swap's own exchange), else null.
  */
 function resolveSwapOutcome({
   outcome,
@@ -191,6 +192,7 @@ function resolveSwapOutcome({
     return {
       txHash: outcome.swapReceipt.hash,
       gasCostWei: receiptGasWei(outcome.swapReceipt) + spentGasWei,
+      receipt: outcome.swapReceipt,
     };
   }
   if (outcome.nonceSpent) return null;

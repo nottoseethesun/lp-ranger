@@ -80,7 +80,10 @@ function estimateLiveValue(entryValue, priceRatio, ilFactor = 0.38) {
  * it to the LP-side closes the omission where the LP didn't get credit
  * for coins it has or has gained — visible on low-liquidity pairs whose
  * rebalance swaps leave material residuals, invisible on high-liquidity
- * pairs whose swaps absorb everything cleanly.
+ * pairs whose swaps absorb everything cleanly. The Lifetime IL/G passes
+ * it; the Current IL/G and the Impermanent Loss Guard pass none, since
+ * they compare only the coins the NFT was minted with and those put into
+ * it since (src/bot-pnl-il.js).
  *
  * Per the user's "simple a vs b" mandate, the initial-mint residual is
  * NOT subtracted here.  Accepted edge case: a freshly minted LP that

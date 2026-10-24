@@ -38,6 +38,7 @@ const { createReloadPositionHandler } = require("./server-reload-position");
 const { createRescanPricesHandler } = require("./server-rescan-prices");
 const { createAutoStartManagedPositions } = require("./server-auto-start");
 const { markStopping, refusalToStart } = require("./app-phase");
+const { createStopWhenAllClear } = require("./stop-when-all-clear");
 const { createConfigRouteHandler } = require("./server-config-route");
 const {
   computeQuickDetails: _defaultComputeQuickDetails,
@@ -191,25 +192,32 @@ function createRouteHandlers(deps) {
     diskConfig,
   });
 
+  /*- The held stop, made by the first stop request. */
+  let _heldStop = null;
+
   /**
-   * POST /api/shutdown: stop every position and exit. From the request
-   * on, the app is stopping for good (src/app-phase.js), so no position
-   * starts and no rebalance or compound begins. Each position's stop
-   * waits for a move already under way to finish, so none is cut off;
-   * `npm run gentle-stop` asks for this once nothing is under way. The
-   * positions saved as managed stay saved, so the next launch starts
-   * them again. The shutdown alert goes out as it does on Ctrl+C.
+   * POST /api/stop-when-all-clear: stop the server once nothing it has
+   * under way is left (src/stop-when-all-clear.js). From the first
+   * request on, the app is stopping for good (src/app-phase.js), so no
+   * position starts and no rebalance, compound or Reload begins; the
+   * server exits once each position's move and scan under way has
+   * finished. `npm run gentle-stop` sends it, and repeats it to show what
+   * the stop still waits for: every request answers that, and only the
+   * first changes anything. The positions saved as managed stay saved,
+   * so the next launch starts them again. The shutdown alert goes out
+   * as it does on Ctrl+C.
    */
-  async function _handleShutdown(_req, res, srv) {
-    markStopping();
-    jsonResponse(res, 200, {
-      ok: true,
-      message: "Shutting down\u2026",
-    });
-    log.info("[server] Shutdown requested via API");
-    notifyShutdown();
-    await positionMgr.stopAll();
-    srv.close(() => process.exit(0));
+  function _handleStopWhenAllClear(_req, res, srv) {
+    if (_heldStop === null)
+      _heldStop = createStopWhenAllClear({
+        markStopping,
+        notifyShutdown,
+        stopAll: () => positionMgr.stopAll(),
+        getStates: getAllPositionBotStates,
+        exit: () => srv.close(() => process.exit(0)),
+      });
+    const { waitingFor } = _heldStop.request();
+    jsonResponse(res, 200, { ok: true, stopping: true, waitingFor });
   }
 
   async function _handlePositionDetails(req, res) {
@@ -518,7 +526,7 @@ function createRouteHandlers(deps) {
       status: _globalScanStatus,
       progress: _globalScanProgress,
     }),
-    _handleShutdown,
+    _handleStopWhenAllClear,
     _handlePositionDetails,
     _handlePositionLifetime,
     _handlePositionScanCancel: scanHandlers._handlePositionScanCancel,

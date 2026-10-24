@@ -30,7 +30,12 @@ const { log } = require("./log");
 const config = require("./config");
 const _epochCache = require("./epoch-cache");
 const { fetchTokenPrices: _fetchTokenPrices } = require("./bot-pnl-updater");
+const { applyPriceOverrides } = require("./price-overrides");
 const { classifyCompounds } = require("./compounder");
+const {
+  compoundHistoryFrom,
+  compoundPricesFor,
+} = require("./compound-activity-figures");
 const { computeLifetimeHodl } = require("./lifetime-hodl");
 const {
   computeAndCacheHodl,
@@ -38,6 +43,8 @@ const {
   revalueHodlBaseline,
 } = require("./bot-hodl-scan");
 const { withFreshPricesAllowed } = require("./price-fetcher-gate");
+const { mintBlocksByTokenId } = require("./nft-mint-blocks");
+const { isPlainObject } = require("./plain-object");
 const { emojiId } = require("./logger");
 const { writeErrorLog, getErrorLogPath } = require("./error-log");
 const {
@@ -55,6 +62,7 @@ const {
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const { isTokenDecimals } = require("./pool-state-validate");
 const { hasCompoundedTotal } = require("./bot-config-keys");
+const { compoundedCoins } = require("./compounded-coins");
 
 /**
  * Add the chain's historical compound gas to the P&L tracker.
@@ -102,15 +110,18 @@ function _withFreshPrices(revalue, step) {
 }
 
 /*-
- *  Current prices for this scan's valuations. Every caller treats zero
- *  as "no value", so a failed read leaves the saved figures alone.
+ *  Current prices for this scan's valuations, with the operator's price
+ *  overrides applied as the poll applies them to the panels' figures
+ *  (`applyPriceOverrides`, src/price-overrides.js). Every caller treats
+ *  zero as "no value", so a failed read leaves the saved figures alone.
  */
-function _readCurrentPrices(position, revalue) {
+async function _readCurrentPrices(position, revalue, getConfig) {
   const read = () => _fetchTokenPrices(position.token0, position.token1);
-  return _withFreshPrices(revalue, read).catch(() => ({
+  const fetched = await _withFreshPrices(revalue, read).catch(() => ({
     price0: 0,
     price1: 0,
   }));
+  return applyPriceOverrides(fetched, getConfig);
 }
 
 /*-
@@ -154,24 +165,26 @@ function _requireValidDecimals(opts) {
   );
 }
 
-/*-
- *  The coins each NFT compounded, from the events just classified.
+/**
+ * The coins each NFT compounded, from the events just classified.
  *
- *  The Current panel shows this per-NFT figure in dollars, and
- *  `bot-pnl-current-nft.js` otherwise fills it by scanning that one NFT
- *  again. Writing the amounts here spares that scan, and leaves the
- *  pricing to whoever displays it.
+ * The Current panel shows this per-NFT figure in dollars, and
+ * `bot-pnl-current-nft.js` otherwise fills it by scanning that one NFT
+ * again. Writing the amounts here spares that scan, and leaves the
+ * pricing to whoever displays it. Each compound counts the fees its
+ * record says it put back (src/compounded-coins.js).
  *
- *  `d0`/`d1` are guaranteed valid by `_requireValidDecimals`, so there
- *  is no fallback exponent to fall back to.
+ * `d0`/`d1` are guaranteed valid by `_requireValidDecimals`, so there
+ * is no fallback exponent to fall back to.
  */
 function _compoundedAmountsByTokenId(history, d0, d1) {
   const byTokenId = {};
   for (const c of history) {
     const tid = String(c.tokenId);
     const held = byTokenId[tid] || { amount0: 0, amount1: 0 };
-    held.amount0 += Number(c.amount0Deposited) / 10 ** d0;
-    held.amount1 += Number(c.amount1Deposited) / 10 ** d1;
+    const coins = compoundedCoins([c], undefined, d0, d1);
+    held.amount0 += coins.amount0;
+    held.amount1 += coins.amount1;
     byTokenId[tid] = held;
   }
   return byTokenId;
@@ -284,6 +297,16 @@ async function _classifyAllCompounds(
   );
   log.info("[bot]   combined lifetime compounded: $%s", totalUsd.toFixed(2));
   /*-
+   *  The list every branch below writes: each compound the chain shows,
+   *  with its Activity Log figures, keeping what the bot recorded live.
+   *  Each entry's `usdValue` is the event's own deposit value at current
+   *  prices, not a share of the lifetime total: that total also carries
+   *  rebalance-time fees, which belong to no compound event in this list.
+   *  Block timestamps and hashes come from _fetchCompoundGas in
+   *  src/compounder.js, and either can be null when its fetch failed.
+   */
+  const history = await compoundHistoryFrom(allCompounds, allNftEvents, opts);
+  /*-
    *  Persist the compounded coins whenever the chain shows any, even
    *  with no standalone compound events — a position that only ever
    *  rebalanced still has fees that were re-deposited by the rebalance
@@ -291,25 +314,6 @@ async function _classifyAllCompounds(
    *  zero would otherwise read as "nothing to save".
    */
   if (totalAmount0 > 0 || totalAmount1 > 0) {
-    const history = allCompounds.map((c) => ({
-      /*-
-       *  Block timestamp + tx hash come from _fetchCompoundGas in
-       *  src/compounder.js.  Both can still be null if the receipt or
-       *  block fetch failed — consumers must tolerate null.
-       */
-      timestamp: c.timestamp || null,
-      txHash: c.txHash || null,
-      tokenId: c.tokenId,
-      amount0Deposited: c.amount0Deposited,
-      amount1Deposited: c.amount1Deposited,
-      /*-
-       *  The event's own deposit value, not a share of the lifetime
-       *  total: that total also carries rebalance-time fees, which
-       *  belong to no compound event in this list.
-       */
-      usdValue: c.usdValue || 0,
-      trigger: "historical",
-    }));
     const nftCompoundedAmountsByTokenId = _compoundedAmountsByTokenId(
       history,
       opts.decimals0,
@@ -343,15 +347,19 @@ async function _classifyAllCompounds(
      *  It is also what lets the next compound add — `hasCompoundedTotal`
      *  reads presence, so without this the position would keep declining
      *  its own compounds until some other trigger classified it.
+     *
+     *  The list is written too. Reload Current Position leaves the saved
+     *  list in place for the rebuild, so the list written here replaces
+     *  it, keeping what the bot recorded live.
      */
-    const patch = {};
+    const patch = { compoundHistory: history };
     if (!_keepTotalAbsent(isStale, opts)) {
       patch.compoundedAmount0 = 0;
       patch.compoundedAmount1 = 0;
     }
     if (Object.keys(nftGasWeiByTokenId).length > 0)
       patch.nftGasWeiByTokenId = nftGasWeiByTokenId;
-    if (Object.keys(patch).length > 0) updateState(patch);
+    updateState(patch);
   }
 }
 
@@ -605,18 +613,32 @@ function _lifetimeResumeBuffer(botState, fullRescan) {
  *
  * @param {object} botState  Live per-position bot state.
  * @param {object|null} epochKey  Epoch-cache key for the pool.
+ * @param {object} [position]  Live position: the NFT whose mint the
+ *   counted deposits must reach.
+ * @param {Array} [rebalanceEvents]  The chain, which records that mint.
  * @returns {{needed: boolean, fullRescan: boolean, revalue: boolean,
+ *   depositsBehind: boolean, recountDeposits: boolean,
  *   cachedHodl: object|null, hasCompoundData: boolean,
  *   hasDepositData: boolean}}
  */
-function lifetimeScanPlan(botState, epochKey) {
+function lifetimeScanPlan(botState, epochKey, position, rebalanceEvents) {
   const fullRescan = botState?._needsFullRescan === true;
   const revalue = botState?._needsPriceRevalue === true;
   const reclassify = botState?._needsCompoundReclassify === true;
   const disk = _resolveDiskState(botState, epochKey);
+  const depositsBehind = _depositsBehind(
+    disk.cachedHodl,
+    position,
+    rebalanceEvents,
+  );
   /*-
    *  A rebalance sets `_needsFullRescan`. The scan then reads the chain
    *  even when every figure is saved, and recomputes the deposit total.
+   *  The request lives in memory, so a stop before that scan finishes
+   *  drops it; the counted deposits then stop short of the current NFT's
+   *  mint (`depositsBehind`), and the next start recounts them the same
+   *  way. That one is read from what is saved, so a scan that answers it
+   *  clears no request: a rebalance landing meanwhile keeps its own.
    *
    *  Re-scan Prices sets `_needsPriceRevalue`. Every dollar figure is
    *  then rebuilt at freshly fetched prices and written over the saved
@@ -642,9 +664,36 @@ function lifetimeScanPlan(botState, epochKey) {
    *  clears only the requests a scan carried in, so this one survives to
    *  the next pass.
    */
+  const recountDeposits = fullRescan || depositsBehind;
   const needed =
-    fullRescan || revalue || reclassify || !lifetimeFiguresSaved(disk);
-  return { ...disk, fullRescan, revalue, reclassify, needed };
+    recountDeposits || revalue || reclassify || !lifetimeFiguresSaved(disk);
+  return {
+    ...disk,
+    fullRescan,
+    revalue,
+    reclassify,
+    depositsBehind,
+    recountDeposits,
+    needed,
+  };
+}
+
+/*-
+ *  Whether the pool's counted deposits stop short of the current NFT's
+ *  mint. A rebalance mints with the wallet's whole balance, and only the
+ *  Lifetime scan counts what that mint took in from outside the
+ *  position. The count marks the newest mint its deposits cover
+ *  (`lastBlock`), so a mint above that mark was never counted. The
+ *  chain's first NFT was minted by no rebalance, so it has no mint here
+ *  to cover, and with no count saved at all the scan counts anyway.
+ */
+function _depositsBehind(cachedHodl, position, rebalanceEvents) {
+  if (!isPlainObject(cachedHodl)) return false;
+  const tokenId = String(position?.tokenId ?? "");
+  const mint = mintBlocksByTokenId(rebalanceEvents).get(tokenId);
+  if (mint === undefined) return false;
+  const covered = cachedHodl.lastBlock;
+  return !(typeof covered === "number" && covered >= mint);
 }
 
 /**
@@ -657,6 +706,14 @@ function lifetimeScanPlan(botState, epochKey) {
  *
  * Whether the resume buffer can be trusted is decided when the read runs,
  * so a full rescan flagged after preparation still discards the buffer.
+ * So is whether the read uses it at all. The buffer carries one lifetime
+ * scan across a failure, and a scan's success releases it. A read that
+ * runs while the plan finds no lifetime figures to work out has no scan
+ * to carry, and can run after that release: one prepared for a waiting
+ * Rebalance event's Activity Log figures alone does
+ * (src/shared-chain-read.js). It uses no buffer, since one refilled then
+ * would stay held into a later scan, with reads that stop short of the
+ * head.
  *
  * @param {object} position  Live position.
  * @param {object} botState  Live per-position bot state.
@@ -665,16 +722,20 @@ function lifetimeScanPlan(botState, epochKey) {
  * @returns {object}  See `prepareChainRead`.
  */
 function prepareLifetimeRead(position, botState, rebalanceEvents, epochKey) {
+  const planNow = () =>
+    lifetimeScanPlan(botState, epochKey, position, rebalanceEvents);
   return prepareChainRead({
     position,
     rebalanceEvents,
     start: async () => {
-      const { fullRescan } = lifetimeScanPlan(botState, epochKey);
+      const { fullRescan, needed } = planNow();
       const fromBlock = await resolvePoolCreationBlockForPosition({
         factoryAddress: config.FACTORY,
         position,
       });
-      const resumeBuffer = _lifetimeResumeBuffer(botState, fullRescan);
+      const resumeBuffer = needed
+        ? _lifetimeResumeBuffer(botState, fullRescan)
+        : null;
       return { fromBlock, resumeBuffer };
     },
   });
@@ -750,6 +811,21 @@ function _recordScanFailure(botState, updateState, err, ctx) {
 }
 
 /**
+ * Settle the Lifetime results a scan leaves in memory when it did not
+ * recount the deposits. Results the bot already holds are kept: a deposit
+ * count that ran during this scan saved newer ones than the copy the scan
+ * read from the epoch cache when it started. Only when memory holds none
+ * does that copy go in.
+ *
+ * @param {object} botState  Live per-position bot state.
+ * @param {object} cachedHodl  The saved results the scan read at its start.
+ */
+function _keepHeldResults(botState, cachedHodl) {
+  if (!isPlainObject(botState.lifetimeHodlAmounts))
+    botState.lifetimeHodlAmounts = cachedHodl;
+}
+
+/**
  * Unified lifetime pool scan: read the chain's NFT events once, then run
  * compound classification, lifetime HODL accumulation and the deposit
  * total over them.
@@ -783,11 +859,13 @@ async function _scanLifetimePoolData(
   chainFound = true,
 ) {
   const ctx = scanLogCtx(position);
-  const plan = lifetimeScanPlan(botState, epochKey);
+  const plan = lifetimeScanPlan(botState, epochKey, position, rebalanceEvents);
   const {
     fullRescan,
     revalue,
     reclassify,
+    depositsBehind,
+    recountDeposits,
     cachedHodl,
     hasCompoundData,
     hasDepositData,
@@ -830,12 +908,13 @@ async function _scanLifetimePoolData(
     return;
   }
   log.info(
-    "[bot] %s/%s NFT #%s %s: Starting lifetime scan (fullRescan=%s priceRevalue=%s reclassify=%s)",
+    "[bot] %s/%s NFT #%s %s: Starting lifetime scan (fullRescan=%s depositsBehind=%s priceRevalue=%s reclassify=%s)",
     ctx.t0Sym,
     ctx.t1Sym,
     ctx.tokenIdStr,
     ctx.tokenEmoji,
     fullRescan,
+    depositsBehind,
     revalue,
     reclassify,
   );
@@ -864,7 +943,11 @@ async function _scanLifetimePoolData(
       ctx,
     );
     const allNftEvents = await chainRead.read();
-    const prices = await _readCurrentPrices(position, revalue);
+    const prices = await _readCurrentPrices(
+      position,
+      revalue,
+      botState._getConfig,
+    );
     const opts = {
       decimals0: position.decimals0,
       decimals1: position.decimals1,
@@ -886,6 +969,21 @@ async function _scanLifetimePoolData(
        *  load this time has to inherit its earlier figure rather than
        *  drop out of the map and lose it. */
       savedNftGasWeiByTokenId: botState.nftGasWeiByTokenId,
+      /*-
+       *  For the Activity Log figures of a rebuilt compound list: the
+       *  list as saved when it is written, so a compound recorded during
+       *  this scan is still in it; when the chain read began; and the
+       *  prices at its deposit's block for a compound found only on the
+       *  chain.
+       */
+      savedCompoundHistory: () => botState.compoundHistory,
+      readStartedAt: chainRead.startedAt,
+      compoundPrices: compoundPricesFor(
+        position,
+        botState,
+        cachedHodl,
+        revalue,
+      ),
     };
     const ids = chainRead.ids;
     if (!hasCompoundData || revalue || reclassify)
@@ -914,9 +1012,11 @@ async function _scanLifetimePoolData(
      *
      *  The cost is one window, not the chain: `computeAndCacheHodl` hands
      *  the saved windows back to the computation, which scans only mints
-     *  above the last one it already covered.
+     *  above the last one it already covered. A count that stops short of
+     *  the current NFT's mint is recounted the same way, so a start after
+     *  a stop that cut the rebalance's scan off counts what it missed.
      */
-    if (!cachedHodl || fullRescan) {
+    if (!cachedHodl || recountDeposits) {
       const hodl = await computeAndCacheHodl(
         computeLifetimeHodl,
         allNftEvents,
@@ -929,14 +1029,15 @@ async function _scanLifetimePoolData(
       botState.lifetimeHodlAmounts = hodl;
       updateState({ lifetimeHodlAmounts: hodl });
     } else {
-      botState.lifetimeHodlAmounts = cachedHodl;
+      _keepHeldResults(botState, cachedHodl);
     }
     /*-
      *  A saved deposit total is kept unless a rebalance forced this scan
-     *  (see `_resolveDiskState` JSDoc, item 2), or Re-scan Prices asked
+     *  (see `_resolveDiskState` JSDoc, item 2), the deposits were just
+     *  recounted for a mint they had not reached, or Re-scan Prices asked
      *  for the historical prices behind it to be fetched again.
      */
-    if (!hasDepositData || fullRescan || revalue) {
+    if (!hasDepositData || recountDeposits || revalue) {
       const priceDeposits = () =>
         computeDepositUsd(botState, updateState, position, opts, epochKey);
       await _withFreshPrices(revalue, priceDeposits);

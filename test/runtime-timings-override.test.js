@@ -12,10 +12,9 @@
  *   is read when `src/load-merged-defaults.js` loads, so it is set before
  *   anything under `src/` is required.
  *
- *   The swap backoff and the drained-position retire are driven through
- *   their own functions. The bot loop's three are inside `startBotLoop`,
- *   which no test here can start, so the last case pins that the loop
- *   reads them from config.
+ *   The drained-position retire is driven through its own function. The
+ *   bot loop's three are inside `startBotLoop`, which no test here can
+ *   start, so the last case pins that the loop reads them from config.
  */
 
 const { describe, it, after } = require("node:test");
@@ -27,30 +26,12 @@ const path = require("path");
 const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-timings-"));
 fs.writeFileSync(
   path.join(_USER_DIR, "app-runtime.json"),
-  JSON.stringify({
-    tx: { swapBackoffBaseMs: 7000, swapBackoffMaxMs: 20000 },
-    retire: { drainedAfterMs: 120000 },
-  }),
+  JSON.stringify({ retire: { drainedAfterMs: 120000 } }),
 );
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const { _activateSwapBackoff } = require("../src/bot-cycle-backoff");
 const { checkZeroLiquidity } = require("../src/bot-cycle-drain");
-
-describe("the swap backoff", () => {
-  it("waits tx.swapBackoffBaseMs first", () => {
-    const state = {};
-    _activateSwapBackoff(state, null);
-    assert.equal(state.swapBackoffMs, 7000);
-  });
-
-  it("doubles up to tx.swapBackoffMaxMs, and no further", () => {
-    const state = { swapBackoffMs: 14000, swapBackoffAttempts: 1 };
-    _activateSwapBackoff(state, null);
-    assert.equal(state.swapBackoffMs, 20000);
-  });
-});
 
 describe("a drained position's retire", () => {
   /** Deps for a drained position, with no rebalance under way. */

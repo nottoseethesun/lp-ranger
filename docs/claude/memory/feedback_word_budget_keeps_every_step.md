@@ -1,11 +1,11 @@
 ---
 name: feedback_word_budget_keeps_every_step
-description: "A word limit is met by dropping whole points, never by dropping steps of the argument or the context a reader needs first; a compressed explanation that skips a step is unreadable"
+description: "A word limit is met by dropping whole points, never by dropping steps of the argument or the context a reader needs first; a compressed explanation that skips a step is unreadable; a state word ('waiting') says for what and until when; think out what the feature promises before offering options"
 metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T18:48:49.901Z
+  modified: 2026-10-22T23:57:43.170Z
 ---
 
 When an answer has a word budget, meet it by leaving out whole points.
@@ -41,5 +41,24 @@ to read your explanations?!!" Three failures, all compression:
   ([[feedback_distinct_terms_for_distinct_things]]).
 - If the budget cannot hold the whole argument, say less, not
   everything faster: drop a lesser point, a qualifier or a detail.
+
+## A state word needs its condition, and a question needs thinking first (2026-10-22)
+
+I offered "(a) Keep the entry waiting, so later scans try again" for a
+Rebalance figure left as a dash by a failed price lookup. The user: "you
+bombed that one by saving yourself a few seconds or two, and causing me
+to have to stop and go back over it again since you don't qualify
+'waiting' (waiting when?)", and "you are spewing a thunderstorm of
+confusion but only because you skip actually thinking." The answer was
+in the feature's own purpose: a dash is the expected record of a failed
+price read, and Reload Current Position, which rebuilds the item, must
+ask for the price again. No options were needed.
+
+- A word for a state ("waiting", "due", "pending", "held") says what it
+  waits for and until when: "marked due, so the next scan pass works it
+  out again".
+- Before putting options to the user, work out what the feature already
+  promises. If its purpose settles the case, state that answer and the
+  fix; a menu there hands the user thinking that was mine to do.
 
 Related: [[feedback_prose_style]], [[feedback_explain_behavior_not_call_sites]].

@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical help copy shared by two consumers so the text is written once: public/param-help-content.js imports it for the circle-i dialog, and scripts/build-manual-content.js renders it into the Impermanent Loss Guard section of public/help-and-user-manual.html (which is also what GitHub Pages publishes, and what the Telegram alert links to). Edit the copy HERE only. `body` may contain inline HTML; both consumers render it as markup. A configured number, default or timing is a {{figure:name}} token, never typed. Both consumers fill it through src/help-figures.js: the dialog with the install's values, the manual's build with the shipped ones, which the manual the app serves replaces with the install's.",
+  "_comment": "Canonical help copy shared by two consumers so the text is written once: public/param-help-content.js imports it for the circle-i dialog, and scripts/build-manual-content.js renders each entry between its markers in public/help-and-user-manual.html (which is also what GitHub Pages publishes, and what the Telegram alert links to): an entry with a manualHeading as a whole section, one without as part of a section the manual writes by hand. Edit the copy HERE only. `body` may contain inline HTML; both consumers render it as markup. A configured number, default or timing is a {{figure:name}} token, never typed. Both consumers fill it through src/help-figures.js: the dialog with the install's values, the manual's build with the shipped ones, which the manual the app serves replaces with the install's.",
   "_manualBaseUrl_comment": "Published User Manual, the page scripts/build-manual-content.js renders these entries into. Server-side consumers build a deep link as `<manualBaseUrl>#<entry.manualAnchor>` so the anchor is written once, here, rather than duplicated into a URL literal in code.",
   "manualBaseUrl": "https://nottoseethesun.github.io/lp-ranger/help-and-user-manual.html",
   "inIlGuard": {
@@ -10,11 +10,11 @@
     "sections": [
       {
         "heading": "What it does",
-        "body": "Before every automatic rebalance, the bot works out what the new position would be worth and compares it against what <strong>simply holding the coins this NFT was minted with</strong> would be worth at today&rsquo;s prices. The gap between the two is the position&rsquo;s impermanent loss, the IL/G the Current panel shows, and a rebalance would lock it in. If the new position would come out more than this percentage below holding, the rebalance is rejected and the position is left exactly as it is. Nothing is withdrawn, collected, or swapped &mdash; the check is a calculation, not a trial run."
+        "body": "Before every automatic rebalance, the bot works out what the new position would be worth and compares it against what <strong>simply holding the coins this NFT was minted with</strong> would be worth at today&rsquo;s prices. The gap between the two is the position&rsquo;s impermanent loss, the IL/G the Current panel shows, and a rebalance would lock it in. If the new position would come out more than this percentage below holding, the rebalance is rejected and the position is left exactly as it is. Nothing is withdrawn, collected, or swapped &mdash; the check is a calculation, not a trial run.<br>If a rebalance empties the old position and then fails to mint the new one, the Guard stands aside while the bot tries the mint again: the loss is locked in by then, and turning the mint down would only leave the coins idle in the wallet."
       },
       {
         "heading": "Which value it measures against",
-        "body": "The coins the current NFT was minted with, valued at today&rsquo;s prices. Not what they were worth on the day of the mint: a move both coins make together changes that figure, and a rebalance does not lock that move in. Not your lifetime deposit into the pool either, and not any figure spanning earlier NFTs in the rebalance chain. Each time a rebalance does go through, the new NFT&rsquo;s own coins become what the Impermanent Loss Guard (ILG) measures against."
+        "body": "The coins the current NFT was minted with, valued at today&rsquo;s prices. Not what they were worth on the day of the mint: a move both coins make together changes that figure, and a rebalance does not lock that move in. Not your lifetime deposit into the pool either, and not any figure spanning earlier NFTs in the rebalance chain. Each time a rebalance does go through, the new NFT&rsquo;s own coins become what the Impermanent Loss Guard (ILG) measures against. The comparison is even: the same coins, as they were minted and as the position holds them now. Coins in the wallet count on neither side, whether a rebalance&rsquo;s leftovers or a deposit waiting there. Coins a compound takes from the wallet into the NFT count with the minted ones, since the position now holds them. Today&rsquo;s prices are those the bot reads at that check; while price lookups are paused, as they are while the dashboard sits idle, it reads fresh prices before it measures."
       },
       {
         "heading": "Worked example",
@@ -39,7 +39,7 @@
       },
       {
         "heading": "What is not included",
-        "body": "Swap slippage and gas are not part of this figure. A rebalance moves the same dollars from one price range to another, so the projection is the position&rsquo;s present value &mdash; its liquidity plus the pool&rsquo;s wallet residual, which a rebalance folds back in. Fees compounded into this NFT are left out, as they are in IL/G: they are earnings, and counting them would hide a loss."
+        "body": "Swap slippage and gas are not part of this figure. A rebalance moves the same dollars from one price range to another, so the projection is the position&rsquo;s present value &mdash; its liquidity, without the coins in the wallet. Fees compounded into this NFT are left out, as they are in IL/G: they are earnings, and counting them would hide a loss."
       },
       {
         "heading": "Impermanent gains never block",
@@ -48,6 +48,15 @@
       {
         "heading": "Telegram",
         "body": "The <strong>Rebalance Rejected Due to Excessive Impermanent Loss</strong> alert is on by default; without it, a rejection shows only in the dashboard&rsquo;s &ldquo;Rebalance skipped &mdash; impermanent loss&rdquo; dialog and in the server log. It carries the figures, says the position was not touched, and links to the User Manual for this explanation rather than repeating it. It follows the retry schedule above, so you get one message per retry, not one per poll."
+      }
+    ]
+  },
+  "activityLogPrices": {
+    "_comment": "Shown in the Activity Log's circle-i dialog after its own section, and in the User Manual's Activity Log section between the HELP:activityLogPrices markers. It has no manualHeading, so the manual's build renders its sections alone.",
+    "sections": [
+      {
+        "heading": "Historical and current prices",
+        "body": "<strong>Historical</strong> is an entry&rsquo;s figure at the prices of the moment its rebalance or compound happened, kept with the entry for good. <strong>Current</strong> is the same figure at today&rsquo;s prices, kept up to date while the page is open. The <strong>$usd</strong> amount on a Compound entry is the coins the compound reinvested, at the prices LP Ranger had when it wrote the entry, and it does not change as prices move. An amount marked <strong>(historical $usd)</strong> is at the prices of the time of the compound: LP Ranger made the compound and wrote the entry then. An amount without the mark was written from the blockchain: when LP Ranger first scanned the position, or by <strong>Re-scan Prices</strong> or <strong>Reload Current Position</strong>. It is at the prices of the time that ran. Either button writes every Compound entry of the position on screen again, so the entries it rewrites lose their mark."
       }
     ]
   }

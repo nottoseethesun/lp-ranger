@@ -157,7 +157,6 @@ const ENV_SETTINGS = Object.freeze({
     defaultOf: (ctx) => ctx.botDefaults?.checkIntervalSec,
   },
   DEADLINE_SEC: { kind: WHOLE, range: "tx.deadlineSec" },
-  REBALANCE_RETRY_SWAP_LIMIT: { kind: WHOLE },
   LOG_FILE: { kind: TEXT },
   /*-
    *  Read by LP Ranger's own tools rather than by the server or the bot:

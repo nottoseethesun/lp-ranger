@@ -7,7 +7,7 @@
  *   after that plus `stopKillMarginMs`. The kill is the backup, so it must
  *   never come first, and a mistyped figure must refuse to run rather
  *   than leave a stop that kills at once. `npm run gentle-stop` waits
- *   `gentleStopPollMs` between two questions, checked the same way.
+ *   `gentleStopPollMs` between two stop requests, checked the same way.
  *
  *   The group read is an operator's own, each figure moved off what
  *   ships, so a figure written into the code fails.
@@ -25,7 +25,7 @@ fs.writeFileSync(
       exitTimeoutMs: 4000,
       stopKillMarginMs: 1500,
       stopCheckIntervalMs: 250,
-      gentleStopPollMs: 240000,
+      gentleStopPollMs: 30000,
     },
   }),
 );
@@ -48,7 +48,7 @@ describe("shutdown timings", () => {
       exitTimeoutMs: 4000,
       killAfterMs: 5500,
       checkIntervalMs: 250,
-      gentleStopPollMs: 240000,
+      gentleStopPollMs: 30000,
     });
     assert.ok(t.killAfterMs > t.exitTimeoutMs);
   });

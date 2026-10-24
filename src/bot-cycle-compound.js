@@ -16,7 +16,11 @@ const {
 const { notify } = require("./telegram-notifications/telegram");
 const { getTokenSymbol } = require("./token-symbol-cache");
 const { executeCompound: runCompound } = require("./compounder");
+const { compoundFiguresAtCreation } = require("./compound-activity-figures");
+const { coinsToUsd, isCoinPair } = require("./coin-value");
 const { spentGasOf, recordSpentGas } = require("./spent-gas");
+const { countDeposits } = require("./deposit-count");
+const { isAscanRunningOnThisPosition } = require("./scan-state");
 const {
   withFreshPricesAllowed,
   invalidatePriceCacheFor,
@@ -95,10 +99,12 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
    *  because each gate is an independent read with no side effect; all
    *  that changes is which one answers first. */
   if (!forced && !autoEnabled) return false;
-  /*- Reload / initial-scan window: skip auto-compound while a scan is
-   *  running so the compound doesn't race the state reconstruction.
-   *  Manual (`forced === true`) compounds still bypass. */
-  if (!forced && botSt._scanRunning) return false;
+  /*- Reload / initial-scan window: skip auto-compound while a scan runs
+   *  (src/scan-state.js), so the compound doesn't race the state
+   *  reconstruction.  A Compound Now (`forced === true`) never meets a
+   *  running scan: the server refuses it then, and no scan starts while
+   *  one waits. */
+  if (!forced && isAscanRunningOnThisPosition(botSt)) return false;
 
   /*-
    *  Auto-compound spacing: app-runtime.json → compound.autoSpacingPolls
@@ -150,19 +156,19 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
  *
  * @param {number|undefined|null} saved0  Saved token0 compounded coins.
  * @param {number|undefined|null} saved1  Saved token1 compounded coins.
- * @param {number} dep0  Token0 coins this compound re-deposited.
- * @param {number} dep1  Token1 coins this compound re-deposited.
+ * @param {number} fee0  Token0 fees this compound re-deposited.
+ * @param {number} fee1  Token1 fees this compound re-deposited.
  * @returns {{compoundedAmount0: number, compoundedAmount1: number}|null}
  */
-function _compoundedTotalFields(saved0, saved1, dep0, dep1) {
+function _compoundedTotalFields(saved0, saved1, fee0, fee1) {
   if (!hasCompoundedTotal(saved0, saved1)) return null;
   /*- Each side on its own merit. Either alone establishes the total, so
    *  the other may still hold anything the config can express — and a
    *  falsy-fallback would pass a string straight through to be
    *  concatenated rather than summed. */
   return {
-    compoundedAmount0: (isRecordedCoinTotal(saved0) ? saved0 : 0) + dep0,
-    compoundedAmount1: (isRecordedCoinTotal(saved1) ? saved1 : 0) + dep1,
+    compoundedAmount0: (isRecordedCoinTotal(saved0) ? saved0 : 0) + fee0,
+    compoundedAmount1: (isRecordedCoinTotal(saved1) ? saved1 : 0) + fee1,
   };
 }
 
@@ -192,23 +198,60 @@ function _requestCompoundReclassify(deps, patch) {
   patch._needsCompoundReclassify = true;
 }
 
-/** Record a successful compound: update history, P&L tracker gas, collected fees. */
-async function recordCompound(deps, result) {
-  const emit = deps.updateBotState || (() => {});
-  const _gc = (k) => (deps._getConfig ? deps._getConfig(k) : undefined);
-  const gasWei = BigInt(result.gasCostWei || 0);
-  const gasCostUsd = gasWei > 0n ? await _actualGasCostUsd(gasWei) : 0;
-  const history = _gc("compoundHistory") || [];
-  /*-
-   *  tokenId is required so the Managed Current panel can filter
-   *  compoundHistory to the current NFT (matching the Unmanaged scan).
-   *  Without it, `bot-pnl-updater._currentNftCompounded` would skip live
-   *  entries and the row would underreport.
-   */
-  history.push({
+/**
+ * The fees a compound put back into the position, in whole coins: the
+ * fees among the coins its deposit took (src/compounded-coins.js), or,
+ * for a result without the readings that tell them apart, all it took.
+ *
+ * @param {object} result  The compound's result.
+ * @returns {{amount0: number, amount1: number}}
+ */
+function _feesPutBack(result) {
+  if (isCoinPair(result.feesCompounded)) return result.feesCompounded;
+  return {
+    amount0: result.depositedAmount0 || 0,
+    amount1: result.depositedAmount1 || 0,
+  };
+}
+
+/**
+ * Whether a compound's deposit took in coins the wallet held before its
+ * collect: its fees differ from what it deposited.
+ *
+ * @param {object} result  The compound's result.
+ * @returns {boolean}
+ */
+function _tookWalletCoins(result) {
+  if (result.amount0Compounded === undefined) return false;
+  if (result.amount1Compounded === undefined) return false;
+  return (
+    result.amount0Compounded !== result.amount0Deposited ||
+    result.amount1Compounded !== result.amount1Deposited
+  );
+}
+
+/**
+ * The compound's entry in the position's compound list.
+ *
+ * `tokenId` is required so the Managed Current panel can filter
+ * compoundHistory to the current NFT (matching the Unmanaged scan).
+ * Without it the panel would skip live entries and the row would
+ * underreport. The fees among the coins it deposited are kept when the
+ * compound could tell them apart, so every later reading of this
+ * compound, from this list or from the chain, counts only those as Fees
+ * Compounded (src/compounded-coins.js).
+ *
+ * @param {object} deps  Bot deps; `position` is the NFT compounded.
+ * @param {object} result  The compound's result.
+ * @param {number} gasCostUsd  Its gas, in dollars on the day.
+ * @returns {object}
+ */
+function _historyEntry(deps, result, gasCostUsd) {
+  const tokenId = deps.position?.tokenId;
+  const entry = {
     timestamp: result.timestamp,
     txHash: result.depositTxHash,
-    tokenId: deps.position?.tokenId ? String(deps.position.tokenId) : undefined,
+    tokenId: tokenId ? String(tokenId) : undefined,
     amount0Deposited: result.amount0Deposited,
     amount1Deposited: result.amount1Deposited,
     usdValue: result.usdValue,
@@ -216,14 +259,47 @@ async function recordCompound(deps, result) {
     price1: result.price1,
     gasCostUsd,
     trigger: result.trigger,
-  });
-  const dep0 = result.depositedAmount0 || 0;
-  const dep1 = result.depositedAmount1 || 0;
+    // The Activity Log entry's fee coins and Historical figure.
+    ...compoundFiguresAtCreation(result, deps.position),
+  };
+  if (
+    result.amount0Compounded !== undefined &&
+    result.amount1Compounded !== undefined
+  ) {
+    entry.amount0Compounded = result.amount0Compounded;
+    entry.amount1Compounded = result.amount1Compounded;
+  }
+  /*- The fees the deposit could not take, waiting in the wallet; the
+   *  Current panel counts them among this NFT's fees. */
+  if (
+    result.amount0FeesLeft !== undefined &&
+    result.amount1FeesLeft !== undefined
+  ) {
+    entry.amount0FeesLeft = result.amount0FeesLeft;
+    entry.amount1FeesLeft = result.amount1FeesLeft;
+  }
+  return entry;
+}
+
+/** Record a successful compound: update history, P&L tracker gas, collected fees. */
+async function recordCompound(deps, result) {
+  const emit = deps.updateBotState || (() => {});
+  const _gc = (k) => (deps._getConfig ? deps._getConfig(k) : undefined);
+  const gasWei = BigInt(result.gasCostWei || 0);
+  const gasCostUsd = gasWei > 0n ? await _actualGasCostUsd(gasWei) : 0;
+  const history = _gc("compoundHistory") || [];
+  history.push(_historyEntry(deps, result, gasCostUsd));
+  /*-
+   *  The fees it put back, not the wallet's other coins its deposit took
+   *  in: those are no fees, and the running total is what both Lifetime
+   *  Fees Compounded and the Lifetime IL/G read.
+   */
+  const fees = _feesPutBack(result);
   const totals = _compoundedTotalFields(
     _gc("compoundedAmount0"),
     _gc("compoundedAmount1"),
-    dep0,
-    dep1,
+    fees.amount0,
+    fees.amount1,
   );
   /*-
    *  Invalidate the per-NFT Current-panel caches for this tokenId so the
@@ -253,37 +329,63 @@ async function recordCompound(deps, result) {
     tracker.addGas(gasCostUsd, gasNative);
     emit({ pnlEpochs: tracker.serialize() });
   }
-  _logCompound(result, gasCostUsd, totals, dep0, dep1);
+  _logCompound(result, gasCostUsd, totals, fees);
 }
 
-/*-
- *  Show both numbers so users can see the residual: collected = full
- *  Collect output; reinvested = what fit the current tick ratio and was
- *  actually re-deposited.  The remainder stays in the wallet as residual
- *  (tracked by residual-tracker.js) and is NOT counted as compounded.
+/**
+ * Show the numbers so users can see the residual: collected = full
+ * Collect output; reinvested = what the deposit put in, the fees that
+ * fit the current tick ratio and, when the swap ran, other coins from
+ * the wallet: those it held before the collect, and a deposit that
+ * reached it while the compound ran. The fees left over stay in the
+ * wallet as residual (tracked by residual-tracker.js). Neither they nor
+ * the wallet's coins the deposit took in are counted as compounded.
  *
- *  "lifetime" is this pool's cumulative compounded coins across every
- *  NFT in the rebalance chain, reported in coins because coins are what
- *  is saved; their dollar value belongs to whichever poll displays it.
+ * "lifetime" is this pool's cumulative compounded coins across every
+ * NFT in the rebalance chain, reported in coins because coins are what
+ * is saved; their dollar value belongs to whichever poll displays it.
  */
-function _logCompound(result, gasCostUsd, totals, dep0, dep1) {
+function _logCompound(result, gasCostUsd, totals, fees) {
   const collectedUsd = result.collectedUsd ?? result.usdValue;
-  const residualUsd = Math.max(0, collectedUsd - result.usdValue);
+  const feesUsd = coinsToUsd(fees, result.price0, result.price1);
+  const walletUsd = Math.max(0, result.usdValue - feesUsd);
+  const residualUsd = Math.max(0, collectedUsd - feesUsd);
   const trig = result.trigger === "manual" ? "manual" : "auto";
   log.info("[bot] Compound source: standalone %s Compound op", trig);
   log.info("[bot]   Method: collect fees + increaseLiquidity on the same NFT");
-  log.info("[bot]   Reinvested portion is added to lifetime compounded total");
   log.info(
-    "[bot] Compound complete: collected $%s reinvested $%s residual $%s",
+    "[bot]   The fees reinvested are added to lifetime compounded total",
+  );
+  log.info(
+    "[bot] Compound complete: collected $%s reinvested $%s (fees $%s, other coins from the wallet $%s) residual $%s",
     collectedUsd.toFixed(2),
     result.usdValue.toFixed(2),
+    feesUsd.toFixed(2),
+    walletUsd.toFixed(2),
     residualUsd.toFixed(2),
   );
   log.info(
     "[bot]   gas $%s | lifetime compounded %s",
     gasCostUsd.toFixed(4),
-    _lifetimeCoinsText(totals, dep0, dep1),
+    _lifetimeCoinsText(totals, fees.amount0, fees.amount1),
   );
+}
+
+/**
+ * The compound's Telegram message: the fees it put back into the
+ * position, and the coins the wallet already held that its deposit took
+ * in, when it took any.
+ *
+ * @param {object} result  The compound's result.
+ * @returns {string}
+ */
+function _compoundMessage(result) {
+  const fees = _feesPutBack(result);
+  const feesUsd = coinsToUsd(fees, result.price0, result.price1);
+  const text = `Compounded $${feesUsd.toFixed(2)} in fees`;
+  if (!_tookWalletCoins(result)) return text;
+  const walletUsd = Math.max(0, (result.usdValue || 0) - feesUsd);
+  return `${text}, and put $${walletUsd.toFixed(2)} of coins the wallet already held into the position`;
 }
 
 /**
@@ -295,17 +397,17 @@ function _logCompound(result, gasCostUsd, totals, dep0, dep1) {
  * whole rule exists to prevent.
  *
  * @param {{compoundedAmount0: number, compoundedAmount1: number}|null} totals
- * @param {number} dep0  Token0 coins this compound re-deposited.
- * @param {number} dep1  Token1 coins this compound re-deposited.
+ * @param {number} fee0  Token0 fees this compound re-deposited.
+ * @param {number} fee1  Token1 fees this compound re-deposited.
  * @returns {string}
  */
-function _lifetimeCoinsText(totals, dep0, dep1) {
+function _lifetimeCoinsText(totals, fee0, fee1) {
   if (totals === null)
     return (
       "awaiting the chain scan (this compound: " +
-      dep0.toFixed(6) +
+      fee0.toFixed(6) +
       "/" +
-      dep1.toFixed(6) +
+      fee1.toFixed(6) +
       ")"
     );
   return (
@@ -406,6 +508,12 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
     }
     botSt.forceCompound = false;
     emit({ compoundInProgress: true });
+    /*-
+     *  The first step: the deposits the owner made since the last count,
+     *  recorded as money put in before the compound moves the wallet's
+     *  coins (src/deposit-count.js).
+     */
+    await countDeposits(deps, "move");
 
     const compoundOpts = await _buildCompoundOpts(deps, poolState, trigger);
     const result = await runCompound(signer, ethersLib, compoundOpts);
@@ -424,7 +532,7 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
           token0Symbol: getTokenSymbol(position.token0),
           token1Symbol: getTokenSymbol(position.token1),
         },
-        message: `Compounded $${(result.usdValue || 0).toFixed(2)} in fees`,
+        message: _compoundMessage(result),
       });
     } else {
       log.info("[bot] Compound skipped: %s", result.reason);
@@ -496,4 +604,5 @@ module.exports = {
   executeCompound,
   handleForceCompound,
   _freshFeesUsd, // exported for tests
+  _compoundMessage, // exported for tests
 };

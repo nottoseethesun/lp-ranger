@@ -10,9 +10,15 @@
  *
  * Two IL values are shown:
  *   - **Current position** (totalIL): uses baseline deposited amounts from
- *     the IncreaseLiquidity event on the current NFT's mint TX.
- *   - **Lifetime** (lifetimeIL): uses deposited amounts from the first
- *     epoch in the rebalance chain (original entry point).
+ *     the IncreaseLiquidity event on the current NFT's mint TX, plus the
+ *     wallet's coins its compounds took in since, and counts no coin in
+ *     the wallet (src/bot-pnl-il.js), so it shows no Wallet Residual.
+ *   - **Lifetime** (lifetimeIL): uses the deposited amounts of the whole
+ *     rebalance chain, from its first mint on, and credits the Wallet
+ *     Residual to the LP side.
+ *
+ * The amounts arrive in `ilInputs` already summed, so the popover shows
+ * the coins each figure was measured against.
  *
  * Depends on: dashboard-helpers.js (g).
  */
@@ -179,6 +185,18 @@ function _applyLifetimeBlurb(frag) {
   blurbEl.hidden = false;
 }
 
+/*- The Current Position IL/G counts no coin in the wallet, so that it
+ *  compares evenly (src/bot-pnl-il.js): its section shows no Wallet
+ *  Residual row, and its labels leave the residual out. */
+function _applyCurrentLabels(frag) {
+  const row = frag.querySelector('[data-tpl="residualRow"]');
+  if (row) row.hidden = true;
+  const lp = frag.querySelector('[data-tpl="lblLpSide"]');
+  if (lp) lp.textContent = "LP Value − Compounded";
+  const result = frag.querySelector('[data-tpl="lblResult"]');
+  if (result) result.textContent = "IL/G ((LP − Compounded) − HODL)";
+}
+
 /** Compute the derived display values for a single IL section.
  *  Pulled out of `_buildSection` to keep its complexity under the 17
  *  cap after the residual + isLifetime params were added. */
@@ -225,6 +243,7 @@ function _buildSection(
   };
   set("heading", label);
   if (isLifetime) _applyLifetimeBlurb(frag);
+  else _applyCurrentLabels(frag);
   set("lpValue", _usd(lpValue));
   set("residualValue", _usd(v.rUsd));
   set("compoundedRemoved", _usd(v.comp));
@@ -340,13 +359,16 @@ function _buildPopoverFrag(o) {
     o.ilResult,
     o.t0sym,
     o.t1sym,
-    o.inputs.residualValueUsd,
+    o.isCur ? 0 : o.inputs.residualValueUsd,
     !o.isCur,
   );
   const sectionSlot = frag.querySelector('[data-tpl="sectionSlot"]');
   if (sectionSlot && sectionFrag) sectionSlot.replaceWith(sectionFrag);
+  const lpSide = o.isCur ? "LP Value" : "(LP Value + Wallet Residual)";
   frag.querySelector('[data-tpl="formula"]').textContent =
-    "IL = (LP Value + Wallet Residual) \u2212 (" +
+    "IL = " +
+    lpSide +
+    " \u2212 (" +
     o.t0sym +
     " deposited \u00D7 " +
     o.t0sym +

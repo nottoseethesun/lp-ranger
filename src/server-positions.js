@@ -28,6 +28,8 @@ const { manageRequestRefusal } = require("./manage-request-check");
 const { rejectIfPoolManaged } = require("./pool-already-managed");
 const { openInPool } = require("./open-in-pool");
 const { positionTag } = require("./position-answer-tag");
+const { isAscanRunningOnThisPosition } = require("./scan-state");
+const { scanRunningRefusal } = require("./scan-refusal");
 const sendTx = require("./send-transaction");
 const {
   compositeKey,
@@ -384,6 +386,29 @@ function _stampReopenFlagsOnLive(key, body) {
 }
 
 /**
+ * The answer refusing a re-open retried with Manage while a scan is
+ * running on the position, as a Rebalance Now is refused then
+ * (src/scan-state.js): the bot would make the rebalance during the scan,
+ * and leave it out of the figures the scan rebuilds.
+ * @param {string} key  The position's composite key.
+ * @param {object} body  The Manage request.
+ * @returns {object|null}  The answer's body, or null when the retry may
+ *   go on.
+ */
+function _reopenScanRefusal(key, body) {
+  if (body.forceRebalance !== true) return null;
+  if (!isAscanRunningOnThisPosition(_positionBotStates.get(key))) return null;
+  return {
+    ok: false,
+    error: scanRunningRefusal(
+      "rebalance",
+      "the re-open waits: click Manage again once the read finishes",
+    ),
+    ...positionTag(key),
+  };
+}
+
+/**
  * Create route handlers for multi-position management.
  * @param {object} deps
  * @param {object} deps.diskConfig     V2 disk config.
@@ -458,6 +483,11 @@ function createPositionRoutes(deps) {
        *  dropped and the re-open never retries.  Returns
        *  `reopenStamped: true` so the client can confirm the retry
        *  was wired through. */
+      const scanRefusal = _reopenScanRefusal(key, body);
+      if (scanRefusal !== null) {
+        jsonResponse(res, 409, scanRefusal);
+        return;
+      }
       const stamped = _stampReopenFlagsOnLive(key, body);
       log.info(
         "[pos-route] Position #%s already running or starting — skipping%s",

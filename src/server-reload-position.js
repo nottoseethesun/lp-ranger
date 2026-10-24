@@ -4,10 +4,14 @@
  * @description
  * Handler for `POST /api/position/reload` — the "Reload Current
  * Position" Settings action.  Wipes every on-chain-derived value for
- * the target position (compound history, HODL baseline, deposits, gas
+ * the target position (compounded totals, HODL baseline, deposits, gas
  * per-NFT map, cached epochs, cached event log) and re-fires the
- * initial scan from pool creation.  Extracted from `server-scan.js`
- * to keep that file under the 500-line cap.
+ * initial scan from pool creation, which rebuilds them all and the
+ * Activity Log's records with them.  The compound list is the one
+ * exception to the wipe: the scan replaces it whole, keeping what the
+ * bot recorded live in it (see `CHAIN_DERIVED_POSITION_KEYS`).
+ * Extracted from `server-scan.js` to keep that file under the 500-line
+ * cap.
  *
  * Fire-and-forget: the endpoint returns as soon as the reset is
  * complete and the scan is kicked off.  The dashboard then polls
@@ -30,6 +34,16 @@ const { cancelPoolScan, clearPoolCache } = require("./pool-scanner");
 const { resolveLiveKey } = require("./server-key-resolver");
 const { logCtx } = require("./logger");
 const { getTokenSymbol } = require("./token-symbol-cache");
+const {
+  isAscanRunningOnThisPosition,
+  isAcoinMoveUnderWayOnThisPosition,
+} = require("./scan-state");
+const { isStopping } = require("./app-phase");
+
+/*- The words a Reload Current Position or Re-scan Prices is refused with
+ *  while a coin move is under way on the position, the user's (2026-10-23). */
+const _COIN_MOVE_UNDER_WAY =
+  "A coin move (rebalance or compound) for this position has already started. Try again once it's complete.";
 
 /*- Bot-state fields to reset so the fresh scan's persist-conditions all
  *  re-evaluate as "no data on disk" and the readiness gates re-engage. */
@@ -62,7 +76,12 @@ function _resetBotState(state) {
   state.rebalanceScanComplete = false;
   state.totalLifetimeDepositUsd = 0;
   state.depositUsedFallback = false;
-  state.compoundHistory = [];
+  /*-
+   *  `compoundHistory` stays: the rebuild replaces it whole, keeping the
+   *  Auto or Manual and the Activity Log figures the bot recorded in it
+   *  when each compound happened, and needs the old list to find them.
+   *  Clearing the compounded totals below is what starts that rebuild.
+   */
   /*- Null, not zero. `hasCompoundedTotal` reads these by presence, so a
    *  zero here would claim the chain had been classified and found
    *  nothing — the opposite of what a reload is asking for. Null matches
@@ -73,6 +92,14 @@ function _resetBotState(state) {
   state.nftGasWeiByTokenId = {};
   state.hodlBaseline = null;
   state.lifetimeHodlAmounts = null;
+  /*-
+   *  The deposit count's own state goes with the results it adds to
+   *  (src/deposit-count.js): a poll's interim count, and the wallet's
+   *  coins as the last poll saw them, so the first poll after the
+   *  rebuild counts the deposits since the current NFT's mint again.
+   */
+  state._depositOverlay = null;
+  state._depositWalletSeen = null;
 }
 
 /*- Wipe on-chain-derived keys in the SHARED in-memory `diskConfig`
@@ -80,9 +107,9 @@ function _resetBotState(state) {
  *  `readConfigValue(diskConfig, key, ...)`.  Loading a fresh copy from
  *  disk here would leave the shared reference stale and
  *  `_resolveDiskState` in bot-recorder-lifetime.js would keep seeing
- *  the old `compoundHistory` / compounded coins, gating
- *  `_classifyAllCompounds` off and silently skipping the chain-wide
- *  rescan — exactly the July-2026 reload-no-op bug. */
+ *  the old compounded coins, gating `_classifyAllCompounds` off and
+ *  silently skipping the chain-wide rescan — exactly the July-2026
+ *  reload-no-op bug. */
 function _clearDiskConfigForKey(diskConfig, positionKey) {
   const posCfg = getPositionConfig(diskConfig, positionKey);
   if (!posCfg) return false;
@@ -153,10 +180,10 @@ function _resolveStateAndPosition(rawKey, states, positionMgr) {
   return { liveKey, state, position };
 }
 
-/*- Guard against reloading a position that is mid-scan, mid-rebalance,
- *  or mid-compound.  Every in-progress condition returns 409 with a
- *  user-facing `message` the client surfaces in the yellow retry
- *  modal.  Returns null when the position is idle. */
+/*- Guard against reloading a position that is mid-scan or has a coin
+ *  move under way.  Every in-progress condition returns 409 with an
+ *  `error` code the client can tell apart and a user-facing `message` it
+ *  shows.  Returns null when the position is idle. */
 /**
  * Shared in-flight guard for the reset routes.
  *
@@ -167,18 +194,30 @@ function _resolveStateAndPosition(rawKey, states, positionMgr) {
  * Reload's original wording byte-for-byte.
  *
  * @param {object} state  Per-position bot state.
- * @param {object} [copy] `{ action, verb, scanExtra }` overrides.
+ * @param {object} [copy] `{ action, scanExtra }` overrides.
  * @returns {{code: number, body: object}|null}
  */
 function _checkInProgress(state, copy = {}) {
   const action = copy.action || "Reload Current Position";
-  const verb = copy.verb || "reload";
   const scanExtra =
     copy.scanExtra === undefined
       ? " The scan can take up to four hours."
       : copy.scanExtra;
   if (!state) return null;
-  if (state._scanRunning) {
+  /*- A stop the server holds until nothing is under way
+   *  (src/stop-when-all-clear.js) waits for the scans running; one
+   *  started now would be cut off, or hold the stop for its length. */
+  if (isStopping()) {
+    return {
+      code: 409,
+      body: {
+        ok: false,
+        error: "server-stopping",
+        message: `The server is stopping: ${action} is not available until it starts again.`,
+      },
+    };
+  }
+  if (isAscanRunningOnThisPosition(state)) {
     return {
       code: 409,
       body: {
@@ -191,27 +230,16 @@ function _checkInProgress(state, copy = {}) {
       },
     };
   }
-  if (state.rebalanceInProgress) {
+  /*- From the first gate of a rebalance or compound to its end, and
+   *  while a Rebalance Now or Compound Now waits to be made: a reset
+   *  then would clear what the move is about to read (src/scan-state.js). */
+  if (isAcoinMoveUnderWayOnThisPosition(state)) {
     return {
       code: 409,
       body: {
         ok: false,
-        error: "rebalance-in-progress",
-        message:
-          `Cannot ${verb} this position: it is currently rebalancing.` +
-          " Wait for the rebalance to finish and try again.",
-      },
-    };
-  }
-  if (state.compoundInProgress) {
-    return {
-      code: 409,
-      body: {
-        ok: false,
-        error: "compound-in-progress",
-        message:
-          `Cannot ${verb} this position: it is currently compounding.` +
-          " Wait for the compound to finish and try again.",
+        error: "coin-move-under-way",
+        message: _COIN_MOVE_UNDER_WAY,
       },
     };
   }
@@ -221,13 +249,16 @@ function _checkInProgress(state, copy = {}) {
 /*- Wipe the on-chain-derived data for the position and trigger the
  *  fresh scan.  Deliberately SYNCHRONOUS — no `await` in the body so
  *  no other bot poll cycle can slip in a rebalance / compound between
- *  the guards passing and `_scanRunning` engaging.  The rebalance
- *  race window that existed with the earlier awaited version is
- *  closed by this: an async function's body runs to its first
- *  `await` synchronously with the caller, so calling
- *  `state._triggerScan()` (an async fn) here sets `_scanRunning=true`
- *  BEFORE the endpoint returns 200, and the rebalance/compound gates
- *  in bot-cycle engage before any subsequent poll can land.
+ *  the guards passing and the scan engaging.  The rebalance race
+ *  window that existed with the earlier awaited version is closed by
+ *  this: an async function's body runs to its first `await`
+ *  synchronously with the caller, so calling `state._triggerScan()`
+ *  (an async fn) here starts the scan BEFORE the endpoint returns 200
+ *  (`isAscanRunningOnThisPosition`, src/scan-state.js), and the
+ *  rebalance/compound gates in bot-cycle engage before any subsequent
+ *  poll can land.  The guard has just refused a position with a coin
+ *  move under way (`isAcoinMoveUnderWayOnThisPosition`), so no move
+ *  holds the scan back.
  *
  *  `clearPoolCache` and the scan promise are both fire-and-forget:
  *  the scan re-queries chain events from pool creation regardless of
@@ -244,11 +275,11 @@ function _performReset(diskConfig, liveKey, state, position, wallet) {
   clearPoolCache(position, wallet).catch((err) => {
     log.warn("[server] clearPoolCache failed (non-fatal): %s", err.message);
   });
-  /*- Sets `_scanRunning=true` synchronously (before the first `await`
-   *  in the trigger's body), engaging the rebalance/compound gates
-   *  immediately.  The returned promise is deliberately not awaited —
-   *  the scan runs for minutes to hours and the HTTP response must
-   *  not block on it. */
+  /*- Starts the scan synchronously (before the first `await` in the
+   *  trigger's body), engaging the rebalance/compound gates immediately
+   *  (src/scan-state.js).  The returned promise is
+   *  deliberately not awaited — the scan runs for minutes to hours and
+   *  the HTTP response must not block on it. */
   if (state && typeof state._triggerScan === "function") {
     state._triggerScan().catch((err) => {
       log.warn("[server] Reload scan trigger failed: %s", err.message);

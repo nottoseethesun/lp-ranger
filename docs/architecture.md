@@ -354,6 +354,15 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
   that arrived since the previous mint are now deposits in the position;
   the one new boundary is scanned and the rest come back from cache.
 
+  **Counted as they arrive.** Coins the owner sends to the wallet are
+  also counted as they arrive (`src/deposit-count.js`): as the first
+  step of every rebalance and compound, saved into `lifetimeHodlAmounts`
+  at each deposit's own block, and when a poll sees the wallet's coins
+  rise, held in memory until the next move's count. The Lifetime scan's
+  next window leaves out the transactions already counted, so each
+  deposit counts once. Full detail in
+  [`docs/engineering.md` § Deposit Count](engineering.md#deposit-count).
+
 - **Lifetime compounded amount** (`compoundedAmount0` / `compoundedAmount1`,
   saved with the position's config) — the **coins** each NFT earned in fees
   and re-deposited, whether by a compound or by the rebalance that closed
@@ -397,6 +406,13 @@ removes only that NFT's share, since its mint value already contained
 the earlier compounds. Both are the saved coins priced at the current
 poll, so IL/G does not drift as the pair moves after a compound.
 
+The current-NFT figure counts no coin in the wallet. It is the even
+comparison the Impermanent Loss Guard measures with: the position as it
+was minted against the same position now (the user's ruling,
+2026-10-23). Its LP side has no wallet residual, and its HODL side is
+the NFT's minted coins plus the wallet's coins its compounds took in
+beyond their fees (`walletCoinsPutIn`, `src/compounded-coins.js`).
+
 `ilFigures` (`src/bot-pnl-il.js`) computes both, and is the only place
 either is computed; it calls `computeHodlIL` from `src/il-calculator.js`.
 It is pure — every input is an argument — which is what lets the bot tier
@@ -408,9 +424,10 @@ by the whole compounded amount, enough on a long-running position to flip
 the sign.)
 
 The lifetime figure's HODL amounts come from `lifetimeHodlAmounts`
-(accumulated by the fresh deposit detection algorithm), falling back to the
-first closed epoch or the current HODL baseline while the scan has not
-run yet.
+(accumulated by the fresh deposit detection algorithm and by the
+deposit count, above), plus the deposits polls have counted since the
+last move's count, falling back to the first closed epoch or the current
+HODL baseline while the scan has not run yet.
 
 ### Scan Architecture: Single Fetch, Two Classifiers
 

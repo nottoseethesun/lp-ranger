@@ -5,8 +5,9 @@
  * time-formatting helpers, and the shared {@link botConfig} object used by
  * every other dashboard module.
  *
- * Root module — imports no dashboard file but the logger and the chain
- * module, neither of which imports this one, directly or otherwise.
+ * Root module — imports no dashboard file but the logger, the chain
+ * module, the dashboard settings and the Activity Log figures, none of
+ * which imports this one, directly or otherwise.
  */
 
 import { log } from "./dashboard-log.js";
@@ -26,6 +27,11 @@ import {
   uiSettingsLoaded,
   withUiSettings,
 } from "./dashboard-ui-settings.js";
+import {
+  isActivityEntryDrawn,
+  fillActivityFigures,
+  forgetActivityEntry,
+} from "./dashboard-activity-figures.js";
 /**
  * Get a DOM element by its ID.
  * @param {string} id  The element's id attribute.
@@ -212,8 +218,13 @@ function _appendTxAffordance(adt, txHash) {
  * @param {string} detail  Plain-text detail; first line is main, remainder is ctx.
  * @param {Date}   [when]  Timestamp; defaults to now.
  * @param {string} [txHash] Optional TX hash — appended as short hash + copy icon.
+ * @param {object} [figures] A Rebalance or Compound entry's figures, from
+ *   `rebalanceFigures` or `compoundFigures` (dashboard-activity-figures.js),
+ *   shown under the date. An entry the log already shows is not drawn
+ *   again.
  */
-export function act(icon, type, title, detail, when, txHash) {
+export function act(icon, type, title, detail, when, txHash, figures) {
+  if (figures !== undefined && isActivityEntryDrawn(figures)) return;
   const list = g("actList");
   const ts = (when || new Date()).getTime();
   const frag = cloneTpl("tplActItem");
@@ -240,17 +251,24 @@ export function act(icon, type, title, detail, when, txHash) {
   } else {
     ctxEl.remove();
   }
+  const fin = div.querySelector('[data-tpl="fin"]');
+  if (figures === undefined) fin.remove();
+  else fillActivityFigures(div, figures);
   let ref = list.firstChild;
   while (ref && Number(ref.dataset?.ts) > ts) ref = ref.nextSibling;
   list.insertBefore(div, ref);
   /*-
    *  The cap is `activityLogMaxEntries`, a setting the server sends.
    *  Entries logged at startup, before it has, stay until the first entry
-   *  after, which trims the log to the cap.
+   *  after, which trims the log to the cap. A trimmed entry is forgotten,
+   *  so its figures stop being kept up to date.
    */
   if (!uiSettingsLoaded()) return;
   const max = uiSetting("activityLogMaxEntries");
-  while (list.children.length > max) list.removeChild(list.lastChild);
+  while (list.children.length > max) {
+    const trimmed = list.removeChild(list.lastChild);
+    forgetActivityEntry(trimmed);
+  }
 }
 
 /**

@@ -292,7 +292,6 @@ each layer live in [`docs/security.md`](security.md).
 | `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. Range 10 to 3600 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | `bot-config-defaults.json` → `minRebalanceIntervalMin` | Shortest wait between two rebalances of one position. |
 | `MAX_REBALANCES_PER_DAY` | `5` | `bot-config-defaults.json` → `maxRebalancesPerDay` | Daily cap, counted per pool rather than per wallet. |
-| `REBALANCE_RETRY_SWAP_LIMIT` | `8` | `app-runtime.json` → `tx.retrySwapLimit` | Consecutive retries after the price moved under a rebalance before the bot aborts it and waits for the operator. |
 | `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. Range 1 to 120000 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. Range 300 to 3600 seconds, five minutes to an hour. |
 | `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Range 1 to 172800 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
@@ -816,8 +815,6 @@ In `app-runtime.json`.
 | `tx.sendRetries` | `3` | How often a send that failed for a passing reason is sent again. `0` to `10`. |
 | `tx.sendRetryBaseDelayMs` | `30000` | The wait before the first retry; each later retry waits one more of it (30, 60 and 90 seconds as shipped). |
 | `tx.cancelPhaseFloorSec` | `10` | The least time a sped-up transaction gets to confirm before the cancel goes out. |
-| `tx.swapBackoffBaseMs` | `60000` | After the price moved under a rebalance, the wait before it is tried again; each failure in a row doubles it. One second to an hour. |
-| `tx.swapBackoffMaxMs` | `1200000` | The longest that wait may grow. One second to a day. |
 | `tx.midwayRetryLimit` | `4` | How many times a rebalance left mid-way, its coins in the wallet, is tried again before the bot aborts and asks you to act. 1 to 20. |
 | `poll.afterActionMs` | `2000` | How soon the bot looks again after a rebalance, compound or cancel, so the dashboard shows the result. |
 | `poll.lifetimeRescanCheckMs` | `1800000` | How often the bot checks whether a position's lifetime figures need their scan run again, and runs it if so. |
@@ -825,7 +822,7 @@ In `app-runtime.json`.
 | `shutdown.exitTimeoutMs` | `3000` | How long the server spends stopping before it exits regardless. One second to one minute. |
 | `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. Half a second to one minute. |
 | `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop`, and `npm run gentle-stop` once the server has taken its stop, check whether the server has gone. 10 milliseconds to five seconds. |
-| `shutdown.gentleStopPollMs` | `300000` | How often `npm run gentle-stop` asks whether a rebalance or compound is under way, and how long it waits for each answer. One second to one hour. |
+| `shutdown.gentleStopPollMs` | `2000` | How often `npm run gentle-stop` sends its stop request, each answered with what the server is still finishing, and how long it waits for each answer. One second to one minute. |
 | `dashboard.pollsBeforeAssumedSeen` | `2.5` | How many dashboard polls the server waits, after a change the dashboard must show, before assuming it was seen: the alert for a failed re-open comes up before the position is retired. 1 to 100. |
 | `compound.autoSpacingPolls` | `5` | The least time between two automatic compounds of one position, in polls of `CHECK_INTERVAL_SEC`. 1 to 100. |
 | `compound.autoSpacingFloorSec` | `300` | The floor under that time, in seconds, however short the poll interval. Compound Now is held to neither. 1 to 86400. |

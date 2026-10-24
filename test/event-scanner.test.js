@@ -355,6 +355,37 @@ describe("scanRebalanceHistory", () => {
     assert.strictEqual(r[0].txHash, "0xaaa");
   });
 
+  it("marks a rebalance new to the cache as waiting for its Activity Log figures", async () => {
+    /*-
+     *  The scan pass works the figures out once it has the deposits. A
+     *  rebalance the cache already held keeps its record as it was.
+     */
+    const cache = mkCache();
+    const key = `rebalance:${WALLET.toLowerCase()}:${POS_MGR.toLowerCase()}`;
+    cache._store.set(key, {
+      events: [
+        {
+          index: 1,
+          timestamp: BASE_TS + 100,
+          oldTokenId: "1",
+          newTokenId: "2",
+          txHash: "0x111",
+          blockNumber: 100,
+        },
+      ],
+      lastBlock: 4000,
+      mintSchemaVersion: 2,
+    });
+    const r = await scanRebalanceHistory(
+      mkProvider(5000, BASE_TS),
+      mkEthers([wIn("3", 4105, "0x222")], [wOut("2", 4100, "0xout")]),
+      scanOpts({ cache }),
+    );
+    const byTx = new Map(r.map((e) => [e.txHash, e]));
+    assert.strictEqual(byTx.get("0x222").figuresDue, true);
+    assert.strictEqual("figuresDue" in byTx.get("0x111"), false);
+  });
+
   it("drops the cache and forces a full re-scan when mintSchemaVersion is missing (migration)", async () => {
     /*- Regression guard for the "cache stayed with pre-Part-B mint
      *  detection" bug reported 2026-07-18 that showed a year-old NFT

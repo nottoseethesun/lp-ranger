@@ -516,6 +516,16 @@ async function _processRawEvents(
       newMints.map((m) => m.tokenId).join(","),
     );
   }
+  /*-
+   *  A rebalance read fresh from the chain still needs its Activity Log
+   *  figures, which the scan pass works out once it has the deposits
+   *  (src/rebalance-activity-figures.js). The merge below keeps the
+   *  cached record of a rebalance the cache already holds, so only one
+   *  new to it keeps this mark.
+   */
+  paired.forEach((e) => {
+    e.figuresDue = true;
+  });
   const merged = mergeAndIndex(cachedEvents, paired);
   const { firstMintTimestamp, firstMintBlockNumber, firstMintTokenId } =
     await resolveFirstMintWithForeign(

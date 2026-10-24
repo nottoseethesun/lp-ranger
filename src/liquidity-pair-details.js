@@ -98,8 +98,16 @@ function loadInitialResidualData(scopeKey) {
 }
 
 /**
- * Resolve the wallet's post-first-mint residual for one token at the block
- * containing the first IncreaseLiquidity (end-of-block state).
+ * A wallet's balance of one token at the end of a past block, in whole
+ * coins.
+ *
+ * Reading a balance as of a past block needs an endpoint that keeps past
+ * state; one that has pruned it refuses the read, and the caller handles
+ * the refusal. This module reads the wallet's leftover right after the
+ * first mint this way, and a rebalance rebuilt from the chain reads the
+ * wallet around its drain and mint the same way
+ * (src/bot-rebalance-figures.js). A caller that already knows the
+ * token's decimals passes them, saving a call.
  *
  * @param {Object}  args
  * @param {string}  args.tokenAddress
@@ -107,25 +115,28 @@ function loadInitialResidualData(scopeKey) {
  * @param {number}  args.blockTag        - Block number to read at.
  * @param {Object}  args.provider        - ethers JsonRpcProvider.
  * @param {Object}  args.ethersLib       - ethers module reference.
+ * @param {number}  [args.decimals]      - The token's decimals, if known.
  * @returns {Promise<number>} Human-readable float balance.
  */
-async function _readHistoricalBalance({
+async function readBalanceAt({
   tokenAddress,
   wallet,
   blockTag,
   provider,
   ethersLib,
+  decimals,
 }) {
   const erc20 = new ethersLib.Contract(
     tokenAddress,
     _ERC20_BALANCE_ABI,
     provider,
   );
-  const [raw, decimals] = await Promise.all([
+  const known = typeof decimals === "number";
+  const [raw, d] = await Promise.all([
     erc20.balanceOf(wallet, { blockTag }),
-    erc20.decimals(),
+    known ? decimals : erc20.decimals(),
   ]);
-  return Number(ethersLib.formatUnits(raw, decimals));
+  return Number(ethersLib.formatUnits(raw, d));
 }
 
 /** Validate required args; log + return false if any are missing/invalid. */
@@ -170,14 +181,14 @@ async function _fetchInitialBalances({
 }) {
   try {
     const [t0, t1] = await Promise.all([
-      _readHistoricalBalance({
+      readBalanceAt({
         tokenAddress: token0,
         wallet,
         blockTag,
         provider,
         ethersLib,
       }),
-      _readHistoricalBalance({
+      readBalanceAt({
         tokenAddress: token1,
         wallet,
         blockTag,
@@ -382,6 +393,7 @@ function _resetForTest() {
 module.exports = {
   loadInitialResidualData,
   ensureInitialResidualData,
+  readBalanceAt,
   _resetForTest,
   _CACHE_PATH,
 };

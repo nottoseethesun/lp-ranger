@@ -14,6 +14,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { isThisPositionDrained } = require("./position-drained");
 const config = require("./config");
 const { getTokenSymbol } = require("./token-symbol-cache");
 const { notify } = require("./telegram-notifications/telegram");
@@ -61,7 +62,7 @@ function _notifyPos(position) {
 function checkZeroLiquidity(deps) {
   const { position } = deps;
   const state = deps._botState || {};
-  const drained = BigInt(position.liquidity || 0) === 0n;
+  const drained = isThisPositionDrained(position);
   /*- Re-open-failure retire is handled DIRECTLY by bot-loop.js's
    *  `_handleError` via `setTimeout(_handleRetire, GUARANTEED_DASHBOARD_HAS_POLLED_MS)`.
    *  No drain.js branch for `_retireImmediately` — an earlier defense-in-
@@ -168,7 +169,7 @@ function checkRetireRequest(deps) {
  * @returns {boolean}
  */
 function isAbortedDrained(deps) {
-  const drained = BigInt(deps.position.liquidity || 0) === 0n;
+  const drained = isThisPositionDrained(deps.position);
   if (!drained || deps._botState?.forceRebalance) return false;
   /*- User-aborted (paused awaiting user action).  Short-circuit
    *  pollCycle: no pool-state read, no pnl computation, no Moralis

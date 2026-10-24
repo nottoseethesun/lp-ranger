@@ -17,8 +17,10 @@ const os = require("node:os");
 const {
   createReloadPositionHandler,
   _resetBotState,
+  _checkInProgress,
 } = require("../src/server-reload-position");
 const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
+const { markStopping, _resetAppPhaseForTests } = require("../src/app-phase");
 const epochCache = require("../src/epoch-cache");
 const config = require("../src/config");
 const { eventCachePath } = require("../src/cache-store");
@@ -131,34 +133,64 @@ describe("POST /api/position/reload — in-progress guard", () => {
     assert.match(responses[0].body.message, /already running/);
   });
 
-  it("returns 409 rebalance-in-progress when state.rebalanceInProgress", async () => {
+  it("returns 409 server-stopping once the server holds a stop", async () => {
+    /*-
+     *  The held stop waits for the scans running (src/stop-when-all-clear.js):
+     *  a Reload's scan started then would be cut off, or hold the stop.
+     */
     const key = _mockKey();
-    const state = {
-      activePosition: _mockPosition(),
-      rebalanceInProgress: true,
-    };
-    const states = new Map([[key, state]]);
+    const states = new Map([[key, { activePosition: _mockPosition() }]]);
     const { deps, responses } = _mockDeps({ states });
-    const h = createReloadPositionHandler(deps);
-    await h({}, {});
+    markStopping();
+    try {
+      await createReloadPositionHandler(deps)({}, {});
+    } finally {
+      _resetAppPhaseForTests();
+    }
     assert.strictEqual(responses[0].code, 409);
-    assert.strictEqual(responses[0].body.error, "rebalance-in-progress");
-    assert.match(responses[0].body.message, /currently rebalancing/);
+    assert.strictEqual(responses[0].body.error, "server-stopping");
+    assert.match(responses[0].body.message, /server is stopping/);
   });
 
-  it("returns 409 compound-in-progress when state.compoundInProgress", async () => {
-    const key = _mockKey();
-    const state = {
-      activePosition: _mockPosition(),
-      compoundInProgress: true,
-    };
-    const states = new Map([[key, state]]);
-    const { deps, responses } = _mockDeps({ states });
-    const h = createReloadPositionHandler(deps);
-    await h({}, {});
-    assert.strictEqual(responses[0].code, 409);
-    assert.strictEqual(responses[0].body.error, "compound-in-progress");
-    assert.match(responses[0].body.message, /currently compounding/);
+  /*-
+   *  A coin move counts from the poll's first gate, before the Guard, the
+   *  gas check and the wait for the rebalance lock, after which the move
+   *  raises rebalanceInProgress or compoundInProgress; and while a
+   *  Rebalance Now or Compound Now waits to be made (src/scan-state.js).
+   */
+  const COIN_MOVE_WORDS =
+    "A coin move (rebalance or compound) for this position has already started. Try again once it's complete.";
+  const moveStates = {
+    "a poll decides or makes a rebalance or compound": { _moveInitiations: 1 },
+    "a Rebalance Now waits to be made": { forceRebalance: true },
+    "a Compound Now waits to be made": { forceCompound: true },
+  };
+  for (const [when, flags] of Object.entries(moveStates)) {
+    it(`returns 409 coin-move-under-way while ${when}`, async () => {
+      const key = _mockKey();
+      const state = { activePosition: _mockPosition(), ...flags };
+      const states = new Map([[key, state]]);
+      const { deps, responses } = _mockDeps({ states });
+      await createReloadPositionHandler(deps)({}, {});
+      assert.strictEqual(responses[0].code, 409);
+      assert.strictEqual(responses[0].body.ok, false);
+      assert.strictEqual(responses[0].body.error, "coin-move-under-way");
+      assert.strictEqual(responses[0].body.message, COIN_MOVE_WORDS);
+      assert.strictEqual(state._needsFullRescan, undefined, "nothing reset");
+    });
+  }
+
+  it("lets a reset through when no coin move is under way", () => {
+    assert.strictEqual(_checkInProgress({}), null);
+    /*- The residual cleanup's rebalance is an automatic move, decided at
+     *  each poll; while the throttle holds it back it is not under way. */
+    assert.strictEqual(
+      _checkInProgress({
+        forceRebalance: true,
+        residualCleanupInProgress: true,
+      }),
+      null,
+    );
   });
 });
 
@@ -170,8 +202,12 @@ describe("CHAIN_DERIVED_POSITION_KEYS", () => {
      *  every value that could survive a reload and re-corrupt the
      *  fresh scan must be here.  Guarded so future additions to the
      *  disk config get a matching test-failure. */
+    /*-
+     *  Not `compoundHistory`: the rebuild replaces it whole, keeping the
+     *  trigger and the Activity Log figures the bot recorded live in it,
+     *  so it needs the old list in place until then.
+     */
     const expected = [
-      "compoundHistory",
       "compoundedAmount0",
       "compoundedAmount1",
       "nftCompoundedAmountsByTokenId",
@@ -195,7 +231,7 @@ describe("CHAIN_DERIVED_POSITION_KEYS", () => {
 // ── _resetBotState ──────────────────────────────────────────────────
 
 describe("_resetBotState", () => {
-  it("clears every on-chain-derived field and stamps _needsFullRescan", () => {
+  it("clears every on-chain-derived field but the compound list, and stamps _needsFullRescan", () => {
     const state = {
       _catastrophicScanError: { message: "boom" },
       _lifetimeScanError: "prior err",
@@ -236,7 +272,11 @@ describe("_resetBotState", () => {
     assert.strictEqual(state.rebalanceScanComplete, false);
     assert.strictEqual(state.totalLifetimeDepositUsd, 0);
     assert.strictEqual(state.depositUsedFallback, false);
-    assert.deepStrictEqual(state.compoundHistory, []);
+    /*-
+     *  Kept for the rebuild to replace, so a compound's Auto or Manual
+     *  and its Activity Log figures survive the reload.
+     */
+    assert.deepStrictEqual(state.compoundHistory, [{ tokenId: "1" }]);
     /*- Null, not zero: `hasCompoundedTotal` reads these by presence, so a
      *  zero would claim the chain was classified and found nothing —
      *  the opposite of what a reload asks for. */
@@ -249,6 +289,21 @@ describe("_resetBotState", () => {
     /*- Settings preserved. */
     assert.strictEqual(state.slippagePctToken0, 0.75);
     assert.strictEqual(state.autoCompoundEnabled, true);
+  });
+
+  it("drops the deposit count's interim count and the wallet reading it compared", () => {
+    /*-
+     *  Both describe the results the reload clears. With them gone, the
+     *  first poll after the rebuild counts the deposits since the current
+     *  NFT's mint again, as a first poll after a start does.
+     */
+    const state = {
+      _depositOverlay: { through: 400, entries: [{ txHash: "0xa" }] },
+      _depositWalletSeen: { raw0: 1n, raw1: 2n },
+    };
+    _resetBotState(state);
+    assert.strictEqual(state._depositOverlay, null);
+    assert.strictEqual(state._depositWalletSeen, null);
   });
 });
 

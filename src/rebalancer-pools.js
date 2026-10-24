@@ -476,7 +476,19 @@ async function removeLiquidity(
     }
     return { amount0: collected0, amount1: collected1 };
   });
-  return { amount0, amount1, txHash: receipt.hash, gasCostWei };
+  /*-
+   *  The wallet's balance of both coins before the drain goes back with
+   *  the amounts collected. A rebalance's Activity Log figure caps the
+   *  deposit it sets aside at what the wallet held here, since a deposit
+   *  that was not in the wallet before the drain cannot be part of it.
+   */
+  return {
+    amount0,
+    amount1,
+    txHash: receipt.hash,
+    gasCostWei,
+    walletBefore: { amount0: bal0Before, amount1: bal1Before },
+  };
 }
 
 /** Log swap direction with human-readable token symbols. */

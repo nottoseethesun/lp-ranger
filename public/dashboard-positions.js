@@ -51,6 +51,7 @@ import { emptyPositionInputs } from "./dashboard-config-inputs.js";
 import { closePositionDialogs } from "./dashboard-position-dialogs.js";
 import { paintStatTokenLogos } from "./dashboard-token-logos.js";
 import { forgetILDebugData } from "./dashboard-il-debug.js";
+import { clearActivityEntries } from "./dashboard-activity-figures.js";
 
 // ── Late-bound deps ──────────────────────────────
 
@@ -378,6 +379,8 @@ export function clearPositionDisplay() {
   updatePosStripUI();
   const actList = g("actList");
   if (actList) actList.replaceChildren();
+  // The log is empty, so it shows no Rebalance or Compound entry.
+  clearActivityEntries();
 }
 
 // ── No-positions dialog ──────────────────────────

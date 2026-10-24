@@ -609,7 +609,11 @@ async function _sendWithRetry(
           costNative,
           config.CHAIN.nativeCurrencySymbol,
         );
-        return { txHash: r.hash, gasCostWei: receiptGasWei(r) + spentGasWei };
+        return {
+          txHash: r.hash,
+          gasCostWei: receiptGasWei(r) + spentGasWei,
+          receipt: r,
+        };
       } catch (err) {
         if (err.message !== "_AGG_TIMEOUT" && err.code !== "CALL_EXCEPTION") {
           const why = innerErrorMessage(err);
@@ -677,7 +681,9 @@ async function _sendWithRetry(
  * @param {object} ethersLib  ethers library.
  * @param {object} params     Swap parameters.
  * @param {function} balanceDiff  Balance-diff wrapper.
- * @returns {Promise<{amountOut: bigint, txHash: string|null, gasCostWei: bigint, swapSources: string}>}
+ * @returns {Promise<{amountOut: bigint, txHash: string|null, gasCostWei: bigint, swapSources: string, exchange: {sent: bigint, received: bigint}|null}>}
+ *   `exchange` is the swap's own, read from the receipt of the swap that
+ *   landed (src/rebalancer-swap-balance.js).
  */
 async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
   const {
@@ -797,6 +803,7 @@ async function swapViaAggregator(signer, ethersLib, params, balanceDiff) {
         log.info("[route-trace] %s: aggregator swap sources=%s", cx, sources);
         return result;
       },
+      tokenIn,
     );
     /*-
      *  Added here, outside the balance read, and only here: a read that

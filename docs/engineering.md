@@ -46,6 +46,12 @@ sequence.
   - [How a Scan Fills a File](#how-a-scan-fills-a-file)
   - [When a File Changes](#when-a-file-changes)
   - [What Reads the Files](#what-reads-the-files)
+- [Deposit Count](#deposit-count)
+- [Activity Log Figures](#activity-log-figures)
+  - [Rebalance: Impermanent Loss/Gain](#rebalance-impermanent-lossgain)
+  - [Compound: Percent Gain for Position](#compound-percent-gain-for-position)
+  - [One Entry per Transaction](#one-entry-per-transaction)
+  - [Limitations of the Figures](#limitations-of-the-figures)
 - [Per-NFT Scan Windows](#per-nft-scan-windows)
   - [Cost](#cost)
   - [Batched chain reads](#batched-chain-reads)
@@ -196,7 +202,7 @@ or the position's lifetime.
 | Per-position bot state | `server-positions.js` | The mutable record one loop writes and `GET /api/status` serves. The only channel from bot to dashboard. |
 | P&L tracker | `pnl-tracker.js` | Closed epochs plus one live epoch. Persisted by pool identity, so it survives the rebalances that change tokenIds. |
 | Throttle | `throttle.js` | Minimum interval, daily cap, doubling window. One per position, so a volatile pool cannot slow a quiet one. |
-| Residual tracker | `residual-tracker.js` | Per-pool leftovers across rebalances. Feeds both the IL/G credit and the cleanup sweep. |
+| Residual tracker | `residual-tracker.js` | Per-pool leftovers across rebalances, capped at the wallet's balance. Feeds the residual value in the dialog shown after a rebalance; the Lifetime IL/G's credit and the cleanup sweep read the wallet's balances instead. |
 | Rebalance lock | `rebalance-lock.js` | One async mutex. One wallet means one nonce, so only one position may send at a time. |
 | RPC request queue | `rpc-request-manager.js` | One FIFO queue. Every JSON-RPC request in the process leaves on its schedule, whichever provider issued it. |
 | Shared signer | via `getSharedSigner` | One NonceManager for the wallet. Per-position signers would keep separate counters and collide. |
@@ -226,8 +232,9 @@ the app is doing.
 **Synced also means the state is on disk.** Setting the flag writes the
 position's config, so a position showing Synced has its baseline and
 totals persisted and is safe to shut down, best with
-`npm run gentle-stop`, which waits out any rebalance or compound under
-way. Ctrl+C and `npm stop`, which share a shutdown handler, do not wait.
+`npm run gentle-stop`, which waits out any rebalance, compound or scan
+under way. Ctrl+C and `npm stop`, which share a shutdown handler, do not
+wait.
 
 #### Start from Fresh Installation
 
@@ -603,7 +610,8 @@ A ceiling on how much impermanent loss a position may carry before the
 bot stops rebalancing it, since a rebalance locks that loss in. Before
 every **automatic** rebalance the guard compares the hypothetical
 post-rebalance position against holding the coins the NFT currently
-held was minted with, valued at today's prices, and rejects the
+held was minted with, and those put into it since, valued at today's
+prices, and rejects the
 rebalance when the projection falls more than `impermanentLossGuardPct`
 below holding. That comparison is the Current panel's IL/G for the NFT,
 and the guard reads it rather than working it out again. Holding is
@@ -637,11 +645,23 @@ are worked out again with fresh prices (`snapForGuard`,
 `src/bot-cycle-gates.js`): one more price lookup per rebalance the bot is
 about to make.
 
+**An even comparison.** The guard compares the position as it was
+minted against the same position rebalanced, the user's ruling
+(2026-10-23): "If you add in residual coins, it's not an even
+comparison." So it counts no coin in the wallet: neither a rebalance's
+leftovers nor a deposit waiting there is on either side, and the guard
+needs no deposit count before it measures. Coins put into the NFT after
+its mint are in its LP value, so they count on the holding side too: the
+wallet's coins a compound's deposit took in beyond its fees, from the
+compound's record (`walletCoinsPutIn`, `src/compounded-coins.js`).
+Measured on the wallet's coins instead, a deposit left out of holding
+would hide a loss of its own size, and one counted on both sides would
+still shrink the loss as a share of holding.
+
 **Slippage is excluded.** A rebalance moves the same dollars from one
 tick range to another, so the projection is the position's present worth:
-its LP value plus the pool-scoped wallet residual that the rebalance
-would fold back in. The fees this NFT has compounded come off it, as they
-do in IL/G: compounding raises the liquidity while holding stays at the
+its LP value. The fees this NFT has compounded come off it, as they do
+in IL/G: compounding raises the liquidity while holding stays at the
 minted coins, so counting them would let earnings hide a loss.
 
 **Two consequences.** First, the bot cannot clear a rejection itself.
@@ -656,6 +676,21 @@ means the position is out of range and earning nothing.
 **Skipped for manual rebalances.** Like every other gate in
 `_checkRebalanceGates`, a user-forced **Rebalance Now** bypasses it — and
 that path already shows its own impermanent-loss confirmation.
+
+**Skipped for an empty position.** A rebalance whose mint fails after the
+drain leaves the NFT empty and the coins in the wallet, and the bot
+retries the mint as an automatic rebalance (`rebalanceFailedMidway`,
+`src/bot-loop.js`). The guard stands aside while the position holds no
+liquidity (`isThisPositionDrained`, `src/position-drained.js`, the user's
+decision, 2026-10-23), before its backoff, so a wait left by an earlier
+rejection holds no mint either. The rebalance passed the guard before it
+drained, and the drain locked the loss in. Measured, the guard would read
+the empty position as worth nothing, since it counts no coin in the
+wallet, and turn the mint down with a 100% loss, leaving the coins idle;
+with this NFT's compounded fees the projection came out below zero, which
+it treated as no figure, so the outcome hung on whether the NFT had
+compounded. `ilGuardWillMeasure` answers the same, so the poll takes no
+fresh prices for it.
 
 **Fails open.** A guard percentage outside its bounds, a projection that
 cannot be computed, or minted coins the mint scan has not read yet all
@@ -789,16 +824,15 @@ result.inRange === true &&
 ```
 
 The alternative — "no rebalance, no error, no deferral" — looks
-equivalent and is not. A poll can decline to rebalance for at least nine
+equivalent and is not. A poll can decline to rebalance for at least eight
 distinct reasons, and most return a shape that names no reason at all:
 
 | Result shape | Returned by |
 | --- | --- |
 | `{rebalanced: false}` | throttle, pool daily cap, dry run, aborted-and-drained short-circuit, drain timer |
 | `{…, withinThreshold: true}` | out of range but inside the OOR threshold |
-| `{…, priceVolatile: true}` | volatile-price deferral |
+| `{…, priceVolatile: true}` | a rebalance the price outran, held for the owner |
 | `{…, scanRunning: true}` | scan in progress |
-| `{…, swapBackoff: true}` | swap backoff |
 
 A negative test reads every row above as a recovery. It would also need a
 new clause each time a gate is added, and the failure mode of forgetting
@@ -1028,8 +1062,14 @@ scan** is answered by three layered bounds, resolved in order by
    (`src/bot-cycle.js`), running the event and lifetime scans together.
    The `lifetimeRescanTimer` in `src/bot-loop.js`, every
    `poll.lifetimeRescanCheckMs` (30 minutes as shipped), retries a scan
-   that did not finish. `clearPoolCache()` runs only from the Reload
-   Current Position handler (`src/server-reload-position.js`).
+   that did not finish. The request lives in memory, so a stop before
+   the scan finishes drops it. A start therefore also recounts the
+   deposits whenever the count stops short of the current NFT's mint,
+   its `lastBlock` below the mint block (`depositsBehind`,
+   `lifetimeScanPlan` in `src/bot-recorder-lifetime.js`), so the coins
+   that rebalance swept in still reach Total Lifetime Deposit.
+   `clearPoolCache()` runs only from the Reload Current Position handler
+   (`src/server-reload-position.js`).
 
 In short: **we start as far back as the lookback (five years as
 shipped), but never before the pool itself was created, and never before
@@ -1117,6 +1157,12 @@ chain, so a file rebuilt by a scan has none, and Routed Via shows a dash for
 those rebalances; `app-data/rebalance_log.json` still holds each route
 ([Show Swap Route Even If Only Blockchain Data Available](roadmap/nice-to-haves/project_route_via_chain_scan_gap.md)).
 
+A record also holds its Activity Log entry's figures
+([Activity Log Figures](#activity-log-figures)): `walletReadings`,
+`beforeRebalance`, `afterRebalance` and `historical`. A record still
+waiting for them carries `figuresDue: true`. A record written before
+the figures existed has none of these fields.
+
 ### How a Scan Fills a File
 
 `scanRebalanceHistory` (`src/event-scanner.js`) fills a file, called
@@ -1184,6 +1230,10 @@ as
   pool's lock while it writes, so a scan under way cannot overwrite the
   record. It leaves `lastBlock` alone, so the scan the bot starts next
   reads the blocks up to the mint, keeping one record per transaction.
+- **A scan pass finishes a record's Activity Log figures**
+  (`updateCachedEvents`, `src/pool-scanner.js`, called from
+  `src/bot-rebalance-figures.js`), under the same lock, changing only
+  the records it finished.
 - **Each write renews the entry.** An entry not written for
   `eventCacheTtlMs` (a year as shipped) lapses, and the next scan reads
   the pool's history again from the floor.
@@ -1208,6 +1258,442 @@ any caller asking for the same pool and wallet within `poolScanReuseMs`
   (`util/bookkeeping/coins-in-transactions-on-wallet`), which reads the
   files directly to list each rebalance
   ([Which Transactions It Lists](util/bookkeeping-for-coins-in-transactions/engineering.md#which-transactions-it-lists)).
+
+---
+
+## Deposit Count
+
+Coins the owner sends to the wallet are money put in. The deposit count
+records them as they arrive, so no figure reads them as the position's
+gain.
+
+Every poll credits the wallet's coins of the pool's two tokens to the
+position in the Lifetime figures (the Wallet Residual, `walletResiduals`
+in `src/bot-pnl-updater.js`). A deposit sitting there was never the
+position's. Until something counts it as money put in, Lifetime Net P&L
+reads high by it, and so does the Lifetime IL/G. The Current IL/G and
+the Impermanent Loss Guard count no coin in the wallet
+(`src/bot-pnl-il.js`), so a deposit moves them only once a compound
+takes it into the NFT, and then through the compound's record, not
+through this count. The Lifetime scan counts such coins too, but
+only once a rebalance has minted them into a new NFT: it reads the
+wallet's transfers in the window between one mint and the next
+(`src/lifetime-hodl.js`).
+
+**What it counts.** The same transfers by the same rules, from the block
+after the last one counted up to the chain's head, one entry per
+transaction (`depositsInWindow`, `src/wallet-deposits.js`, which the
+Lifetime scan uses too). A swap, a collect or drain, and the position
+manager's and pool's own transfers are left out; a wrap of the native
+coin is credited once. A count starts after the latest of three blocks:
+the last block a move's count read (`countedThrough`), the newest mint
+the Lifetime results cover (`lastBlock`), and the current NFT's mint,
+before which deposits went into that mint. It waits while the Lifetime
+results do not exist yet or the mint block is unknown. A count that
+fails is logged and changes nothing, and the move goes on.
+
+**When it counts** (`src/deposit-count.js`):
+
+- as the first step of every rebalance (`_executeAndRecord`,
+  `src/bot-cycle.js`) and every compound (`_executeCompoundInner`,
+  `src/bot-cycle-compound.js`), once the move holds the lock;
+- when a poll sees the wallet's coins rise above what the last poll saw
+  (`countDepositsOnRise`, injected into `updatePnlAndStats` the way the
+  per-NFT figures are). The first poll after a start or a Reload always
+  counts, and so does the first poll after a move's count: the move
+  takes coins from the wallet, so a deposit arriving after its count
+  can leave the wallet below what the last poll saw, and no rise would
+  show it.
+
+**Where it records.** A move's count is the record. Its deposits go into
+the pool's Lifetime results in the epoch cache (`lifetimeHodlAmounts` and
+`freshDeposits`): their coins into the lifetime holding, their entries
+into the deposit list at their own blocks, each naming its transaction,
+and how far the count read (`countedThrough`). `computeDepositUsd` then
+prices the new entries into Total Lifetime Deposit, each at its own
+block's price. A poll's count is held on the bot state instead
+(`_depositOverlay`), priced the same way. The next move's count reads the
+same blocks again and records its own answer in its place, keeping any
+price the poll fetched. The overlay lives in memory, so a restart drops
+it and the first poll counts again.
+
+**Each deposit counts once.** When the Lifetime scan later reads the
+window that ends at the next mint, it leaves out the transactions the
+count recorded (`countedTx` in `computeLifetimeHodl`). Its own entry at
+the mint then holds only what arrived after the count's last read. A
+Lifetime scan that ran while a move's count was saved keeps that count
+when it writes its results (`withLaterCounts`, used by
+`computeAndCacheHodl`), which it
+reads from the epoch cache; so a count writes the cache with the copy in
+memory, before it prices the deposits. A scan that does not count again
+keeps the results the bot holds rather than the copy it read when it
+started. The other way round, a count saves into the results standing
+when it saves, not those it read when it started, so a scan's newer
+results take its deposits, and a deposit already saved is not added
+twice. Total Lifetime Deposit is the total of the list standing when a
+pricing ends (`computeDepositUsd`), whichever wrote it last. A price
+that cannot be had leaves a deposit recorded, unpriced, until the next
+pricing of the list. Reload
+Current Position clears the epoch-cache entry, and the count's records
+with it, and drops the overlay and the last wallet reading, so the first
+poll after the rebuild counts from the current NFT's mint again. A count
+still reading the chain when Reload clears the results is dropped, so it
+cannot write the old results back over the rebuild.
+
+**What the figures add** (`src/counted-deposits.js`, pure):
+
+- The Lifetime IL/G and Total Lifetime Deposit already hold the moves'
+  counts, so they add only the overlay's entries after the newest mint
+  covered (`pollDeposits`).
+- A rebalance's Activity Log figure sets aside the counted deposits from
+  the old NFT's mint up to the new one, with the Lifetime scan's own
+  entry at the mint (`cachedDepositFor`,
+  `src/rebalance-activity-figures.js`).
+- The Current IL/G and the Guard add no counted deposit: they count no
+  coin in the wallet. A deposit that a compound takes into the NFT
+  counts there from the compound's record, with the NFT's minted coins
+  (`walletCoinsPutIn`), the same in the bot and in the unmanaged details
+  view, which reads the compound list the bot saved
+  (`savedWalletCoinsPutIn`, `src/position-details-compound.js`).
+
+**A compound that sweeps a deposit in.** A compound whose ratio swap
+fires offers its deposit the wallet's whole balance
+(`_resolveDepositAmounts`, `src/compounder.js`), so the deposit can take
+in coins the wallet held before the collect: a counted deposit, a
+rebalance's leftovers, the coins the first mint left. None is a fee.
+Recorded as compounded, such coins would raise Fees Compounded by their
+size, and the Lifetime IL/G, which takes Fees Compounded off the
+position's side, would read a loss of the same size. (The Current IL/G
+would not move: it counts as put in only what a compound took beyond
+the fees it records.) The compound therefore records the fees apart
+(`src/compounded-coins.js`):
+it reads the wallet before its collect (`collectFees`) and just before
+its deposit, and, coin by coin, what the deposit took from the wallet's
+earlier balance is the first reading less the wallet after the deposit;
+the rest of the deposit is fees. Its record keeps them
+(`amount0Compounded`, `amount1Compounded`) beside the whole deposit, and
+every reading of compounds counts them: the running total
+(`recordCompound`), the per-NFT coins the bot reads back from the chain
+(`applyCurrentNftFigures`, matched to the record by transaction), the
+rebuilt compound list, and the unmanaged view. A compound with no such
+record counts its whole deposit. The rest of the deposit, the wallet's
+coins it took in, counts with the NFT's minted coins in the Current IL/G
+and the Guard (`walletCoinsPutIn`), since the position's value now holds
+them. The Lifetime scan counts no compound
+this install made as money put in (`_classifySubsequentILs`,
+`src/lifetime-hodl.js`): its deposit took only the wallet's coins, each
+counted where it reached the wallet, or the residuals Lifetime Net P&L
+counts on their own.
+
+**Fees the deposit could not take.** A deposit takes only what fits the
+range, so without the swap, or with one coin short after it, some fees
+stay in the wallet. They are the fee coins the compound's own
+transactions left it with, after the swap (`feeCoins`), less the fees the
+deposit put back; the record keeps them (`amount0FeesLeft`,
+`amount1FeesLeft`) and a rebuild of the list keeps them with the other
+fee fields (`_feesKept`). Worked out from the coins as collected instead,
+they would be wrong whenever the swap ran, which turns part of one coin
+into the other. Without the fee coins none are recorded, since the
+readings alone cannot tell fees from a deposit that landed meanwhile.
+The Current panel shows them on its Fees Left Over line, from
+`currentFeesLeftUsd` (`feesLeftInWallet`, the bot in
+`src/bot-pnl-current-nft.js`, the unmanaged view from the saved list),
+and Profit adds them: they are in neither fee line, and the Current IL/G
+counts no coin in the wallet. Net P&L does not count them, since a later
+compound can sweep them into the position, which Current Value then
+holds. The Lifetime IL/G still counts them as the wallet's coins until a
+rebuild of the compound list counts every fee collected.
+
+**A deposit that lands while the compound runs.** The owner's coins can
+reach the wallet between the two readings, while the collect or the
+swap confirms, where the readings cannot tell them from fees. Two
+figures come from the compound's own transactions instead. What the
+collect brought in is the amount its transaction reports collecting,
+the position manager's `Collect` event, capped at the wallet's rise
+across it, which a token keeping a fee on each transfer lands short of
+(`src/compound-collect.js`); so a deposit landing then is neither
+offered to a deposit that takes only the fees nor counted in the
+compound's Activity Log figure. And the fees are capped at the fee coins
+as those transactions moved them (`feeCoins`, `compoundFeeUnits`): what
+the collect brought in, less what the swap's own transactions sent of
+the token sold, plus what they received of the token bought, read from
+their receipts (`exchange`, `src/rebalancer-swap-balance.js`). A
+deposit the swap's whole-balance deposit sweeps in then counts once, as
+the owner's money. A swap whose receipt could not be read leaves the
+readings alone to decide.
+
+**Limits.**
+
+- A deposit of a coin two managed pools hold is counted by each pool in
+  full, as the Lifetime scan counts it in each pool's window after a
+  rebalance, while the wallet credit splits the coin between the pools
+  by their shares.
+- An addition of liquidity this install did not make, a compound from
+  before LP Ranger managed the position or liquidity added through
+  another app, is money put in when it exceeds the NFT's fees, all of
+  it, including any coins that were already in the wallet.
+- Fees a compound leaves in the wallet, the ones its deposit could not
+  fit, are not in Fees Compounded. The Lifetime IL/G counts them on the
+  position's side, as the wallet's coins and, once a rebalance mints
+  them, in the position's value, until Re-scan Prices or Reload Current
+  Position rebuilds the compound list, whose total is every fee
+  collected. The Current panel counts them nowhere, so its Profit is
+  low by them until the next rebalance starts a new NFT.
+
+---
+
+## Activity Log Figures
+
+Each Rebalance and Compound entry in the Activity Log shows two figures
+under its date, as percents: a Rebalance's in whole numbers, a
+Compound's to three decimal places, since the fees one compound collects
+are often well under 1% of the position (`PCT_DECIMALS`,
+`public/dashboard-activity-figures.js`):
+
+- **Historical** is the figure at the moment the entry is created,
+  right after the rebalance or compound succeeds. It is stored with the
+  entry's record and never worked out again.
+- **Current** is the same figure at today's prices. The browser works
+  it out from the coins stored with the record, on every status answer,
+  using the prices the server sends for the position
+  (`pnlSnapshot.ilInputs`, the operator's price overrides applied).
+
+A Rebalance entry's label reads "Impermanent Loss/Gain:", a Compound
+entry's "Percent Gain for Position:". A figure not yet known shows a
+dash. An entry written before these figures existed shows "Old Log:
+Unavailable". Nothing rebuilds it on its own. Reload Current Position
+rebuilds the position's records, the Activity Log's among them, and
+reloads the page once its scan has finished. Re-scan Prices rebuilds
+the compound list, working out from the chain the figures of each
+compound that had none, and writes each compound's amount at the
+prices of the moment it runs. As the last step of each scan of the
+position on screen, on the status answer that first says the scan has
+finished, the dashboard takes that position's Rebalance and Compound
+entries off the log (`removePositionActivityEntries`,
+`public/dashboard-activity-figures.js`, by the position's `poolKey`) and
+the history pass draws them again from the records the scan left
+(`public/dashboard-populate-history.js`): the figures, a Compound's
+amount and its "(historical $usd)" mark, as the scan left them. No
+answer before that one changes such an entry.
+
+The log finds a position's entries by its pool key, which the server
+sends only with a managed position's second data load. The first
+brings the position's saved records, as the server starts it; the
+second brings its pair, fee tier and pool key, once the server has read
+it from the blockchain. So neither the live event check
+(`public/dashboard-data-events.js`) nor the history pass draws a
+managed position's Rebalance or Compound entries before the second
+(`canDrawPositionEntries`): each is drawn with its position line and
+filed under its pool. The history pass's own gate, which waits for a
+running position's scan, could not hold this alone: while the server
+starts a position, its loop is not yet running.
+
+Both formulas are in `src/coin-value.js`, which
+the dashboard bundles, so the browser and the bot work the figures out
+with one formula.
+
+### Rebalance: Impermanent Loss/Gain
+
+A rebalance mints with the wallet's whole balance of the pool's two
+coins, so it reads that balance three times as it goes. It keeps the
+three readings, in whole coins, as `walletReadings`
+(`src/rebalancer-execute.js`):
+
+| Reading       | When it is read                                           |
+| ------------- | --------------------------------------------------------- |
+| `beforeDrain` | before the old NFT is emptied (`src/rebalancer-pools.js`) |
+| `afterDrain`  | after the old NFT is emptied, before any swap             |
+| `beforeMint`  | after every swap, just before the mint                    |
+
+The coins after the drain are everything the rebalance had to work
+with, and the coins before the mint are the same coins once the swaps
+are done. A deposit the owner made since the last rebalance sits in
+both, though it was never part of the position, so it is set aside:
+
+- `beforeRebalance` is `afterDrain` less the deposit;
+- `afterRebalance` is `beforeMint` times the rebalance's share of the
+  value: the value of `beforeRebalance` over the value of `afterDrain`,
+  at the rebalance's prices.
+
+Taking the deposit out as its share of the value never leaves a
+negative coin, even when the swaps traded the deposit's coins with the
+rest, and the deposit carries its share of the swaps' cost. The figure
+is the value of `afterRebalance` less the value of `beforeRebalance`,
+over the value of `afterRebalance`, times 100, both at one set of
+prices; negative is a loss (`rebalanceIlPct`). At the rebalance's own
+prices the share cancels out, so the Historical figure needs no
+deposit, and the bot stores it the moment the rebalance succeeds
+(`figuresAtCreation`, `src/rebalance-activity-figures.js`). It is
+priced as the panels price the position: the prices fetched right after
+the mint, with the operator's price overrides applied
+(`applyPriceOverrides`, `src/price-overrides.js`).
+
+**The deposit** is the one the Lifetime accounting already counts for
+the rebalance's mint, in the epoch cache's `lifetimeHodlAmounts.deposits`,
+in two parts. The [deposit count](#deposit-count) records deposits as
+they arrive, each at its own block and naming its transaction, and the
+rebalance took in those recorded after the old NFT's mint and up to the
+new NFT's. The Lifetime scan records the rest, whatever arrived after
+the count's last read, as one entry at the mint block tagged
+`kind: "fresh"` (`src/lifetime-hodl.js`). The tag tells the wallet's
+coins that went into the mint apart from liquidity added to the NFT
+later (`external`), and an entry counted before the tag existed counts
+as fresh when it is the first for its block. The deposit is capped, coin by coin, at
+`beforeDrain`: a deposit a compound has since swept into the position
+is no longer in the wallet; it came out with the old NFT's coins and
+belongs to the rebalance.
+
+**When the coin figures are written.** The Lifetime accounting counts a
+mint's deposits in the scan pass that follows the rebalance, so the
+record waits until then, marked `figuresDue: true`. A rebalance the
+event scanner reads fresh from the chain, after a Reload or on a
+position's first scan, carries the same mark (`src/event-scanner.js`).
+At the end of each scan pass, `finishPassRebalanceFigures`
+(`src/bot-rebalance-figures.js`) finishes every marked record whose
+mint the deposits cover, the cache's `lastBlock` being at or past the
+mint block:
+
+- the readings come from the record, else from this install's
+  `app-data/rebalance_log.json`, else from the chain: the wallet's
+  balances at the end of the block before the drain, the drain's block,
+  and the block before the mint. The drain is the old NFT's latest
+  `DecreaseLiquidity` at or before the mint, found among the NFT events
+  the pass has already read (`drainBefore`, `src/nft-move-rules.js`);
+- the prices come from the log, with the overrides applied, else from
+  the historical-price lookup at the mint block, which the epoch
+  rebuild has usually cached already.
+
+The finished record goes into the pool's event cache
+(`updateCachedEvents`, `src/pool-scanner.js`), into the bot's list of
+the position's events, and out with the next status answer. A record
+stays marked while the deposits do not cover its mint, or while it
+needs the chain and the pass could not read the NFT events; the next
+pass tries again. A pass prepares that read whenever a marked record
+has no readings of its own, even when nothing else in the pass reads
+the chain (`prepareSharedRead`, `src/shared-chain-read.js`). So a record
+left marked by a stop during an earlier pass, after every Lifetime
+figure was saved, is finished by the next pass, the one a restart runs
+included. A price that does not come back, a wallet reading that fails, as
+on an endpoint that keeps no past state, or a drain that cannot be
+found, finishes the record with those figures null, which the Activity
+Log shows as dashes. Reload Current Position reads every event again,
+so each is marked once more, and a Historical figure stored as a dash,
+on the record or in the rebalance log, counts as missing: its prices
+are asked for again (`_withFigure`), and a lookup that again answers
+nothing leaves the dash.
+
+### Compound: Percent Gain for Position
+
+The figure is the fees the compound collected, as a share of the
+position right after it. The fees and the deposit are different coins:
+the deposit takes only what fits the range, leaving the rest in the
+wallet, and a ratio swap can sweep in coins that were already there.
+Using the fees keeps a deposit the owner made from counting as a gain.
+
+Within one NFT, at one set of prices, value is proportional to
+liquidity. So the share is the fees' value times the liquidity the
+deposit added, over the deposit's value times the NFT's liquidity after
+the deposit, times 100, and no snapshot of the position is needed
+(`src/compound-activity-figures.js`). A compound records
+`feesCollected`, in whole coins, and `historical.percentGainForPosition`
+the moment it succeeds (`recordCompound`, `src/bot-cycle-compound.js`).
+A figure it cannot work out is null, as is one without a price for each
+coin, and the compound is recorded all the same. Current is
+`feesCollected` at today's prices over the position's value today.
+
+**A rebuild of the compound list** works the figures out for every
+compound it finds. A rebuild runs on Reload Current Position, Re-scan
+Prices, a position's first lifetime scan, and a reclassify request
+(`_classifyAllCompounds`, `src/bot-recorder-lifetime.js`). The collect
+is the NFT's latest `Collect` within one span of `getLogsChunkSize`
+blocks before the deposit, with no other deposit after it
+(`collectBeforeDeposit`, `src/nft-move-rules.js`). A deposit with no
+such collect is the owner's own coins, and its figure is 0%. The
+liquidity before the deposit is the running total of the NFT's events.
+The prices are those at the deposit's block, through the historical-price
+cache, which keeps each under its block (`compoundPricesFor`). With a
+Moralis key stored, Moralis prices each coin at that block. Without
+one, or for a coin Moralis has no price for, GeckoTerminal's candle for
+the day does. Two compounds on one day are two lookups. A price lookup
+that fails, or finds a price for only one coin, gives no figure. The
+entry then keeps the figure it already held, from an earlier rebuild
+(`_chainOrEarlier`), since Re-scan Prices reads past the price cache
+and a failed lookup there is no reason to forget a figure. An entry
+that held none stays null, and the next rebuild works it out again.
+
+The rebuild keeps what the chain cannot supply. A compound the bot
+recorded when it happened, trigger `auto` or `manual`, keeps its
+trigger and figures, matched by transaction. A figure it recorded as
+unknown, for want of a price at the time, is worked out from the chain
+like any other, at the deposit's block, keeping the trigger; a lookup
+that again answers nothing leaves it unknown. One the bot recorded after
+the rebuild's chain read began stays in the list, since the read could
+not have seen it. A compound found only on the chain gets trigger
+`unknown`, and the Activity Log shows it with no marker.
+
+A Compound entry's $usd amount (`usdValue`) is the deposited coins at
+the prices of the moment its record is written. The bot's own record of
+a compound keeps those prices (`price0`, `price1`), and the Activity Log
+marks such an amount "(historical $usd)" (`public/dashboard-compound-log.js`).
+A rebuild writes every entry's amount at the prices it is handed,
+today's, with the operator's price overrides applied as the poll applies
+them (`_readCurrentPrices`, `src/bot-recorder-lifetime.js`), and without
+prices (`_entryOf`), so its entries show no mark: a compound the bot
+recorded loses its mark, and its amount is the rebuild's. When the scan
+has no price for a coin, the amount it would write counts only the other
+coin, so an entry keeps its amount and the prices it was worked out at,
+mark and all (`_amountOf`). A compound recorded during the rebuild's
+chain read is kept as recorded, mark and all.
+
+Because the rebuild needs the old list, Reload Current Position and
+`npm run clear-blockchain-scan-cache` leave `compoundHistory` in place
+([POST /api/position/reload](#post-apipositionreload)).
+
+### One Entry per Transaction
+
+The dashboard keeps one record of the Rebalance and Compound entries
+the Activity Log shows, keyed by kind and transaction hash
+(`public/dashboard-activity-figures.js`). It is JavaScript state, never
+read back from the page. `act()` (`public/dashboard-helpers.js`) draws
+no entry the log already shows: the live-event check and the history
+pass can both reach one rebalance or compound, and switching positions
+runs the history pass again. The same record is how each status answer
+brings Current up to date, and fills in an entry drawn while its
+figures were due. Each entry in it also carries its position's
+`poolKey`, which is how the end of a scan takes that position's entries
+off before the history pass draws them again; an entry with no
+transaction hash is kept under a key of its own, so it comes off too
+rather than gaining a copy at each redraw. The log forgets an entry
+when it trims it, and every entry when it is cleared.
+
+A Rebalance entry names what started the rebalance, (Out of Range),
+(Manual) or (Residual Cleanup), from its record's `trigger`, in the one
+wording both paths draw it with (`public/dashboard-rebalance-log.js`).
+The bot puts `trigger` on its own event list and on the pool's event
+cache (`_buildEventEntry`, `src/pool-scanner.js`), so the label survives
+a page reload and a redraw. A rebuild of the event list from the chain
+cannot know it; when the finishing step finishes such an event, it takes
+`trigger` back from this install's rebalance log
+(`loggedRebalanceFigures`, `src/rebalance-activity-figures.js`), which
+has kept it for every rebalance. A rebalance this install did not make
+names nothing.
+
+`util/bookkeeping` finds the same transactions on the chain for its
+reports, so the two rules that pair a move's transactions,
+`drainBefore` and `collectBeforeDeposit`, are in
+`src/nft-move-rules.js`, which both use.
+
+### Limitations of the Figures
+
+- A rebalance retried after an earlier attempt swapped and stopped
+  starts its readings after that first swap, so the first swap's cost
+  is not in its figure.
+- A rebalance rebuilt from the chain whose old NFT was emptied well
+  before the new mint, by hand or by another tool, is read around that
+  earlier emptying, so its figure takes in whatever the wallet did in
+  between.
+- A deposit that arrives during a rebalance, after the drain and before
+  the mint, counts as a gain.
 
 ---
 
@@ -1385,21 +1871,30 @@ inputs its consumers use:
 
 #### One read per pass
 
-A scan pass needs the chain's history twice: epoch reconstruction wants
-Collect and DecreaseLiquidity for the closed NFTs, and the lifetime
-figures want all three event types for every NFT. The first is a subset
-of the second, so when the lifetime side is going to read the chain in
-that pass, reconstruction takes its histories out of that read
-(`collectAndDrainOf`) rather than making its own. A read shared this way
-is made once however many consumers ask (`shareRead`).
+A scan pass can need the chain's history three times: epoch
+reconstruction wants Collect and DecreaseLiquidity for the closed NFTs,
+the lifetime figures want all three event types for every NFT, and a
+Rebalance event waiting for its Activity Log figures with no wallet
+readings of its own wants its old NFT's DecreaseLiquidity, to find the
+drain. The others are subsets of the lifetime read, so when it is going
+to be made in that pass, reconstruction takes its histories out of it
+(`collectAndDrainOf`) rather than making its own, and the figures find
+their drains in it. A read shared this way is made once however many
+consumers ask (`shareRead`).
 
-- **The bot.** `_scanAndReconstruct` asks `lifetimeScanPlan` as soon as
-  the event scan has found the chain. When the lifetime scan will read,
-  the pass prepares that read (`prepareLifetimeRead`,
-  `src/bot-recorder-lifetime-read.js`) and hands it to reconstruction;
-  the lifetime scan then uses the same read. When the read runs, it
-  looks up the pool's creation block and decides whether the resume
-  buffer can still be trusted.
+- **The bot.** `_scanAndReconstruct` asks as soon as the event scan has
+  found the chain (`prepareSharedRead`, `src/shared-chain-read.js`).
+  When the lifetime scan will read (`lifetimeScanPlan`), or a waiting
+  Rebalance event has no readings of its own (`figuresNeedNftEvents`),
+  the pass prepares the read (`prepareLifetimeRead`,
+  `src/bot-recorder-lifetime.js`) and hands it to reconstruction; the
+  lifetime scan and the figures then use the same read. When the read
+  runs, it looks up the pool's creation block and decides whether the
+  resume buffer can still be trusted, and whether to use it at all: a
+  read that runs while the plan finds no lifetime figures to work out,
+  as one for the figures alone does, uses none. The lifetime scan's
+  success releases the buffer, and such a read can run after that, so
+  one it refilled would stay held into a later scan.
 - **The unmanaged view.** Nothing to share: it builds no epochs, because
   it renders no Per-Day P&L, and reads no chain.
 
@@ -1407,7 +1902,7 @@ Three rules keep the sharing sound:
 
 | Rule | Why |
 | --- | --- |
-| Reconstruction shares only a read that will happen anyway | Otherwise it pays for a third event type and the live NFT to save nothing; with nothing else reading, its own two-type read is cheaper |
+| Reconstruction shares only a read another step will want | Otherwise it pays for a third event type and the live NFT to save nothing; with nothing else reading, its own two-type read is cheaper. A waiting Rebalance event whose readings turn out to be in the rebalance log never asks for the read, so in that rare pass reconstruction pays for the larger read alone |
 | A shared read covers each NFT's whole history | Reconstruction values each closed NFT over its whole life. A lifetime read always starts from the pool's creation block, lifted to the chain's first mint. That holds even if every figure is saved after the read was prepared. `test/bot-recorder-lifetime-share.test.js` pins it for every state |
 | The lifetime scan reuses the pass's read only for the chain it was prepared for (`chainSignature`: the live NFT, every NFT with its mint block, and the chain's first mint) | Reconstruction can run long enough for a manual rebalance to land. A read prepared before it describes a chain that no longer exists, so the scan reads afresh and logs why |
 
@@ -1422,6 +1917,9 @@ failure means:
   rest are skipped, and the short history schedules another attempt.
 - **A shared read** — the failure is not kept, so the next consumer in
   the pass or request makes its own attempt rather than inheriting it.
+  The Activity Log figures are one consumer, asking once for all their
+  waiting Rebalance events (`_nftEventsOnce`), so a failure leaves them
+  all waiting for the next pass rather than starting a read for each.
 
 That is affordable because a chain costs minutes, and because transient
 RPC failures are retried per request beneath the batch.
@@ -1542,9 +2040,9 @@ Source: [`public/dashboard-router.js`](../public/dashboard-router.js)
 
 ## Shared Help Copy
 
-Some help text has to appear in two places at once: the circle-i dialog
-beside a setting in Bot Configuration, and the corresponding section of the
-User Manual that GitHub Pages publishes. Written twice, the two drift on
+Some help text has to appear in two places at once: a circle-i dialog,
+beside a setting in Bot Configuration or on a dashboard card, and the
+corresponding section of the User Manual that GitHub Pages publishes. Written twice, the two drift on
 the first copy-edit — and the Telegram alert links readers to the
 published page, so a stale manual is what the operator reads when
 something has already gone wrong.
@@ -1569,6 +2067,14 @@ wording:
 ...generated, do not edit...
 <!-- HELP:inIlGuard:END -->
 ```
+
+An entry with a `manualHeading` renders as a whole section: an `<h2>`
+whose id is its `manualAnchor`, then an `<h3>` and a paragraph for each
+of its sections, as the Impermanent Loss Guard's (`inIlGuard`) does. An
+entry without one renders as its sections alone, for part of a section
+the manual writes by hand around the markers. The Activity Log's
+"Historical and current prices" (`activityLogPrices`) is one: the
+Activity Log's circle-i shows it after its own section.
 
 The manual is rewritten in place rather than generated as a separate
 artifact the way `build-disclosure-content.js` does, because it is a
@@ -1919,9 +2425,17 @@ and each failure leaves a different signature. The tool re-derives all
 three from the chain and from live price sources, then reports which
 one has to be wrong to produce the reported figure.
 
+The Telegram alert reports the fees among that deposit: the record's
+`amount0Compounded` and `amount1Compounded` at the same prices
+(`src/compounded-coins.js`). When the deposit also took in coins the
+wallet already held, the alert names their value apart, and the
+`usdValue` this tool checks is the whole deposit's, the Activity Log's
+$usd amount.
+
 The figure matters beyond the alert text. `recordCompound` in
-`src/bot-cycle-compound.js` adds the same compound's **coins** to the
-position's `compoundedAmount0` / `compoundedAmount1`, and those coins
+`src/bot-cycle-compound.js` adds the **fees** among the same compound's
+coins to the position's `compoundedAmount0` / `compoundedAmount1`, and
+those coins
 priced at the current poll are half of the dashboard's lifetime
 fee-earnings figure (`currentFeesUsd + snap.totalCompoundedUsd`, see
 `src/ui-state.js`). That total is only ever accumulated incrementally
@@ -2136,11 +2650,18 @@ procedure documented in README.md &sect; Update.
 `util/migration/` brings the files Step Six copied up to date with the
 new release, also in Step Six, straight after the copy (`node
 ./util/migration`). Each change a release makes to where a file lives or
-what it holds is one step, a file of its own, run in release order from
-the `STEPS` list in `util/migration/index.js`. Every
+what it holds is one step, a file of its own in a folder named for the
+release it updates from (`from-0.9.9/`, `from-0.9.10/`), run in release
+order from the `STEPS` list in `util/migration/index.js`. Every
 step prints what it changed and is safe to run again; `--dry-run`
-reports without changing anything. Node built-ins only, like the copy.
-Its tests are in `util/test/migration.test.js`.
+reports without changing anything. The steps share two modules, beside
+`index.js`: `settings-copies.js` for the operator's copies of the settings files,
+which keeps each old file in `tmp/` before changing it, and
+`env-file.js` for `.env`, which keeps each changed line as a comment and
+makes no copy, since the file holds the private key. Node built-ins
+only, like the copy. Its tests are in `util/test/migration.test.js`,
+`util/test/migration-099-settings.test.js` and
+`util/test/migration-from-0.9.10.test.js`.
 
 #### Cache Utilities
 
@@ -2926,7 +3447,8 @@ What happens when the process starts, in order:
       `_positionMgr.stopAll()`, closes the HTTP server,
       and exits within `shutdown.exitTimeoutMs` (three seconds as
       shipped) whether or not a rebalance or compound has finished.
-      `npm run gentle-stop` is the stop that waits for one.
+      `npm run gentle-stop` is the stop that waits for one, and for a
+      scan under way.
    3. `_tryResolveKey()` tries to obtain the wallet private key —
       either from `PRIVATE_KEY` in `.env`, from a
       `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or from
@@ -3581,30 +4103,39 @@ it can fire again on a fresh failure.
 
 **Body:** `{ positionKey }`. CSRF-gated like every other write route.
 
-**In-progress guard:** If the target position has `_scanRunning`,
-`rebalanceInProgress`, or `compoundInProgress` set on its bot state,
-the handler returns `409 Conflict` with `{ error, message }`
-describing which operation is running. The three error codes are:
+**In-progress guard:** If the server holds a stop, or the target
+position has a scan running (`isAscanRunningOnThisPosition`,
+`src/scan-state.js`) or a coin move under way
+(`isAcoinMoveUnderWayOnThisPosition`, the same module), the handler
+returns `409 Conflict` with `{ error, message }` describing why. The
+three error codes are:
 
+- `server-stopping` &mdash; `npm run gentle-stop` asked the server to
+  stop (`POST /api/stop-when-all-clear`), and it waits for the scans
+  running; one started now would be cut off, or hold the stop.
 - `scan-in-progress` &mdash; a full lifetime scan is already running.
-  Starting a second one is not queued because `_triggerScan` gates on
-  `_scanRunning` and would no-op silently, leaving the reload's state
+  Starting a second one is not queued because `_triggerScan` does
+  nothing while a scan runs (`isAscanRunningOnThisPosition`), leaving the reload's state
   clears in place while the pre-existing scan writes stale results
   back to disk. User waits for the current scan to finish (up to
   `reloadMaxWaitMs`, a dashboard setting, four hours as shipped) and
   clicks Reload again.
-- `rebalance-in-progress` / `compound-in-progress` &mdash; the position
-  is mid-TX. Reload would race the transaction and either corrupt the
-  state reconstruction or step on the tracker mid-write.
+- `coin-move-under-way` &mdash; a rebalance or compound of the position
+  has started: a poll is deciding or making it, from its first gate,
+  before it holds the rebalance lock and raises `rebalanceInProgress` or
+  `compoundInProgress`, to its end; or a Rebalance Now or Compound Now
+  waits to be made. The message, the user's words: "A coin move
+  (rebalance or compound) for this position has already started. Try
+  again once it's complete." Re-scan Prices answers the same.
 
 Every 409 falls through to the same yellow retry modal on the client
 (`_showReloadBusyModal` in `dashboard-reload-flow.js`), so all
 "busy" outcomes look identical to the operator. The dashboard's
 Reload button is also disabled by `paintReloadPositionButton`
 whenever `rebalanceInProgress` or `compoundInProgress` is truthy on
-the currently-viewed position; the button is NOT tied to
-`_scanRunning` because a normal startup or post-rebalance scan
-should not permanently disable the escape hatch.
+the currently-viewed position; the button is NOT tied to a running
+scan because a normal startup or post-rebalance scan should not
+permanently disable the escape hatch.
 
 **Steps on success:**
 
@@ -3612,13 +4143,18 @@ should not permanently disable the escape hatch.
    (`cancelPoolScan(token0, token1, fee, wallet)`).
 2. Delete the following on-chain-derived keys from the position's
    disk config, then save via `saveConfig`:
-   `compoundHistory`, `compoundedAmount0`, `compoundedAmount1`,
+   `compoundedAmount0`, `compoundedAmount1`,
    `nftCompoundedAmountsByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
    `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`,
    `depositUsedFallback`. The canonical list is
-   `CHAIN_DERIVED_POSITION_KEYS` in `bot-config-v2.js`, shared with
+   `CHAIN_DERIVED_POSITION_KEYS` in `bot-config-keys.js`, shared with
    `npm run clear-blockchain-scan-cache`, which clears the same keys
-   from every position.
+   from every position. The compound list, `compoundHistory`, is not
+   on it: the rebuild replaces the list whole, and takes from the old
+   one what the chain cannot supply, each compound's trigger (Auto or
+   Manual) and its Activity Log figures (see
+   [Activity Log Figures](#activity-log-figures)). Clearing the
+   compounded totals is what starts that rebuild.
 3. Clear the pool's entry in the epoch cache
    (`_epochCache.clearCacheEntry(keyOpts)`). That drops its saved epochs,
    lifetime HODL amounts and fresh-deposit totals, so the fresh scan
@@ -3645,9 +4181,11 @@ should not permanently disable the escape hatch.
    rebuild the whole chain from scratch after each one.
 6. `state._triggerScan()` &mdash; called synchronously and deliberately
    not awaited. An async function's body runs to its first `await`
-   synchronously with its caller, so `_scanRunning` is set before the
+   synchronously with its caller, so the scan is running before the
    endpoint returns 200 and the rebalance/compound gates below engage
-   before any later poll can land. The returned promise is dropped so
+   before any later poll can land. Until every move of the position is
+   cleared, the scan waits instead (`_scanWaiting`) and starts when the
+   poll that clears the move ends. The returned promise is dropped so
    the HTTP response does not wait on a scan that runs for minutes.
 7. Respond `200 { ok: true, message: "Reload started", liveKey }`.
 
@@ -3656,56 +4194,88 @@ hatch.
 
 ### Rebalance / compound suppression during the reload window
 
-While a scan is running (`_scanRunning === true`), the bot must not
-rebalance or auto-compound the same position &mdash; that would race
-the state reconstruction and re-corrupt the numbers the reload is
-trying to fix. Instead of a bespoke `reloadInProgress` flag, the
-suppression rides on the existing `_scanRunning` flag that
-`_triggerScan` already sets:
+While a scan runs on a position, no rebalance or compound of that
+position may start &mdash; one would race the state reconstruction and
+re-corrupt the numbers the reload is trying to fix. A rebalance's own
+scan request would be cleared by the scan running, leaving its deposits
+and Activity Log figures out until the next start, and a compound would
+be left out of Fees Compounded until the next rebuild of the compound
+list. Instead of a bespoke `reloadInProgress` flag, the suppression
+rides on the scan's own per-position flag, through the one rule for it
+(`isAscanRunningOnThisPosition`, `src/scan-state.js`):
 
-- **Auto-rebalance:** `_checkRebalanceGates` in `src/bot-cycle.js`
-  returns `{ rebalanced: false, scanRunning: true }` when
-  `!forced && _botState._scanRunning`. Manual (`forced === true`)
-  rebalances still bypass so a user who clicks Rebalance during a
-  scan is not silently ignored.
+- **Rebalance Now, Compound Now and a re-open retried with Manage** are
+  refused at the server. `POST /api/rebalance` and `POST /api/compound`
+  answer 409 with `scanInProgress: true` and the position's key, and the
+  dialog the request came from waits for the scan to end, then offers
+  its confirm button again (`public/dashboard-scan-wait.js`; Compound
+  Now has its own dialog for this, which opens on the refusal).
+  `POST /api/position/manage` with `forceRebalance: true` on a running
+  position answers 409, asking for Manage again once the read finishes.
+  The words are `scanRunningRefusal` (`src/scan-refusal.js`).
+- **Automatic rebalance**, the residual cleanup's included:
+  `checkStateGates` in `src/bot-cycle-gates.js` returns
+  `{ rebalanced: false, scanRunning: true }`.
 - **Auto-compound:** `checkCompound` in `src/bot-cycle-compound.js`
-  early-returns `false` when `!forced && botSt._scanRunning`. Manual
-  compound (`forceCompound === true`) still runs.
+  early-returns `false` when `!forced && isAscanRunningOnThisPosition(botSt)`.
+
+The bot holds no Rebalance Now or Compound Now for a scan, so both gates
+let one through: none is accepted while a scan runs, and the other way
+round, no scan starts until every move of the position is cleared
+(`isItOkayToStartAscan`, the negation of
+`isAcoinMoveUnderWayOnThisPosition`, which Reload Current Position and
+Re-scan Prices are refused on). None starts while a poll decides a rebalance or
+compound, allowed or not (`duringMoveInitiation`, around each move path
+in `src/bot-cycle.js`), and none while a Rebalance Now or Compound Now
+waits to be made (`forceRebalance`, `forceCompound`), however long it
+waits, for gas, say. A scan asked for then waits (`_scanWaiting`), and
+the bot loop starts it when the poll that clears the move ends
+(`_startWaitingScan`). A waiting scan holds back no move: it waits for
+the move, which goes first. Two flags are not a Rebalance Now: the
+residual cleanup raises `forceRebalance` to pass the range check, and is
+an automatic move, decided at each poll; and a dry run that turns a
+Rebalance Now down ends it (`gatesFromGuard`), since left asked for it
+would hold the position's scans until a restart.
+
+Scans held back resolve to one. Each scan is the same whole operation,
+so `_scanWaiting` is one flag however many are asked for, and a scan
+asked for while one runs is not run again.
 
 The invariant applies to every scan &mdash; not just reloads &mdash;
 so a startup scan, a rebalance-triggered rescan, and a Reload
 Current Position scan all get the same protection.
 
-### Dashboard flow (`public/dashboard-events-manage.js`)
+### Dashboard flow (`public/dashboard-reload-flow.js`)
 
 `_reloadCurrentPosition`:
 
 1. Read the active position from `_posStoreRef.getActive()`. Bail if
-   nothing is active.
-2. Defense-in-depth guard: read `rebalanceInProgress` /
-   `compoundInProgress` from the last poll and short-circuit with an
-   `alert()` if either is set (matches the server's 409 rejection).
-3. Show the blocking modal (`_showReloadBlockingModal`). Uses class
+   nothing is active. No check of the in-progress flags: the server
+   refuses while a coin move is under way, a window they cover only
+   part of, and says so in its own words.
+2. Show the blocking modal (`_showReloadBlockingModal`). Uses class
    `9mm-pos-mgr-blocking-overlay` (deliberately NOT `modal-overlay`)
    so the global Escape-key handler cannot dismiss it; the whole
    point is that the UI stays locked until the page reloads.
-4. `POST /api/position/reload` with the composite key. On a non-OK
-   response, remove the overlay, re-enable the button, and
-   `alert()` the server's user-facing message (`body.message` when
-   present, falling back to `body.error` or HTTP status).
-5. Reset client-side caches (`resetHistoryFlag`, `clearHistory`,
+3. `POST /api/position/reload` with the composite key. On a non-OK
+   response, remove the overlay and re-enable the button. A 409 with a
+   message opens the yellow retry modal with the server's words
+   (`_showReloadServerBusyModal`); any other failure `alert()`s the
+   server's message (`body.message` when present, falling back to
+   `body.error` or HTTP status).
+4. Reset client-side caches (`resetHistoryFlag`, `clearHistory`,
    `resetLastFetchedId`) so the eventual page reload lands on a
    clean surface.
-6. Poll `/api/status` every `dashboardPollIntervalMs` (3 s as shipped)
+5. Poll `/api/status` every `dashboardPollIntervalMs` (3 s as shipped)
    via `_waitForReloadCompletion` until one of:
    - `lifetimeScanComplete === true` on the target position &rarr;
      `outcome = "complete"`.
    - `rebalanceInProgress` or `compoundInProgress` becomes truthy on
      the target position &rarr; `outcome = "raced"`. This is the
      ~500 ms race between the reload endpoint returning 200 and
-     `_triggerScan` setting `_scanRunning=true`; a poll cycle that
-     lands in that window can start an auto-rebalance / auto-compound
-     before the gate engages. The reload dismisses the blocking
+     `_triggerScan` starting the scan; a poll
+     cycle that lands in that window can start an auto-rebalance /
+     auto-compound before the gate engages. The reload dismisses the blocking
      overlay and shows a yellow caution modal
      (`_showReloadRaceModal`) telling the user to wait for the
      operation to finish and click Reload again. No page reload &mdash;
@@ -3718,7 +4288,7 @@ Current Position scan all get the same protection.
      `outcome = "timeout"`. Falls through anyway; the fresh page shows
      the Syncing badge and the 30 min recovery loop takes over from
      there.
-7. `window.location.reload()` for every outcome EXCEPT `raced`
+6. `window.location.reload()` for every outcome EXCEPT `raced`
    (which dismisses to the retry modal and leaves the tab alone).
 
 `paintReloadPositionButton()`:
@@ -3764,7 +4334,10 @@ Re-scan Prices cannot improve it. The Compound Log's per-event dollars
 are stored (`compoundHistory[].usdValue`), so they can be stale, and
 this is the action that rewrites them — the same pass that reads the
 chain values each event at the fresh prices. A position slot holding no
-coins gets them from the same pass.
+coins gets them from the same pass. The Activity Log figures of a
+compound the bot recorded when it happened stay as they were; those of
+one found only on the chain are worked out again, at prices read past
+the cache ([Activity Log Figures](#activity-log-figures)).
 
 **Nothing is deleted.** Each figure is overwritten only once its
 replacement exists, and each step keeps the saved figure when its price
@@ -4111,8 +4684,8 @@ Chrome or Chromium tab on that same machine.
 
 1. In the Pi terminal: `npm run debug-attach` attaches to the running
    server with no restart. To start fresh instead, stop LP Ranger with
-   `npm run gentle-stop`, which waits for any rebalance or compound
-   under way, then run `npm run debug`.
+   `npm run gentle-stop`, which waits for any rebalance, compound or
+   scan under way, then run `npm run debug`.
 2. In the Pi's local Chromium: `chrome://inspect` → **inspect** under
    Remote Target.
 

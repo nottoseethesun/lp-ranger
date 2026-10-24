@@ -27,6 +27,8 @@ const STALE = { totalIL: 50 };
 const POSITION = {
   token0: "0x" + "a1".repeat(20),
   token1: "0x" + "b2".repeat(20),
+  // A live position: the Guard stands aside for one holding no liquidity.
+  liquidity: "1000",
 };
 
 /** Bot deps for a position whose Guard has made no rejection. */

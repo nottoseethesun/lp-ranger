@@ -20,12 +20,13 @@ The four writers:
 2. Mid-rebalance recovery that has failed four times (same function).
 3. A failed attempt to re-open a closed position, just before the
    position is retired again (same file).
-4. The swap backoff running out of retries after the price kept moving
-   mid-rebalance (`_activateSwapBackoff`, `src/bot-cycle-backoff.js`).
+4. A rebalance the price outran: the price left the new range before the
+   mint, with the old position already emptied (`holdAfterPriceMove`,
+   `src/price-moved-stop.js`).
 
 All four stop automatic rebalances at the same gate, turn the status
 pill to a red ABORTED, and raise the same alert dialog with the error's
-own message. None clears by itself: a Slippage save clears it, and
+own message, in a yellow warning shell for case 4. None clears by itself: a Slippage save clears it, and
 otherwise a position left drained is retired, within seconds in case 3
 and after thirty minutes in the others.
 

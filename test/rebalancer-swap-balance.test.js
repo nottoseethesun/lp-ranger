@@ -20,6 +20,7 @@ const assert = require("node:assert/strict");
 const sendTx = require("../src/send-transaction");
 const {
   balanceDiff,
+  exchangeInTx,
   _setLandedReadDelayForTests,
 } = require("../src/rebalancer-swap-balance");
 const { swapIfNeeded } = require("../src/rebalancer-swap");
@@ -368,5 +369,137 @@ describe("the approval's gas on a landed swap whose read fails everywhere", () =
     } finally {
       globalThis.fetch = origFetch;
     }
+  });
+});
+
+/** An ERC-20 transfer as a receipt holds it. */
+function transfer(token, from, to, value) {
+  const topic = (a) => "0x" + "0".repeat(24) + a.slice(2);
+  return {
+    address: token,
+    topics: [TRANSFER, topic(from), topic(to)],
+    data: "0x" + value.toString(16).padStart(64, "0"),
+  };
+}
+
+const TRANSFER =
+  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const POOL = "0xP00L000000000000000000000000000000000001";
+
+describe("exchangeInTx — the swap's own exchange, from its receipt", () => {
+  it("reads what the wallet sent and was paid, net of any coming back", () => {
+    const receipt = {
+      logs: [
+        transfer(ADDR.token0, ADDR.signer, POOL, 100n),
+        transfer(ADDR.token0, POOL, ADDR.signer, 10n),
+        transfer(ADDR.token1, POOL, ADDR.signer, 55n),
+        // Another token, and transfers between others: not the wallet's.
+        transfer(
+          "0xC0FFEE0000000000000000000000000000000001",
+          POOL,
+          ADDR.signer,
+          9n,
+        ),
+        transfer(ADDR.token1, POOL, POOL, 7n),
+        { address: ADDR.token1, topics: ["0x" + "1".repeat(64)], data: "0x" },
+      ],
+    };
+    assert.deepEqual(
+      exchangeInTx(receipt, ADDR.token0, ADDR.token1, ADDR.signer),
+      { sent: 90n, received: 55n },
+    );
+  });
+
+  it("matches addresses whatever their case", () => {
+    const receipt = {
+      logs: [transfer(ADDR.token1.toLowerCase(), POOL, ADDR.signer, 5n)],
+    };
+    assert.deepEqual(
+      exchangeInTx(
+        receipt,
+        ADDR.token0,
+        ADDR.token1.toUpperCase(),
+        ADDR.signer,
+      ),
+      { sent: 0n, received: 5n },
+    );
+  });
+
+  it("answers null with no receipt to read", () => {
+    assert.equal(
+      exchangeInTx(undefined, ADDR.token0, ADDR.token1, ADDR.signer),
+      null,
+    );
+    assert.equal(exchangeInTx({}, ADDR.token0, ADDR.token1, ADDR.signer), null);
+  });
+});
+
+describe("balanceDiff — the swap's exchange beside the balance it gained", () => {
+  /** A token whose balance reads `before` first and `after` after the swap. */
+  const rising = (before, after) => ({
+    Contract: class {
+      constructor(_a, _abi, runner) {
+        this.runner = runner;
+      }
+      async balanceOf() {
+        return this.runner === BEFORE ? before : after;
+      }
+    },
+  });
+
+  it("caps what the swap was paid at the balance it gained", async () => {
+    // The receipt says 80 B was paid; the wallet's B rose only 60.
+    const receipt = { logs: [transfer(ADDR.token1, POOL, ADDR.signer, 80n)] };
+    const r = await balanceDiff(
+      rising(1000n, 1060n),
+      ADDR.token1,
+      ADDR.signer,
+      BEFORE,
+      async () => ({ ...landed(), receipt }),
+      ADDR.token0,
+    );
+    assert.deepEqual(r.exchange, { sent: 0n, received: 60n });
+  });
+
+  it("leaves a deposit landing during the swap out of the exchange", async () => {
+    // 40 B was paid by the swap; 50 B the owner sent arrived meanwhile.
+    const receipt = {
+      logs: [
+        transfer(ADDR.token0, ADDR.signer, POOL, 30n),
+        transfer(ADDR.token1, POOL, ADDR.signer, 40n),
+      ],
+    };
+    const r = await balanceDiff(
+      rising(1000n, 1090n),
+      ADDR.token1,
+      ADDR.signer,
+      BEFORE,
+      async () => ({ ...landed(), receipt }),
+      ADDR.token0,
+    );
+    assert.equal(r.amountOut, 90n);
+    assert.deepEqual(r.exchange, { sent: 30n, received: 40n });
+    assert.equal("receipt" in r, false, "the receipt goes no further");
+  });
+
+  it("names no exchange without the token sold, or without a receipt", async () => {
+    const receipt = { logs: [] };
+    const noToken = await balanceDiff(
+      rising(1000n, 1010n),
+      ADDR.token1,
+      ADDR.signer,
+      BEFORE,
+      async () => ({ ...landed(), receipt }),
+    );
+    assert.equal(noToken.exchange, null);
+    const noReceipt = await balanceDiff(
+      rising(1000n, 1010n),
+      ADDR.token1,
+      ADDR.signer,
+      BEFORE,
+      async () => landed(),
+      ADDR.token0,
+    );
+    assert.equal(noReceipt.exchange, null);
   });
 });

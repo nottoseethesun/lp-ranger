@@ -72,6 +72,8 @@ function load(cachedEpochs) {
   const walked = [];
   // The saved settings each price override is taken from.
   const overridesFrom = [];
+  // What the Current panel's figures were worked out from.
+  const pnlArgs = [];
   const stubs = {
     "./epoch-cache": {
       getCachedEpochs: () =>
@@ -101,13 +103,16 @@ function load(cachedEpochs) {
     },
     "./position-details-quick": {
       computeQuickDetails: async () => ({}),
-      _currentPnl: () => ({
-        value: 500,
-        il: null,
-        profit: null,
-        priceGainLoss: null,
-        residualValueUsd: 0,
-      }),
+      _currentPnl: (...args) => {
+        pnlArgs.push(args);
+        return {
+          value: 500,
+          il: null,
+          profit: null,
+          priceGainLoss: null,
+          residualValueUsd: 0,
+        };
+      },
       _applyPriceOverrides: (_prices, saved) => overridesFrom.push(saved),
       _walletResiduals: async () => ({ usd: 0 }),
     },
@@ -117,6 +122,10 @@ function load(cachedEpochs) {
         gasUsd: 1.25,
       }),
       savedNftCompoundedUsd: () => 0,
+      // The wallet's coins the NFT's compounds took in, from the saved list.
+      savedWalletCoinsPutIn: () => ({ amount0: 3, amount1: 4 }),
+      // The fees they left in the wallet, from the same list.
+      savedFeesLeftUsd: () => 2.25,
     },
     "./resolve-position-symbols": { resolvePositionSymbols: async () => {} },
     "./bot-pnl-initial-residual": {
@@ -142,7 +151,12 @@ function load(cachedEpochs) {
   const file = require.resolve("../src/position-details");
   delete require.cache[file];
   try {
-    return { fn: require(file).computeLifetimeDetails, walked, overridesFrom };
+    return {
+      fn: require(file).computeLifetimeDetails,
+      walked,
+      overridesFrom,
+      pnlArgs,
+    };
   } finally {
     Module.prototype.require = origRequire;
     for (const k of Object.keys(require.cache))
@@ -151,10 +165,11 @@ function load(cachedEpochs) {
 }
 
 const run = (cachedEpochs) => {
-  const { fn, walked } = load(cachedEpochs);
+  const { fn, walked, pnlArgs } = load(cachedEpochs);
   return fn(null, null, BODY, { global: {}, positions: {} }).then((r) => ({
     r,
     walked,
+    pnlArgs,
   }));
 };
 
@@ -169,6 +184,11 @@ describe("the unmanaged details response", () => {
     assert.ok(r.pnlSnapshot, "a snapshot must be returned, epochs or not");
     assert.equal(r.pnlSnapshot.currentCompoundedUsd, 7.5);
     assert.equal(r.pnlSnapshot.currentGasUsd, 1.25);
+    assert.equal(
+      r.pnlSnapshot.currentFeesLeftUsd,
+      2.25,
+      "the fees the NFT's compounds left in the wallet, as the bot reports them",
+    );
   });
 
   it("returns the rebalance events the table renders", async () => {
@@ -225,6 +245,16 @@ describe("the unmanaged details response", () => {
       undefined,
       "Per-Day rows must not reach an unmanaged position",
     );
+  });
+
+  it("measures the Current IL/G against the coins compounds took from the wallet", async () => {
+    /*-
+     *  The bot saved its compound list while it managed the position, so
+     *  the figure stays where the bot had it (src/bot-pnl-il.js).
+     */
+    const { pnlArgs } = await run();
+    assert.equal(pnlArgs.length, 1);
+    assert.deepEqual(pnlArgs[0].at(-1), { amount0: 3, amount1: 4 });
   });
 
   it("keeps the Current panel's figures alongside that", async () => {

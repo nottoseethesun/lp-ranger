@@ -2,6 +2,12 @@
  * @file dashboard-compound.js
  * @description Compound button handlers, auto-compound toggle, and threshold
  * save for the Mission Control panel.
+ *
+ * The server refuses a Compound Now while a scan is running on the
+ * position (`scanInProgress`, src/scan-state.js). The Compound Now dialog
+ * then opens, showing the server's words beside a spinner, with Cancel
+ * and no confirm button; once a status answer says the scan has ended,
+ * its Compound Now button comes back (dashboard-scan-wait.js).
  */
 import {
   g,
@@ -25,6 +31,68 @@ import {
 import { truncName } from "./dashboard-helpers.js";
 import { formatSettingChange } from "./dashboard-setting-labels.js";
 import { activeChainId } from "./dashboard-chain.js";
+import { isAnswerForPositionOnScreen } from "./dashboard-answer-position.js";
+import { startScanWait, endScanWait } from "./dashboard-scan-wait.js";
+
+// The Compound Now dialog's wait for a scan running on its position.
+const _scanWait = {
+  noticeId: "compoundScanWait",
+  confirmId: "compoundScanWaitConfirmBtn",
+  key: null,
+  timer: null,
+};
+
+/**
+ * Open the Compound Now dialog, waiting for the scan running on the
+ * position on screen.
+ * @param {string} key  The position's composite key.
+ * @param {string} message  The server's refusal.
+ */
+function _openCompoundScanWait(key, message) {
+  const modal = g("compoundScanWaitModal");
+  if (!modal) return;
+  const ctx = g("compoundScanWaitCtx");
+  if (ctx) ctx.innerHTML = _posContextHtml();
+  startScanWait(_scanWait, key, message);
+  modal.classList.remove("hidden");
+}
+
+/** Close the Compound Now dialog, ending its wait. */
+export function closeCompoundScanWait() {
+  endScanWait(_scanWait);
+  g("compoundScanWaitModal")?.classList.add("hidden");
+}
+
+/**
+ * Wait in the Compound Now dialog when the server refused the compound
+ * because a scan is running on the position on screen; any other answer
+ * settles the dialog, which closes.
+ * @param {object} data  The server's answer.
+ * @param {string} positionKey  The position the request was for.
+ * @returns {boolean}  Whether the dialog waits.
+ */
+function _waitsForScan(data, positionKey) {
+  if (
+    data?.scanInProgress === true &&
+    isAnswerForPositionOnScreen(data, positionKey)
+  ) {
+    _openCompoundScanWait(positionKey, data.error);
+    return true;
+  }
+  closeCompoundScanWait();
+  return false;
+}
+
+/**
+ * The Compound Now dialog's button, back once the scan it waited on has
+ * ended: ask for the compound again, one request per click.
+ */
+export async function confirmCompoundAfterScan() {
+  const confirm = g("compoundScanWaitConfirmBtn");
+  if (confirm) confirm.disabled = true;
+  await compoundNow();
+  if (confirm) confirm.disabled = false;
+}
 
 /**
  * Show a small modal telling the user their action is queued behind
@@ -57,6 +125,7 @@ export function showQueuedActionModal(requested, inFlight) {
 export async function compoundNow() {
   const a = posStore.getActive();
   if (!a || !isPositionManaged(a.tokenId)) {
+    closeCompoundScanWait();
     _createModal(
       null,
       "9mm-pos-mgr-modal-caution",
@@ -87,6 +156,7 @@ export async function compoundNow() {
       body: JSON.stringify({ positionKey }),
     });
     const data = await res.json();
+    if (_waitsForScan(data, positionKey)) return;
     if (!data.ok) {
       _createModal(
         null,
@@ -104,6 +174,7 @@ export async function compoundNow() {
     });
     if (inFlight) showQueuedActionModal("compound", inFlight);
   } catch {
+    closeCompoundScanWait();
     _createModal(
       null,
       "9mm-pos-mgr-modal-caution",

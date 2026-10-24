@@ -1,7 +1,7 @@
 /**
  * @file util/test/migration-099-settings.test.js
  * @description Tests for the migration's two steps for release 0.9.9's
- *   settings (util/migration/update-099-setting-copies.js and
+ *   settings (util/migration/from-0.9.9/update-099-setting-copies.js and
  *   update-099-env.js): an install updated from 0.9.9 starts on this
  *   release once the migration has run.
  *
@@ -67,6 +67,8 @@ function copiesFrom099() {
   });
   const runtime = shipped("app-runtime.json");
   runtime.aggregator = { url: "https://api.9mm.pro/swap/v1", apiKey: API_KEY };
+  // Retired since (util/migration/from-0.9.10/retire-price-move-retries.js).
+  runtime.tx.retrySwapLimit = 8;
   const chains = shipped("chains.json");
   for (const chain of Object.values(chains)) {
     if (chain === null || typeof chain !== "object") continue;

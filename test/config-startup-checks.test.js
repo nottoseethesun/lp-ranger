@@ -363,17 +363,11 @@ describe("the bot's retry, follow-up and retire timings", () => {
   it("are app-runtime.json's, an override included", () => {
     const config = loadConfigWith({
       "app-runtime.json": {
-        tx: {
-          swapBackoffBaseMs: 7000,
-          swapBackoffMaxMs: 90000,
-          midwayRetryLimit: 6,
-        },
+        tx: { midwayRetryLimit: 6 },
         poll: { afterActionMs: 3000, lifetimeRescanCheckMs: 900000 },
         retire: { drainedAfterMs: 3600000 },
       },
     });
-    assert.equal(config.SWAP_BACKOFF_BASE_MS, 7000);
-    assert.equal(config.SWAP_BACKOFF_MAX_MS, 90000);
     assert.equal(config.MIDWAY_RETRY_LIMIT, 6);
     assert.equal(config.POLL_AFTER_ACTION_MS, 3000);
     assert.equal(config.LIFETIME_RESCAN_CHECK_MS, 900000);
@@ -381,8 +375,6 @@ describe("the bot's retry, follow-up and retire timings", () => {
   });
 
   for (const [group, key, bad] of [
-    ["tx", "swapBackoffBaseMs", 999],
-    ["tx", "swapBackoffMaxMs", 86400001],
     ["tx", "midwayRetryLimit", 0],
     ["tx", "midwayRetryLimit", 1.5],
     ["retire", "drainedAfterMs", 59999],

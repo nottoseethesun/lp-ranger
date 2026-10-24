@@ -37,6 +37,10 @@ require("../blockchain");
 const { sleep } = require("../../diagnostic/_helpers");
 const { EVENTS, sameAddress } = require("../coins-in-transaction");
 const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
+const {
+  drainBefore,
+  collectBeforeDeposit,
+} = require("../../../src/nft-move-rules");
 
 /** bot-config-defaults.json as LP Ranger resolves it, overrides applied. */
 const BOT_DEFAULTS = readBotConfigDefaults();
@@ -81,11 +85,16 @@ function pacedProvider(provider, spacingMs) {
   let nextAt = 0;
   const receipts = new Map();
   const blocks = new Map();
-  /** Wait for this request's turn, and book the next one's. */
+  /**
+   * Wait for this request's turn, then book the next one's from the
+   * moment this one goes out. Booked from when this one was due instead,
+   * a timer that fired late would let the next request follow it sooner
+   * than `spacingMs`.
+   */
   async function turn() {
-    const now = Date.now();
-    if (nextAt > now) await sleep(nextAt - now);
-    nextAt = Math.max(now, nextAt) + spacingMs;
+    const wait = nextAt - Date.now();
+    if (wait > 0) await sleep(wait);
+    nextAt = Date.now() + spacingMs;
   }
   /** Ask the provider, in turn, marking a failure as the endpoint's. */
   async function ask(name, args) {
@@ -154,10 +163,24 @@ async function nftLogsBefore(provider, search) {
 }
 
 /**
- * The block of a rebalance's drain: the latest `DecreaseLiquidity` of the
- * replaced NFT at or before the mint. Searched back to the block that NFT
- * was minted in when the event cache knows it, else across the spans a
- * month of blocks fills.
+ * A log as the shared move rules (src/nft-move-rules.js) read an event:
+ * its block, its transaction, and its place in the block when the
+ * endpoint gave one.
+ * @param {object} log  A log as the provider returns it.
+ * @returns {{blockNumber: number, txHash: string, logIndex?: number}}
+ */
+function asMoveEvent(log) {
+  const event = { blockNumber: log.blockNumber, txHash: log.transactionHash };
+  if (typeof log.index === "number") event.logIndex = log.index;
+  return event;
+}
+
+/**
+ * The block of a rebalance's drain, by the rule in src/nft-move-rules.js
+ * (`drainBefore`): the latest `DecreaseLiquidity` of the replaced NFT at
+ * or before the mint. Searched back to the block that NFT was minted in
+ * when the event cache knows it, else across the spans a month of blocks
+ * fills.
  *
  * @param {object} provider  A paced provider.
  * @param {{positionManager: string, nftId: string, mintBlock: number,
@@ -175,14 +198,17 @@ async function drainBlockBefore(provider, search) {
     toBlock: mintBlock,
     floorBlock: floor,
   });
-  return logs.length === 0 ? null : logs.at(-1).blockNumber;
+  const decreases = logs.map(asMoveEvent);
+  const drain = drainBefore(decreases, mintBlock);
+  return drain === null ? null : drain.blockNumber;
 }
 
 /**
- * The block of a compound's collect: the latest `Collect` of the NFT
- * within one span of blocks before its deposit, provided no other deposit
- * into the NFT came after it. Without one, the deposit was coins the
- * owner added rather than a compound.
+ * The block of a compound's collect, by the rule in src/nft-move-rules.js
+ * (`collectBeforeDeposit`): the latest `Collect` of the NFT within one
+ * span of blocks before its deposit, provided no other deposit into the
+ * NFT came after it. Without one, the deposit was coins the owner added
+ * rather than a compound.
  *
  * @param {object} provider  A paced provider.
  * @param {{positionManager: string, nftId: string, depositHash: string,
@@ -198,11 +224,16 @@ async function collectBlockBefore(provider, search) {
     floorBlock: Math.max(0, search.depositBlock - SPAN + 1),
   });
   const collectTopic = EVENTS.getEvent("Collect").topicHash;
-  for (const log of logs.reverse()) {
-    if (log.transactionHash === search.depositHash) continue;
-    return log.topics[0] === collectTopic ? log.blockNumber : null;
-  }
-  return null;
+  const events = logs.map((log) => ({
+    ...asMoveEvent(log),
+    kind: log.topics[0] === collectTopic ? "collect" : "deposit",
+  }));
+  const collect = collectBeforeDeposit(
+    events,
+    { blockNumber: search.depositBlock, txHash: search.depositHash },
+    SPAN,
+  );
+  return collect === null ? null : collect.blockNumber;
 }
 
 /**

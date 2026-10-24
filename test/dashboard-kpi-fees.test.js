@@ -147,6 +147,7 @@ describe("Current panel composition", () => {
       "kpiValue",
       "pnlFees",
       "pnlCompounded",
+      "pnlFeesLeft",
       "pnlGas",
       "pnlPrice",
       "pnlRealized",
@@ -213,6 +214,46 @@ describe("Current panel composition", () => {
     const bd = kpi.getCurBreakdown();
     assert.equal(Number(bd.total.toFixed(2)), 144.21, "Net P&L must not move");
     assert.equal(bd.fees, 0.27, "the dialog shows the same unclaimed figure");
+  });
+
+  it("adds the fees a compound left in the wallet to Profit, on their own line", () => {
+    /*-
+     *  The user, 2026-10-23: "The Compound knows the total of coins so of
+     *  course, that should show up in Current." They are in neither fee
+     *  row nor the IL/G, which counts no coin in the wallet.
+     *  Profit = 0.27 + 40.76 + 5.00 - 0.28 + (-1.72) = 44.03
+     */
+    const snap = {
+      liveEpoch: { fees: 41.03, gas: 0 },
+      currentFeesUsd: 0.27,
+      currentCompoundedUsd: 40.76,
+      currentFeesLeftUsd: 5,
+      currentGasUsd: 0.28,
+      currentValue: 3143.94,
+      totalIL: -1.72,
+    };
+    kpi._applySnapshotKpis({ pnlSnapshot: snap }, 3000, 0);
+    assert.equal(usd("pnlFeesLeft"), 5);
+    assert.equal(usd("pnlCompounded"), 40.76, "Fees Compounded unchanged");
+    assert.equal(usd("curProfit"), 44.03);
+    const bd = kpi.getCurBreakdown();
+    assert.equal(
+      Number(bd.total.toFixed(2)),
+      144.21,
+      "Net P&L does not count them",
+    );
+  });
+
+  it("shows a dash on the line when no compound left any", () => {
+    kpi._applySnapshotKpis(
+      { pnlSnapshot: { currentFeesUsd: 0.27, currentFeesLeftUsd: 0 } },
+      0,
+      0,
+    );
+    assert.equal(
+      document.getElementById("pnlFeesLeft").textContent.includes("—"),
+      true,
+    );
   });
 });
 

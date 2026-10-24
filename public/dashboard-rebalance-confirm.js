@@ -15,6 +15,13 @@
  *  - `confirmRebalance()`        — Rebalance Anyway button
  *  - `_postRebalance(url, body)` — shared POST helper reused by
  *    `dashboard-reopen-flow.js` for the closed-position re-open path
+ *
+ * The server refuses a Rebalance Now while a scan is running on the
+ * position (`scanInProgress`, src/scan-state.js). The dialog then stays
+ * open, showing the server's words beside a spinner, with Cancel and no
+ * confirm button; once a status answer says the scan has ended, the
+ * confirm button comes back, so the rebalance is confirmed at that
+ * moment's price (dashboard-scan-wait.js).
  */
 
 "use strict";
@@ -49,6 +56,15 @@ import {
   manageKey,
 } from "./dashboard-manage-ui.js";
 import { activeChainId } from "./dashboard-chain.js";
+import { startScanWait, endScanWait } from "./dashboard-scan-wait.js";
+
+// The dialog's wait for a scan running on its position.
+const _scanWait = {
+  noticeId: "rebalanceScanWait",
+  confirmId: "ilWarnConfirmBtn",
+  key: null,
+  timer: null,
+};
 
 /**
  * "preserveRange width" as % — the width the rebalancer would
@@ -147,6 +163,7 @@ export function _rangeWidthPreviewText(status, active) {
 export function openRebalanceConfirm() {
   const modal = g("rebalanceIlWarningModal");
   if (!modal) return;
+  endScanWait(_scanWait);
   const active = posStore.getActive();
   const ctx = g("rebalanceIlWarningCtx");
   if (ctx) {
@@ -163,6 +180,7 @@ export function openRebalanceConfirm() {
 
 /** Hide the modal without firing a rebalance. */
 export function closeRebalanceConfirm() {
+  endScanWait(_scanWait);
   const m = g("rebalanceIlWarningModal");
   if (m) m.classList.add("hidden");
 }
@@ -267,6 +285,8 @@ function _handleRebalanceOk(active, inFlight, url, triggerActLabel, onScreen) {
  * @param {object} body                  Request body (positionKey OR tokenId+contract+forceRebalance)
  * @param {object} active                posStore active entry (for optimistic-action + logging)
  * @param {string} triggerActLabel       Activity-log label ("Manual Rebalance" or "Re-open Position")
+ * @returns {Promise<object|null>}  The server's answer, or null when none
+ *   came.
  */
 export async function _postRebalance(url, body, active, triggerActLabel) {
   _disableRebalanceButtonForInFlight();
@@ -290,13 +310,14 @@ export async function _postRebalance(url, body, active, triggerActLabel) {
           active.tokenId,
         )
       : undefined);
+  let data = null;
   try {
     const res = await fetchWithCsrf(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
+    data = await res.json();
     _settleRebalanceAnswer({
       data,
       requestKey,
@@ -318,6 +339,7 @@ export async function _postRebalance(url, body, active, triggerActLabel) {
       paintManageUI();
     }
   }
+  return data;
 }
 
 /**
@@ -350,6 +372,8 @@ export function _settleRebalanceAnswer({
     _handleRebalanceOk(active, inFlight, url, triggerActLabel, onScreen);
     return onScreen;
   }
+  // Refused while a scan runs: the dialog on screen waits for it.
+  if (data?.scanInProgress === true && onScreen) return onScreen;
   // A re-open refused under the pool rule says which position holds it.
   const refusal = poolRuleRefusal(data);
   if (refusal !== null)
@@ -364,11 +388,15 @@ export function _settleRebalanceAnswer({
   return onScreen;
 }
 
-/** Rebalance Anyway button — close modal + POST /api/rebalance. */
+/**
+ * Rebalance Anyway button — POST /api/rebalance, then close the modal;
+ * or, when the server refuses because the position's scan is in
+ * progress, keep it open waiting for the scan.
+ */
 export async function confirmRebalance() {
-  closeRebalanceConfirm();
   const active = posStore.getActive();
   if (!active) {
+    closeRebalanceConfirm();
     _createModal(
       null,
       "9mm-pos-mgr-modal-caution",
@@ -384,10 +412,22 @@ export async function confirmRebalance() {
     active.contractAddress,
     active.tokenId,
   );
-  await _postRebalance(
+  // One request per click: the button waits for the answer.
+  const confirm = g("ilWarnConfirmBtn");
+  if (confirm) confirm.disabled = true;
+  const data = await _postRebalance(
     "/api/rebalance",
     { positionKey },
     active,
     "Manual Rebalance",
   );
+  if (confirm) confirm.disabled = false;
+  if (
+    data?.scanInProgress === true &&
+    isAnswerForPositionOnScreen(data, positionKey)
+  ) {
+    startScanWait(_scanWait, positionKey, data.error);
+    return;
+  }
+  closeRebalanceConfirm();
 }

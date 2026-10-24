@@ -412,7 +412,9 @@ async function _swapViaRouter(signer, ethersLib, params) {
 
 /**
  * Execute a swap in N equal chunks to reduce per-swap impact.
- * Each chunk runs sequentially (prior chunks move the price).
+ * Each chunk runs sequentially (prior chunks move the price). The chunks'
+ * own exchanges add up to the swap's (`exchange`), which is null when any
+ * chunk's is unknown.
  */
 async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
   const total = params.amountIn;
@@ -436,6 +438,7 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
   /*- Preserve swapSources across chunks so the rebalance log displays
    *  "NineMM_V3+DEX_X" rather than "(no swap)" after a chunked retry. */
   const sources = [];
+  let exchange = { sent: 0n, received: 0n };
   /*-
    *  What has been swapped so far.  One construction for both exits,
    *  because a partial and a completed run are the same shape: a partial
@@ -448,6 +451,7 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
     txHash,
     gasCostWei,
     swapSources: sources.join("+"),
+    exchange,
   });
   for (let i = 0; i < n; i++) {
     const amt = i === n - 1 ? chunk + remainder : chunk;
@@ -489,8 +493,15 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
     // Every chunk that returns was mined, so it carries its receipt's hash.
     txHash = r.txHash;
     sources.push(r.swapSources);
+    exchange = _addExchange(exchange, r.exchange);
   }
   return swapped();
+}
+
+/** Two exchanges added up; null when either is unknown. */
+function _addExchange(sum, more) {
+  if (sum === null || more === null || more === undefined) return null;
+  return { sent: sum.sent + more.sent, received: sum.received + more.received };
 }
 
 /**
@@ -534,14 +545,25 @@ async function _swapInChunks(swapFn, signer, ethersLib, params, n) {
  * final error, so a fallback that succeeds still reports every
  * transaction the wallet paid for (see `src/spent-gas.js`).
  *
+ * The result's `exchange` is what the swap's own transactions sent and
+ * received, from their receipts (src/rebalancer-swap-balance.js): unlike
+ * `amountOut`, a balance's rise, it leaves out coins that reached the
+ * wallet another way meanwhile. Null when a receipt could not be read.
+ *
  * @param {object} signer      ethers Signer.
  * @param {object} ethersLib   ethers library.
  * @param {object} params      Swap parameters.
- * @returns {Promise<{amountOut: bigint, txHash: string|null, gasCostWei: bigint}>}
+ * @returns {Promise<{amountOut: bigint, txHash: string|null, gasCostWei: bigint,
+ *   exchange: {sent: bigint, received: bigint}|null}>}
  */
 async function swapIfNeeded(signer, ethersLib, params) {
   if (params.amountIn < _MIN_SWAP_THRESHOLD)
-    return { amountOut: 0n, txHash: null, gasCostWei: 0n };
+    return {
+      amountOut: 0n,
+      txHash: null,
+      gasCostWei: 0n,
+      exchange: { sent: 0n, received: 0n },
+    };
   /*- Shared attempts log threaded through every swap path so the final
    *  error can point at the LOWEST observed price impact across the
    *  whole chain (aggregator full → chunks → V3 router fallback) instead

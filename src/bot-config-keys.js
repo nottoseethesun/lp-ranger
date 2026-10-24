@@ -106,9 +106,16 @@ const GLOBAL_KEYS = [
  * Not included, deliberately: settings, and values recorded live that a
  * scan cannot reproduce — `residuals` (collected minus minted at each
  * rebalance) and `lastCompoundAt` (the auto-compound throttle).
+ *
+ * Nor is `compoundHistory`. A scan does rebuild it, but its entries also
+ * carry what the bot recorded when each compound happened: whether it was
+ * Auto or Manual, and its Activity Log figures. The rebuild replaces the
+ * list and keeps those, matched by transaction
+ * (src/compound-activity-figures.js), so it needs the old list in place
+ * until the new one is written. The rebuild still runs, because clearing
+ * the compounded totals here is what starts it.
  */
 const CHAIN_DERIVED_POSITION_KEYS = Object.freeze([
-  "compoundHistory",
   "compoundedAmount0",
   "compoundedAmount1",
   "nftCompoundedAmountsByTokenId",
@@ -126,12 +133,14 @@ const CHAIN_DERIVED_POSITION_KEYS = Object.freeze([
 /**
  * A position's records: what the bot worked out or logged about it, as
  * against a setting, which the operator chooses. The chain-derived ones
- * above, less the retired `lifetimeHodlAmounts`, and three the bot
- * records live that no scan can reproduce: `residuals` (collected minus
- * minted at each rebalance), `lastCompoundAt` (the auto-compound
- * spacing) and `failedMoveGas` (the gas each failed rebalance or compound
- * paid, with when: src/spent-gas.js). Reload Current Position rebuilds
- * the chain-derived ones and leaves these three alone.
+ * above, less the retired `lifetimeHodlAmounts`; `compoundHistory`, which
+ * a scan rebuilds while keeping what the bot recorded live in it; and
+ * three the bot records live that no scan can reproduce: `residuals`
+ * (collected minus minted at each rebalance), `lastCompoundAt` (the
+ * auto-compound spacing) and `failedMoveGas` (the gas each failed
+ * rebalance or compound paid, with when: src/spent-gas.js). Reload Current
+ * Position clears the chain-derived ones for its rebuild, which also
+ * replaces `compoundHistory`, and leaves those three alone.
  *
  * They are kept in `app-data/position-records.json`, apart from the
  * settings in bot-config.json (src/position-records.js), and each is saved

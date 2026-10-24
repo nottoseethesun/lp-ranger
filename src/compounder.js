@@ -12,100 +12,43 @@
  * Same NFT is retained, with no range change.  Uses the shared
  * rebalance lock for nonce safety and the _waitOrSpeedUp pipeline for
  * TX recovery.
+ *
+ * When the swap runs, the deposit is offered the wallet's whole balance,
+ * so it can take in coins that are no fees. The wallet is read before the
+ * collect and just before the deposit, and the result names the fees the
+ * deposit put back apart from those coins (src/compounded-coins.js).
+ *
+ * A deposit the owner sends while the compound runs reaches the wallet
+ * between those readings, where they cannot tell it from fees. So what
+ * the collect brought in is the amount its own transaction reports,
+ * capped at the wallet's rise, and the swap's exchange is read from its
+ * own transactions: the deposit is then neither offered to a deposit
+ * that takes only the fees nor counted as fees by one that takes the
+ * wallet's whole balance.
  */
 
 "use strict";
 
 const { logCtx } = require("./logger");
 const { receiptGasWei } = require("./receipt-gas");
-const { spentGasOf, addSpentGas, carryingGas } = require("./spent-gas");
+const { spentGasOf, addSpentGas } = require("./spent-gas");
 const { log } = require("./log");
 
 const config = require("./config");
 const sendTx = require("./send-transaction");
 const { swapForCompound, compoundLogCtx: _ctx } = require("./compounder-swap");
+const { collectFees } = require("./compound-collect");
 const { scanChunked } = require("./get-logs-chunked");
 const { IFACE, parseLogs } = require("./nft-event-parse");
+const { coinsFromUnits, coinsToUsd } = require("./coin-value");
+const { compoundedFields } = require("./compounded-coins");
 const { topicForTokenId } = require("./nft-token-topic");
 const { PM_ABI } = require("./pm-abi");
 const {
   ERC20_ABI,
-  _MAX_UINT128,
   _deadline,
   _ensureAllowance,
 } = require("./rebalancer-pools");
-
-/**
- * Collect unclaimed fees from a position to the wallet.
- * Calls decreaseLiquidity(0) to update fee accounting, then collect(MAX).
- * @param {import('ethers').Signer} signer
- * @param {object} ethersLib  ethers module
- * @param {object} opts
- * @param {string} opts.positionManagerAddress
- * @param {string} opts.tokenId
- * @param {string} opts.recipient   Wallet address
- * @param {string} opts.token0      Token0 address
- * @param {string} opts.token1      Token1 address
- * @returns {Promise<{amount0: bigint, amount1: bigint, txHash: string, gasCostWei: bigint}>}
- */
-async function collectFees(signer, ethersLib, opts) {
-  const { Contract } = ethersLib;
-  const pm = new Contract(opts.positionManagerAddress, PM_ABI, signer);
-  const provider = signer.provider;
-
-  const t0 = new Contract(opts.token0, ERC20_ABI, provider);
-  const t1 = new Contract(opts.token1, ERC20_ABI, provider);
-  const [bal0Before, bal1Before] = await Promise.all([
-    t0.balanceOf(opts.recipient),
-    t1.balanceOf(opts.recipient),
-  ]);
-  const cx = _ctx(opts);
-  log.info(
-    "[compound] %s collectFees: walletBefore0=%s walletBefore1=%s",
-    cx,
-    String(bal0Before),
-    String(bal1Before),
-  );
-
-  /*- collect() on the NonfungiblePositionManager internally calls
-      pool.burn(0) to update fee accounting before collecting.  Routed
-      through send-transaction.js so estimateGas, broadcast, and the
-      speed-up/cancel pipeline all benefit from RPC failover. */
-  const { receipt } = await sendTx.sendTransaction({
-    populate: () =>
-      pm.collect.populateTransaction({
-        tokenId: opts.tokenId,
-        recipient: opts.recipient,
-        amount0Max: _MAX_UINT128,
-        amount1Max: _MAX_UINT128,
-      }),
-    signer,
-    label: "[compound] " + cx + " collect",
-  });
-
-  const gasCostWei = receiptGasWei(receipt);
-  /*-
-   *  The collect has confirmed and been paid for: a failure reading what
-   *  it collected carries its gas (src/spent-gas.js).
-   */
-  const [bal0After, bal1After] = await carryingGas(gasCostWei, () =>
-    Promise.all([t0.balanceOf(opts.recipient), t1.balanceOf(opts.recipient)]),
-  );
-  const amount0 = bal0After - bal0Before;
-  const amount1 = bal1After - bal1Before;
-  const s0 = opts.token0Symbol || "Token0";
-  const s1 = opts.token1Symbol || "Token1";
-  log.info(
-    "[compound] %s collectFees: %s=%s %s=%s",
-    cx,
-    s0,
-    String(amount0),
-    s1,
-    String(amount1),
-  );
-
-  return { amount0, amount1, txHash: receipt.hash, gasCostWei };
-}
 
 /** Parse IncreaseLiquidity event from a TX receipt. */
 function _parseIncreaseLiquidity(pm, receipt) {
@@ -262,6 +205,9 @@ async function _readBalance(signer, ethersLib, tokenAddr, owner) {
  * swept back into the position by this path; that's fine — it's better
  * than leaving it stranded, and `residual-tracker` already caps its
  * reported residual to actual `balanceOf`, so accounting self-corrects.
+ * None of those coins is a fee, so the wallet just before the deposit is
+ * returned too (`beforeDeposit`): the post-swap reading, or, with no
+ * swap, the reading after the collect.
  */
 async function _resolveDepositAmounts(
   signer,
@@ -274,6 +220,7 @@ async function _resolveDepositAmounts(
     return {
       depositAmount0: collected.amount0,
       depositAmount1: collected.amount1,
+      beforeDeposit: collected.walletAfter,
     };
   }
   const [bal0, bal1] = await Promise.all([
@@ -286,7 +233,8 @@ async function _resolveDepositAmounts(
     String(bal0),
     String(bal1),
   );
-  return { depositAmount0: bal0, depositAmount1: bal1 };
+  const beforeDeposit = { raw0: bal0, raw1: bal1 };
+  return { depositAmount0: bal0, depositAmount1: bal1, beforeDeposit };
 }
 
 /**
@@ -360,56 +308,104 @@ async function executeCompound(signer, ethersLib, opts) {
       collected.amount1,
     );
     paidWei += spentGasOf(swap);
-    const { depositAmount0, depositAmount1 } = await _resolveDepositAmounts(
-      signer,
-      ethersLib,
-      opts,
-      collected,
-      swap,
-    );
+    const { depositAmount0, depositAmount1, beforeDeposit } =
+      await _resolveDepositAmounts(signer, ethersLib, opts, collected, swap);
     const deposited = await addLiquidity(signer, ethersLib, {
       ...opts,
       amount0: depositAmount0,
       amount1: depositAmount1,
     });
-    return _compoundedResult(opts, collected, swap, deposited);
+    return _compoundedResult(opts, collected, swap, deposited, beforeDeposit);
   } catch (err) {
     throw addSpentGas(err, paidWei);
   }
 }
 
 /**
+ * The fee coins as the compound's own transactions moved them, after its
+ * swap: what the collect brought in, less what the swap sent of the token
+ * sold, plus what it received of the token bought. With no swap, what the
+ * collect brought in.
+ *
+ * @param {{amount0: bigint, amount1: bigint}} collected  The collect's
+ *   result.
+ * @param {object} swap  The ratio swap's result (src/compounder-swap.js).
+ * @returns {{raw0: bigint, raw1: bigint}|null}  Null when the swap ran and
+ *   its exchange is unknown.
+ */
+function _feeCoinsAfterSwap(collected, swap) {
+  if (swap?.swapped !== true)
+    return { raw0: collected.amount0, raw1: collected.amount1 };
+  const ex = swap.exchange;
+  if (ex === null || ex === undefined) return null;
+  const less = (a, b) => (a > b ? a - b : 0n);
+  return swap.isToken0To1 === true
+    ? {
+        raw0: less(collected.amount0, ex.sent),
+        raw1: collected.amount1 + ex.received,
+      }
+    : {
+        raw0: collected.amount0 + ex.received,
+        raw1: less(collected.amount1, ex.sent),
+      };
+}
+
+/**
  * What a completed compound reports: the transactions it sent, the coins
  * it put back into the position and their dollar value at this moment,
- * and the gas of every transaction it sent.
+ * the fees among those coins, and the gas of every transaction it sent.
  *
  * @param {object} opts  `executeCompound`'s options.
  * @param {object} collected  The collect's result.
  * @param {object} swap  The ratio-correcting swap's result.
  * @param {object} deposited  The deposit's result.
+ * @param {{raw0: bigint, raw1: bigint}} beforeDeposit  The wallet's two
+ *   coins just before the deposit.
  * @returns {object} The compound's result.
  */
-function _compoundedResult(opts, collected, swap, deposited) {
+function _compoundedResult(opts, collected, swap, deposited, beforeDeposit) {
   const d0 = opts.decimals0;
   const d1 = opts.decimals1;
-  /*- The coins this compound put back into the position. The caller
-   *  adds these to the saved running totals; the dollars below are for
-   *  this moment's log line and the Activity Log entry. */
+  /*-
+   *  The coins this compound put back into the position, and below their
+   *  dollars at this moment, for this moment's log line and the Activity
+   *  Log entry.
+   */
   const depositedAmount0 = Number(deposited.amount0Deposited) / 10 ** d0;
   const depositedAmount1 = Number(deposited.amount1Deposited) / 10 ** d1;
   const usdValue =
     depositedAmount0 * (opts.price0 || 0) +
     depositedAmount1 * (opts.price1 || 0);
   /*-
-   *  USD value of the full Collect — typically larger than usdValue
-   *  because increaseLiquidity requires tokens in the current tick's
-   *  exact ratio, so one side usually has leftover that stays in the
-   *  wallet as residual (tracked by residual-tracker.js).  Surfaced so
-   *  the compound log can show users both numbers.
+   *  The fee coins the collect brought in, and their USD value — typically
+   *  larger than usdValue because increaseLiquidity requires tokens in the
+   *  current tick's exact ratio, so one side usually has leftover that
+   *  stays in the wallet as residual (tracked by residual-tracker.js).
+   *  Surfaced so the compound log can show users both numbers, and kept
+   *  on the compound's record for its Activity Log figure
+   *  (src/compound-activity-figures.js).
    */
-  const collectedUsd =
-    (Number(collected.amount0) / 10 ** d0) * (opts.price0 || 0) +
-    (Number(collected.amount1) / 10 ** d1) * (opts.price1 || 0);
+  const feesCollected = coinsFromUnits(
+    collected.amount0,
+    collected.amount1,
+    d0,
+    d1,
+  );
+  const collectedUsd = coinsToUsd(feesCollected, opts.price0, opts.price1);
+  /*-
+   *  The fees among the coins the deposit put back: what the caller adds
+   *  to the saved running totals and keeps on the compound's record. The
+   *  rest came from the wallet's earlier balance, or reached the wallet
+   *  while the compound ran (src/compounded-coins.js).
+   */
+  const compounded = compoundedFields(
+    collected.walletBefore,
+    beforeDeposit,
+    deposited,
+    d0,
+    d1,
+    _feeCoinsAfterSwap(collected, swap),
+  );
 
   const totalGasWei =
     collected.gasCostWei + spentGasOf(swap) + deposited.gasCostWei;
@@ -425,9 +421,11 @@ function _compoundedResult(opts, collected, swap, deposited) {
     amount1Deposited: String(deposited.amount1Deposited),
     depositedAmount0,
     depositedAmount1,
+    ...compounded,
     liquidity: String(deposited.liquidity),
     usdValue,
     collectedUsd,
+    feesCollected,
     price0: opts.price0,
     price1: opts.price1,
     gasCostWei: String(totalGasWei),
@@ -809,7 +807,6 @@ async function detectCompoundsOnChain(tokenId, opts = {}) {
 }
 
 module.exports = {
-  collectFees,
   addLiquidity,
   executeCompound,
   detectCompoundsOnChain,

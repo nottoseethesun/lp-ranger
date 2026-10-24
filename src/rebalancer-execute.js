@@ -17,6 +17,7 @@ const pools = require("./rebalancer-pools");
 const { swapIfNeeded } = require("./rebalancer-swap");
 const { resolveSlippagePct } = require("./slippage-resolver");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
+const { coinsFromUnits } = require("./coin-value");
 const {
   estimateSwapGasUsd,
   shouldSkipSwap,
@@ -38,7 +39,16 @@ async function _walletBalances(ethersLib, provider, token0, token1, owner) {
   ]);
   if (bal0 === 0n && bal1 === 0n)
     throw new Error("Position drained and wallet has 0 balance of both tokens");
-  return { amount0: bal0, amount1: bal1, txHash: null };
+  /*-
+   *  Nothing is drained here, so the wallet before the drain is this same
+   *  reading, returned as `removeLiquidity` returns its own.
+   */
+  return {
+    amount0: bal0,
+    amount1: bal1,
+    txHash: null,
+    walletBefore: { amount0: bal0, amount1: bal1 },
+  };
 }
 
 /**
@@ -363,6 +373,40 @@ function _mergeSwapSources(primary, corrective) {
 }
 
 /**
+ * The wallet's balance of both coins at three moments of a rebalance, in
+ * whole coins: before the drain, after it, and just before the mint.
+ *
+ * The rebalance reads all three as it goes, because the mint uses the
+ * wallet's whole balance. Kept on the result, they become the Activity
+ * Log entry's figures: the two around the swaps are what the rebalance
+ * had before its swaps and after them, and the one before the drain caps
+ * the deposit set aside from them (src/rebalance-activity-figures.js).
+ *
+ * @param {object} removed  The removal step's result, with `walletBefore`.
+ * @param {object} [readings]  `afterDrain` and `beforeMint`, each a pair
+ *   of amounts in each token's smallest unit.
+ * @param {object} poolState  For each token's decimals.
+ * @returns {{beforeDrain: object|null, afterDrain: object|null,
+ *   beforeMint: object|null}}  Each a coin pair, or null when missing.
+ */
+function _walletReadings(removed, readings, poolState) {
+  const coins = (r) =>
+    r === undefined || r === null
+      ? null
+      : coinsFromUnits(
+          r.amount0,
+          r.amount1,
+          poolState.decimals0,
+          poolState.decimals1,
+        );
+  return {
+    beforeDrain: coins(removed.walletBefore),
+    afterDrain: coins(readings?.afterDrain),
+    beforeMint: coins(readings?.beforeMint),
+  };
+}
+
+/**
  * Build success result for executeRebalance.
  *
  * @param {object} [scope]  Full-qualification namespace for the log entry.
@@ -371,6 +415,8 @@ function _mergeSwapSources(primary, corrective) {
  *   `wallet` (signer address).  Mirrors the cache-scoping convention
  *   (blockchain-contract-wallet-token0-token1-fee) so `_poolDailyCounts`
  *   and log-reconstruction never collide across chains/contracts/wallets.
+ * @param {object} [readings]  The wallet's balances after the drain and
+ *   before the mint (see `_walletReadings`).
  */
 function _buildRebalanceResult(
   txHashes,
@@ -383,6 +429,7 @@ function _buildRebalanceResult(
   crw,
   corrective,
   scope,
+  readings,
 ) {
   const ePct = crw
     ? ((newRange.upperPrice - newRange.lowerPrice) / poolState.price) * 100
@@ -418,6 +465,7 @@ function _buildRebalanceResult(
     liquidity: mintResult.liquidity,
     amount0Minted: mintResult.amount0,
     amount1Minted: mintResult.amount1,
+    walletReadings: _walletReadings(removed, readings, poolState),
     ...(crw
       ? { requestedRangePct: crw, effectiveRangePct: Number(ePct.toFixed(2)) }
       : {}),

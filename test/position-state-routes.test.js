@@ -2,15 +2,13 @@
 
 /**
  * @file test/position-state-routes.test.js
- * @description The two yes-or-no routes in src/position-state-routes.js.
+ * @description The yes-or-no route in src/position-state-routes.js.
  *
  *   `GET /api/is-position-managed` is what the dashboard asks each time it
  *   puts a position on screen, so its Manage/Stop button is drawn from the
- *   server's answer. `GET /api/is-position-being-adjusted` is what
- *   `npm run gentle-stop` asks before it stops the server. Both are driven
- *   here with the same kinds of state the server holds: running loops, a
- *   saved status, a shutdown's stopped entries, and the per-position bot
- *   states the rebalance and compound flags are written to.
+ *   server's answer. It is driven here with the same kinds of state the
+ *   server holds: running loops, a saved status, and a shutdown's stopped
+ *   entries.
  */
 
 const { describe, it } = require("node:test");
@@ -26,9 +24,9 @@ const keyOf = (id) => `pulsechain-${W}-${PM}-${id}`;
 
 /**
  * Routes over a fixed state: `live` are the manager's entries, `saved`
- * the bot-config.json slots, `states` the per-position bot states.
+ * the bot-config.json slots.
  */
-function routesOver({ live = [], saved = {}, states = new Map() } = {}) {
+function routesOver({ live = [], saved = {} } = {}) {
   const diskConfig = { global: {}, positions: saved };
   return createPositionStateRoutes({
     positionMgr: { getAll: () => live },
@@ -37,7 +35,6 @@ function routesOver({ live = [], saved = {}, states = new Map() } = {}) {
       Object.keys(cfg.positions).filter(
         (k) => cfg.positions[k].status === "running",
       ),
-    getAllPositionBotStates: () => states,
     jsonResponse: (res, status, body) => {
       res.status = status;
       res.body = body;
@@ -91,68 +88,6 @@ describe("GET /api/is-position-managed", () => {
     assert.equal(ask(routes, route, "/api/is-position-managed").status, 400);
     assert.equal(
       ask(routes, route, "/api/is-position-managed?key=157149").status,
-      400,
-    );
-  });
-});
-
-describe("GET /api/is-position-being-adjusted", () => {
-  const route = "GET /api/is-position-being-adjusted";
-  const states = new Map([
-    [keyOf(1), { rebalanceInProgress: false, compoundInProgress: false }],
-    [keyOf(2), { rebalanceInProgress: true }],
-    [keyOf(3), { compoundInProgress: true }],
-  ]);
-
-  it("answers for every position when no key is given", () => {
-    assert.deepEqual(
-      ask(routesOver({ states }), route, "/api/is-position-being-adjusted"),
-      { status: 200, body: { adjusting: true } },
-    );
-    const idle = new Map([[keyOf(1), states.get(keyOf(1))]]);
-    assert.equal(
-      ask(
-        routesOver({ states: idle }),
-        route,
-        "/api/is-position-being-adjusted",
-      ).body.adjusting,
-      false,
-    );
-  });
-
-  it("counts a compound as well as a rebalance", () => {
-    const compounding = new Map([[keyOf(3), states.get(keyOf(3))]]);
-    assert.equal(
-      ask(
-        routesOver({ states: compounding }),
-        route,
-        "/api/is-position-being-adjusted",
-      ).body.adjusting,
-      true,
-    );
-  });
-
-  it("answers for the one position a key names", () => {
-    const routes = routesOver({ states });
-    const askFor = (id) =>
-      ask(
-        routes,
-        route,
-        "/api/is-position-being-adjusted?key=" + encodeURIComponent(keyOf(id)),
-      ).body.adjusting;
-    assert.equal(askFor(1), false);
-    assert.equal(askFor(2), true);
-    assert.equal(askFor(3), true);
-    assert.equal(askFor(9), false);
-  });
-
-  it("refuses a key that names no position", () => {
-    assert.equal(
-      ask(
-        routesOver({ states }),
-        route,
-        "/api/is-position-being-adjusted?key=x",
-      ).status,
       400,
     );
   });

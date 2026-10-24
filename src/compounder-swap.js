@@ -135,7 +135,12 @@ async function _fireSwap(signer, ethersLib, opts, desired, is0to1, ps) {
  *   txHash: string|null,
  *   gateReason: 'dust'|'gas-unfavorable'|'no-swap-needed'|null,
  *   swapped: boolean,
- * }>}
+ *   isToken0To1?: boolean,
+ *   exchange?: {sent: bigint, received: bigint}|null,
+ * }>}  A swap that ran says which way (`isToken0To1`) and what its own
+ *   transactions sent of the token sold and received of the token bought
+ *   (`exchange`), so the compound can tell its fees from a deposit that
+ *   reached the wallet meanwhile; `exchange` is null when that is unknown.
  */
 async function swapForCompound(signer, ethersLib, opts, amount0, amount1) {
   if (!_hasRatioInputs(opts)) {
@@ -173,6 +178,8 @@ async function swapForCompound(signer, ethersLib, opts, amount0, amount1) {
     txHash: result.txHash,
     gateReason: null,
     swapped: true,
+    isToken0To1: is0to1,
+    exchange: result.exchange ?? null,
   };
 }
 

@@ -25,6 +25,7 @@
  */
 
 const { KINDS } = require("./value-kinds");
+const { isPlainObject: _isObject } = require("./plain-object");
 
 /** What is wrong with `v` at `where`. */
 function _wrong(where, v, what) {
@@ -36,10 +37,6 @@ const _of = (k) => (v, where) => (k.ok(v) ? null : _wrong(where, v, k.what));
 
 /** A check that also accepts null, which some writers leave unknown. */
 const _orNull = (check) => (v, where) => (v === null ? null : check(v, where));
-
-/** Whether `v` is a plain object, not a list. */
-const _isObject = (v) =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
 
 /**
  * An object whose fields named in `spec` pass their checks: each one in
@@ -104,6 +101,7 @@ function _either(a, b, what) {
 
 const _usd = _of(KINDS.usd);
 const _coins = _of(KINDS.coins);
+const _percent = _of(KINDS.percent);
 const _digits = _of(KINDS.digits);
 const _text = _of(KINDS.text);
 const _isoTime = _of(KINDS.isoTime);
@@ -146,7 +144,11 @@ const RECORD_CHECKS = Object.freeze({
   ),
   /*-
    *  One entry for each compound, live or found on the chain
-   *  (src/bot-cycle-compound.js, src/bot-recorder-lifetime.js).
+   *  (src/bot-cycle-compound.js, src/bot-recorder-lifetime.js). An entry
+   *  written since the Activity Log's figures began also holds the fee
+   *  coins the compound collected and their share of the position at the
+   *  time (src/compound-activity-figures.js); either is null when it
+   *  could not be worked out, and an older entry has neither.
    */
   compoundHistory: _listOf(
     _record(
@@ -156,11 +158,28 @@ const RECORD_CHECKS = Object.freeze({
         tokenId: _tokenId,
         amount0Deposited: _digits,
         amount1Deposited: _digits,
+        /*-
+         *  The fees among the deposited coins, where the compound could
+         *  tell them apart (src/compounded-coins.js).
+         */
+        amount0Compounded: _digits,
+        amount1Compounded: _digits,
+        /*- The fees the deposit could not take, left in the wallet. */
+        amount0FeesLeft: _digits,
+        amount1FeesLeft: _digits,
         usdValue: _usd,
         price0: _orNull(_usd),
         price1: _orNull(_usd),
         gasCostUsd: _usd,
         trigger: _text,
+        feesCollected: _orNull(
+          _record({ amount0: _coins, amount1: _coins }, ["amount0", "amount1"]),
+        ),
+        historical: _orNull(
+          _record({ percentGainForPosition: _orNull(_percent) }, [
+            "percentGainForPosition",
+          ]),
+        ),
       },
       ["amount0Deposited", "amount1Deposited"],
     ),

@@ -11,16 +11,18 @@
  *   epochs and the lifetime HODL amounts kept beside them, block
  *   timestamps, pool creation blocks, token symbols, fetched prices.
  * - **Scan-derived records for each position** in
- *   `app-data/position-records.json` — compound history and totals,
- *   per-NFT gas and compound figures, the HODL baseline and amounts, and
- *   the lifetime deposit (`CHAIN_DERIVED_POSITION_KEYS`).
+ *   `app-data/position-records.json` — compounded totals, per-NFT gas
+ *   and compound figures, the HODL baseline and amounts, and the
+ *   lifetime deposit (`CHAIN_DERIVED_POSITION_KEYS`).
  *
  * The second matters as much as the first. The lifetime scan treats a
  * record already saved as settled and does not re-derive it, so
  * clearing the cache folder alone gives a start that is cold for the
  * caches and warm for everything the records remember — including any
  * error in them. Settings, managed status and records kept live that a scan
- * cannot reproduce are left alone.
+ * cannot reproduce are left alone. So is the compound history: the next
+ * start's scan replaces it whole, keeping the Auto or Manual and the
+ * Activity Log figures recorded in it when each compound happened.
  *
  * Only that folder's files go; the server's PID file stays in `tmp/`,
  * which this command does not touch.

@@ -61,6 +61,10 @@ import {
   resetEventLogTrackers,
 } from "./dashboard-data-events.js";
 import {
+  refreshActivityCurrent,
+  removePositionActivityEntries,
+} from "./dashboard-activity-figures.js";
+import {
   populateRebalanceHistoryOnce,
   populateCompoundHistoryOnce,
   resetPopulateHistoryFlags,
@@ -232,9 +236,25 @@ function _updateSyncBadge(d) {
     rb.disabled = !c;
     rb.title = t;
   }
-  if (c && !_scanWasComplete && isViewingClosedPos()) refetchClosedPosHistory();
+  if (c && !_scanWasComplete) _onScanFinished(d);
   _scanWasComplete = c;
   applySyncBlur();
+}
+
+/**
+ * The last step of a scan of the position on screen, taken on the status
+ * answer that first says it has finished: a closed position's history is
+ * asked for again, and the Activity Log takes the position's Rebalance
+ * and Compound entries off. The history pass, which runs later on the
+ * same answer, then draws them again from the records the scan left, so
+ * each shows the amount, mark and figures the scan gave it.
+ * @param {object} d  The status answer, flattened for the position on
+ *   screen.
+ */
+function _onScanFinished(d) {
+  if (isViewingClosedPos()) refetchClosedPosHistory();
+  removePositionActivityEntries(d.poolKey);
+  resetPopulateHistoryFlags();
 }
 
 /**
@@ -475,6 +495,7 @@ function updateDashboardFromStatus(data) {
   // The route is the chain's, not a wallet's, so it is shown whoever's is loaded.
   _updateSwapSourcesBadge(data);
   logAllPositionEvents(data);
+  refreshActivityCurrent(data._allPositionStates);
   _updateBotStatus(data);
   _updateThrottleKpis(data);
   updateTriggerDisplay(data);

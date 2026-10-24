@@ -6,6 +6,12 @@
  *     `{ compoundUsd, gasUsd }` for the Current panel.
  *   - `savedNftCompoundedUsd`: the same figure from the coins already on
  *     disk, with no scan at all.
+ *   - `savedWalletCoinsPutIn`: the wallet's coins the NFT's compounds
+ *     took in beyond their fees, from the saved compound list, which the
+ *     Current IL/G measures against with the NFT's minted coins.
+ *   - `savedFeesLeftUsd`: the fees the NFT's compounds collected and
+ *     left in the wallet, from the same list, which the Current panel
+ *     counts among the NFT's fees.
  *
  *   Nothing here walks the rebalance chain. An unmanaged position shows
  *   no Lifetime panel, so the chain-wide classification that produced its
@@ -21,40 +27,57 @@ const { getPositionConfig } = require("./bot-config-v2");
 const { detectCompoundsOnChain } = require("./compounder");
 const { actualGasCostUsd } = require("./bot-pnl-updater");
 const { poolCreationFloor } = require("./pool-creation-block");
-const { nftCoinsToUsd } = require("./coin-value");
+const { nftCoinsToUsd, coinsToUsd } = require("./coin-value");
+const {
+  compoundedCoins,
+  recordedCompounds,
+  walletCoinsPutIn,
+  feesLeftInWallet,
+} = require("./compounded-coins");
 const {
   mintBlocksByTokenId,
   scanFloorFor,
   chainScanFloor,
 } = require("./nft-mint-blocks");
 
-/*- Convert a chain-scan result for a single NFT into Current-panel
- *  values: standalone-compound USD (sum of per-event usdValue) and
- *  total NFT gas USD (mint TX + standalone compound TXs, valued at
- *  current native-token price). Both metrics match what the managed
- *  liveEpoch surfaces while the bot is running. */
-async function _currentValuesFromScan(r) {
-  const compoundUsd = (r.compounds || []).reduce(
-    (s, c) => s + (c.usdValue || 0),
-    0,
+/**
+ * Convert a chain-scan result for a single NFT into Current-panel values:
+ * standalone-compound USD (the fees each compound put back, at the prices
+ * given; for a compound the bot recorded, only the fees its record names,
+ * src/compounded-coins.js) and total NFT gas USD (mint TX + standalone
+ * compound TXs, valued at current native-token price). Both metrics match
+ * what the managed liveEpoch surfaces while the bot is running.
+ */
+async function _currentValuesFromScan(r, recorded, prices, ps) {
+  const coins = compoundedCoins(
+    r.compounds,
+    recorded,
+    ps.decimals0,
+    ps.decimals1,
   );
+  const compoundUsd = coinsToUsd(coins, prices.price0, prices.price1);
   const gasUsd = r.totalNftGasWei
     ? await actualGasCostUsd(BigInt(r.totalNftGasWei))
     : 0;
   return { compoundUsd, gasUsd };
 }
-/*- Detect Current-panel values for the current NFT only (one scan):
- *  standalone compound USD and total NFT gas USD.  Bounded to the
- *  current NFT's own mint block when the rebalance chain supplies it —
- *  this is the warm-cache path, so it runs on every lifetime request,
- *  and from the pool's creation block it was scanning years of blocks
- *  for an NFT that is usually days old. */
+/**
+ * Detect Current-panel values for the current NFT only (one scan):
+ * standalone compound USD and total NFT gas USD.  Bounded to the current
+ * NFT's own mint block when the rebalance chain supplies it — this is the
+ * warm-cache path, so it runs on every lifetime request, and from the
+ * pool's creation block it was scanning years of blocks for an NFT that
+ * is usually days old. `savedCompounds` is the position's compound list
+ * on disk, which names the fees of each compound the bot made while it
+ * managed the position.
+ */
 async function _detectCurrentNftValues(
   position,
   body,
   ps,
   prices,
   events,
+  savedCompounds,
   _detect = detectCompoundsOnChain,
 ) {
   try {
@@ -87,7 +110,8 @@ async function _detectCurrentNftValues(
       fromBlock,
     };
     const r = await _detect(String(position.tokenId), opts);
-    return await _currentValuesFromScan(r);
+    const recorded = recordedCompounds(savedCompounds);
+    return await _currentValuesFromScan(r, recorded, prices, ps);
   } catch (e) {
     log.warn(
       "[position details] current-NFT values detection failed:",
@@ -127,7 +151,58 @@ function savedNftCompoundedUsd(diskConfig, posKey, tokenId, price0, price1) {
   );
 }
 
+/**
+ * The wallet's coins the NFT's compounds took in beyond their fees, from
+ * the compound list the bot saved while it managed the position: coins
+ * put into the NFT after its mint, which the Current IL/G measures
+ * against with its minted coins, as the bot does (src/bot-pnl-il.js).
+ * None for a position the bot never managed.
+ *
+ * @param {object} diskConfig  Loaded bot config.
+ * @param {string} posKey      Composite key for the position.
+ * @param {string|number} tokenId  The NFT.
+ * @param {{decimals0: number, decimals1: number}} ps  The pool's decimals.
+ * @returns {{amount0: number, amount1: number}}
+ */
+function savedWalletCoinsPutIn(diskConfig, posKey, tokenId, ps) {
+  const pos = getPositionConfig(diskConfig, posKey);
+  return walletCoinsPutIn(
+    pos?.compoundHistory,
+    tokenId,
+    ps.decimals0,
+    ps.decimals1,
+  );
+}
+
+/**
+ * The fees the NFT's compounds collected and could not put back, waiting
+ * in the wallet, from the compound list the bot saved while it managed
+ * the position, at the caller's prices: the figure the bot shows for the
+ * same NFT (src/bot-pnl-current-nft.js). None for a position the bot
+ * never managed.
+ *
+ * @param {object} diskConfig  Loaded bot config.
+ * @param {string} posKey      Composite key for the position.
+ * @param {string|number} tokenId  The NFT.
+ * @param {{decimals0: number, decimals1: number}} ps  The pool's decimals.
+ * @param {number} price0  Token0's USD price.
+ * @param {number} price1  Token1's USD price.
+ * @returns {number}
+ */
+function savedFeesLeftUsd(diskConfig, posKey, tokenId, ps, price0, price1) {
+  const pos = getPositionConfig(diskConfig, posKey);
+  const left = feesLeftInWallet(
+    pos?.compoundHistory,
+    tokenId,
+    ps.decimals0,
+    ps.decimals1,
+  );
+  return coinsToUsd(left, price0, price1);
+}
+
 module.exports = {
   _detectCurrentNftValues,
   savedNftCompoundedUsd,
+  savedWalletCoinsPutIn,
+  savedFeesLeftUsd,
 };

@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * @file util/migration/update-099-setting-copies.js
+ * @file util/migration/from-0.9.9/update-099-setting-copies.js
  * @description
  * A migration step: bring the operator's copies of the shipped settings
  * files, as release 0.9.9 laid them out, up to this release's layout.
@@ -33,56 +33,27 @@
  *
  * Every file it changes is copied into `tmp/` first, and ui-defaults.json
  * is moved there, so each change can be undone. Each change is one line
- * of its report. Runs on Node built-ins only, like the rest of the
- * migration.
+ * of its report. The copies are read and written by
+ * util/migration/settings-copies.js. Runs on Node built-ins only, like
+ * the rest of the migration.
  */
 
 const fs = require("fs");
 const path = require("path");
-
-const _USER = path.join("app-config", "user-configurable");
-
-/** Whether `v` is a plain object. */
-const _isGroup = (v) =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
-
-/** Read a JSON file, or null when there is none. */
-function _readJson(file) {
-  let text;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") return null;
-    throw err;
-  }
-  return JSON.parse(text);
-}
-
-/** Write a JSON file atomically. */
-function _writeJson(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file + ".tmp", `${JSON.stringify(value, null, 2)}\n`);
-  fs.renameSync(file + ".tmp", file);
-}
-
-/**
- * Take `keys` out of `group`, a line for each one taken. `at` names the
- * group in the file, and `v` gives the verb: done, or would be done.
- */
-function _drop(group, keys, why, v, at = "") {
-  if (!_isGroup(group)) return [];
-  return keys
-    .filter((k) => Object.hasOwn(group, k))
-    .map((k) => {
-      delete group[k];
-      return `${v("removed", "would remove")} ${at}${k}: ${why}`;
-    });
-}
+const {
+  USER_DIR,
+  isGroup,
+  readJson,
+  writeJson,
+  dropKeys,
+  migrationOptions,
+  updateSettingsCopy,
+} = require("../settings-copies");
 
 /** A chain's swap router, an address on its own, made a group. */
 function _routerGroup(name, chain, v) {
   const contracts = chain.contracts;
-  if (!_isGroup(contracts) || typeof contracts.swapRouter !== "string")
+  if (!isGroup(contracts) || typeof contracts.swapRouter !== "string")
     return [];
   contracts.swapRouter = { address: contracts.swapRouter };
   return [
@@ -94,10 +65,10 @@ function _routerGroup(name, chain, v) {
 /** Each chain's changes. */
 function _chainChanges(copy, v) {
   return Object.entries(copy)
-    .filter(([, chain]) => _isGroup(chain))
+    .filter(([, chain]) => isGroup(chain))
     .flatMap(([name, chain]) => [
       ..._routerGroup(name, chain, v),
-      ..._drop(
+      ...dropKeys(
         chain.aggregator,
         ["blockchain"],
         "the aggregator's url carries the chain now",
@@ -113,7 +84,7 @@ function _dustChanges(copy, v) {
     ? copy.priceSourceTokens
     : [];
   return tokens
-    .filter((t) => _isGroup(t) && Object.hasOwn(t, "chain"))
+    .filter((t) => isGroup(t) && Object.hasOwn(t, "chain"))
     .map((t) => {
       if (!Object.hasOwn(t, "moralisChain")) t.moralisChain = t.chain;
       delete t.chain;
@@ -127,7 +98,7 @@ function _dustChanges(copy, v) {
  */
 const _CHANGES = Object.freeze({
   "bot-config-defaults.json": (copy, v) =>
-    _drop(
+    dropKeys(
       copy,
       [
         "gasFeePctMin",
@@ -139,7 +110,7 @@ const _CHANGES = Object.freeze({
       v,
     ),
   "app-runtime.json": (copy, v) =>
-    _drop(
+    dropKeys(
       copy,
       ["aggregator"],
       "each chain names its aggregator in chains.json now",
@@ -148,39 +119,13 @@ const _CHANGES = Object.freeze({
   "chains.json": _chainChanges,
   "dust-threshold.json": _dustChanges,
   "setting-labels.json": (copy, v) =>
-    _drop(
+    dropKeys(
       copy,
       ["checkIntervalSec", "gasStrategy"],
       "the dashboard saves no such setting now",
       v,
     ),
 });
-
-/** Copy `file` into the install's `tmp/`, before it is changed. */
-function _keepCopy(root, file, stamp) {
-  const name = path.basename(file, ".json");
-  const copy = path.join(root, "tmp", `${name}.pre-migration-${stamp}.json`);
-  fs.mkdirSync(path.dirname(copy), { recursive: true });
-  fs.copyFileSync(file, copy);
-  return `kept a copy of the old ${path.basename(file)} at tmp/${path.basename(copy)}`;
-}
-
-/** One copy's changes, made unless this is a dry run. */
-function _updateCopy(root, file, change, o) {
-  const at = path.join(root, _USER, file);
-  let copy;
-  try {
-    copy = _readJson(at);
-  } catch (err) {
-    return [`${file}: not valid JSON (${err.message}); left as it was`];
-  }
-  if (!_isGroup(copy)) return [];
-  const lines = change(copy, o.verb).map((l) => `${file}: ${l}`);
-  if (lines.length === 0 || o.dryRun) return lines;
-  lines.push(_keepCopy(root, at, o.stamp));
-  _writeJson(at, copy);
-  return lines;
-}
 
 /*-
  *  Where each of 0.9.9's ui-defaults.json settings lives now. Any other
@@ -200,7 +145,7 @@ const _UI_SPLIT = Object.freeze({
 /** The values of 0.9.9's ui-defaults.json, by the file each moves to. */
 function _uiValuesByFile(copy) {
   const into = {};
-  if (!_isGroup(copy)) return into;
+  if (!isGroup(copy)) return into;
   for (const [k, file] of Object.entries(_UI_SPLIT))
     if (Object.hasOwn(copy, k)) (into[file] ??= {})[k] = copy[k];
   return into;
@@ -208,15 +153,15 @@ function _uiValuesByFile(copy) {
 
 /** Split 0.9.9's ui-defaults.json copy into this release's files. */
 function _splitUiDefaults(root, o) {
-  const old = path.join(root, _USER, "ui-defaults.json");
+  const old = path.join(root, USER_DIR, "ui-defaults.json");
   const into = {};
   try {
-    const copy = _readJson(old);
+    const copy = readJson(old);
     if (copy === null) return [];
     Object.assign(into, _uiValuesByFile(copy));
     // A value the operator already set in a new file is kept.
     for (const [file, values] of Object.entries(into))
-      into[file] = { ...values, ..._readJson(path.join(root, _USER, file)) };
+      into[file] = { ...values, ...readJson(path.join(root, USER_DIR, file)) };
   } catch (err) {
     return [
       `ui-defaults.json: a file it splits into is not valid JSON ` +
@@ -230,7 +175,7 @@ function _splitUiDefaults(root, o) {
   if (o.dryRun)
     return [...lines, "ui-defaults.json: would move it to tmp/, unread now"];
   for (const [file, values] of Object.entries(into))
-    _writeJson(path.join(root, _USER, file), values);
+    writeJson(path.join(root, USER_DIR, file), values);
   const kept = path.join(
     root,
     "tmp",
@@ -253,13 +198,9 @@ function _splitUiDefaults(root, o) {
  * @returns {string[]}  One line for each change, or none.
  */
 function update099SettingCopies({ root, dryRun }) {
-  const o = {
-    dryRun,
-    stamp: new Date().toISOString().replace(/[:.]/g, "-"),
-    verb: (done, would) => (dryRun ? would : done),
-  };
+  const o = migrationOptions(dryRun);
   const lines = Object.entries(_CHANGES).flatMap(([file, change]) =>
-    _updateCopy(root, file, change, o),
+    updateSettingsCopy(root, file, change, o),
   );
   return [...lines, ..._splitUiDefaults(root, o)];
 }

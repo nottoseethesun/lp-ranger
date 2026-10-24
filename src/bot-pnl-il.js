@@ -9,7 +9,22 @@
  *   holds, at that NFT's own mint.  `snap.lifetimeIL` compares it against
  *   the first deposit of the whole rebalance chain.  They differ in more
  *   than window: each removes a different amount of compounded fees, for
- *   the reason spelled out in `_computeIL`.
+ *   the reason spelled out in `ilFigures`, and they count the wallet's
+ *   coins differently.
+ *
+ *   The current figure is an even comparison, the one the Impermanent
+ *   Loss Guard measures with (src/il-guard.js): the coins the NFT was
+ *   minted with, held, against those coins as the position holds them
+ *   now. It counts no coin in the wallet, so neither a rebalance's
+ *   leftovers nor a deposit waiting there. The wallet's coins a compound
+ *   took into the NFT after its mint, beyond its fees, are added to the
+ *   coins it is measured against, since the position's value now holds
+ *   them (`walletCoinsPutIn`, src/compounded-coins.js).
+ *
+ *   The lifetime figure credits the wallet's coins to the position's
+ *   side, and counts as put in the deposits the owner made since: the
+ *   coins the deposit count found (src/deposit-count.js) are added to the
+ *   coins it measures against.
  *
  *   Split out of `bot-pnl-updater.js` at the 500-line cap.  The whole IL
  *   block moved together because the two figures share their baseline
@@ -21,6 +36,8 @@
 
 const { computeHodlIL } = require("./il-calculator");
 const { nftCoinsToUsd } = require("./coin-value");
+const { pollDeposits, plusDeposits } = require("./counted-deposits");
+const { walletCoinsPutIn } = require("./compounded-coins");
 
 /** Compute HODL IL for a given pair of token amounts.
  *  `residualValueUsd` (current pool-scoped wallet residual) is credited
@@ -28,7 +45,8 @@ const { nftCoinsToUsd } = require("./coin-value");
  *  why, and the original verbatim issue from the user: "Wallet
  *  Residual is not included in overall profit-loss - an oversight
  *  from our earlier work that is not visible with the bigger tokens
- *  since those swaps are always easy to do." */
+ *  since those swaps are always easy to do." The lifetime figure passes
+ *  it; the current figure passes none (`ilFigures`). */
 function _ilFor(realValue, a0, a1, price0, price1, residualValueUsd) {
   return a0 > 0 || a1 > 0
     ? computeHodlIL({
@@ -48,16 +66,57 @@ function _first(vals) {
   return 0;
 }
 
-/** Resolve lifetime HODL amounts from best available source. */
-function _lifetimeAmounts(deps, snap) {
+/**
+ * Resolve lifetime HODL amounts from best available source, with the
+ * deposits polls have counted since the last move's count. A move's
+ * count is already in the scan result (src/deposit-count.js).
+ *
+ * @param {object} deps  Bot deps; `_botState` holds the results.
+ * @param {object} snap  P&L snapshot, for its first closed period.
+ * @param {{decimals0: number, decimals1: number}} [decimals]  The pool's
+ *   token decimals; without them the polls' deposits are not added.
+ * @returns {{a0: number, a1: number}}
+ */
+function _lifetimeAmounts(deps, snap, decimals) {
   const ltHodl = deps._botState?.lifetimeHodlAmounts;
   const bl = deps._botState?.hodlBaseline;
   const first = Array.isArray(snap.closedEpochs) ? snap.closedEpochs[0] : null;
   // Scan result is authoritative; fall back to first epoch or baseline.
-  return {
-    a0: _first([ltHodl?.amount0, first?.hodlAmount0, bl?.hodlAmount0]),
-    a1: _first([ltHodl?.amount1, first?.hodlAmount1, bl?.hodlAmount1]),
+  const held = {
+    amount0: _first([ltHodl?.amount0, first?.hodlAmount0, bl?.hodlAmount0]),
+    amount1: _first([ltHodl?.amount1, first?.hodlAmount1, bl?.hodlAmount1]),
   };
+  const polled = decimals
+    ? pollDeposits(
+        ltHodl,
+        deps._botState?._depositOverlay,
+        decimals.decimals0,
+        decimals.decimals1,
+      )
+    : { amount0: 0, amount1: 0 };
+  const sum = plusDeposits(held, polled);
+  return { a0: sum.amount0, a1: sum.amount1 };
+}
+
+/**
+ * The wallet's coins the current NFT's compounds took in beyond their
+ * fees, from the position's compound list: coins put into the NFT after
+ * its mint, which the Current IL/G measures against with its minted
+ * coins.
+ *
+ * @param {object} deps  Bot deps; `_botState` holds the compound list.
+ * @param {string|number} tokenId  The current NFT.
+ * @param {{decimals0: number, decimals1: number}} [decimals]
+ * @returns {{amount0: number, amount1: number}}
+ */
+function _coinsPutInSinceMint(deps, tokenId, decimals) {
+  if (!decimals) return { amount0: 0, amount1: 0 };
+  return walletCoinsPutIn(
+    deps._botState?.compoundHistory,
+    tokenId,
+    decimals.decimals0,
+    decimals.decimals1,
+  );
 }
 
 /**
@@ -73,16 +132,21 @@ function _lifetimeAmounts(deps, snap) {
  * argument, which is what lets two tiers with different state shapes
  * share it rather than keep a copy each.
  *
- * Credit the current pool-scoped wallet residual to the LP-side.
- * Simple "a vs b" comparison per the user's mandate: a = (LP value +
- * wallet residual), b = HODL value at current prices. The initial-mint
- * residual is NOT subtracted even though the LP may have absorbed some
- * of it — the user chose the simple credit over full LP-accounting
- * symmetry, so the dashboard matches "the coins the LP still has,
- * valued today, vs the coins you put in, valued today." Accepted edge
- * case: a freshly minted LP that has not rebalanced shows +$X of IL/G
- * equal to its initial-mint leftover until the first rebalance folds
- * that leftover in.
+ * The current figure counts no coin in the wallet. The user, 2026-10-23,
+ * on the Impermanent Loss Guard, which measures with it: its purpose "is
+ * to compare the existing position in its state when it was first
+ * minted, directly against a hypothetical rebalanced one. If you add in
+ * residual coins, it's not an even comparison." So a = the position's
+ * value now, b = holding the coins the NFT was minted with, plus the
+ * wallet's coins its compounds took in since, at current prices.
+ *
+ * The lifetime figure credits the current pool-scoped wallet residual to
+ * the LP-side. Simple "a vs b" comparison per the user's mandate: a = (LP
+ * value + wallet residual), b = HODL value at current prices. The
+ * initial-mint residual is NOT subtracted even though the LP may have
+ * absorbed some of it — the user chose the simple credit over full
+ * LP-accounting symmetry, so the dashboard matches "the coins the LP
+ * still has, valued today, vs the coins you put in, valued today."
  *
  * Fees are not impermanent loss. Compounding calls `increaseLiquidity`,
  * so compounded fees are part of the liquidity `lpValue` measures while
@@ -106,11 +170,13 @@ function _lifetimeAmounts(deps, snap) {
  *
  * @param {object} args
  * @param {number} args.lpValue   LP position value now (USD), fees included.
- * @param {number} args.residualValueUsd  Pool-scoped wallet residual.
+ * @param {number} args.residualValueUsd  Pool-scoped wallet residual, for
+ *   the lifetime figure only.
  * @param {number} args.price0    Token0 USD price.
  * @param {number} args.price1    Token1 USD price.
  * @param {{amount0: number, amount1: number}} args.curHodl  Deposited
- *   amounts for the NFT currently held (its own mint).
+ *   amounts for the NFT currently held: its own mint, and the wallet's
+ *   coins its compounds took in since.
  * @param {{amount0: number, amount1: number}} args.ltHodl   Deposited
  *   amounts across the position's whole life.
  * @param {number} args.curCompoundedUsd  What this NFT compounded, now.
@@ -137,7 +203,7 @@ function ilFigures({
   const ltA0 = ltHodl?.amount0 ?? 0,
     ltA1 = ltHodl?.amount1 ?? 0;
   return {
-    totalIL: _ilFor(lpValue - curComp, curA0, curA1, price0, price1, rUsd),
+    totalIL: _ilFor(lpValue - curComp, curA0, curA1, price0, price1, 0),
     lifetimeIL: _ilFor(lpValue - ltComp, ltA0, ltA1, price0, price1, rUsd),
     ilInputs: {
       lpValue,
@@ -164,16 +230,23 @@ function ilFigures({
  * @param {number} price0     Token0 USD price.
  * @param {number} price1     Token1 USD price.
  * @param {string|number} tokenId  Current NFT, for its compounded total.
+ * @param {{decimals0: number, decimals1: number}} [decimals]  The pool's
+ *   token decimals, for the coins the deposit count found and those the
+ *   current NFT's compounds took from the wallet.
  */
-function _computeIL(snap, deps, realValue, price0, price1, tokenId) {
+function _computeIL(snap, deps, realValue, price0, price1, tokenId, decimals) {
   const bl = deps._botState?.hodlBaseline;
-  const { a0, a1 } = _lifetimeAmounts(deps, snap);
+  const { a0, a1 } = _lifetimeAmounts(deps, snap, decimals);
+  const putIn = _coinsPutInSinceMint(deps, tokenId, decimals);
   const figures = ilFigures({
     lpValue: realValue,
     residualValueUsd: snap.residualValueUsd,
     price0,
     price1,
-    curHodl: { amount0: bl?.hodlAmount0, amount1: bl?.hodlAmount1 },
+    curHodl: plusDeposits(
+      { amount0: bl?.hodlAmount0, amount1: bl?.hodlAmount1 },
+      putIn,
+    ),
     ltHodl: { amount0: a0, amount1: a1 },
     /*- Valued a few lines earlier in `overridePnlWithRealValues`, from
      *  the same saved coins. */

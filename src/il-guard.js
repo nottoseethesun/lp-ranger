@@ -19,10 +19,18 @@
  * Slippage is deliberately excluded from the projection.  A rebalance
  * moves the same dollars from one tick range to another, so with swap
  * costs left out the hypothetical new position is worth what the
- * current one is worth: its LP value plus the pool-scoped wallet
- * residual that the rebalance would fold back in. As in IL/G, the fees
- * this NFT has compounded are left out of it: they are earnings, and
- * counting them would let them hide a loss.
+ * current one is worth: its LP value. As in IL/G, the fees this NFT has
+ * compounded are left out of it: they are earnings, and counting them
+ * would let them hide a loss.
+ *
+ * The comparison is even, the user's ruling (2026-10-23): its purpose
+ * "is to compare the existing position in its state when it was first
+ * minted, directly against a hypothetical rebalanced one. If you add in
+ * residual coins, it's not an even comparison." So it counts no coin in
+ * the wallet, neither a rebalance's leftovers nor a deposit waiting
+ * there; and the wallet's coins a compound took into the NFT after its
+ * mint, beyond its fees, count with the minted coins on the holding
+ * side, since the LP value holds them (src/bot-pnl-il.js).
  *
  * **This module never touches the chain.**  Both inputs are already
  * computed by the poll cycle before the gate runs, so evaluating the
@@ -67,6 +75,7 @@ const { SETTING_BOUNDS } = require("./setting-bounds");
 const { withinBound } = require("./range-check");
 const { duration } = require("./help-figures");
 const { hodlValueUsd } = require("./il-calculator");
+const { isThisPositionDrained } = require("./position-drained");
 
 /*- Retry backoff tunables.  Read through `readBotConfigDefaults` — NOT
  *  `loadShippedDefaults` — so a per-install override at
@@ -109,10 +118,10 @@ const _DEFAULT_GUARD_PCT = config.IMPERMANENT_LOSS_GUARD_PCT;
  *
  * @param {object} args
  * @param {number} args.projectedValueUsd  Hypothetical post-rebalance
- *   position value: LP value plus the pool residual it would absorb,
- *   this NFT's compounded fees left out.
+ *   position value: the LP value, this NFT's compounded fees left out.
  * @param {number} args.holdValueUsd       What holding the coins the held
- *   NFT was minted with is worth at today's prices.
+ *   NFT was minted with, and the wallet's coins its compounds took in
+ *   since, is worth at today's prices.
  * @param {number} args.guardPct           Percent, inside its range in
  *   setting-bounds.json.
  * @returns {{evaluated: boolean, rejected: boolean, floorUsd: number|null,
@@ -158,11 +167,12 @@ function evaluateIlGuard({ projectedValueUsd, holdValueUsd, guardPct }) {
  *
  * Both come from the Current panel's IL/G for the NFT held, which
  * `_computeIL` (src/bot-pnl-il.js) has already put on the snapshot:
- * `totalIL` and the minted coins and prices it was measured with, in
- * `ilInputs`. Holding is those coins at those prices; the projection is
- * holding plus IL/G, which is the LP value plus the pool-scoped coins on
- * the wallet a rebalance would sweep in, less what this NFT compounded.
- * Read rather than recomputed, so the Guard and the panel cannot differ.
+ * `totalIL` and the coins and prices it was measured with, in
+ * `ilInputs`: the minted coins and the wallet's coins this NFT's
+ * compounds took in since. Holding is those coins at those prices; the
+ * projection is holding plus IL/G, which is the LP value less what this
+ * NFT compounded. Read rather than recomputed, so the Guard and the
+ * panel cannot differ.
  *
  * @param {object|null|undefined} snap  P&L snapshot for this poll.
  * @returns {{projectedValueUsd: number|null, holdValueUsd: number|null}}
@@ -255,10 +265,10 @@ const _MANUAL_URL = _resolveManualUrl();
 function _ilGuardMessage(v, { link } = {}) {
   const usd = (n) => "$usd " + n.toFixed(2);
   return [
-    `This position is worth ${usd(v.projectedValueUsd)}, counting the ` +
-      `coins in the wallet a rebalance would add and leaving out fees ` +
-      `compounded into it. Holding the coins this NFT was minted with ` +
-      `would be worth ${usd(v.holdValueUsd)} at today's prices, so its ` +
+    `This position is worth ${usd(v.projectedValueUsd)}, leaving out ` +
+      `fees compounded into it. Holding the coins this NFT was minted ` +
+      `with, and any a compound has since added from the wallet, would ` +
+      `be worth ${usd(v.holdValueUsd)} at today's prices, so its ` +
       `impermanent loss is ${v.lossPct.toFixed(1)}%.`,
     "",
     `Your Impermanent Loss Guard is set to ${v.guardPct}%, so rebalancing ` +
@@ -401,15 +411,21 @@ function _inBackoff(st) {
 
 /**
  * Whether the Guard will measure this poll, rather than stand aside for
- * a Rebalance Now or wait out a rejection. The poll asks before taking
- * fresh prices for it (src/bot-cycle.js), so a lookup is spent only when
- * the Guard will use it.
- * @param {object} deps    Bot deps; `_botState` holds the Guard's wait.
+ * a Rebalance Now or a position that holds no liquidity, or wait out a
+ * rejection. The poll asks before taking fresh prices for it
+ * (src/bot-cycle.js), so a lookup is spent only when the Guard will use
+ * it.
+ * @param {object} deps    Bot deps; `_botState` holds the Guard's wait,
+ *   `position` the position's liquidity.
  * @param {boolean} forced  A Rebalance Now.
  * @returns {boolean}
  */
 function ilGuardWillMeasure(deps, forced) {
-  return !forced && !_inBackoff(deps._botState);
+  return (
+    !forced &&
+    !isThisPositionDrained(deps.position) &&
+    !_inBackoff(deps._botState)
+  );
 }
 
 /*- Record an episode: the clock the backoff measures from, and the
@@ -436,11 +452,28 @@ function _stampRejection(st) {
  * `_checkRebalanceGates` — a
  * Rebalance Now click is held by none of them, and it has already shown
  * its own impermanent-loss confirmation.
+ *
+ * Skipped too while the position holds no liquidity, the user's decision
+ * (2026-10-23), as after a rebalance that emptied the old position and
+ * failed to mint the new one: the bot retries the mint as an automatic
+ * rebalance. The drain locked the loss in, and that rebalance passed the
+ * Guard before it drained, so there is nothing left to protect; and the
+ * Guard, which counts no coin in the wallet, would see an empty position
+ * worth nothing and turn the mint down, leaving the coins idle.
  */
 function checkIlGuard(deps, forced, snap, notifyPos) {
   /*- Manual rebalances return here, so a Rebalance Now is held by
    *  neither the guard nor its backoff. */
   if (forced) return null;
+  /*- Before the backoff, so a wait left by an earlier rejection holds no
+   *  mint either. */
+  if (isThisPositionDrained(deps.position)) {
+    log.info(
+      "[bot] ILG stands aside for #%s: the position holds no liquidity, so the rebalance under way finishes",
+      deps.position?.tokenId,
+    );
+    return null;
+  }
   const st = deps._botState;
   if (_inBackoff(st))
     return {

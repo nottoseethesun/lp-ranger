@@ -83,7 +83,7 @@
  *   Actions
  *   POST /api/rebalance             → Force-rebalance a position (positionKey)
  *   POST /api/compound              → Force-compound fees on a position (positionKey)
- *   POST /api/shutdown              → Graceful shutdown (stops all positions + server)
+ *   POST /api/stop-when-all-clear   → Stop the server once nothing is under way (npm run gentle-stop)
  *
  *   Full OpenAPI 3.0 spec: docs/openapi.json
  *   Interactive docs:      npm run api-doc → http://localhost:5556
@@ -422,6 +422,26 @@ const { createPositionStateRoutes } = require("./src/position-state-routes");
 const { primaryRouteLabel } = require("./src/rebalancer-swap");
 const { moralisEnabledIn } = require("./src/server-moralis");
 const { positionTag } = require("./src/position-answer-tag");
+const { isAscanRunningOnThisPosition } = require("./src/scan-state");
+const { scanRunningRefusal } = require("./src/scan-refusal");
+
+/**
+ * The answer refusing a Rebalance Now or Compound Now while a scan is
+ * running on its position (src/scan-state.js). `scanInProgress` lets the
+ * dashboard wait for the scan in a dialog, then offer the move again.
+ * @param {string} move  "rebalance" or "compound".
+ * @param {string} action  The button: "Rebalance Now" or "Compound Now".
+ * @param {string} positionKey  The position the request named.
+ * @returns {object}
+ */
+function _scanRunningAnswer(move, action, positionKey) {
+  return {
+    ok: false,
+    scanInProgress: true,
+    error: scanRunningRefusal(move, `${action} waits until the read finishes`),
+    ...positionTag(positionKey),
+  };
+}
 const { askPassword: _askPassword } = require("./src/ask-password");
 const {
   notifyShutdown: _notifyShutdown,
@@ -537,6 +557,18 @@ const _routes = {
       });
       return;
     }
+    /*- No Rebalance Now while a scan is running on the position: the
+     *  scan's end would clear the rescan request the rebalance makes, and
+     *  leave its deposits and Activity Log figures out until the next
+     *  start (src/scan-state.js). */
+    if (isAscanRunningOnThisPosition(state)) {
+      jsonResponse(
+        res,
+        409,
+        _scanRunningAnswer("rebalance", "Rebalance Now", body.positionKey),
+      );
+      return;
+    }
     const tokenId = body.positionKey.split("-").pop();
     /*- The client no longer sends `customRangeWidthPct` in the body.
      *  Range-width override is persistent per-position config
@@ -548,6 +580,7 @@ const _routes = {
       body.positionKey,
       emojiId(tokenId),
     );
+    // Asked for: no scan starts until it is made (src/scan-state.js).
     state.forceRebalance = true;
     state.rebalanceInProgress = true;
     state.rebalancePaused = false;
@@ -585,12 +618,25 @@ const _routes = {
       });
       return;
     }
+    /*- No Compound Now while a scan is running on the position: the scan
+     *  rebuilds the compound list and its totals from a chain read begun
+     *  before the compound, so Fees Compounded would leave it out until
+     *  the next rebuild (src/scan-state.js). */
+    if (isAscanRunningOnThisPosition(state)) {
+      jsonResponse(
+        res,
+        409,
+        _scanRunningAnswer("compound", "Compound Now", body.positionKey),
+      );
+      return;
+    }
     const tokenId = body.positionKey.split("-").pop();
     log.info(
       "[server] Manual compound for %s %s",
       body.positionKey,
       emojiId(tokenId),
     );
+    // Asked for: no scan starts until it is made (src/scan-state.js).
     state.forceCompound = true;
     /*- Same reasoning as POST /api/rebalance — kick the poll so the
      *  manual Compound Now doesn't wait for the next scheduled poll. */
@@ -605,8 +651,8 @@ const _routes = {
   "POST /api/position/scan-cancel": _routeHandlers._handlePositionScanCancel,
   "POST /api/position/reload": _routeHandlers._handlePositionReload,
   "POST /api/position/rescan-prices": _routeHandlers._handleRescanPrices,
-  "POST /api/shutdown": (req, res) =>
-    _routeHandlers._handleShutdown(req, res, server),
+  "POST /api/stop-when-all-clear": (req, res) =>
+    _routeHandlers._handleStopWhenAllClear(req, res, server),
 
   // ── Multi-position management ─────────────────
   ..._positionRoutes,
@@ -614,7 +660,6 @@ const _routes = {
     positionMgr: _positionMgr,
     diskConfig: _diskConfig,
     managedKeys,
-    getAllPositionBotStates,
     jsonResponse,
   }),
 

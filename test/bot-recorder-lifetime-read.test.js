@@ -152,6 +152,26 @@ describe("prepareChainRead", () => {
     assert.strictEqual(a, c);
   });
 
+  it("records when the read began, once it runs", async () => {
+    /*-
+     *  A rebuild of the compound list keeps a compound the bot recorded
+     *  after this moment, since the read could not have seen it.
+     */
+    const { mod } = load();
+    const prepared = mod.prepareChainRead({
+      position: position(),
+      rebalanceEvents: chain(),
+      start: startAt(1_000).start,
+    });
+    assert.equal(prepared.startedAt, null);
+    const before = Date.now();
+    await prepared.read();
+    assert.ok(
+      prepared.startedAt >= before && prepared.startedAt <= Date.now(),
+      String(prepared.startedAt),
+    );
+  });
+
   it("tries again after a failed read", async () => {
     const { mod, reads } = load();
     let fail = true;

@@ -76,6 +76,8 @@ import {
 } from "./dashboard-rebalance-confirm.js";
 import {
   compoundNow,
+  closeCompoundScanWait,
+  confirmCompoundAfterScan,
   toggleAutoCompound,
   saveCompoundThreshold,
 } from "./dashboard-compound.js";
@@ -501,6 +503,8 @@ export function bindAllEvents() {
   _click("ilWarnCancelBtn", closeRebalanceConfirm);
   _click("ilWarnConfirmBtn", confirmRebalance);
   _click("compoundNowBtn", compoundNow);
+  _click("compoundScanWaitCancelBtn", closeCompoundScanWait);
+  _click("compoundScanWaitConfirmBtn", confirmCompoundAfterScan);
   _change("autoCompoundToggle", toggleAutoCompound);
   _click("saveCompoundThresholdBtn", saveCompoundThreshold);
 

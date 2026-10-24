@@ -79,8 +79,10 @@ async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
  * @param {object} params  `swapViaRouter`'s parameters.
  * @param {Function} balanceDiff  Balance-diff wrapper.
  * @returns {Promise<{txHash: string, gasCostWei: bigint,
- *   swapSources: string, amountOut: bigint}>}  `gasCostWei` is the swap's
- *   own; `swapViaRouter` adds the approval's.
+ *   swapSources: string, amountOut: bigint,
+ *   exchange: {sent: bigint, received: bigint}|null}>}  `gasCostWei` is
+ *   the swap's own; `swapViaRouter` adds the approval's. `exchange` is the
+ *   swap's own, read from its receipt (src/rebalancer-swap-balance.js).
  */
 async function _quoteAndSwap(signer, ethersLib, params, balanceDiff) {
   const {
@@ -137,27 +139,35 @@ async function _quoteAndSwap(signer, ethersLib, params, balanceDiff) {
   const slipBps = Math.round(slippagePct * 100);
   swapParams.amountOutMinimum = (quotedOut * BigInt(10000 - slipBps)) / 10000n;
   const provider = signer.provider;
-  return balanceDiff(ethersLib, tokenOut, recipient, provider, async () => {
-    const { receipt } = await sendTx.sendTransaction({
-      populate: () => router.exactInputSingle.populateTransaction(swapParams),
-      signer,
-      label: "[rebalance] swap (V3 router)",
-    });
-    log.info(
-      "[rebalance] %s: swap (V3 router): confirmed gasUsed=%s",
-      logCtx,
-      String(receipt.gasUsed),
-    );
-    log.info(
-      "[route-trace] V3-router fallback swapSources=%s",
-      V3_ROUTER_LABEL,
-    );
-    return {
-      txHash: receipt.hash,
-      gasCostWei: receiptGasWei(receipt),
-      swapSources: V3_ROUTER_LABEL,
-    };
-  });
+  return balanceDiff(
+    ethersLib,
+    tokenOut,
+    recipient,
+    provider,
+    async () => {
+      const { receipt } = await sendTx.sendTransaction({
+        populate: () => router.exactInputSingle.populateTransaction(swapParams),
+        signer,
+        label: "[rebalance] swap (V3 router)",
+      });
+      log.info(
+        "[rebalance] %s: swap (V3 router): confirmed gasUsed=%s",
+        logCtx,
+        String(receipt.gasUsed),
+      );
+      log.info(
+        "[route-trace] V3-router fallback swapSources=%s",
+        V3_ROUTER_LABEL,
+      );
+      return {
+        txHash: receipt.hash,
+        gasCostWei: receiptGasWei(receipt),
+        swapSources: V3_ROUTER_LABEL,
+        receipt,
+      };
+    },
+    tokenIn,
+  );
 }
 
 module.exports = {

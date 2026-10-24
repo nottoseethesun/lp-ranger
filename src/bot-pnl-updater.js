@@ -16,9 +16,11 @@ const config = require("./config");
 const rangeMath = require("./range-math");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { fetchHistoricalTokenPriceUsd } = require("./historical-token-price");
+const { applyPriceOverrides } = require("./price-overrides");
 const { coinsToUsd, nftCoinsToUsd } = require("./coin-value");
 const { hasCompoundedTotal } = require("./bot-config-keys");
 const { _computeIL } = require("./bot-pnl-il");
+const { pollDeposits } = require("./counted-deposits");
 const { PM_ABI } = require("./pm-abi");
 const {
   maybeNotifyBalanced,
@@ -222,8 +224,12 @@ async function addPoolShare(
  * Each token's wallet balance is split across all managed positions
  * that use it, proportional to the in-position amount.
  *
- * @returns {{ usd: number, amount0: number, amount1: number }}
+ * @returns {{ usd: number, amount0: number, amount1: number,
+ *   wallet?: {raw0: bigint, raw1: bigint} }}
  *   amount0/amount1 are human-readable floats (this position's share).
+ *   `wallet` is the whole wallet's two coins as read, in their smallest
+ *   units, which the deposit count's rise check compares with the last
+ *   poll's (src/deposit-count.js).
  */
 async function walletResiduals(
   deps,
@@ -272,7 +278,14 @@ async function walletResiduals(
     const share1 = total1 > 0 ? (pa.amount1 / total1) * wf1 : wf1;
     const usd0 = share0 * price0;
     const usd1 = share1 * price1;
-    return { usd: usd0 + usd1, usd0, usd1, amount0: share0, amount1: share1 };
+    return {
+      usd: usd0 + usd1,
+      usd0,
+      usd1,
+      amount0: share0,
+      amount1: share1,
+      wallet: { raw0: BigInt(wb0), raw1: BigInt(wb1) },
+    };
   } catch (_) {
     return empty;
   }
@@ -348,16 +361,18 @@ async function overridePnlWithRealValues(
     ? compounded
     : null;
   /*-
-   *  snap.currentCompoundedUsd and snap.currentGasUsd are populated by
-   *  the bot-loop-injected `applyCurrentNftFigures` hook (see deps wiring
-   *  in bot-loop.js, implementation in bot-pnl-current-nft.js).  Kept out
-   *  of bot-pnl-updater so the heavy compounder/ethers require chain only
+   *  snap.currentCompoundedUsd, snap.currentFeesLeftUsd and
+   *  snap.currentGasUsd are populated by the bot-loop-injected
+   *  `applyCurrentNftFigures` hook (see deps wiring in bot-loop.js,
+   *  implementation in bot-pnl-current-nft.js).  Kept out of
+   *  bot-pnl-updater so the heavy compounder/ethers require chain only
    *  loads when the actual bot cycle runs, not when test mocks
    *  (bot-hodl-scan) require this module with a partial ethers stub.
    *  Default to 0 so consumers reading the snapshot before the hook runs
    *  see a stable shape rather than `undefined`.
    */
   snap.currentCompoundedUsd = 0;
+  snap.currentFeesLeftUsd = 0;
   /*-
    *  The Lifetime panel's Gas line is the whole position's gas coins
    *  priced now, the way every other lifetime figure is priced now, and
@@ -405,9 +420,32 @@ async function overridePnlWithRealValues(
   const feeEarnings = compounded + feesUsd;
   snap.cumulativePnl = snap.priceChangePnl + feeEarnings - snap.totalGas;
   snap.netReturn = feeEarnings - snap.totalGas + snap.priceChangePnl;
-  _computeIL(snap, deps, realValue, price0, price1, position?.tokenId);
+  const decimals = {
+    decimals0: poolState.decimals0,
+    decimals1: poolState.decimals1,
+  };
+  _computeIL(
+    snap,
+    deps,
+    realValue,
+    price0,
+    price1,
+    position?.tokenId,
+    decimals,
+  );
   if (deps._botState?.totalLifetimeDepositUsd > 0) {
-    snap.totalLifetimeDeposit = deps._botState.totalLifetimeDepositUsd;
+    /*-
+     *  With what polls have counted since the last move's count, which
+     *  the saved total does not hold yet (src/counted-deposits.js).
+     */
+    const polled = pollDeposits(
+      deps._botState.lifetimeHodlAmounts,
+      deps._botState._depositOverlay,
+      decimals.decimals0,
+      decimals.decimals1,
+    );
+    snap.totalLifetimeDeposit =
+      deps._botState.totalLifetimeDepositUsd + polled.usd;
     snap.depositUsedFallback = deps._botState.depositUsedFallback || false;
   }
 }
@@ -492,33 +530,8 @@ async function pastGasCostUsd(gasCostWei, when) {
 
 /** Fetch token prices, applying per-position overrides when fetcher returns 0. */
 async function _fetchWithOverrides(position, deps) {
-  let { price0, price1 } = await fetchTokenPrices(
-    position.token0,
-    position.token1,
-  );
-  const gc = deps._getConfig || (() => undefined);
-  const ov0 = gc("priceOverride0"),
-    ov1 = gc("priceOverride1");
-  const force = gc("priceOverrideForce");
-  if (ov0 > 0 && (force || price0 <= 0)) {
-    log.info(
-      "[pnl] using priceOverride0=%s (fetched=%s force=%s)",
-      ov0,
-      price0,
-      !!force,
-    );
-    price0 = ov0;
-  }
-  if (ov1 > 0 && (force || price1 <= 0)) {
-    log.info(
-      "[pnl] using priceOverride1=%s (fetched=%s force=%s)",
-      ov1,
-      price1,
-      !!force,
-    );
-    price1 = ov1;
-  }
-  return { price0, price1 };
+  const fetched = await fetchTokenPrices(position.token0, position.token1);
+  return applyPriceOverrides(fetched, deps._getConfig);
 }
 
 /** Fetch P&L snapshot and publish position stats to the dashboard. */
@@ -588,6 +601,14 @@ async function updatePnlAndStats(deps, poolState, ethersLib) {
         price0,
         price1,
       );
+      /*-
+       *  Coins that rose in the wallet since the last poll may be a
+       *  deposit, which the figures below must not read as a gain: the
+       *  deposit count runs first. Injected like the per-NFT figures
+       *  below, so this file loads no chain-scanning module.
+       */
+      if (deps._countDepositsOnRise)
+        await deps._countDepositsOnRise(deps, residuals.wallet);
       const nftCompoundedUsd = nftCoinsToUsd(
         deps._botState?.nftCompoundedAmountsByTokenId,
         position.tokenId,

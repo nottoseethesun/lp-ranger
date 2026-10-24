@@ -53,6 +53,8 @@ function _minutes(n) {
  */
 export function buildParamHelp(f) {
   const _ILG = fillEntryFigures(SHARED_HELP.inIlGuard, f);
+  // The Activity Log's prices, shown in the manual's Activity Log too.
+  const _ACTIVITY_PRICES = fillEntryFigures(SHARED_HELP.activityLogPrices, f);
   // The Guard's low-volume advice, shown in the Max Rebalances dialog too.
   const _LOW_VOLUME = _ILG.sections.find((s) => s.id === "lowVolume");
   // The trigger, worded "<count> rebalances within <n>×".
@@ -886,7 +888,9 @@ export function buildParamHelp(f) {
             "tokens held for another position. What does not pair stays " +
             "in the wallet until the next <strong>rebalance</strong>, " +
             "which always sweeps in every wallet residual for the pool " +
-            "when it mints the new position.",
+            "when it mints the new position. Coins a compound takes in " +
+            "this way are not fees: <strong>Fees Compounded</strong> " +
+            "counts only the fees the deposit put back.",
         },
       ],
     },
@@ -1433,6 +1437,12 @@ export function buildParamHelp(f) {
             "longer unclaimed, so they are not counted on the " +
             "<strong>Fees Earned</strong> line above &mdash; the two lines " +
             "are separate halves of the same total.<br><br>" +
+            "When a compound&rsquo;s ratio-correcting swap runs, its " +
+            "deposit can also take in coins the wallet already held: a " +
+            "deposit you made, or coins a rebalance left. Those are not " +
+            "fees, and are not counted here. Fees a compound collected " +
+            "but could not put back are on the <strong>Fees Left " +
+            "Over</strong> line below.<br><br>" +
             "Scope is this NFT only. Every rebalance mints a new NFT, so " +
             "compounds that happened on earlier NFTs in this pool are not " +
             "here; the <strong>Lifetime</strong> panel&rsquo;s Fees " +
@@ -1457,6 +1467,38 @@ export function buildParamHelp(f) {
       ],
     },
 
+    curFeesLeft: {
+      title: "Fees Left Over (Current Position)",
+      subtitle: "Fees this NFT's compounds collected and could not put back",
+      sections: [
+        {
+          heading: "What it includes",
+          body:
+            "A compound collects this NFT&rsquo;s fees and deposits them " +
+            "back, but the deposit can take only what fits the range at " +
+            "today&rsquo;s price. What it cannot take stays in the wallet. " +
+            "Those coins are fees this NFT earned, so they count here, and " +
+            "<strong>Profit</strong> adds them. They are not on the " +
+            "<strong>Fees Earned</strong> line, since they were collected, " +
+            "nor on <strong>Fees Compounded</strong>, since they did not go " +
+            "back in.<br><br>" +
+            "The next rebalance mints them into the new NFT along with the " +
+            "rest of the wallet&rsquo;s coins of the pool, and the new " +
+            "NFT&rsquo;s panel starts again from its own mint.",
+        },
+        {
+          heading: "When it reads zero",
+          body:
+            "A compound that put every fee back leaves nothing over. A " +
+            "compound recorded before LP Ranger kept this figure counts " +
+            "none, nor does one whose own transactions could not be read " +
+            "back, since without them a deposit that reached the wallet " +
+            "while it ran could be taken for fees. Each figure is the coins " +
+            "valued at this poll&rsquo;s prices.",
+        },
+      ],
+    },
+
     // ── Profit ─────────────────────────────────────────────────────────────
 
     curProfit: {
@@ -1473,15 +1515,20 @@ export function buildParamHelp(f) {
         {
           heading: "Formula",
           body:
-            "Profit = Fees Earned + Fees Compounded &minus; Gas " +
-            "+/&minus; Impermanent Loss/Gain (IL/G).<br><br>" +
-            "Both fee figures are added because both are real earnings: " +
-            "<strong>Fees Earned</strong> are still unclaimed, and " +
+            "Profit = Fees Earned + Fees Compounded + Fees Left Over " +
+            "&minus; Gas +/&minus; Impermanent Loss/Gain (IL/G).<br><br>" +
+            "All three fee figures are added because all are real " +
+            "earnings: <strong>Fees Earned</strong> are still unclaimed, " +
             "<strong>Fees Compounded</strong> have already been swept back " +
-            "into liquidity. IL/G does not carry either of them &mdash; it " +
-            "measures only the difference between holding the tokens in the " +
-            "LP versus simply holding them in your wallet, so counting the " +
-            "fees here counts them exactly once.",
+            "into liquidity, and <strong>Fees Left Over</strong> were " +
+            "collected by a compound that could not put them back. IL/G " +
+            "carries none of them &mdash; it measures only the difference " +
+            "between holding the tokens in the LP versus simply holding them " +
+            "in your wallet, so counting the fees here counts them exactly " +
+            "once.<br><br>" +
+            "Every term is valued at today&rsquo;s prices, " +
+            "<strong>Gas</strong> too: the gas coin this NFT&rsquo;s " +
+            "transactions spent, at its price today.",
         },
         {
           heading: "How it differs from Net P&L",
@@ -1517,7 +1564,10 @@ export function buildParamHelp(f) {
             "two gives total fee earnings across this pool&rsquo;s rebalance " +
             "chain. <strong>Gas</strong> covers all rebalance and compound " +
             "transaction costs. IL/G carries neither fee figure, so adding " +
-            "them here counts them exactly once.",
+            "them here counts them exactly once.<br><br>" +
+            "Every term is valued at today&rsquo;s prices, " +
+            "<strong>Gas</strong> too: the gas coin the transactions spent, " +
+            "at its price today.",
         },
         {
           heading: "How it differs from Net P&L",
@@ -1561,9 +1611,11 @@ export function buildParamHelp(f) {
             "What remains is the fees portion, which was re-deposited " +
             "into the new NFT during the rebalance mint.<br><br>" +
             "<strong>Standalone compounds:</strong> for each manual or " +
-            "auto compound action, the value re-deposited as liquidity is " +
-            "added to the lifetime total. Both kinds are included in the " +
-            "single number shown.",
+            "auto compound action, the fees it re-deposited as liquidity " +
+            "are added to the lifetime total. Coins the wallet already " +
+            "held that its deposit took in, a deposit you made or coins a " +
+            "rebalance left, are not fees and are not added. Both kinds " +
+            "are included in the single number shown.",
         },
         {
           heading: "How it\u2019s used in Net P&L",
@@ -1711,11 +1763,13 @@ export function buildParamHelp(f) {
           heading: "When to edit",
           body:
             "The bot detects this from the chain: the first NFT&rsquo;s " +
-            "minting deposit, coins that reached the wallet from outside " +
-            "between one mint and the next, and any top-up larger than " +
-            "the fees collected, each valued at the historical price of its " +
-            "own block. Rebalance re-mints and compounds are not counted. " +
-            "Edit manually only if auto-detection is inaccurate.",
+            "minting deposit, coins that reached the wallet from outside, " +
+            "and any top-up larger than the fees collected, each valued at " +
+            "the historical price of its own block. Coins that reach the " +
+            "wallet are counted at the bot&rsquo;s next check, and again " +
+            "before each rebalance and compound. Rebalance re-mints and " +
+            "compounds are not counted. Edit manually only if " +
+            "auto-detection is inaccurate.",
         },
         {
           heading: "Buttons on the edit dialog",
@@ -1870,9 +1924,8 @@ export function buildParamHelp(f) {
             "gas, so they stay put with it. Where the gas token&rsquo;s " +
             "price on a row&rsquo;s day cannot be found, all three show a " +
             "dash. The Lifetime panel prices the " +
-            "same coins at today&rsquo;s price, as it prices everything " +
-            "else, so its gas figure and this column part company once the " +
-            "native token has moved.",
+            "same coins at today&rsquo;s price, so its gas figure and this " +
+            "column part company once the native token has moved.",
         },
         {
           heading: "Price P&L",
@@ -1995,7 +2048,8 @@ export function buildParamHelp(f) {
           heading: "It is not a loss",
           body:
             "Coins on the wallet are still yours. They are counted in " +
-            "Lifetime figures and credited against Impermanent Loss/Gain, so " +
+            "Lifetime figures and credited against Lifetime Impermanent " +
+            "Loss/Gain, so " +
             "a large figure here moves the column without changing what you " +
             "own.",
         },
@@ -2026,7 +2080,7 @@ export function buildParamHelp(f) {
             "ratio the Position Manager actually accepts differs from what " +
             "we offered, leaving the surplus token in the wallet.<br>" +
             "LP Ranger tracks these per-pool as your <strong>wallet " +
-            "residual</strong>.",
+            "residual</strong>, valued at today&rsquo;s prices.",
         },
         {
           heading: "Why it appears in Lifetime P&L",
@@ -2136,6 +2190,7 @@ export function buildParamHelp(f) {
             "Detailed Activity Log info is only available for " +
             "<strong>Managed</strong> positions.",
         },
+        ..._ACTIVITY_PRICES.sections,
       ],
     },
 

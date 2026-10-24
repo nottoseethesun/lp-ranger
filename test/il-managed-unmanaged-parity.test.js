@@ -146,6 +146,59 @@ describe("the fast details path removes this NFT's compounds too", () => {
     assert.equal(quick.il, managed().totalIL);
   });
 
+  it("matches the managed figure when a compound took coins from the wallet", () => {
+    /*-
+     *  The bot reads them from its compound list; the details view from
+     *  the list the bot saved (`savedWalletCoinsPutIn`). Both count them
+     *  with the minted coins, and neither counts the wallet itself.
+     */
+    const history = [
+      {
+        tokenId: POS.tokenId,
+        txHash: "0xsweep",
+        trigger: "auto",
+        amount0Deposited: "340",
+        amount1Deposited: "150",
+        amount0Compounded: "300",
+        amount1Compounded: "150",
+      },
+    ];
+    const snap = {
+      residualValueUsd: POS.residual,
+      totalCompoundedUsd: LT_COMP,
+      closedEpochs: [],
+    };
+    _computeIL(
+      snap,
+      {
+        _botState: {
+          hodlBaseline: baseline,
+          lifetimeHodlAmounts: POS.ltHodl,
+          nftCompoundedAmountsByTokenId: { [POS.tokenId]: POS.curCoins },
+          compoundHistory: history,
+        },
+      },
+      POS.lpValue,
+      POS.price0,
+      POS.price1,
+      POS.tokenId,
+      { decimals0: 0, decimals1: 0 },
+    );
+    const quick = _currentPnl(
+      baseline,
+      POS.lpValue,
+      0,
+      0,
+      POS.price0,
+      POS.price1,
+      residuals,
+      CUR_COMP,
+      { amount0: 40, amount1: 0 },
+    );
+    assert.equal(snap.ilInputs.cur.hodlAmount0, POS.curHodl.amount0 + 40);
+    assert.equal(quick.il, snap.totalIL);
+  });
+
   it("reports no IL without a baseline, rather than a zero", () => {
     const quick = _currentPnl(null, POS.lpValue, 0, 0, 1, 1, residuals, 0);
     assert.equal(quick.il, null);

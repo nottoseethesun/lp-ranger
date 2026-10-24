@@ -20,6 +20,7 @@
 
 "use strict";
 const { log } = require("./log");
+const { isThisPositionDrained } = require("./position-drained");
 const ethers = require("ethers");
 const config = require("./config");
 const { createThrottle } = require("./throttle");
@@ -47,8 +48,14 @@ const { checkGasBalance } = require("./gas-monitor");
 const { pollCycle, _humanizeError } = require("./bot-cycle");
 const { _reloadFromConfig } = require("./bot-cycle-triggers");
 const { applyCurrentNftFigures } = require("./bot-pnl-current-nft");
+const { countDepositsOnRise } = require("./deposit-count");
 const { wireBotStateGetConfig } = require("./bot-state-init");
 const { isStopping } = require("./app-phase");
+const {
+  isAscanRunningOnThisPosition,
+  claimScanStart,
+  endScan,
+} = require("./scan-state");
 const {
   _detectPosition,
   _initPnlTracker,
@@ -314,6 +321,8 @@ async function startBotLoop(opts) {
     midwayRetryCount = 0,
     polling = false,
     _stopped = false;
+  // No scan waits for a move yet (src/scan-state.js).
+  botState._scanWaiting = false;
   // How long a rebalance deferred for gas waits: bot-config-defaults.json → gasDeferRetrySec.
   const GAS_DEFER_MS = readBotConfigDefaults().gasDeferRetrySec * 1000;
   /*- Poll scheduler + kickPoll wake-up.  Extracted to
@@ -334,7 +343,7 @@ async function startBotLoop(opts) {
   function _handleError(result) {
     if (!firstFailureAt) firstFailureAt = Date.now();
     const errMsg = _humanizeError(result.error);
-    const isMidway = BigInt(position.liquidity || 0) === 0n;
+    const isMidway = isThisPositionDrained(position);
     if (isMidway) midwayRetryCount++;
     const midwayExhausted =
       isMidway && midwayRetryCount >= config.MIDWAY_RETRY_LIMIT;
@@ -560,6 +569,20 @@ async function startBotLoop(opts) {
     }
   }
 
+  /**
+   * Start the scan that waited for a move, now that the poll which
+   * decided it has ended (src/scan-state.js). One that still may not
+   * start, since a Rebalance Now waits for gas, say, waits on.
+   */
+  function _startWaitingScan() {
+    if (botState._scanWaiting !== true) return;
+    botState
+      ._triggerScan?.()
+      .catch((err) =>
+        log.warn("[bot] Scan that waited for a move failed: %s", err.message),
+      );
+  }
+
   const poll = async () => {
     /*- Defensive halt check: if stop() ran while a previously scheduled
      *  poll was queued (or after a tail-call _scheduleNext lost the race
@@ -604,6 +627,8 @@ async function startBotLoop(opts) {
          */
         _rebalanceLock: botState._rebalanceLock ?? null,
         _applyCurrentNftFigures: applyCurrentNftFigures,
+        // The deposit count a poll makes when the wallet's coins rise.
+        _countDepositsOnRise: countDepositsOnRise,
         /*-
          *  A stop of this loop, or of the app, during this poll keeps it
          *  from starting a move. The app's counts even before anything
@@ -634,6 +659,7 @@ async function startBotLoop(opts) {
     } finally {
       polling = false;
       _scheduler.setPolling(false);
+      _startWaitingScan();
     }
     if (retireRequest) {
       await _handleRetire(retireRequest.drainedForMs);
@@ -674,10 +700,25 @@ async function startBotLoop(opts) {
   await poll(); // First poll — gives the dashboard current position data
   log.info(`[bot] Polling every ${config.CHECK_INTERVAL_SEC}s`);
 
-  // Lazy scan: expose _triggerScan for on-demand invocation
+  /*-
+   *  Lazy scan: expose _triggerScan for on-demand invocation. A scan asked
+   *  for while a poll decides a move, or while a Rebalance Now or Compound
+   *  Now waits to be made, waits (`_scanWaiting`), and the end of the poll
+   *  that clears the move starts it (`_startWaitingScan`); a scan running
+   *  then would read a chain the move is changing (src/scan-state.js).
+   */
   botState._triggerScan = async () => {
-    if (botState._scanRunning) return;
-    botState._scanRunning = true;
+    if (!claimScanStart(botState)) return;
+    /*-
+     *  The pass is kept while it runs, so the server's held stop can wait
+     *  for it to end (src/stop-when-all-clear.js).
+     */
+    botState._scanDone = _scanPass();
+    return botState._scanDone;
+  };
+
+  /** One scan pass, then a poll on what it found. */
+  async function _scanPass() {
     try {
       _scheduler.cancel();
       await _scanAndReconstruct(
@@ -695,9 +736,9 @@ async function startBotLoop(opts) {
       );
       await poll();
     } finally {
-      botState._scanRunning = false;
+      endScan(botState);
     }
-  };
+  }
 
   if (opts.eagerScan !== false) {
     await botState._triggerScan();
@@ -736,14 +777,15 @@ async function startBotLoop(opts) {
    *       Belt-and-suspenders against any future failure path that
    *       lowers the readiness flag without setting `_needsFullRescan`.
    *
-   *  The `_scanRunning` guard inside `_triggerScan` prevents overlap
-   *  with any scan already in flight.  See bot-recorder-lifetime.js for
-   *  the `_lifetimeScanError` flag and bot-recorder.js for the
-   *  `_needsFullRescan` setter this complements.
+   *  The guard inside `_triggerScan` (`claimScanStart`) prevents overlap
+   *  with any scan already in flight, and this timer stands aside while
+   *  a scan runs (`isAscanRunningOnThisPosition`, src/scan-state.js).
+   *  See bot-recorder-lifetime.js for the `_lifetimeScanError` flag and
+   *  bot-recorder.js for the `_needsFullRescan` setter this complements.
    */
   const lifetimeRescanTimer = setInterval(() => {
     if (_stopped) return;
-    if (botState._scanRunning) return;
+    if (isAscanRunningOnThisPosition(botState)) return;
     const { needed, reason } = _needsLifetimeRescan(botState);
     if (!needed) return;
     const tokenIdStr = String(position.tokenId || "");

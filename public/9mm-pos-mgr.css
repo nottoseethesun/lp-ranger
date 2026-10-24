@@ -2281,8 +2281,11 @@ span[title]:not([title=""]):hover {
 }
 
 /* Working state: the spinner is drawn by CSS rather than injected as
-   markup, so no HTML is built in JS (feedback-no-new-html-in-js). */
-.\39 mm-pos-mgr-btn-primary.\39 mm-pos-mgr-is-working::before {
+   markup, so no HTML is built in JS (feedback-no-new-html-in-js). The
+   Rebalance Now and Compound Now dialogs' wait for a scan to finish
+   draws the same one before its message. */
+.\39 mm-pos-mgr-btn-primary.\39 mm-pos-mgr-is-working::before,
+.\39 mm-pos-mgr-scan-wait::before {
   content: "";
   display: inline-block;
   width: 13px;
@@ -2307,7 +2310,8 @@ span[title]:not([title=""]):hover {
 /* Respect a reduced-motion preference: keep the state visible, drop
    the rotation. */
 @media (prefers-reduced-motion: reduce) {
-  .\39 mm-pos-mgr-btn-primary.\39 mm-pos-mgr-is-working::before {
+  .\39 mm-pos-mgr-btn-primary.\39 mm-pos-mgr-is-working::before,
+  .\39 mm-pos-mgr-scan-wait::before {
     animation: none;
   }
 }
@@ -3990,7 +3994,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1792452152805");
+  background-image: url("background-cloud_top.png?v=1792810248404");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -4003,7 +4007,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1792452152805");
+  background-image: url("background-cloud_middle.png?v=1792810248404");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -4013,7 +4017,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1792452152805");
+  background-image: url("background-cloud_bottom.png?v=1792810248404");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
@@ -4249,4 +4253,24 @@ body[data-position-data-stale]
     .realized-gains-label
   ):is([inert], [inert] *) {
   opacity: 0.55;
+}
+
+/*  An Activity Log entry's right-hand column: the date, and under it the
+    figures a Rebalance or Compound entry shows, right-aligned so the two
+    line up at the entry's edge. It never takes the hide class. */
+.\39 mm-pos-mgr-act-side {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+/*  The figures under the date: a label line and a line of figures, in the
+    date's size and colour. Sets no display, so the hidden attribute the
+    template gives it hides it until it is filled. */
+.\39 mm-pos-mgr-act-fin {
+  font-size: 18px;
+  color: var(--muted);
 }

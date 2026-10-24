@@ -335,7 +335,7 @@ describe("POST /api/config", () => {
     const guardDeps = {
       _botState: st,
       _getConfig: (k) => (k === "impermanentLossGuardPct" ? saved : undefined),
-      position: { tokenId: 42 },
+      position: { tokenId: 42, liquidity: "1000" },
       updateBotState: () => {},
     };
     // 30% below holding the coins the NFT was minted with.

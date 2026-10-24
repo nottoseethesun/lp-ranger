@@ -518,6 +518,10 @@ async function executeRebalance(signer, ethersLib, opts) {
         contract: positionManagerAddress,
         wallet: signerAddress,
       },
+      {
+        afterDrain: { amount0: walBal0, amount1: walBal1 },
+        beforeMint: { amount0: mintBal0, amount1: mintBal1 },
+      },
     );
   } catch (err) {
     return {

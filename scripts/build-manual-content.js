@@ -65,23 +65,31 @@ const JSON_SRC = path.join(
 const HTML = path.join(__dirname, "..", "public", "help-and-user-manual.html");
 
 /**
- * Render one shared entry as the body of a manual section.
+ * Render one shared entry as manual HTML.
  *
- * `heading` becomes an `<h3>` and `body` is emitted as-is — it already
- * carries the same inline HTML the dialog renders, which is what keeps
- * the two presentations identical rather than merely similar.
+ * An entry with a `manualHeading` is a whole section: an `<h2>` whose id
+ * is the entry's `manualAnchor`, then its sections. An entry without one
+ * is part of a section the manual writes by hand, and renders as its
+ * sections alone, wherever the manual puts its markers.
  *
- * @param {{manualHeading: string, manualAnchor: string,
+ * Each section's `heading` becomes an `<h3>` and its `body` is emitted
+ * as-is — it already carries the same inline HTML the dialog renders,
+ * which is what keeps the two presentations identical rather than merely
+ * similar.
+ *
+ * @param {{manualHeading?: string, manualAnchor?: string,
  *          sections: {heading: string, body: string}[]}} entry
  * @returns {string}
  */
 function renderEntry(entry) {
-  const lines = [
-    `  <h2 id="${entry.manualAnchor}">${entry.manualHeading}</h2>`,
+  const lines = [];
+  if (typeof entry.manualHeading === "string")
+    lines.push(`  <h2 id="${entry.manualAnchor}">${entry.manualHeading}</h2>`);
+  lines.push(
     "  <!-- Generated from public/shared-help-content.json by",
     "       scripts/build-manual-content.js. Do not edit between the",
     "       markers; edit the JSON. -->",
-  ];
+  );
   for (const s of entry.sections) {
     lines.push(`  <h3>${s.heading}</h3>`);
     lines.push(`  <p>${s.body}</p>`);

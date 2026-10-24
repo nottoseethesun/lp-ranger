@@ -22,7 +22,10 @@ describe("compounder", () => {
 
     it("module exports all expected functions", () => {
       const mod = require("../src/compounder");
-      assert.equal(typeof mod.collectFees, "function");
+      assert.equal(
+        typeof require("../src/compound-collect").collectFees,
+        "function",
+      );
       assert.equal(typeof mod.addLiquidity, "function");
       assert.equal(typeof mod.executeCompound, "function");
       assert.equal(typeof mod.detectCompoundsOnChain, "function");
@@ -158,7 +161,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("collects fees and returns balance diff", async () => {
-      const { collectFees } = require("../src/compounder");
+      const { collectFees } = require("../src/compound-collect");
       let callCount = 0;
       const _collectTx = {
         hash: "0xcollect",

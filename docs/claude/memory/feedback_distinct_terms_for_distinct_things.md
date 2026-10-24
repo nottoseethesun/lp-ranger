@@ -1,11 +1,11 @@
 ---
 name: distinct-terms-for-distinct-things
-description: Name every entity once and never reuse a word for two of them; no pronouns or bare nouns where more than one candidate exists
+description: Name every entity once and never reuse a word for two of them; no pronouns or bare nouns where more than one candidate exists; name a new thing by when it arrives and what it carries, never a coined metaphor
 metadata: 
   node_type: memory
   type: feedback
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-10-18T17:05:36.610Z
+  modified: 2026-10-22T22:33:05.077Z
 ---
 
 When explaining anything with more than two similar entities, define each
@@ -37,6 +37,14 @@ tool and the startup check, named three messages earlier. The user:
 message warned against the opposite waste, asking what the spec already
 answers: "you should not have to ask me that because I specified json
 and invalid 'json' is not json."
+
+A thing with no name yet is named by when it arrives and what it
+carries, never by a coined metaphor. On 2026-10-22 I called the status
+answer that brings a position's pair, fee tier and pool key "the
+server's loaded copy of the position". The user: "very poor wording",
+and named it "the second data load from the server" (the first being
+the position's saved records, as the server starts it). Once the user
+names a thing, use their name.
 
 **How to apply:** lead with a short terms list when several similar
 entities are in play. Name the things a "both", "either" or "it" stands

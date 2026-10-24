@@ -194,6 +194,8 @@ describe("swapForCompound", () => {
       txHash: "0xswap",
       gateReason: null,
       swapped: true,
+      isToken0To1: false,
+      exchange: null,
     });
     const [p] = stub.calls.swap;
     assert.equal(p.tokenIn, T1);
@@ -223,6 +225,23 @@ describe("swapForCompound", () => {
     assert.equal(p.isToken0To1, true);
     assert.equal(p.slippagePct, 1.2);
     assert.deepEqual(stub.calls.price, [T0]);
+  });
+
+  it("hands back the swap's own exchange, for the compound's fees", async () => {
+    stub.swap = async () => ({
+      gasCostWei: 1n,
+      txHash: "0xswap",
+      exchange: { sent: 2n * ONE, received: 7n },
+    });
+    const out = await swapForCompound(
+      SIGNER,
+      LIB,
+      opts(-1200, -600),
+      2n * ONE,
+      0n,
+    );
+    assert.equal(out.isToken0To1, true);
+    assert.deepEqual(out.exchange, { sent: 2n * ONE, received: 7n });
   });
 
   it("falls back to the default slippage when the bought coin has none", async () => {

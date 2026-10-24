@@ -20,6 +20,10 @@ const { scanRebalanceHistory, buildCacheKey } = require("./event-scanner");
 const { createCacheStore, eventCachePath } = require("./cache-store");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 const { poolKey } = require("./pool-key");
+const {
+  activityFieldsOf,
+  withFinishedFigures,
+} = require("./rebalance-activity-figures");
 
 const _C = "\x1b[30;48;5;123m";
 const _R = "\x1b[0m";
@@ -48,6 +52,30 @@ const _activeScans = new Map();
 /** Build the canonical pool key used by both the lock and active-scan maps. */
 function _poolKey(token0, token1, fee) {
   return (token0 + "-" + token1 + "-" + fee).toLowerCase();
+}
+
+/** The pool's event cache file for one wallet, on the active chain. */
+function _eventCacheFor(position, wallet) {
+  return createCacheStore({
+    filePath: eventCachePath(
+      position,
+      config.CHAIN_NAME,
+      config.POSITION_MANAGER,
+      wallet,
+    ),
+    defaultTtlMs: _EVENT_CACHE_TTL_MS,
+  });
+}
+
+/** The key of the one entry that file holds, as the scanner writes it. */
+function _eventCacheKey(position, wallet) {
+  return buildCacheKey(
+    wallet,
+    config.POSITION_MANAGER,
+    position.token0,
+    position.token1,
+    position.fee,
+  );
 }
 
 /**
@@ -180,15 +208,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
   _activeScans.set(poolK, controller);
   let events;
   try {
-    const cache = createCacheStore({
-      filePath: eventCachePath(
-        position,
-        config.CHAIN_NAME,
-        config.POSITION_MANAGER,
-        walletAddress,
-      ),
-      defaultTtlMs: _EVENT_CACHE_TTL_MS,
-    });
+    const cache = _eventCacheFor(position, walletAddress);
     events = await scanRebalanceHistory(provider, ethersLib, {
       positionManagerAddress: config.POSITION_MANAGER,
       walletAddress,
@@ -243,15 +263,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
  * @param {string} wallet    Wallet address.
  */
 async function clearPoolCache(position, wallet) {
-  const cache = createCacheStore({
-    filePath: eventCachePath(
-      position,
-      config.CHAIN_NAME,
-      config.POSITION_MANAGER,
-      wallet,
-    ),
-    defaultTtlMs: _EVENT_CACHE_TTL_MS,
-  });
+  const cache = _eventCacheFor(position, wallet);
   await cache.clear();
   _log(
     "Event cache cleared for %s\u2026/%s\u2026 fee=%s",
@@ -276,6 +288,9 @@ function _buildEventEntry(result) {
     txHash: txHash || "",
     blockNumber: result.blockNumber,
     swapSources: result.swapSources || "(no swap)",
+    // What started it, which its Activity Log entry names.
+    trigger: result.trigger,
+    ...activityFieldsOf(result),
   };
 }
 
@@ -312,22 +327,8 @@ async function appendToPoolCache(position, wallet, result) {
     position.fee,
   ).acquire();
   try {
-    const cache = createCacheStore({
-      filePath: eventCachePath(
-        position,
-        config.CHAIN_NAME,
-        config.POSITION_MANAGER,
-        wallet,
-      ),
-      defaultTtlMs: _EVENT_CACHE_TTL_MS,
-    });
-    const cacheKey = buildCacheKey(
-      wallet,
-      config.POSITION_MANAGER,
-      position.token0,
-      position.token1,
-      position.fee,
-    );
+    const cache = _eventCacheFor(position, wallet);
+    const cacheKey = _eventCacheKey(position, wallet);
     const existing = await cache.get(cacheKey);
     const events = existing?.events || [];
     /*-
@@ -390,12 +391,53 @@ async function appendToPoolCache(position, wallet, result) {
   }
 }
 
+/**
+ * Write finished Activity Log figures into the pool's event cache.
+ *
+ * A rebalance's figures are finished after the scan that follows it
+ * (src/bot-rebalance-figures.js), when the cache already holds its event.
+ * This puts each finished event's figures into the cached record with the
+ * same transaction, through `withFinishedFigures`, so the figures survive
+ * a restart and a later scan's merge keeps them; the cache holds the
+ * Activity Log entry's own record of each rebalance. Runs under the pool's
+ * scan lock for the same reason `appendToPoolCache` does, and forgets the
+ * pool's recent scan so the next caller reads the finished records.
+ *
+ * @param {object} position  Must have token0, token1, fee.
+ * @param {string} wallet    Wallet address.
+ * @param {Map<string, object>} finished  Finished event records, by
+ *   transaction hash.
+ */
+async function updateCachedEvents(position, wallet, finished) {
+  if (!(finished instanceof Map) || finished.size === 0) return;
+  const release = await getPoolScanLock(
+    position.token0,
+    position.token1,
+    position.fee,
+  ).acquire();
+  try {
+    const cache = _eventCacheFor(position, wallet);
+    const cacheKey = _eventCacheKey(position, wallet);
+    const existing = await cache.get(cacheKey);
+    if (!Array.isArray(existing?.events)) return;
+    const events = existing.events.map((e) => {
+      const done = finished.get(e.txHash);
+      return done === undefined ? e : withFinishedFigures(e, done);
+    });
+    await cache.set(cacheKey, { ...existing, events });
+    _recentScans.delete(_recentKey(position, wallet));
+  } finally {
+    release();
+  }
+}
+
 module.exports = {
   scanPoolHistory,
   getPoolScanLock,
   cancelPoolScan,
   clearPoolCache,
   appendToPoolCache,
+  updateCachedEvents,
   /*- Test-only window onto the module-private `_recentScans` Map so the
    *  regression test for appendToPoolCache's cache-invalidation
    *  behaviour can seed and inspect entries without going through a

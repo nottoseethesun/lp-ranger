@@ -15,6 +15,8 @@ const {
   gatesFromGuard,
   snapForGuard,
 } = require("./bot-cycle-gates");
+const { countDeposits } = require("./deposit-count");
+const { duringMoveInitiation } = require("./scan-state");
 const { buildRebalanceOpts } = require("./bot-cycle-opts");
 const { endIlGuardBlock } = require("./il-guard");
 const {
@@ -24,8 +26,10 @@ const {
 // key-store is retained for api-key-store.js; no longer used here directly.
 const { emojiId, logCtx } = require("./logger");
 const { log } = require("./log");
+const { isThisPositionDrained } = require("./position-drained");
 const { getPoolState } = require("./rebalancer-pools");
 const { executeRebalance, enrichResultUsd } = require("./rebalancer");
+const { figuresAtCreation } = require("./rebalance-activity-figures");
 const { getTokenSymbol } = require("./token-symbol-cache");
 const { notify } = require("./telegram-notifications/telegram");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
@@ -61,7 +65,7 @@ const {
   updateCleanupState: _updateCleanupState,
   computeWalletResidualUsd: _computeWalletResidualUsd,
 } = require("./bot-cycle-residual");
-const { _activateSwapBackoff } = require("./bot-cycle-backoff");
+const { holdAfterPriceMove } = require("./price-moved-stop");
 const {
   withFreshPricesAllowed,
   invalidatePriceCacheFor,
@@ -144,9 +148,6 @@ async function _prepareRebalance(deps) {
 
 /** Handle all post-rebalance bookkeeping on success. */
 async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
-  state.swapBackoffMs = 0;
-  state.swapBackoffUntil = 0;
-  state.swapBackoffAttempts = 0;
   // The new NFT starts with no Guard wait and no Guard alert.
   endIlGuardBlock(deps);
   _updateCleanupState(state, result.trigger, deps.updateBotState);
@@ -176,6 +177,9 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
   } catch (_) {
     /* prices unavailable */
   }
+  // The Activity Log entry's Historical figure, before the log is written.
+  const activityFigures = figuresAtCreation(result, deps._getConfig);
+  Object.assign(result, activityFigures);
   _recordResidual(deps, result);
   /*- Enrich the residualWarning payload with the total tracked wallet
    *  residual USD (the same number the Lifetime panel shows) so the
@@ -210,12 +214,24 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
   if (deps._botState?._triggerScan) deps._botState._triggerScan();
 }
 
+/**
+ * Make a rebalance and record it.
+ *
+ * Its first step counts the deposits the owner made since the last count
+ * (src/deposit-count.js), so the rebalance's records hold them as money
+ * put in.
+ *
+ * @param {object} deps  Poll-cycle deps.
+ * @param {object} ethersLib  ethers.
+ * @returns {Promise<object>}  The poll's result.
+ */
 async function _executeAndRecord(deps, ethersLib) {
   const { signer, position, throttle } = deps;
   const prepared = await _prepareRebalance(deps);
   if (prepared === null) return { rebalanced: false, stopped: true };
   const { release, state, trigger } = prepared;
   try {
+    await countDeposits(deps, "move");
     /*- Re-open detection: if the position is at zero liquidity when the
      *  rebalance starts, this attempt is a re-open of a previously
      *  retired position (user clicked Manage on a closed NFT, OR
@@ -225,7 +241,7 @@ async function _executeAndRecord(deps, ethersLib) {
      *  drain-timer limbo (the user's directive: "put it back where it
      *  was when the Manage button was clicked in the first place").
      *  Flag is consumed in bot-loop.js's `_handleError`. */
-    state._rebalanceStartedDrained = BigInt(position.liquidity || 0) === 0n;
+    state._rebalanceStartedDrained = isThisPositionDrained(position);
     const result = await executeRebalance(
       signer,
       ethersLib,
@@ -235,10 +251,10 @@ async function _executeAndRecord(deps, ethersLib) {
     // Activity Log) can render the correct cause.
     result.trigger = trigger;
     // Price moved too fast — tokens are removed+swapped but not minted.
-    // Activate exponential backoff so the next poll cycle waits before
-    // retrying.  Tokens sit safely in the wallet until the next attempt.
+    // The position is held for the owner, with the advice on the
+    // dashboard and by Telegram; the bot does not try again on its own.
     if (result.priceVolatile) {
-      _activateSwapBackoff(state, deps.updateBotState);
+      holdAfterPriceMove(state, deps.updateBotState, _notifyPos(position));
       /*-
        *  The liquidity removal and the swap before the stop confirmed
        *  and were paid for; the result carries their gas.
@@ -298,6 +314,9 @@ async function _executeAndRecord(deps, ethersLib) {
       txHashes: result.txHashes,
       blockNumber: result.blockNumber,
       swapSources: result.swapSources,
+      walletReadings: result.walletReadings,
+      historical: result.historical,
+      figuresDue: result.figuresDue,
       trigger,
     };
   } finally {
@@ -472,6 +491,11 @@ function _liquidityChanged(prev, cur) {
  * Run the range-check → gate → gas-check → execute path after the
  * poll-cycle's pnl + cleanup-detection steps have finished.  Extracted
  * to keep `pollCycle` under the complexity cap.
+ *
+ * Each move it decides, a compound in range or a rebalance out of it,
+ * is decided inside `duringMoveInitiation`, so no scan of the position
+ * starts until the decision and any move it allows are over
+ * (src/scan-state.js).
  */
 async function _runRangeAndExec(
   deps,
@@ -483,15 +507,22 @@ async function _runRangeAndExec(
 ) {
   const rangeCheck = _checkRangeAndThreshold(deps, poolState, emit);
   if (rangeCheck) {
-    const autoCompounded = await _checkCompound(
-      deps,
-      poolState,
-      ethersLib,
-      _refreshPosition,
+    const autoCompounded = await duringMoveInitiation(deps._botState, () =>
+      _checkCompound(deps, poolState, ethersLib, _refreshPosition),
     );
     if (compounded || autoCompounded) rangeCheck.compounded = true;
     return rangeCheck;
   }
+  return duringMoveInitiation(deps._botState, () =>
+    _decideRebalance(deps, ethersLib, poolState, compounded, snap),
+  );
+}
+
+/**
+ * The rebalance path: the gates, the Guard's figures, the gas check, then
+ * the rebalance.
+ */
+async function _decideRebalance(deps, ethersLib, poolState, compounded, snap) {
   /*- Residual-cleanup rebalances use `forceRebalance` to pass the range
    *  check (so they can run when in range) but must still respect all
    *  throttle / pause / daily-cap / dry-run gates per user spec.  Treat
@@ -628,13 +659,16 @@ async function pollCycle(deps) {
   const snap = await _updatePnlAndStats(deps, poolState, ethersLib);
   const zeroLiqResult = _checkZeroLiquidity(deps);
   if (zeroLiqResult) return zeroLiqResult;
-  const compounded = await _handleForceCompound(
-    deps,
-    poolState,
-    ethersLib,
-    position,
-    provider,
-    _refreshPosition,
+  // A Compound Now is decided like every move (src/scan-state.js).
+  const compounded = await duringMoveInitiation(deps._botState, () =>
+    _handleForceCompound(
+      deps,
+      poolState,
+      ethersLib,
+      position,
+      provider,
+      _refreshPosition,
+    ),
   );
   /*- Residual-cleanup check runs AFTER the pnl update (so `snap` has
    *  fresh residual/currentValue numbers) but BEFORE the range check, so
@@ -652,7 +686,6 @@ module.exports = {
   _checkZeroLiquidity,
   _humanizeError,
   _checkRebalanceGates,
-  _activateSwapBackoff,
   _liquidityChanged,
   _runRangeAndExec, // exported for tests
   pollCycle,

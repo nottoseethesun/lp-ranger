@@ -98,3 +98,45 @@ describe("the IL/G popover's figures below one cent", () => {
     assert.equal(figure("p1"), "$1234.57");
   });
 });
+
+describe("the IL/G popover's sections and the Wallet Residual", () => {
+  /** Open one section on inputs that carry a $12 Wallet Residual. */
+  function open(panel) {
+    ilDebug.updateILDebugData({
+      pnlSnapshot: {
+        totalIL: 0,
+        lifetimeIL: 0,
+        ilInputs: {
+          lpValue: 100,
+          price0: 1,
+          price1: 1,
+          residualValueUsd: 12,
+          cur: { hodlAmount0: 50, hodlAmount1: 50, compoundedRemoved: 4 },
+          lt: { hodlAmount0: 50, hodlAmount1: 50, compoundedRemoved: 4 },
+        },
+      },
+    });
+    ilDebug.showILDebug(panel);
+    return document.getElementById("9mm-il-debug-popover");
+  }
+  const tpl = (root, key) => root.querySelector(`[data-tpl="${key}"]`);
+
+  it("leaves the residual out of the Current Position IL/G", () => {
+    /*-
+     *  The current figure counts no coin in the wallet, so that it
+     *  compares evenly (src/bot-pnl-il.js).
+     */
+    const root = open("cur");
+    assert.equal(tpl(root, "residualRow").hidden, true);
+    assert.equal(tpl(root, "lpPlusResidual").textContent, "$96.00");
+    assert.equal(tpl(root, "lblLpSide").textContent, "LP Value − Compounded");
+    assert.match(tpl(root, "formula").textContent, /^IL = LP Value − \(/);
+  });
+
+  it("credits it in the Lifetime IL/G, as before", () => {
+    const root = open("lt");
+    assert.equal(tpl(root, "residualRow").hidden, false);
+    assert.equal(tpl(root, "lpPlusResidual").textContent, "$108.00");
+    assert.match(tpl(root, "formula").textContent, /Wallet Residual/);
+  });
+});

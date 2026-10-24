@@ -99,18 +99,28 @@ function _pausedCopy(message) {
     thin: "Source tokens externally, recreate the LP position, then select the new NFT.",
     slip: "Adjust the slippage setting, then use the manual Rebalance button.",
     gas: "Send native tokens to the wallet address, then manual Rebalance.",
-    volatile:
-      "Tokens are safe in the wallet. Use the manual Rebalance button when the market calms down.",
+    /*- The bot's own words carry the advice (src/price-moved-stop.js),
+     *  the same as its Telegram alert. */
+    volatile: "",
   };
   /*- "Aborted" rather than "Paused": the bot does NOT auto-retry from
    *  the `rebalancePaused` state — every case here requires user
-   *  action (bump Slippage / send gas / wait for volatility to clear).
+   *  action (bump Slippage / send gas / weigh the impermanent loss).
    *  Per the project's prose discipline ([[feedback_paused_vs_aborted]]).
    *  Future cleanup [[project_split_rebalance_paused_flag]] will rename
-   *  the underlying flag to match. */
+   *  the underlying flag to match.  A rebalance the price outran is a
+   *  warning, not a danger, as a Guard rejection is: nothing failed, the
+   *  coins are safe, and the choice is the owner's. */
+  if (t === "volatile")
+    return {
+      title: "Rebalance stopped — the price moved",
+      footer: footers.volatile,
+      warning: true,
+    };
   return {
     title: t ? "Rebalance Aborted" : "Rebalance Failed",
     footer: footers[t] || "The bot will keep retrying. Check logs.",
+    warning: false,
   };
 }
 
@@ -118,18 +128,23 @@ function _showErrModal(key, st) {
   const id = _modalIdForKey("rebalanceErrorModal", key);
   if (document.getElementById(id)) return;
   const message = st.rebalanceError || "";
-  const { title, footer } = _pausedCopy(message);
+  const { title, footer, warning } = _pausedCopy(message);
+  const msgId = id + "-msg";
   _alertModal(
     id,
-    "",
+    /*- The warning shell the Guard's dialog uses: an Amber Yellow accent
+     *  border. */
+    warning ? "9mm-pos-mgr-warning-modal" : "",
     title,
     _posContextHtmlForState(key, st) +
-      "<p>" +
-      message +
-      '</p><p class="9mm-pos-mgr-text-muted">' +
-      footer +
-      "</p>",
+      '<p id="' +
+      msgId +
+      '"></p>' +
+      (footer ? '<p class="9mm-pos-mgr-text-muted">' + footer + "</p>" : ""),
   );
+  /*- Server text never reaches innerHTML. */
+  const slot = document.getElementById(msgId);
+  if (slot) slot.textContent = message;
   _errShown.add(key);
 }
 

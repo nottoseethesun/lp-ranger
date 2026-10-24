@@ -118,6 +118,7 @@ describe("a switch to another position", () => {
       "priceOverrideModal",
       "poolDetailsModal",
       "rebalanceIlWarningModal",
+      "compoundScanWaitModal",
     ])
       open(id);
     el("curDepositInputWrap").classList.add("open");
@@ -129,6 +130,7 @@ describe("a switch to another position", () => {
       "priceOverrideModal",
       "poolDetailsModal",
       "rebalanceIlWarningModal",
+      "compoundScanWaitModal",
     ])
       assert.equal(isOpen(id), false, id);
     assert.equal(el("curDepositInputWrap").classList.contains("open"), false);

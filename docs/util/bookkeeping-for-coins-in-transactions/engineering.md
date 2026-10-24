@@ -166,6 +166,7 @@ Moralis key typed into the report is saved in the app's own key store.
 | `src/api-key-store.js`, `src/api-key-holder.js` | The saved Moralis key, and the plain key in memory |
 | `src/ask-password.js` | The prompt for the key's password, which shows nothing of what is typed |
 | `src/server-moralis.js` | `pingMoralis`, which asks Moralis about the key |
+| `src/nft-move-rules.js` | The rules for which NFT event began a move, a rebalance's drain (`drainBefore`) and a compound's collect (`collectBeforeDeposit`), which the bot also applies for the Activity Log's figures; and `sameHex`, how two hashes or addresses are compared |
 | `util/diagnostic/check-rpc-health.js` | `parseEndpoint`, which reads `--rpc-endpoint` |
 
 **What they write.** The report writes its csv to

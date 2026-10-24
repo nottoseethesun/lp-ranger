@@ -4,9 +4,10 @@
  * @description
  * PID-file lifecycle for the LP Ranger server.  On startup the server writes
  * its process id to `tmp/lp-ranger.pid`, and the file goes when the process
- * does: a signal-driven shutdown, `POST /api/shutdown` and an uncaught error
- * all end in Node's `exit` event, which removes it.  Only a process killed
- * outright leaves it behind, since that runs no code at all.  `npm stop`
+ * does: a signal-driven shutdown, `POST /api/stop-when-all-clear` and an
+ * uncaught error all end in Node's `exit` event, which removes it.  Only a
+ * process killed outright leaves it behind, since that runs no code at
+ * all.  `npm stop`
  * (scripts/stop.js) reads the PID and sends SIGTERM — the same graceful
  * shutdown path as Ctrl+C — so an operator can stop the server without
  * switching to its terminal or hunting the process by port.

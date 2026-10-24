@@ -190,11 +190,6 @@ describe("the figures", () => {
       uiDefaults: UI,
       appRuntime: {
         ...RUNTIME,
-        tx: {
-          ...RUNTIME.tx,
-          swapBackoffBaseMs: 120000,
-          swapBackoffMaxMs: 2400000,
-        },
         poll: { ...RUNTIME.poll, lifetimeRescanCheckMs: 3600000 },
         retire: { drainedAfterMs: 5400000 },
         compound: {
@@ -207,8 +202,6 @@ describe("the figures", () => {
       txCancelSec: 7200,
       compoundMinFeeUsd: 3,
     });
-    assert.equal(g.swapBackoffFirst, "2 minutes");
-    assert.equal(g.swapBackoffCeiling, "40 minutes");
     assert.equal(g.lifetimeRescanRetry, "1 hour");
     assert.equal(g.drainedRetire, "90 minutes");
     // Three polls of 600 s, over the 60 s floor.

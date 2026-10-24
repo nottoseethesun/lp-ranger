@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * @file util/migration/move-position-records.js
+ * @file util/migration/from-0.9.9/move-position-records.js
  * @description
  * A migration step: move each position's records out of bot-config.json,
  * where releases before the records file kept them beside the settings,
@@ -22,7 +22,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { RECORD_POSITION_KEYS } = require("../../src/bot-config-keys");
+const { RECORD_POSITION_KEYS } = require("../../../src/bot-config-keys");
 
 /** Whether `v` is a plain object. */
 const _isGroup = (v) =>

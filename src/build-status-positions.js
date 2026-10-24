@@ -26,6 +26,7 @@ const {
   resolveRebalanceOffsetPct,
   fullRangeSetting,
 } = require("./range-override");
+const { isAscanRunningOnThisPosition } = require("./scan-state");
 
 /**
  * Settings keys that flow through to the dashboard for *unmanaged*
@@ -98,6 +99,12 @@ function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg, deps) {
      *  for one the position has not saved.
      */
     positions[key].fullRangeRebalanceEnabled = fullRangeSetting(posConfig);
+    /*-
+     *  Whether a scan is running on the position, from the one rule the
+     *  server refuses a Rebalance Now and a Compound Now by
+     *  (src/scan-state.js): their dialogs wait on it.
+     */
+    positions[key].scanInProgress = isAscanRunningOnThisPosition(state);
   }
   for (const [key, posConfig] of Object.entries(diskConfig.positions)) {
     if (positions[key]) continue;

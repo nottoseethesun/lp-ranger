@@ -43,11 +43,12 @@ const {
 } = require("./bot-pnl-updater");
 const {
   _scanLifetimePoolData,
-  lifetimeScanPlan,
-  prepareLifetimeRead,
   scanLogCtx,
 } = require("./bot-recorder-lifetime");
+const { prepareSharedRead, epochEventsFrom } = require("./shared-chain-read");
 const { ensureInitialResidualData } = require("./liquidity-pair-details");
+const { activityFieldsOf } = require("./rebalance-activity-figures");
+const { finishPassRebalanceFigures } = require("./bot-rebalance-figures");
 
 /** JSON-safe replacer that converts BigInt to string. */
 function _bigIntReplacer(_key, value) {
@@ -420,46 +421,6 @@ async function _scanHistory(
   }
 }
 
-/**
- * The lifetime scan's chain read, prepared for epoch reconstruction to
- * share, or null when the lifetime scan will not read the chain this
- * pass, and reconstruction must read for itself.
- *
- * Runs inside the pool scan's callback, whose other steps are all kept
- * from breaking the event scan; this one is too. A failure here costs the
- * sharing, not the scan: both reads then happen separately.
- *
- * @param {object} position
- * @param {object} botState
- * @param {Array} evts  The chain the event scan just found.
- * @param {object|null} epochKey
- * @returns {object|null}
- */
-function _prepareSharedRead(position, botState, evts, epochKey) {
-  if (botState === undefined || botState === null) return null;
-  try {
-    if (!lifetimeScanPlan(botState, epochKey).needed) return null;
-    return prepareLifetimeRead(position, botState, evts, epochKey);
-  } catch (err) {
-    const ctx = scanLogCtx(position);
-    log.warn(
-      "[bot] %s/%s NFT #%s %s: Could not prepare the shared chain read, so epoch reconstruction reads on its own: %s",
-      ctx.t0Sym,
-      ctx.t1Sym,
-      ctx.tokenIdStr,
-      ctx.tokenEmoji,
-      err.message,
-    );
-    return null;
-  }
-}
-
-/** Epoch reconstruction's view of a shared read: its per-NFT events. */
-function _epochEventsFrom(sharedRead) {
-  if (sharedRead === null) return undefined;
-  return sharedRead.read;
-}
-
 /** Scan history and reconstruct P&L epochs under the pool lock. */
 async function _scanAndReconstruct(
   provider,
@@ -475,11 +436,12 @@ async function _scanAndReconstruct(
   epochKey,
 ) {
   /*-
-   *  One chain read for the pass. Epoch reconstruction and the lifetime
-   *  scan both need the chain's history. When the lifetime scan is going
-   *  to read the whole chain anyway, its read is prepared here, once the
-   *  event scan has found the chain, and reconstruction takes its events
-   *  from it. See src/bot-recorder-lifetime-read.js.
+   *  One chain read for the pass. Epoch reconstruction, the lifetime
+   *  scan and the Rebalance events' Activity Log figures all need the
+   *  chain's history. When the lifetime scan or the figures are going
+   *  to need the whole chain's NFT events, the read is prepared here,
+   *  once the event scan has found the chain, and reconstruction takes
+   *  its events from it. See src/bot-recorder-lifetime-read.js.
    */
   let sharedRead = null;
   const chainFound = await _scanHistory(
@@ -493,13 +455,13 @@ async function _scanAndReconstruct(
     async (scannedEvents) => {
       const evts = scannedEvents || events;
       if (!evts.length) return;
-      sharedRead = _prepareSharedRead(position, botState, evts, epochKey);
+      sharedRead = prepareSharedRead(position, botState, evts, epochKey);
       log.info("[bot] Reconstructing epochs (%d events)\u2026", evts.length);
       const fb = await _fetchTokenPrices(
         position.token0,
         position.token1,
       ).catch(() => ({ price0: 0, price1: 0 }));
-      const readChainEvents = _epochEventsFrom(sharedRead);
+      const readChainEvents = epochEventsFrom(sharedRead);
       await reconstructEpochs({
         pnlTracker,
         rebalanceEvents: evts,
@@ -535,6 +497,18 @@ async function _scanAndReconstruct(
     sharedRead,
     chainFound,
   );
+  await finishPassRebalanceFigures({
+    events,
+    position,
+    address,
+    provider,
+    ethersLib,
+    sharedRead,
+    epochKey,
+    botState,
+    updateState,
+    readLog,
+  });
   log.info("[bot] Scan + epoch reconstruction complete");
   updateState({
     rebalanceScanComplete: true,
@@ -612,6 +586,7 @@ function _pushRebalanceEvent(events, result) {
      *  chain-scanned events won't have a trigger field — consumers
      *  treat that as unknown/legacy. */
     trigger: result.trigger || "out-of-range",
+    ...activityFieldsOf(result),
   });
   log.info(
     "[route-trace] event pushed ss=%s trigger=%s",

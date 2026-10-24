@@ -10,7 +10,10 @@
  *   the lifetime read there when the lifetime scan will need it;
  *   reconstruction runs inside the callback and may use that read; the
  *   lifetime scan runs afterwards and uses it only while it still
- *   describes the chain the scan sees.
+ *   describes the chain the scan sees. Last, a Rebalance event waiting
+ *   for its Activity Log figures takes the NFT events it needs from the
+ *   same read, which the pass prepares for it when nothing else needs
+ *   one.
  *
  *   The lifetime scan and its read are real. Around them: the shared
  *   lifetime harness, the event scan (which returns a fixed chain), a
@@ -21,7 +24,10 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
+const os = require("node:os");
+const path = require("node:path");
 const { format } = require("node:util");
+const config = require("../src/config");
 const { _setSinkForTests } = require("../src/log");
 const { emptyEvents } = require("../src/nft-events-batch");
 const { collectTokenIds } = require("../src/bot-recorder-scan-helpers");
@@ -40,6 +46,39 @@ const SAVED = {
   compoundedAmount1: 40,
   totalLifetimeDepositUsd: 1704.15,
 };
+
+/*-
+ *  The epoch cache's lifetime figures as a completed scan leaves them:
+ *  the deposits counted up to the current NFT's mint, #300 at block
+ *  6,000, the newest mint in `scannedChain`.
+ */
+const COUNTED = Object.freeze({ poolAddress: "0xPOOL", lastBlock: 6_000 });
+
+/*-
+ *  The wallet's two coins, A then B, at the end of each block a waiting
+ *  rebalance's figures read: before #200's drain at block 5,900, after
+ *  it, and before #300's mint at block 6,000.
+ */
+const WALLET_AT = { 5_899: [1, 2], 5_900: [11, 2], 5_999: [6, 7] };
+
+/**
+ * The chain with its rebalance to #300 waiting for its Activity Log
+ * figures, as a stop during an earlier pass's last step leaves it: its
+ * Historical figure stored, its coin figures not yet worked out.
+ *
+ * @param {object} [extra]  More fields for the waiting event.
+ */
+function waitingChain(extra = {}) {
+  const chain = scannedChain();
+  chain[0].txHash = "0xR1";
+  Object.assign(chain[1], {
+    txHash: "0xR2",
+    figuresDue: true,
+    historical: { impermanentLossGainPct: -1.5 },
+    ...extra,
+  });
+  return chain;
+}
 
 /** #100 → #200 → #300, as the event scan finds it. */
 function scannedChain() {
@@ -74,6 +113,8 @@ let run;
  *   shared read, as it does when epochs are missing.
  * @param {Function} [mode.afterEpochs]  Runs as reconstruction finishes.
  * @param {number} [mode.failReads]  Batched reads to fail first.
+ * @param {Object<string, number>} [mode.drains]  The block of each NFT's
+ *   drain, as its DecreaseLiquidity event in the batched read.
  */
 function load(mode) {
   run = {
@@ -82,6 +123,8 @@ function load(mode) {
     epochCalls: [],
     epochEvents: null,
     epochError: null,
+    cacheWrites: [],
+    balanceReads: [],
   };
   let failures = mode.failReads || 0;
   const stubs = {
@@ -94,6 +137,9 @@ function load(mode) {
         const found = (mode.found || scannedChain)();
         await opts.computeFromHistoricalPrices?.(found);
         return found;
+      },
+      updateCachedEvents: async (_p, _w, finished) => {
+        run.cacheWrites.push(finished);
       },
     },
     "./epoch-reconstructor": {
@@ -121,6 +167,10 @@ function load(mode) {
         run.residualArgs = args;
         return null;
       },
+      readBalanceAt: async ({ tokenAddress, blockTag }) => {
+        run.balanceReads.push(blockTag);
+        return WALLET_AT[blockTag][tokenAddress === "0xA" ? 0 : 1];
+      },
     },
     "./bot-recorder-scan-helpers": {
       collectTokenIds,
@@ -130,7 +180,15 @@ function load(mode) {
           failures -= 1;
           throw new Error("simulated read failure");
         }
-        return new Map([...ids].map((id) => [id, emptyEvents()]));
+        return new Map(
+          [...ids].map((id) => {
+            const entry = emptyEvents();
+            const drain = mode.drains?.[id];
+            if (drain !== undefined)
+              entry.dlEvents = [{ blockNumber: drain, logIndex: 0 }];
+            return [id, entry];
+          }),
+        );
       },
     },
   };
@@ -226,7 +284,7 @@ describe("one scan pass, one chain read", () => {
   });
 
   it("lets reconstruction read for itself when the lifetime scan will not", async () => {
-    state.cachedHodl = { poolAddress: "0xPOOL" };
+    state.cachedHodl = { ...COUNTED };
     const scan = load({ epochReads: true });
     await pass(scan, position(), makeBotState(SAVED));
     assert.strictEqual(run.epochCalls[0].readChainEvents, undefined);
@@ -240,7 +298,7 @@ describe("one scan pass, one chain read", () => {
      *  figure on disk. The pass lowers readiness as it starts, so the
      *  skipped lifetime scan must raise it again.
      */
-    state.cachedHodl = { poolAddress: "0xPOOL" };
+    state.cachedHodl = { ...COUNTED };
     const botState = makeBotState(SAVED);
     botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
     const scan = load({ epochReads: false });
@@ -256,7 +314,7 @@ describe("one scan pass, one chain read", () => {
      *  flagged, the epochs already closed live. The flag forces the read
      *  and the deposit recompute, and it is cleared once they succeed.
      */
-    state.cachedHodl = { poolAddress: "0xPOOL" };
+    state.cachedHodl = { ...COUNTED };
     const botState = makeBotState(SAVED);
     botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
     botState._needsFullRescan = true;
@@ -288,6 +346,92 @@ describe("one scan pass, one chain read", () => {
     await pass(scan, position(), coldState());
     assert.equal(run.epochCalls.length, 0);
     assert.equal(run.reads.length, 1);
+  });
+});
+
+describe("a rebalance waiting for its Activity Log figures", () => {
+  let savedLogFile;
+  beforeEach(() => {
+    /*-
+     *  The figures look up this install's records of its rebalances in
+     *  the rebalance log. A file that does not exist holds none, and
+     *  the operator's own log is never read.
+     */
+    savedLogFile = config.LOG_FILE;
+    config.LOG_FILE = path.join(os.tmpdir(), `no-rebalance-log-${process.pid}`);
+  });
+  afterEach(() => {
+    config.LOG_FILE = savedLogFile;
+  });
+
+  /** A restart's state: every Lifetime figure saved, nothing to compute. */
+  function savedState() {
+    state.cachedHodl = { ...COUNTED };
+    const botState = makeBotState(SAVED);
+    botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
+    return botState;
+  }
+
+  it("is finished by a pass with every Lifetime figure saved", async () => {
+    /*-
+     *  Nothing else in the pass reads the chain, so without a read of
+     *  its own the rebalance would wait until a rebalance, Re-scan
+     *  Prices or Reload Current Position.
+     */
+    const scan = load({ found: waitingChain, drains: { 200: 5_900 } });
+    const events = await pass(scan, position(), savedState());
+    assert.equal(run.reads.length, 1, "the pass read no NFT events");
+    assert.deepEqual(
+      run.balanceReads.sort(),
+      [5_899, 5_899, 5_900, 5_900, 5_999, 5_999],
+    );
+    const done = events.find((e) => e.txHash === "0xR2");
+    assert.equal(done.figuresDue, undefined, "still waiting");
+    assert.deepEqual(done.walletReadings, {
+      beforeDrain: { amount0: 1, amount1: 2 },
+      afterDrain: { amount0: 11, amount1: 2 },
+      beforeMint: { amount0: 6, amount1: 7 },
+    });
+    assert.deepEqual(done.afterRebalance, { amount0: 6, amount1: 7 });
+    assert.equal(run.cacheWrites.length, 1);
+  });
+
+  it("holds no resume buffer after reading for the figures alone", async () => {
+    /*-
+     *  The lifetime scan's success released the buffer before the
+     *  figures asked for the read, so a read that refilled it would
+     *  leave it held for a later scan to reuse.
+     */
+    const botState = savedState();
+    const scan = load({ found: waitingChain, drains: { 200: 5_900 } });
+    await pass(scan, position(), botState);
+    assert.equal(run.reads.length, 1);
+    assert.strictEqual(run.reads[0].opts.resumeBuffer, null);
+    assert.equal(botState._lifetimeResumeBuffer, null);
+  });
+
+  it("leaves reconstruction its own read when its readings are on the event", async () => {
+    /*-
+     *  The rebalance needs no NFT events, so the pass prepares no read
+     *  for it, and reconstruction reads only the closed NFTs' histories,
+     *  as it does on any pass whose lifetime scan reads nothing.
+     */
+    const readings = {
+      beforeDrain: { amount0: 1, amount1: 2 },
+      afterDrain: { amount0: 11, amount1: 2 },
+      beforeMint: { amount0: 6, amount1: 7 },
+    };
+    const scan = load({
+      epochReads: true,
+      found: () => waitingChain({ walletReadings: readings }),
+    });
+    const events = await pass(scan, position(), savedState());
+    assert.strictEqual(run.epochCalls[0].readChainEvents, undefined);
+    assert.equal(run.reads.length, 0);
+    assert.equal(run.ownEpochReads, 1);
+    const done = events.find((e) => e.txHash === "0xR2");
+    assert.equal(done.figuresDue, undefined, "still waiting");
+    assert.deepEqual(done.beforeRebalance, { amount0: 11, amount1: 2 });
   });
 });
 
@@ -368,7 +512,7 @@ describe("when the pass does not go to plan", () => {
      *  so the 30-minute rescan never ran and its Rebalance Events table
      *  stayed empty. The saved figures are left as they are.
      */
-    state.cachedHodl = { poolAddress: "0xPOOL" };
+    state.cachedHodl = { ...COUNTED };
     const botState = makeBotState(SAVED);
     botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
     const scan = load({ scanFails: true });
@@ -391,7 +535,7 @@ describe("when the pass does not go to plan", () => {
   });
 
   it("reports ready when the event scan succeeds with every figure saved", async () => {
-    state.cachedHodl = { poolAddress: "0xPOOL" };
+    state.cachedHodl = { ...COUNTED };
     const botState = makeBotState(SAVED);
     botState.totalLifetimeDepositUsd = SAVED.totalLifetimeDepositUsd;
     await pass(load({}), position(), botState);

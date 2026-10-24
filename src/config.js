@@ -287,15 +287,6 @@ const TX_SEND_RETRY_BASE_DELAY_MS = _runtimeTimer("tx", "sendRetryBaseDelayMs");
 const TX_SEND_RETRIES = _runtimeBounded("tx", "sendRetries");
 
 /*-
- *  How a rebalance is retried after the price moved under it: a first
- *  wait, doubling with each try up to the most it may wait. The
- *  `_swapBackoff_comment` beside the values in app-runtime.json
- *  explains them.
- */
-const SWAP_BACKOFF_BASE_MS = _runtimeBounded("tx", "swapBackoffBaseMs");
-const SWAP_BACKOFF_MAX_MS = _runtimeBounded("tx", "swapBackoffMaxMs");
-
-/*-
  *  How many times a rebalance left mid-way, its coins in the wallet, is
  *  tried again before the bot stops and asks the operator to act.
  */
@@ -399,15 +390,6 @@ function _guaranteedDashboardHasPolledMs() {
 }
 
 const GUARANTEED_DASHBOARD_HAS_POLLED_MS = _guaranteedDashboardHasPolledMs();
-
-/**
- * Maximum consecutive swap-backoff retries before pausing. When a swap's
- * price impact moves the tick outside the computed range, the bot backs
- * off with exponential delay (1 → 2 → 4 → … → 20 min). After this many
- * failures the bot pauses and alerts the user.
- */
-const REBALANCE_RETRY_SWAP_LIMIT =
-  readEnv("REBALANCE_RETRY_SWAP_LIMIT") ?? APP_CONFIG.tx.retrySwapLimit;
 
 /** File path for the JSON rebalance event log. */
 const LOG_FILE = readEnv("LOG_FILE") ?? APP_CONFIG.log.file;
@@ -817,9 +799,6 @@ module.exports = {
   MIN_REBALANCE_INTERVAL_MIN,
   MAX_REBALANCES_PER_DAY,
   IMPERMANENT_LOSS_GUARD_PCT,
-  REBALANCE_RETRY_SWAP_LIMIT,
-  SWAP_BACKOFF_BASE_MS,
-  SWAP_BACKOFF_MAX_MS,
   MIDWAY_RETRY_LIMIT,
   POLL_AFTER_ACTION_MS,
   LIFETIME_RESCAN_CHECK_MS,

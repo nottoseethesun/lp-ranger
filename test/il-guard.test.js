@@ -352,7 +352,7 @@ describe("the Telegram message", () => {
       {
         _botState: {},
         updateBotState: (patch) => published.push(patch),
-        position: { tokenId: "1" },
+        position: { tokenId: "1", liquidity: "1000" },
       },
       false,
       ilSnapshot(100, 1000),
@@ -587,7 +587,7 @@ describe("the badge figure is the figure the bot enforces", () => {
         {
           _botState: {},
           updateBotState: () => {},
-          position: { tokenId: "1" },
+          position: { tokenId: "1", liquidity: "1000" },
         },
         false,
         ilSnapshot(positionUsd, 1000),
@@ -617,7 +617,7 @@ describe("the badge figure is the figure the bot enforces", () => {
         "-e",
         'const c=require("./src/config"),g=require("./src/il-guard");' +
           "const r=g.checkIlGuard({_botState:{}," +
-          "updateBotState:()=>{},position:{tokenId:'1'}},false," +
+          "updateBotState:()=>{},position:{tokenId:'1',liquidity:'1000'}},false," +
           `${snap},()=>({}));` +
           "process.stdout.write(String(c.IMPERMANENT_LOSS_GUARD_PCT)+" +
           '","+String(!!r&&r.ilGuardRejected===true))',

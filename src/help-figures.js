@@ -211,7 +211,7 @@ function helpFigures({
   chainName,
   aggregatorName,
 }) {
-  const { tx, poll, retire, compound } = appRuntime;
+  const { poll, retire, compound } = appRuntime;
   const dbl = botDefaults.throttleDoubling;
   const intervalSec = botDefaults.minRebalanceIntervalMin * 60;
   const retry = botDefaults.ilGuardRetry;
@@ -308,8 +308,6 @@ function helpFigures({
         compound.autoSpacingFloorSec,
       ),
     ),
-    swapBackoffFirst: duration(tx.swapBackoffBaseMs / 1000),
-    swapBackoffCeiling: duration(tx.swapBackoffMaxMs / 1000),
     drainedRetire: duration(retire.drainedAfterMs / 1000),
     lifetimeRescanRetry: duration(poll.lifetimeRescanCheckMs / 1000),
     txSpeedup: duration(txSpeedupSec),

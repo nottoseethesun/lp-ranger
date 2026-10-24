@@ -3,7 +3,12 @@
  * @description Populates the Activity Log with historical events on cold
  *   load.  Two entrypoints, one per event type, both share the same
  *   shape: fire once per position-view, sorted ascending, gated on the
- *   server-side scan-complete flag when the position is running.
+ *   server-side scan-complete flag when the position is running.  A
+ *   managed position's pass also waits for its second data load
+ *   (`canDrawPositionEntries`, `dashboard-activity-figures.js`), the
+ *   answer that carries its pool key: as the server starts a position,
+ *   its loop is not yet running, so the scan gate alone would let the
+ *   pass draw entries that no pool key files.
  *
  *   `populateRebalanceHistoryOnce`  — iterates `data.rebalanceEvents[]`.
  *   `populateCompoundHistoryOnce`   — iterates `data.compoundHistory[]`.
@@ -11,13 +16,27 @@
  *   Position switch / wallet switch / hard-reset flows call
  *   `resetPopulateHistoryFlags()` (wired via `resetHistoryFlag()` in
  *   `dashboard-data.js`) so each newly-viewed position gets a fresh
- *   populate pass on its own cold load.
+ *   populate pass on its own cold load. So does the end of each scan of
+ *   the position on screen (`_onScanFinished`, `dashboard-data.js`),
+ *   once the log has taken that position's entries off: the pass then
+ *   draws them again from the records the scan left, so an amount, a
+ *   mark or a figure the scan changed shows without a page reload.
+ *
+ *   Each Rebalance entry reads as `formatRebalanceEntry` words it
+ *   (`dashboard-rebalance-log.js`), what started it included, the same
+ *   as the live check's.
  *
  *   Extracted from `dashboard-data.js` for line-count compliance.
  */
 
 import { act, ACT_ICONS } from "./dashboard-helpers.js";
 import { formatCompoundHistoryEntry } from "./dashboard-compound-log.js";
+import { formatRebalanceEntry } from "./dashboard-rebalance-log.js";
+import {
+  rebalanceFigures,
+  compoundFigures,
+  canDrawPositionEntries,
+} from "./dashboard-activity-figures.js";
 
 let _rebalanceHistoryPopulated = false;
 let _compoundHistoryPopulated = false;
@@ -40,6 +59,7 @@ export function resetPopulateHistoryFlags() {
  */
 export function populateRebalanceHistoryOnce(data, posLabel) {
   if (_rebalanceHistoryPopulated || !data.rebalanceEvents?.length) return;
+  if (!canDrawPositionEntries(data)) return;
   if (data.running && data.rebalanceScanComplete !== true) return;
   _rebalanceHistoryPopulated = true;
   const ctx = posLabel ? "\n" + posLabel : "";
@@ -47,13 +67,15 @@ export function populateRebalanceHistoryOnce(data, posLabel) {
     (a, b) => a.timestamp - b.timestamp,
   );
   for (const ev of _s) {
+    const { when, detail } = formatRebalanceEntry(ev, ctx);
     act(
       ACT_ICONS.lasso,
       "fee",
       "Rebalance",
-      "NFT #" + ev.oldTokenId + " → #" + ev.newTokenId + ctx,
-      ev.dateStr ? new Date(ev.dateStr) : new Date(ev.timestamp * 1000),
+      detail,
+      when,
       ev.txHash,
+      rebalanceFigures(ev, data),
     );
   }
 }
@@ -70,6 +92,7 @@ export function populateRebalanceHistoryOnce(data, posLabel) {
  */
 export function populateCompoundHistoryOnce(data, posLabel, fallbackTokenId) {
   if (_compoundHistoryPopulated || !data.compoundHistory?.length) return;
+  if (!canDrawPositionEntries(data)) return;
   if (data.running && data.lifetimeScanComplete !== true) return;
   _compoundHistoryPopulated = true;
   const ctx = posLabel ? "\n" + posLabel : "";
@@ -86,6 +109,7 @@ export function populateCompoundHistoryOnce(data, posLabel, fallbackTokenId) {
       entry.detail,
       entry.when,
       entry.txHash,
+      compoundFigures(ev, data),
     );
   }
 }

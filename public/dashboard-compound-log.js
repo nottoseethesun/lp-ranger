@@ -14,29 +14,56 @@
  *                                   once per entry in `data.compoundHistory`.
  */
 
+/*-
+ *  The marker after "reinvested", for a compound the bot recorded when it
+ *  happened. A compound found by rebuilding the list from the chain
+ *  (trigger `unknown`, or `historical` in a record written before that)
+ *  gets none, since the chain does not say what started it.
+ */
 const TRIGGER_LABELS = {
   manual: "Manual",
-  historical: "Historical",
   auto: "Auto",
 };
+
+/** The mark after an amount that is at the prices of its compound's time. */
+const HISTORICAL_USD_MARK = " (historical $usd)";
+
+/**
+ * Whether a compound's $usd amount is at the prices of the time of the
+ * compound. A compound the bot makes is recorded with the prices its
+ * amount was worked out at (`price0`, `price1`). An entry written from
+ * the chain, when a position is first scanned or by Re-scan Prices or
+ * Reload Current Position, carries none: its amount is at the prices of
+ * that moment (`_entryOf`, src/compound-activity-figures.js).
+ * @param {object} ev  The compound's record.
+ * @returns {boolean}
+ */
+function _usdAtCompoundTime(ev) {
+  return Number.isFinite(ev.price0) && Number.isFinite(ev.price1);
+}
 
 /**
  * Build the `act()` payload from a single compound event object.
  * Pure — no DOM, no side effects.
  *
  * @param {object} ev              Compound event: `{ timestamp, tokenId,
- *                                 usdValue, trigger, txHash }`.
+ *                                 usdValue, trigger, txHash }`, and
+ *                                 `price0` and `price1` when its amount
+ *                                 is at the prices of its own time.
  * @param {string} ctx             Position-context suffix.
  * @param {string|number} [fallbackTokenId]  Token id to use when the event
  *                                 lacks its own (e.g., current active
  *                                 position for live-runtime entries).
- * @returns {object}               `{ title, type, detail, when, txHash }`
- *                                 for `act()`.
+ * @returns {object}               `{ title, type, detail, when, txHash,
+ *                                 event }` for `act()`; `event` is `ev`,
+ *                                 for the entry's figures.
  */
 function _formatCompoundAct(ev, ctx, fallbackTokenId) {
   const when = ev.timestamp ? new Date(ev.timestamp) : undefined;
-  const trigger = TRIGGER_LABELS[ev.trigger] || "Auto";
+  const label = TRIGGER_LABELS[ev.trigger];
+  const marker = label === undefined ? "" : " (" + label + ")";
   const usd = Number.isFinite(ev.usdValue) ? ev.usdValue : 0;
+  const usdMark = _usdAtCompoundTime(ev) ? HISTORICAL_USD_MARK : "";
   /*-
    *  Prefer the event's own tokenId so historical compounds — including
    *  those that occurred on a now-drained NFT earlier in the rebalance
@@ -53,11 +80,11 @@ function _formatCompoundAct(ev, ctx, fallbackTokenId) {
   const detail =
     "NFT #" +
     tokenId +
-    " — $" +
+    " — $usd " +
     usd.toFixed(2) +
-    " reinvested (" +
-    trigger +
-    ")" +
+    usdMark +
+    " reinvested" +
+    marker +
     (ctx || "");
   return {
     title: "Compound",
@@ -65,6 +92,7 @@ function _formatCompoundAct(ev, ctx, fallbackTokenId) {
     detail,
     when,
     txHash: ev.txHash || undefined,
+    event: ev,
   };
 }
 
@@ -79,9 +107,9 @@ function _formatCompoundAct(ev, ctx, fallbackTokenId) {
  * @param {string} ctx           Position-context suffix from `_logCtx`.
  * @param {string|null} prevSeen Previously-seen `lastCompoundAt` for this
  *                               key, or `null`/`undefined` if first poll.
- * @returns {object|null}        `{ title, type, detail, when, txHash }`
- *                               for `act()`, or null when no new
- *                               compound is present.
+ * @returns {object|null}        `{ title, type, detail, when, txHash,
+ *                               event }` for `act()`, or null when no
+ *                               new compound is present.
  */
 export function formatCompoundEntry(st, ctx, prevSeen) {
   if (!st || !st.lastCompoundAt) return null;
@@ -101,8 +129,8 @@ export function formatCompoundEntry(st, ctx, prevSeen) {
  * @param {string} ctx             Position-context suffix.
  * @param {string|number} [fallbackTokenId]  Token id to use when the event
  *                                 lacks its own.
- * @returns {object|null}          `{ title, type, detail, when, txHash }`
- *                                 or `null` if `ev` is missing.
+ * @returns {object|null}          `{ title, type, detail, when, txHash,
+ *                                 event }` or `null` if `ev` is missing.
  */
 export function formatCompoundHistoryEntry(ev, ctx, fallbackTokenId) {
   if (!ev) return null;

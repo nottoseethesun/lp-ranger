@@ -24,11 +24,18 @@
  * chain and from live price sources, then reports which input has to
  * be wrong to explain the reported figure.
  *
+ * The Telegram alert reports the fees among that deposit, the record's
+ * `amount0Compounded` / `amount1Compounded` at the same prices
+ * (`src/compounded-coins.js`).  When the deposit also took in coins the
+ * wallet already held, the alert names their value apart, and the
+ * `usdValue` checked here is the whole deposit's.
+ *
  * Why the figure matters beyond the alert text: `recordCompound` in
- * `src/bot-cycle-compound.js` adds the same `usdValue` to the
- * position's `totalCompoundedUsd`, which is half of the dashboard's
- * lifetime fee-earnings figure (`currentFeesUsd + totalCompoundedUsd`,
- * see `src/ui-state.js`).  That total is only ever accumulated
+ * `src/bot-cycle-compound.js` adds the fees among the same coins to the
+ * position's `compoundedAmount0` / `compoundedAmount1`, which priced at
+ * the current poll are half of the dashboard's lifetime fee-earnings
+ * figure (`currentFeesUsd + totalCompoundedUsd`, see `src/ui-state.js`).
+ * That total is only ever accumulated
  * incrementally once disk holds a non-zero value — the on-chain
  * rescan in `src/bot-recorder-lifetime.js` is deliberately gated off
  * by `_resolveDiskState`.  So a single bad compound figure persists in

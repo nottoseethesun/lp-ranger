@@ -169,6 +169,32 @@ describe("_pushRebalanceEvent", () => {
     assert.strictEqual(events[0].blockNumber, 27_700_123);
   });
 
+  it("carries the Activity Log figures stored when the rebalance succeeded", () => {
+    const walletReadings = {
+      beforeDrain: { amount0: 1, amount1: 2 },
+      afterDrain: { amount0: 3, amount1: 2 },
+      beforeMint: { amount0: 2, amount1: 3 },
+    };
+    const events = [];
+    _pushRebalanceEvent(events, {
+      oldTokenId: "7",
+      newTokenId: "8",
+      txHashes: ["0xmint"],
+      walletReadings,
+      historical: { impermanentLossGainPct: -0.2 },
+      figuresDue: true,
+    });
+    assert.deepStrictEqual(events[0].walletReadings, walletReadings);
+    assert.deepStrictEqual(events[0].historical, {
+      impermanentLossGainPct: -0.2,
+    });
+    assert.strictEqual(events[0].figuresDue, true);
+    // A result with no figures leaves the event without them.
+    _pushRebalanceEvent(events, { oldTokenId: "8", newTokenId: "9" });
+    assert.strictEqual("figuresDue" in events[1], false);
+    assert.strictEqual("historical" in events[1], false);
+  });
+
   it("uses ? for missing tokenIds", () => {
     const events = [];
     _pushRebalanceEvent(events, {});

@@ -7,8 +7,8 @@
  *
  * Owns:
  *   - The blocking modal + spinner (`9mm-pos-mgr-blocking-overlay`).
- *   - The yellow "busy" modal used by every busy path (client-side
- *     pre-check, server 409, race detection).
+ *   - The yellow "busy" modal used by every busy path (server 409, race
+ *     detection).
  *   - The `POST /api/position/reload` request + 3s poll for
  *     completion / race / timeout.
  *   - `paintReloadPositionButton()` — the Mission-Control-aligned
@@ -197,8 +197,8 @@ const _RELOAD_BUSY_MODAL_ID = "reloadBusyModal";
 const _RELOAD_BUSY_MSG_SLOT_ID = "reloadBusyModal-msg";
 const _RELOAD_BUSY_ID_SLOT_ID = "reloadBusyModal-tokenId";
 
-/*- Yellow (caution) "try again" modal.  One shell, three specific
- *  bodies (pre-check, race, server-message).  Removes any prior
+/*- Yellow (caution) "try again" modal.  One shell, two specific
+ *  bodies (race, server-message).  Removes any prior
  *  busy modal first so a rapid re-click cannot stack two copies with
  *  the same id.  The slot for the server-message variant is looked
  *  up below via `document.getElementById(_RELOAD_BUSY_MSG_SLOT_ID)`
@@ -341,27 +341,6 @@ function _confirmReload(tokenId) {
   });
 }
 
-/*- Defense-in-depth: the button is disabled by paintReloadPositionButton
- *  while a rebalance or compound is in flight, but a click can still
- *  land between poll cycles.  Re-read the flags and surface the yellow
- *  modal on hit.  Returns true when a pre-check tripped so the caller
- *  can early-return. */
-function _preCheckBusy(preSt) {
-  if (preSt?.rebalanceInProgress) {
-    _showReloadBusyModal(
-      "<p>This position is currently rebalancing. LP Ranger cannot start a Reload Current Position while a rebalance is in flight — the reload would race the transaction and either corrupt the state reconstruction or step on the tracker mid-write.</p>",
-    );
-    return true;
-  }
-  if (preSt?.compoundInProgress) {
-    _showReloadBusyModal(
-      "<p>This position is currently compounding. LP Ranger cannot start a Reload Current Position while a compound is in flight — the reload would race the transaction and either corrupt the state reconstruction or step on the tracker mid-write.</p>",
-    );
-    return true;
-  }
-  return false;
-}
-
 /*- POST /api/position/reload.  Returns { ok: true } on success, or
  *  { ok: false, status, body } on any non-2xx, or throws for network
  *  failures. */
@@ -428,7 +407,9 @@ export async function _reloadCurrentPosition() {
     active.contractAddress,
     active.tokenId,
   );
-  if (_preCheckBusy(_positionState(key))) return;
+  /*- No check of the in-progress flags here: the server refuses while a
+   *  coin move is under way, a window they cover only part of, and its
+   *  409 opens the yellow modal with its words. */
   if (!(await _confirmReload(active.tokenId))) return;
   const btn = g("reloadPositionBtn");
   if (btn) btn.disabled = true;

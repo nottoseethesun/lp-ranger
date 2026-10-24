@@ -132,6 +132,29 @@ describe("buildStatusPositions — sync state for stopped (disk-only) positions"
     );
   });
 
+  it("says whether a running position's scan is in progress, for the Rebalance Now dialog", () => {
+    resetBotStates();
+    const m = getAllPositionBotStates();
+    m.set(key("1"), { _scanRunning: true, activePosition: { tokenId: "1" } });
+    m.set(key("2"), { activePosition: { tokenId: "2" } });
+    const diskConfig = {
+      global: {},
+      positions: {
+        [key("1")]: { status: "running" },
+        [key("2")]: { status: "running" },
+      },
+    };
+    const out = buildStatusPositions(
+      diskConfig,
+      POS_DEFAULTS,
+      FAKE_POSITION_MGR,
+      FAKE_CFG,
+    );
+    resetBotStates();
+    assert.strictEqual(out[key("1")].scanInProgress, true);
+    assert.strictEqual(out[key("2")].scanInProgress, false);
+  });
+
   it("loop-1 (live bot state) wins over loop-2 — running entries keep their real flags", () => {
     /*- The bot is alive and has updated state.  Loop 1 spreads in the
      *  real state including rebalanceScanComplete (possibly false

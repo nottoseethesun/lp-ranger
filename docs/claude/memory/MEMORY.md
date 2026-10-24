@@ -47,13 +47,14 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — Don't ask which
 - [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Only what was asked; yes/no means yes/no
+- [branch data never meets main](feedback_branch_data_never_meets_main.md) — Server stopped through all of CI, restarted after the merge; never check main against what a branch writes
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
 - [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms; heading + problem statement first; name the operator's action in a full sentence, never shorthand like "a refused save"
 - [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens and what a reader would see; function names come last, if at all
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei; an editing pass removes bulk (point buried in detail) and gaps (steps replaced by vague words)
-- [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Meet a word limit by dropping points, never steps or context
-- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns; a question names what its "both" means, and never asks what the spec already decides
+- [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Meet a word limit by dropping points, never steps or context; "waiting" says for what and until when; think out what the feature promises before offering options
+- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns; a question names what its "both" means, and never asks what the spec already decides; no coined metaphors ("the server's loaded copy"); use the user's name for a thing
 - [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one
 - [revert means code](feedback_revert_means_code.md) — "Revert" = repo edits only, never the plan
 - [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed in review (suspended for audits since 2026-10-19)

@@ -238,7 +238,70 @@ describe("recovery — a position already drained", () => {
       ADDR.token1,
       ADDR.signer,
     );
-    assert.deepEqual(r, { amount0: 5n, amount1: 0n, txHash: null });
+    /*-
+     *  Nothing is drained, so the wallet before the drain is this same
+     *  reading, for the Activity Log figures.
+     */
+    assert.deepEqual(r, {
+      amount0: 5n,
+      amount1: 0n,
+      txHash: null,
+      walletBefore: { amount0: 5n, amount1: 0n },
+    });
+  });
+});
+
+describe("rebalance result — the wallet's three readings", () => {
+  const E18 = 10n ** 18n;
+  const mint = {
+    tokenId: 9n,
+    liquidity: 77n,
+    amount0: 9n,
+    amount1: 19n,
+    gasCostWei: 7n,
+  };
+  const build = (removed, readings) =>
+    _buildRebalanceResult(
+      ["0xa"],
+      removed,
+      { gasCostWei: 3n },
+      mint,
+      { ...POSITION, tokenId: 8n, tickLower: -60, tickUpper: 60 },
+      { lowerTick: -120, upperTick: 120 },
+      { price: 1.0, poolAddress: ADDR.pool, decimals0: 18, decimals1: 6 },
+      undefined,
+      undefined,
+      { chain: "pulsechain", contract: ADDR.pm, wallet: ADDR.signer },
+      readings,
+    );
+
+  it("keeps them in whole coins: before the drain, after it, and before the mint", () => {
+    const r = build(
+      {
+        amount0: 10n * E18,
+        amount1: 0n,
+        gasCostWei: 5n,
+        walletBefore: { amount0: E18, amount1: 2_000_000n },
+      },
+      {
+        afterDrain: { amount0: 11n * E18, amount1: 2_000_000n },
+        beforeMint: { amount0: 6n * E18, amount1: 7_500_000n },
+      },
+    );
+    assert.deepEqual(r.walletReadings, {
+      beforeDrain: { amount0: 1, amount1: 2 },
+      afterDrain: { amount0: 11, amount1: 2 },
+      beforeMint: { amount0: 6, amount1: 7.5 },
+    });
+  });
+
+  it("leaves a reading the rebalance did not hand on unknown", () => {
+    const r = build({ amount0: 1n, amount1: 1n, gasCostWei: 5n }, undefined);
+    assert.deepEqual(r.walletReadings, {
+      beforeDrain: null,
+      afterDrain: null,
+      beforeMint: null,
+    });
   });
 });
 

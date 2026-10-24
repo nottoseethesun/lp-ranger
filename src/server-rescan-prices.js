@@ -166,7 +166,6 @@ function createRescanPricesHandler(deps) {
      *  is the wrong feature and the wrong duration for this route. */
     const guard = _checkInProgress(r.state, {
       action: "Re-scan Prices",
-      verb: "re-scan prices for",
       scanExtra: "",
     });
     if (guard) return jsonResponse(res, guard.code, guard.body);
@@ -206,9 +205,11 @@ function createRescanPricesHandler(deps) {
      *  alone is not enough: bot-loop.js only re-scans off a 30-minute
      *  timer (LIFETIME_RESCAN_CHECK_MS), so without this the button
      *  would report success and then appear to do nothing for up to
-     *  half an hour.  `_triggerScan` sets `_scanRunning` synchronously,
-     *  engaging the in-flight guards, and the promise is deliberately
-     *  not awaited so the HTTP response does not block on the scan. */
+     *  half an hour.  `_triggerScan` starts the scan synchronously,
+     *  engaging the in-flight guards, or, until every move of the
+     *  position is cleared, sets `_scanWaiting` (src/scan-state.js), and
+     *  the promise is deliberately not awaited so the HTTP response does
+     *  not block on the scan. */
     if (typeof r.state._triggerScan === "function") {
       r.state._triggerScan().catch((err) => {
         log.warn(

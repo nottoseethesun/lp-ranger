@@ -19,25 +19,17 @@ import {
   primeSoundTrackers,
 } from "./dashboard-sounds.js";
 import { formatCompoundEntry } from "./dashboard-compound-log.js";
+import { formatRebalanceEntry } from "./dashboard-rebalance-log.js";
+import {
+  rebalanceFigures,
+  compoundFigures,
+  canDrawPositionEntries,
+} from "./dashboard-activity-figures.js";
 
 /** Per-key "last seen" trackers — prevent duplicate log entries. */
 const _lastRebAt = new Map();
 const _lastCompAt = new Map();
 const _txCancelSeen = new Set();
-
-/**
- * Human-readable label for a rebalance trigger.
- *   "out-of-range"     → "Out of Range"
- *   "manual"           → "Manual"
- *   "residual-cleanup" → "Residual Cleanup"
- * Historical / chain-scanned events have no trigger field → "" (omit).
- */
-function _triggerLabel(trigger) {
-  if (trigger === "manual") return "Manual";
-  if (trigger === "residual-cleanup") return "Residual Cleanup";
-  if (trigger === "out-of-range") return "Out of Range";
-  return "";
-}
 
 /** Clear event-log trackers (called from `resetPollingState`). */
 export function resetEventLogTrackers() {
@@ -65,35 +57,8 @@ function _logCompound(key, st, ctx) {
     entry.detail,
     entry.when,
     entry.txHash,
+    compoundFigures(entry.event, st),
   );
-}
-
-/**
- * Build the Activity Log payload for a rebalance event.  Pure helper \u2014
- * keeps `_handleRebalance` under the cyclomatic-complexity cap.
- *
- * @param {object} ev   Latest entry from `st.rebalanceEvents`.
- * @param {string} ctx  Position-context suffix from `_logCtx`.
- * @returns {{ when: Date|undefined, detail: string }}
- */
-function _buildRebalanceLogEntry(ev, ctx) {
-  /*- Use the event's on-chain timestamp so the Activity Log agrees
-      with the Rebalance Events table. Falls back to now if the event
-      carries no timestamp (shouldn't happen in practice). */
-  const when = ev.dateStr
-    ? new Date(ev.dateStr)
-    : ev.timestamp
-      ? new Date(ev.timestamp * 1000)
-      : undefined;
-  const trigger = _triggerLabel(ev.trigger);
-  const detail =
-    "NFT #" +
-    ev.oldTokenId +
-    " \u2192 #" +
-    ev.newTokenId +
-    (trigger ? " (" + trigger + ")" : "") +
-    ctx;
-  return { when, detail };
 }
 
 /**
@@ -172,8 +137,16 @@ function _handleRebalance(key, st, ctx) {
     if (!commit) return;
     _lastRebAt.set(key, at);
     if (!shouldLog) return;
-    const { when, detail } = _buildRebalanceLogEntry(ev, ctx);
-    act(ACT_ICONS.lasso, "fee", "Rebalance", detail, when, ev.txHash);
+    const { when, detail } = formatRebalanceEntry(ev, ctx);
+    act(
+      ACT_ICONS.lasso,
+      "fee",
+      "Rebalance",
+      detail,
+      when,
+      ev.txHash,
+      rebalanceFigures(ev, st),
+    );
   });
 }
 
@@ -181,15 +154,22 @@ function _handleRebalance(key, st, ctx) {
  * Scan all position states for new events and log them.  Sound effects are
  * gated internally by `checkRebalanceSound` / `checkCompoundSound` so the
  * first poll after load/wallet-switch primes without firing.
+ *
+ * A managed position's Rebalance and Compound entries wait for its
+ * second data load (`canDrawPositionEntries`), when the server has read
+ * the position from the blockchain: before it, an entry would have no
+ * position line and no pool to be filed under. The trackers wait too, so
+ * the entries are drawn on the answer that brings it.
  * @param {object} data  `/api/status` response.
  */
 export function logAllPositionEvents(data) {
   for (const [key, st] of Object.entries(data._allPositionStates || {})) {
     const ctx = _logCtx(key, st);
+    const draw = canDrawPositionEntries(st);
     checkRebalanceSound(key, st.lastRebalanceAt);
-    _handleRebalance(key, st, ctx);
+    if (draw) _handleRebalance(key, st, ctx);
     checkCompoundSound(key, st.lastCompoundAt);
-    _logCompound(key, st, ctx);
+    if (draw) _logCompound(key, st, ctx);
     const tc = st.txCancelled;
     if (tc && !_txCancelSeen.has(key + tc.at)) {
       _txCancelSeen.add(key + tc.at);

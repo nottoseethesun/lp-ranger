@@ -73,10 +73,31 @@ function chain() {
   return events;
 }
 
+/** A transfer of token0 to the wallet from outside, in its own transaction. */
+function arrival(amount, block, tx) {
+  return {
+    ...DEPOSIT,
+    data: "0x" + BigInt(amount).toString(16).padStart(64, "0"),
+    blockNumber: block,
+    transactionHash: tx,
+  };
+}
+
+/** A deposit the deposit count recorded, naming its transaction. */
+function counted(amount, block, tx) {
+  return {
+    raw0: String(amount),
+    raw1: "0",
+    block,
+    kind: "fresh",
+    txHash: tx,
+  };
+}
+
 /** Run the computation, recording every block range it scanned. */
-async function run(cachedFreshDeposits) {
+async function run(cachedFreshDeposits, logs = [DEPOSIT]) {
   const ranges = [];
-  const inner = mockProvider({ logs: [DEPOSIT] });
+  const inner = mockProvider({ logs });
   const provider = {
     getLogs: (f) => {
       ranges.push(`${f.fromBlock}-${f.toBlock}`);
@@ -109,9 +130,10 @@ describe("computeLifetimeHodl — the scan a rebalance triggers", () => {
     const { r } = await run(SAVED_WINDOWS);
     assert.strictEqual(r.amount0, 107, "the first mint plus the seven");
     assert.strictEqual(r.raw0, "7", "banked as a fresh deposit");
+    // The saved entry as it was saved, the new one marked as the wallet's.
     assert.deepStrictEqual(r.deposits, [
       { raw0: "100", raw1: "200", block: 10 },
-      { raw0: "7", raw1: "0", block: 5010 },
+      { raw0: "7", raw1: "0", block: 5010, kind: "fresh" },
     ]);
   });
 
@@ -124,5 +146,63 @@ describe("computeLifetimeHodl — the scan a rebalance triggers", () => {
     const { r, ranges } = await run(null);
     assert.deepStrictEqual(ranges, ["11-1010", "1011-5010"]);
     assert.strictEqual(r.amount0, 107, "same answer, more reading");
+  });
+});
+
+describe("computeLifetimeHodl — deposits the deposit count recorded", () => {
+  /*-
+   *  The count recorded the seven at block 3000 when they arrived, so the
+   *  saved results already hold them: in the fresh total, and as an entry
+   *  at their own block, naming their transaction.
+   */
+  const COUNTED = {
+    raw0: "7",
+    raw1: "0",
+    lastBlock: 1010,
+    deposits: [
+      { raw0: "100", raw1: "200", block: 10 },
+      counted(7, 3000, "0xdeposit"),
+    ],
+    countedThrough: 4000,
+  };
+
+  it("leaves a recorded transaction out of the window, so it counts once", async () => {
+    const { r } = await run(COUNTED);
+    assert.strictEqual(r.amount0, 107, "the first mint plus the seven, once");
+    assert.strictEqual(r.raw0, "7");
+    assert.deepStrictEqual(r.deposits, COUNTED.deposits, "no second entry");
+    assert.strictEqual(r.countedThrough, 4000, "how far the count read");
+  });
+
+  it("still counts what arrived after the count's last read", async () => {
+    const { r } = await run(COUNTED, [DEPOSIT, arrival(5, 4500, "0xlater")]);
+    assert.strictEqual(r.amount0, 112);
+    assert.strictEqual(r.raw0, "12");
+    assert.deepStrictEqual(r.deposits.at(-1), {
+      raw0: "5",
+      raw1: "0",
+      block: 5010,
+      kind: "fresh",
+    });
+  });
+
+  it("records the mint's own deposit though a recorded one shares its block", async () => {
+    const saved = {
+      raw0: "3",
+      raw1: "0",
+      lastBlock: 1010,
+      deposits: [
+        { raw0: "100", raw1: "200", block: 10 },
+        counted(3, 5010, "0xsame"),
+      ],
+    };
+    const { r } = await run(saved, [DEPOSIT, arrival(3, 5010, "0xsame")]);
+    assert.strictEqual(r.amount0, 110, "the mint, the three, the seven");
+    assert.deepStrictEqual(r.deposits.at(-1), {
+      raw0: "7",
+      raw1: "0",
+      block: 5010,
+      kind: "fresh",
+    });
   });
 });

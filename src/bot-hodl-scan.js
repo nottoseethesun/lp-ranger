@@ -2,8 +2,10 @@
  * @file src/bot-hodl-scan.js
  * @description Lifetime HODL scan helpers: compute and cache HODL amounts,
  * resolve total lifetime deposit USD from per-deposit historical prices,
- * and re-value the HODL baseline when Re-scan Prices asks for it.
- * Extracted from bot-recorder.js to stay within the 500-line limit.
+ * and re-value the HODL baseline when Re-scan Prices asks for it. The
+ * deposit count (src/deposit-count.js) prices what it finds here too, and
+ * writes the same cache record. Extracted from bot-recorder.js to stay
+ * within the 500-line limit.
  */
 
 "use strict";
@@ -22,8 +24,16 @@ const {
   flushBlockTimeCache,
 } = require("./block-time-cache");
 const { emojiId } = require("./logger");
+const { withLaterCounts } = require("./counted-deposits");
 
-/** Compute lifetime HODL amounts and persist fresh deposit cache. */
+/**
+ * Compute lifetime HODL amounts and persist fresh deposit cache.
+ *
+ * The scan's results replace the saved ones, with any deposits the
+ * deposit count recorded while the scan ran put back
+ * (`withLaterCounts`, src/counted-deposits.js), and with how far that
+ * count has read (`countedThrough`), which the next count starts from.
+ */
 async function computeAndCacheHodl(
   computeFn,
   allNftEvents,
@@ -43,7 +53,16 @@ async function computeAndCacheHodl(
     token1: position.token1,
     fee: position.fee,
   }).catch(() => ({}));
-  const hodl = await computeFn(allNftEvents, {
+  /*-
+   *  The compound list as saved now, rebuilt earlier in this pass when a
+   *  rebuild ran: it names the compounds this install made, which are
+   *  never money put in (src/lifetime-hodl.js).
+   */
+  const compoundHistory =
+    typeof opts.savedCompoundHistory === "function"
+      ? opts.savedCompoundHistory()
+      : undefined;
+  const computed = await computeFn(allNftEvents, {
     rebalanceEvents,
     position: {
       ...position,
@@ -56,7 +75,16 @@ async function computeAndCacheHodl(
     excludeFromAddrs: [config.POSITION_MANAGER, ps.poolAddress],
     wrappedNativeAddress: config.CHAIN.nativeWrappedToken,
     cachedFreshDeposits: cachedFresh,
+    compoundHistory,
   });
+  const hodl = epochKey
+    ? withLaterCounts(
+        computed,
+        _epochCache.getCachedFreshDeposits(epochKey),
+        opts.decimals0,
+        opts.decimals1,
+      )
+    : computed;
   // Attach pool address BEFORE caching so deposit USD computation can read it
   // on subsequent bot restarts (it's needed to fetch historical prices from
   // GeckoTerminal; without it the historical lookup passes an empty pool and
@@ -64,13 +92,14 @@ async function computeAndCacheHodl(
   if (ps.poolAddress) hodl.poolAddress = ps.poolAddress;
   if (epochKey) {
     _epochCache.setCachedLifetimeHodl(epochKey, hodl);
-    if (hodl.lastBlock > (cachedFresh?.lastBlock || 0))
-      _epochCache.setCachedFreshDeposits(epochKey, {
-        raw0: hodl.raw0,
-        raw1: hodl.raw1,
-        lastBlock: hodl.lastBlock,
-        deposits: hodl.deposits,
-      });
+    /*-
+     *  Rewritten when the scan counted a mint it had not reached, or
+     *  kept a count recorded while it ran, so the saved list is the one
+     *  the scan's results hold.
+     */
+    const kept = hodl !== computed;
+    if (kept || hodl.lastBlock > (cachedFresh?.lastBlock || 0))
+      _epochCache.setCachedFreshDeposits(epochKey, freshDepositsOf(hodl));
   }
   const tokenIdStr = String(position.tokenId || "");
   log.info(
@@ -85,6 +114,28 @@ async function computeAndCacheHodl(
     hodl.deposits?.length || 0,
   );
   return hodl;
+}
+
+/**
+ * The fresh-deposit cache's record of a pool's Lifetime results: the
+ * fresh totals, the newest mint whose deposits are counted, the deposit
+ * list, and how far the deposit count has read. The Lifetime scan and
+ * the deposit count both write it.
+ *
+ * @param {object} hodl  The pool's `lifetimeHodlAmounts`.
+ * @returns {{raw0: string, raw1: string, lastBlock: number,
+ *   deposits: object[], countedThrough?: number}}
+ */
+function freshDepositsOf(hodl) {
+  const out = {
+    raw0: hodl.raw0,
+    raw1: hodl.raw1,
+    lastBlock: hodl.lastBlock,
+    deposits: hodl.deposits,
+  };
+  if (typeof hodl.countedThrough === "number")
+    out.countedThrough = hodl.countedThrough;
+  return out;
 }
 
 /**
@@ -142,28 +193,31 @@ async function _ensureHodlPoolAddress(botState, position, epochKey, ethers) {
 }
 
 /**
- * Compute total lifetime deposit USD from HODL deposit entries.
+ * Value deposit entries, each at the historical price for its own block,
+ * so their total is the money that went in, not what it would be worth
+ * today. Each entry keeps the dollar figure it is given (`usd`), and one
+ * already given a figure keeps it unless the caller re-values.
  *
- * Each deposit is valued at the historical price for its own block, so
- * the total is the money that went in, not what it would be worth today.
+ * The Lifetime deposit total prices its whole list this way
+ * (`computeDepositUsd`), and so does the deposit count, for what a poll
+ * finds between moves (src/deposit-count.js).
  *
- * @param {object} botState   Per-position bot state.
- * @param {Function} updateState  State-update channel.
+ * @param {object} botState   Per-position bot state; its
+ *   `lifetimeHodlAmounts` holds the pool's address.
  * @param {object} position   Live position (token0, token1, fee).
- * @param {object} opts       Scan options; `decimals0`, `decimals1`, and
+ * @param {object[]} deposits  Entries `{raw0, raw1, block}`.
+ * @param {object} opts       `decimals0`, `decimals1`, and
  *   `refreshPrices` when the caller is re-valuing at fresh prices.
  * @param {string|null} epochKey  Epoch cache key, or null.
- * @returns {Promise<void>}
+ * @returns {Promise<{total: number, usedFallback: boolean}>}
  */
-async function computeDepositUsd(
+async function priceDepositEntries(
   botState,
-  updateState,
   position,
+  deposits,
   opts,
   epochKey,
 ) {
-  const deposits = botState.lifetimeHodlAmounts?.deposits;
-  if (!deposits?.length) return;
   const provider = sendTx.getManagedReadProvider();
   const poolAddr = await _ensureHodlPoolAddress(
     botState,
@@ -218,6 +272,55 @@ async function computeDepositUsd(
     },
   );
   flushBlockTimeCache();
+  return result;
+}
+
+/**
+ * Compute total lifetime deposit USD from HODL deposit entries, each at
+ * its own block's price (`priceDepositEntries`).
+ *
+ * The total is for the list standing when it is written. A deposit count
+ * or a Lifetime scan can save a newer list while this one is priced
+ * (src/deposit-count.js), and a total for the older list would then put
+ * back a figure that leaves out what the newer one added. So the newer
+ * list is priced in turn. An entry already priced keeps its figure, so
+ * only what is new is asked for.
+ *
+ * @param {object} botState   Per-position bot state.
+ * @param {Function} updateState  State-update channel.
+ * @param {object} position   Live position (token0, token1, fee).
+ * @param {object} opts       Scan options; `decimals0`, `decimals1`, and
+ *   `refreshPrices` when the caller is re-valuing at fresh prices.
+ * @param {string|null} epochKey  Epoch cache key, or null.
+ * @returns {Promise<void>}
+ */
+async function computeDepositUsd(
+  botState,
+  updateState,
+  position,
+  opts,
+  epochKey,
+) {
+  let deposits = botState.lifetimeHodlAmounts?.deposits;
+  if (!deposits?.length) return;
+  let result = await priceDepositEntries(
+    botState,
+    position,
+    deposits,
+    opts,
+    epochKey,
+  );
+  while (botState.lifetimeHodlAmounts?.deposits !== deposits) {
+    deposits = botState.lifetimeHodlAmounts?.deposits;
+    if (!deposits?.length) return;
+    result = await priceDepositEntries(
+      botState,
+      position,
+      deposits,
+      { ...opts, refreshPrices: false },
+      epochKey,
+    );
+  }
   if (result.total <= 0) return;
   botState.totalLifetimeDepositUsd = result.total;
   botState.depositUsedFallback = result.usedFallback;
@@ -304,6 +407,8 @@ async function revalueHodlBaseline(
 module.exports = {
   computeAndCacheHodl,
   computeDepositUsd,
+  freshDepositsOf,
+  priceDepositEntries,
   revalueHodlBaseline,
   _ensureHodlPoolAddress,
 };

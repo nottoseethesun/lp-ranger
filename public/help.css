@@ -51,6 +51,38 @@ ol {
   padding-left: 2rem;
 }
 
+/* A subsection inside an h3's, such as each gate's own rules. */
+h4 {
+  font-family: "Space Mono", monospace;
+  font-size: 20px;
+  color: #c8d4de; /* Pale Steel Blue */
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+/* The Gates section's tables: one row per gate, and what you see. */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  font-size: 20px;
+  line-height: 1.6;
+  color: #b0c4d0; /* Light Steel Blue */
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgb(255 255 255 / 10%); /* White, at 10% */
+}
+
+th {
+  font-family: "Space Mono", monospace;
+  color: #c8d4de; /* Pale Steel Blue */
+}
+
 /*
  * Minor overrides for the standalone help/disclosure pages — the
  * shared utility classes pick up slightly different sizes here to

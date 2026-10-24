@@ -6,7 +6,7 @@
  * @description
  * Read how long a stop may take, for the server that stops and for
  * `npm stop`, which asks it to, and how often `npm run gentle-stop` asks
- * the server whether it may.
+ * the server to stop once nothing is under way.
  *
  * A stop has two clocks. The server, on SIGINT or SIGTERM, begins an
  * orderly shutdown and exits by itself after `exitTimeoutMs` whether or
@@ -15,8 +15,9 @@
  * kill is the backup, so it must always be the slower of the two: the
  * margin is added to the server's own timeout rather than configured as
  * a second, independent figure that could be set shorter.
- * `gentleStopPollMs` comes before both: the wait between two questions
- * gentle-stop asks before it stops the server as `npm stop` does.
+ * `gentleStopPollMs` belongs to neither: the wait between two of the
+ * stop requests gentle-stop sends, each answered with what the server's
+ * stop still waits for, and how long the server has to answer each.
  *
  * All four values come from the `shutdown` group of app-runtime.json,
  * merged with any operator override, and each becomes a timer, so each

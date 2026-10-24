@@ -5,10 +5,9 @@
  *   (src/bot-cycle.js), plus _isTimeoutExpired, _isBeyondThreshold,
  *   and _reloadFromConfig (src/bot-cycle-triggers.js).
  *
- *   The swap backoff's waits and retry limit, how long a drained position
- *   waits to be retired, and the OOR timeout's default are an operator's
- *   own here, not the figures that ship, so a figure written into the
- *   code fails.
+ *   How long a drained position waits to be retired, and the OOR
+ *   timeout's default, are an operator's own here, not the figures that
+ *   ship, so a figure written into the code fails.
  */
 
 "use strict";
@@ -21,11 +20,6 @@ const SETTINGS_DIR = makeTestTempFolder("bot-cycle-helpers-settings");
 fs.writeFileSync(
   path.join(SETTINGS_DIR, "app-runtime.json"),
   JSON.stringify({
-    tx: {
-      swapBackoffBaseMs: 45000,
-      swapBackoffMaxMs: 900000,
-      retrySwapLimit: 6,
-    },
     retire: { drainedAfterMs: 2700000 },
   }),
 );
@@ -42,7 +36,6 @@ const {
   _checkRangeAndThreshold,
   _checkZeroLiquidity,
   _checkRebalanceGates,
-  _activateSwapBackoff,
   _liquidityChanged,
 } = require("../src/bot-cycle");
 const config = require("../src/config");
@@ -359,22 +352,24 @@ describe("_checkRebalanceGates", () => {
     assert.strictEqual(r.scanRunning, true);
   });
 
-  it("ignores scanRunning when forced (manual rebalance during scan)", () => {
-    /*- Manual (user-clicked) rebalance still bypasses the scan gate.
-     *  If the user explicitly clicks Rebalance while a scan is
-     *  running, that's their call. */
-    const deps = makeDeps({ _botState: { _scanRunning: true } });
+  it("holds no Rebalance Now for a scan", () => {
+    /*- The server refuses a Rebalance Now while a scan is running on
+     *  the position, and no scan starts while one waits to be made
+     *  (src/scan-state.js), so the bot never has one to hold. */
+    const deps = makeDeps({
+      _botState: { _scanRunning: true, forceRebalance: true },
+    });
     const r = _checkRebalanceGates(deps, {}, true);
     assert.strictEqual(r, null);
   });
 
-  it("returns swap backoff when active", () => {
-    const deps = makeDeps({
-      _botState: { swapBackoffUntil: Date.now() + 60_000 },
-    });
-    const r = _checkRebalanceGates(deps, {}, false);
-    assert.ok(r);
-    assert.strictEqual(r.swapBackoff, true);
+  it("lets a rebalance through past a scan waiting to start", () => {
+    // The scan waits for the move, which goes first.
+    for (const forced of [false, true]) {
+      const deps = makeDeps({ _botState: { _scanWaiting: true } });
+      const r = _checkRebalanceGates(deps, {}, forced);
+      assert.notStrictEqual(r?.scanRunning, true);
+    }
   });
 
   it("returns throttled when canRebalance is false", () => {
@@ -401,6 +396,25 @@ describe("_checkRebalanceGates", () => {
     assert.strictEqual(r.rebalanced, false);
   });
 
+  it("ends a Rebalance Now the dry run turns down", () => {
+    /*- Left asked for, it would hold the position's scans until a
+     *  restart, since no scan starts while one waits (src/scan-state.js).
+     *  The residual cleanup's flag is the bot's own, and stays. */
+    const asked = makeDeps({
+      dryRun: true,
+      _botState: { forceRebalance: true },
+    });
+    const r = _checkRebalanceGates(asked, { tick: 500 }, true);
+    assert.strictEqual(r.rebalanced, false);
+    assert.strictEqual(asked._botState.forceRebalance, false);
+    const cleanup = makeDeps({
+      dryRun: true,
+      _botState: { forceRebalance: true, residualCleanupInProgress: true },
+    });
+    _checkRebalanceGates(cleanup, { tick: 500 }, false);
+    assert.strictEqual(cleanup._botState.forceRebalance, true);
+  });
+
   it("checks pool daily cap when pool key functions provided", () => {
     const deps = makeDeps({
       _canRebalancePool: () => false,
@@ -418,55 +432,6 @@ describe("_checkRebalanceGates", () => {
     });
     const r = _checkRebalanceGates(deps, {}, false);
     assert.strictEqual(r, null);
-  });
-});
-
-// ── _activateSwapBackoff ────────────────────────────────────────────
-
-describe("_activateSwapBackoff", () => {
-  it("waits tx.swapBackoffBaseMs on the first call", () => {
-    const state = { rebalanceInProgress: true };
-    _activateSwapBackoff(state, null);
-    assert.strictEqual(state.swapBackoffMs, 45_000);
-    assert.ok(state.swapBackoffUntil > Date.now() - 1000);
-    assert.strictEqual(state.swapBackoffAttempts, 1);
-    assert.strictEqual(state.rebalanceInProgress, false);
-  });
-
-  it("doubles backoff on subsequent calls", () => {
-    const state = { swapBackoffMs: 60_000, swapBackoffAttempts: 1 };
-    _activateSwapBackoff(state, null);
-    assert.strictEqual(state.swapBackoffMs, 120_000);
-    assert.strictEqual(state.swapBackoffAttempts, 2);
-  });
-
-  it("caps backoff at tx.swapBackoffMaxMs", () => {
-    const state = { swapBackoffMs: 899_000, swapBackoffAttempts: 4 };
-    _activateSwapBackoff(state, null);
-    assert.strictEqual(state.swapBackoffMs, 900_000);
-  });
-
-  it("pauses after max retry limit is reached", () => {
-    // The sixth failure in a row, the limit tx.retrySwapLimit sets here.
-    const state = { swapBackoffAttempts: 5 };
-    let emitted = null;
-    _activateSwapBackoff(state, (p) => (emitted = p));
-    assert.strictEqual(state.rebalancePaused, true);
-    assert.ok(state.rebalanceError);
-    assert.ok(state.rebalanceError.includes("volatile"));
-    assert.strictEqual(state.swapBackoffMs, 0);
-    assert.ok(emitted);
-    assert.strictEqual(emitted.rebalancePaused, true);
-  });
-
-  it("does not pause when below limit", () => {
-    // The fifth failure: one short of the limit, as the first is.
-    for (const before of [0, 4]) {
-      const state = { swapBackoffAttempts: before };
-      _activateSwapBackoff(state, null);
-      assert.strictEqual(state.rebalancePaused, undefined);
-      assert.strictEqual(state.swapBackoffAttempts, before + 1);
-    }
   });
 });
 

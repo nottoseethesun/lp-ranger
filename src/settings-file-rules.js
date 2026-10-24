@@ -158,16 +158,7 @@ function _appRuntime(shipped) {
     // Which chain it names is checked against chains.json, below.
     defaults: group({ chain: K.text }),
     tx: group({
-      ...rangedEach(
-        [
-          "deadlineSec",
-          "swapBackoffBaseMs",
-          "swapBackoffMaxMs",
-          "midwayRetryLimit",
-          "sendRetries",
-        ],
-        "tx.",
-      ),
+      ...rangedEach(["deadlineSec", "midwayRetryLimit", "sendRetries"], "tx."),
       speedupSec: timer("txSpeedupSec", tx.speedupSec),
       cancelPhaseFloorSec: timer("cancelPhaseFloorSec", tx.cancelPhaseFloorSec),
       sendRetryBaseDelayMs: timer(
@@ -175,7 +166,6 @@ function _appRuntime(shipped) {
         tx.sendRetryBaseDelayMs,
       ),
       cancelToDeadlineMultiple: K.positive,
-      retrySwapLimit: K.count,
     }),
     dashboard: group(rangedEach(["pollsBeforeAssumedSeen"], "dashboard.")),
     poll: group({

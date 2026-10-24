@@ -5,8 +5,9 @@
  *
  *   A dialog about a position is filled for the position on screen when
  *   it opens: its prices, its decimals, its IL baseline, a confirmation
- *   to rebalance or reload it or to save its slippage, a deposit typed
- *   into the Lifetime panel, a notice of what happened to it. Its Save or
+ *   to rebalance or reload it or to save its slippage, a Compound Now
+ *   waiting for its scan, a deposit typed into the Lifetime panel, a
+ *   notice of what happened to it. Its Save or
  *   Confirm acts on whichever position is on screen when clicked, and
  *   another can come on screen underneath an open dialog, by the
  *   browser's Back or Forward button, say. So a switch to another
@@ -29,6 +30,7 @@
 import { g } from "./dashboard-helpers.js";
 import { closePriceOverrideDialog } from "./dashboard-price-override.js";
 import { closeRebalanceConfirm } from "./dashboard-rebalance-confirm.js";
+import { closeCompoundScanWait } from "./dashboard-compound.js";
 
 /** Marks a dialog built while the page runs as belonging to a position. */
 export const POSITION_DIALOG_ATTRIBUTE = "data-position-dialog";
@@ -46,6 +48,7 @@ const _shown = (id) => {
  */
 export const POSITION_MODALS = Object.freeze([
   { id: "rebalanceIlWarningModal", close: () => closeRebalanceConfirm() },
+  { id: "compoundScanWaitModal", close: () => closeCompoundScanWait() },
   {
     id: "poolDetailsModal",
     close: () => g("poolDetailsModal")?.classList.add("hidden"),

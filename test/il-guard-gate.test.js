@@ -22,7 +22,11 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { checkIlGuard, clearIlGuardWait } = require("../src/il-guard");
+const {
+  checkIlGuard,
+  clearIlGuardWait,
+  ilGuardWillMeasure,
+} = require("../src/il-guard");
 const { isRecoveryResult } = require("../src/bot-loop");
 const { ilSnapshot } = require("./helpers/il-snapshot");
 
@@ -38,7 +42,13 @@ describe("checkIlGuard — the gate", () => {
 
   beforeEach(() => {
     deps = {
-      position: { tokenId: "164418", fee: 2500, token0: "0xA", token1: "0xB" },
+      position: {
+        tokenId: "164418",
+        fee: 2500,
+        token0: "0xA",
+        token1: "0xB",
+        liquidity: "1000",
+      },
       _getConfig: (k) => (k === "impermanentLossGuardPct" ? 50 : undefined),
       _botState: {},
       provider: new Proxy({}, { get: () => explode("provider") }),
@@ -120,6 +130,38 @@ describe("checkIlGuard — the gate", () => {
   it("proceeds when there is no snapshot to project from", () => {
     assert.equal(checkIlGuard(deps, false, null, notifyPos), null);
   });
+
+  it("stands aside while the position holds no liquidity, even at a total loss", () => {
+    /*-
+     *  A rebalance that emptied the old position and failed to mint is
+     *  retried as an automatic rebalance. The Guard counts no coin in the
+     *  wallet, so it would see an empty position worth nothing against
+     *  holding, a 100% loss, and leave the coins idle.
+     */
+    deps.position.liquidity = "0";
+    assert.equal(
+      checkIlGuard(deps, false, ilSnapshot(0, 1000), notifyPos),
+      null,
+    );
+    assert.equal(
+      ilGuardWillMeasure(deps, false),
+      false,
+      "no fresh prices for it",
+    );
+    deps.position.liquidity = "1000";
+    assert.equal(ilGuardWillMeasure(deps, false), true);
+  });
+
+  it("stands aside for an empty position during a wait left by an earlier rejection", () => {
+    const first = checkIlGuard(deps, false, ilSnapshot(480, 1000), notifyPos);
+    assert.equal(first?.ilGuardRejected, true, "rejected while live");
+    deps.position.liquidity = "0";
+    assert.equal(
+      checkIlGuard(deps, false, ilSnapshot(0, 1000), notifyPos),
+      null,
+      "the wait holds no mint",
+    );
+  });
 });
 
 describe("checkIlGuard — the retry backoff", () => {
@@ -132,7 +174,7 @@ describe("checkIlGuard — the retry backoff", () => {
 
   beforeEach(() => {
     deps = {
-      position: { tokenId: "164418" },
+      position: { tokenId: "164418", liquidity: "1000" },
       _getConfig: (k) => (k === "impermanentLossGuardPct" ? 50 : undefined),
       _botState: {},
     };
@@ -260,7 +302,7 @@ describe("checkIlGuard — the block the dashboard shows after a Guard save", ()
   beforeEach(() => {
     guardPct = 50;
     deps = {
-      position: { tokenId: "164418" },
+      position: { tokenId: "164418", liquidity: "1000" },
       _getConfig: (k) =>
         k === "impermanentLossGuardPct" ? guardPct : undefined,
       _botState: {},
@@ -307,7 +349,7 @@ describe("checkIlGuard — the shipped default actually applies", () => {
   const notifyPos = (p) => ({ tokenId: p.tokenId });
 
   const virgin = () => ({
-    position: { tokenId: "164418" },
+    position: { tokenId: "164418", liquidity: "1000" },
     /*- Nothing saved for this position — the normal state of every
      *  position the user has never configured. */
     _getConfig: () => undefined,
@@ -384,9 +426,11 @@ describe("a blocked poll is not a recovery", () => {
       "out of range but within threshold",
       { rebalanced: false, withinThreshold: true },
     ],
-    ["volatile-price deferral", { rebalanced: false, priceVolatile: true }],
+    [
+      "a rebalance the price outran",
+      { rebalanced: false, priceVolatile: true },
+    ],
     ["scan in progress", { rebalanced: false, scanRunning: true }],
-    ["swap backoff", { rebalanced: false, swapBackoff: true }],
     ["ILG rejection", { rebalanced: false, ilGuardRejected: true }],
     [
       "ILG backoff",

@@ -2,8 +2,8 @@
  * @file src/position-state-routes.js
  * @module position-state-routes
  * @description
- * Two yes-or-no questions about the positions this server runs, each
- * answered from the same state the status poll reports.
+ * A yes-or-no question about the positions this server runs, answered
+ * from the same state the status poll reports.
  *
  * `GET /api/is-position-managed?key=<position key>` says whether the
  * server manages that position. The dashboard asks it each time it puts a
@@ -17,14 +17,10 @@
  * so the answer counts only those marked `running`, as the dashboard does
  * with the poll's list.
  *
- * `GET /api/is-position-being-adjusted` says whether a rebalance or a
- * compound is under way, for the position `?key=` names or, without a key,
- * for any position. Mission Control shows the same two flags, and
- * `npm run gentle-stop` asks before stopping the server, so that a stop
- * need not cut a rebalance off halfway.
- *
- * Both answer 400 for a key that does not parse as a position's composite
- * key (chain-wallet-contract-tokenId).
+ * It answers 400 for a key that does not parse as a position's composite
+ * key (chain-wallet-contract-tokenId). Whether anything is under way, for
+ * a stop, is the held stop's answer (`POST /api/stop-when-all-clear`,
+ * src/stop-when-all-clear.js).
  */
 
 "use strict";
@@ -60,13 +56,6 @@ function _keyOf(req) {
   return new URL(req.url, "http://localhost").searchParams.get("key");
 }
 
-/** Whether a position's state shows a rebalance or a compound under way. */
-function _adjusting(state) {
-  return (
-    state?.rebalanceInProgress === true || state?.compoundInProgress === true
-  );
-}
-
 // The answer for a key that names no position.
 const _BAD_KEY = {
   ok: false,
@@ -74,19 +63,17 @@ const _BAD_KEY = {
 };
 
 /**
- * Build the two route handlers.
+ * Build the route handler.
  *
  * @param {object} deps
  * @param {object} deps.positionMgr
  * @param {object} deps.diskConfig
  * @param {Function} deps.managedKeys
- * @param {Function} deps.getAllPositionBotStates  The per-position states,
- *   a Map keyed by composite key.
  * @param {Function} deps.jsonResponse  `(res, status, body) => void`
  * @returns {Record<string, Function>}  Route key to handler.
  */
 function createPositionStateRoutes(deps) {
-  const { getAllPositionBotStates, jsonResponse } = deps;
+  const { jsonResponse } = deps;
   return {
     "GET /api/is-position-managed": (req, res) => {
       const key = _keyOf(req);
@@ -96,17 +83,6 @@ function createPositionStateRoutes(deps) {
         (p) => p.key === key && p.status === "running",
       );
       return jsonResponse(res, 200, { managed });
-    },
-    "GET /api/is-position-being-adjusted": (req, res) => {
-      const key = _keyOf(req);
-      const states = getAllPositionBotStates();
-      if (key === null) {
-        const adjusting = [...states.values()].some(_adjusting);
-        return jsonResponse(res, 200, { adjusting });
-      }
-      if (parseCompositeKey(key) === null)
-        return jsonResponse(res, 400, _BAD_KEY);
-      return jsonResponse(res, 200, { adjusting: _adjusting(states.get(key)) });
     },
   };
 }

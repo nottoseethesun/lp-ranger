@@ -105,12 +105,25 @@ test("handler — refuses a position that is not managed", async () => {
   assert.match(h.sent[0].body.message, /Manage/);
 });
 
-test("handler — refuses while a rebalance is in flight", async () => {
-  const h = harness({ state: { rebalanceInProgress: true } });
-  await h.handler({}, {});
-  assert.equal(h.sent[0].code, 409);
-  assert.equal(h.sent[0].body.error, "rebalance-in-progress");
-});
+/*-
+ *  From a move's first gate, before it holds the rebalance lock and
+ *  raises rebalanceInProgress or compoundInProgress (src/scan-state.js).
+ */
+for (const [when, flags] of [
+  ["a poll decides or makes a move", { _moveInitiations: 1 }],
+  ["a Compound Now waits to be made", { forceCompound: true }],
+]) {
+  test(`handler — refuses while ${when}`, async () => {
+    const h = harness({ state: flags });
+    await h.handler({}, {});
+    assert.equal(h.sent[0].code, 409);
+    assert.equal(h.sent[0].body.error, "coin-move-under-way");
+    assert.equal(
+      h.sent[0].body.message,
+      "A coin move (rebalance or compound) for this position has already started. Try again once it's complete.",
+    );
+  });
+}
 
 test("handler — rejects a missing positionKey", async () => {
   const h = harness({ body: {} });
@@ -181,8 +194,9 @@ test("handler — 409 copy names THIS feature, not Reload", async () => {
   assert.doesNotMatch(m, /Reload Current Position/);
   assert.doesNotMatch(m, /four hours/);
 
-  const reb = harness({ state: { rebalanceInProgress: true } });
-  await reb.handler({}, {});
-  assert.match(reb.sent[0].body.message, /re-scan prices for this position/);
-  assert.doesNotMatch(reb.sent[0].body.message, /Cannot reload/);
+  /*- The coin-move refusal's words name neither feature, so they fit both. */
+  const move = harness({ state: { _moveInitiations: 1 } });
+  await move.handler({}, {});
+  assert.match(move.sent[0].body.message, /coin move/);
+  assert.doesNotMatch(move.sent[0].body.message, /[Rr]eload/);
 });

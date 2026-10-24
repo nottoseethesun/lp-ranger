@@ -19,6 +19,8 @@ const {
   isPaused,
   _resetPauseStateForTests,
 } = require("../src/price-fetcher-gate");
+const { getAllPositionBotStates } = require("../src/server-positions");
+const { isItOkayToStartAscan } = require("../src/scan-state");
 
 // Production file protection is handled globally by scripts/check.sh
 // (backup before tests, restore after). No per-test snapshot needed.
@@ -247,15 +249,6 @@ describe("server", () => {
     assert.deepStrictEqual(JSON.parse(res.body), { managed: false });
   });
 
-  it("GET /api/is-position-being-adjusted answers false with nothing under way", async () => {
-    const res = await req({
-      port: TEST_PORT,
-      path: "/api/is-position-being-adjusted",
-    });
-    assert.strictEqual(res.status, 200);
-    assert.deepStrictEqual(JSON.parse(res.body), { adjusting: false });
-  });
-
   // ── /api/rebalance ────────────────────────────────────────────────────────
 
   it("POST /api/rebalance returns 400 without positionKey", async () => {
@@ -290,6 +283,83 @@ describe("server", () => {
     assert.strictEqual(res.status, 409);
     assert.strictEqual(JSON.parse(res.body).positionKey, key);
   });
+
+  for (const [path, move, flag] of [
+    ["/api/rebalance", "rebalance", "forceRebalance"],
+    ["/api/compound", "compound", "forceCompound"],
+  ]) {
+    it(`POST ${path} refuses while a scan is running on the position`, async () => {
+      /*-
+       *  A move made during its position's scan would be left out of the
+       *  figures the scan rebuilds (src/scan-state.js). The refusal says
+       *  so, names the position, is marked for the dialog to wait on,
+       *  and asks nothing of the bot.
+       */
+      const key =
+        "pulsechain-0x1111111111111111111111111111111111111111-" +
+        "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-424243";
+      const states = getAllPositionBotStates();
+      let kicks = 0;
+      const state = {
+        running: true,
+        _scanRunning: true,
+        _kickPoll: () => kicks++,
+      };
+      states.set(key, state);
+      try {
+        const res = await req({
+          port: TEST_PORT,
+          method: "POST",
+          path,
+          body: { positionKey: key },
+          headers: { "x-csrf-token": await csrfToken() },
+        });
+        assert.strictEqual(res.status, 409);
+        const body = JSON.parse(res.body);
+        assert.strictEqual(body.scanInProgress, true);
+        assert.strictEqual(body.positionKey, key);
+        assert.match(body.error, /history from the blockchain/);
+        assert.match(body.error, new RegExp(`A ${move} made during that read`));
+        assert.strictEqual(state[flag], undefined);
+        assert.strictEqual(kicks, 0);
+      } finally {
+        states.delete(key);
+      }
+    });
+
+    it(`POST ${path} holds the position's scans back until it is made`, async () => {
+      /*-
+       *  A scan waiting to start, deferred by a move being decided, holds
+       *  no request back: it waits for the moves, this one included.
+       */
+      const key =
+        "pulsechain-0x1111111111111111111111111111111111111111-" +
+        "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-424244";
+      const states = getAllPositionBotStates();
+      let kicks = 0;
+      const state = {
+        running: true,
+        _scanWaiting: true,
+        _kickPoll: () => kicks++,
+      };
+      states.set(key, state);
+      try {
+        const res = await req({
+          port: TEST_PORT,
+          method: "POST",
+          path,
+          body: { positionKey: key },
+          headers: { "x-csrf-token": await csrfToken() },
+        });
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(state[flag], true);
+        assert.strictEqual(isItOkayToStartAscan(state), false);
+        assert.strictEqual(kicks, 1);
+      } finally {
+        states.delete(key);
+      }
+    });
+  }
 
   // ── Static files ─────────────────────────────────────────────────────────
 

@@ -24,11 +24,18 @@ describe("abortKind", () => {
       ["the pool liquidity is too thin to mint", "thin"],
       ["Swap aborted: price impact 3% exceeds slippage 1%", "slip"],
       ["insufficient gas for the mint", "gas"],
-      ["price too volatile to rebalance", "volatile"],
+      ["the price moved out of the new range", "volatile"],
       ["something else", ""],
       [undefined, ""],
     ])
       assert.equal(reason.abortKind(message), kind, String(message));
+  });
+
+  it("knows the bot's own words for a rebalance the price outran", () => {
+    /*- Read from the server module, so a change to its words that the
+     *  dashboard would no longer recognise fails here. */
+    const { priceMovedStopMessage } = require("../src/price-moved-stop");
+    assert.equal(reason.abortKind(priceMovedStopMessage()), "volatile");
   });
 });
 

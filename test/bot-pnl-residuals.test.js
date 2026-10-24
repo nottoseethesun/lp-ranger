@@ -3,8 +3,11 @@
  * @description Behaviour test for wallet-residual handling in
  * `overridePnlWithRealValues`.  Per the user-reported "Wallet Residual
  * is not included in overall profit-loss" omission, residuals ARE now
- * credited to the LP-side of the HODL IL comparison (gross credit:
- * `IL = (lpValue + residualValueUsd) − hodlValue`).
+ * credited to the LP-side of the lifetime HODL IL comparison (gross
+ * credit: `IL = (lpValue + residualValueUsd) − hodlValue`). The current
+ * figure, which the Impermanent Loss Guard measures with, counts no coin
+ * in the wallet: the user's ruling, 2026-10-23, that the comparison must
+ * be even.
  *
  * Accepted edge case per the user's "simple a vs b" mandate: a freshly
  * minted LP that has not yet rebalanced will show +$X of IL/G equal to
@@ -35,7 +38,7 @@ describe("bot-pnl-updater: residuals credit the LP-side of IL", () => {
   const pos = { liquidity: 1000n, tickLower: -600, tickUpper: 600 };
   const pool = { tick: 0, decimals0: 18, decimals1: 18 };
 
-  it("lifetimeIL and totalIL increase by residualValueUsd; currentValue stays LP-only", async () => {
+  it("lifetimeIL increases by residualValueUsd, totalIL does not; currentValue stays LP-only", async () => {
     const baseline = {
       entryValue: 500,
       hodlAmount0: 25,
@@ -73,8 +76,8 @@ describe("bot-pnl-updater: residuals credit the LP-side of IL", () => {
         `snap0=${snap0.lifetimeIL} snap1=${snap1.lifetimeIL}`,
     );
     assert.ok(
-      Math.abs(snap1.totalIL - snap0.totalIL - 63.41) < 1e-6,
-      `totalIL must rise by residualValueUsd ($63.41); ` +
+      Math.abs(snap1.totalIL - snap0.totalIL) < 1e-6,
+      `totalIL must not move with residualValueUsd; ` +
         `snap0=${snap0.totalIL} snap1=${snap1.totalIL}`,
     );
     /*- currentValue stays LP-only — the residual is its own line item

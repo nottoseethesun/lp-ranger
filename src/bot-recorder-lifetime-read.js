@@ -74,15 +74,27 @@ function chainSignature(position, rebalanceEvents) {
  * @param {() => Promise<{fromBlock: number, resumeBuffer: Map}>} o.start
  *   Where the read starts and which resume buffer it draws on, decided
  *   when the read runs rather than when it is prepared.
- * @returns {{signature: string, ids: Set<string>,
+ * @returns {{signature: string, ids: Set<string>, startedAt: number|null,
  *   read: () => Promise<Map<string, object>>}}  `read` resolves to each
- *   NFT's events, keyed by tokenId.
+ *   NFT's events, keyed by tokenId; `startedAt` is when it began.
  */
 function prepareChainRead({ position, rebalanceEvents, start }) {
   const ids = collectTokenIds(position, rebalanceEvents);
   const mintBlocks = mintBlocksByTokenId(rebalanceEvents);
   const liveTokenId = position.tokenId;
-  const read = shareRead(async () => {
+  /*-
+   *  `startedAt` is when the read began, in milliseconds, set when it
+   *  runs. A rebuild of the compound list keeps a compound the bot
+   *  recorded after this moment, since the read could not have seen it
+   *  (`compoundHistoryFrom`, src/compound-activity-figures.js).
+   */
+  const prepared = {
+    signature: chainSignature(position, rebalanceEvents),
+    ids,
+    startedAt: null,
+  };
+  prepared.read = shareRead(async () => {
+    prepared.startedAt = Date.now();
     const { fromBlock, resumeBuffer } = await start();
     const scanFrom = chainScanFloor(rebalanceEvents, fromBlock);
     return fetchAllNftEvents(ids, scanFrom, mintBlocks, {
@@ -90,11 +102,7 @@ function prepareChainRead({ position, rebalanceEvents, start }) {
       liveTokenId,
     });
   });
-  return {
-    signature: chainSignature(position, rebalanceEvents),
-    ids,
-    read,
-  };
+  return prepared;
 }
 
 /**

@@ -73,7 +73,7 @@ Starting and stopping a running install.
 | ------- | ----- | ----------- | ------- |
 | `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run bot -- --log-file --delete-pre-existing-log-file` · `npm run bot -- --start-with-price-lookups-unpaused` · `npm run bot -- --help` |
 | `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `app-data/scan-cache/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
-| `gentle-stop` | — | The recommended way to stop the server: waits until no rebalance or compound is under way, asking every five minutes, then stops it. See [Stopping a Running Install](#stopping-a-running-install). | `npm run gentle-stop` |
+| `gentle-stop` | — | The recommended way to stop the server: asks it to stop once nothing is under way, then prints what it is still finishing until it exits. See [Stopping a Running Install](#stopping-a-running-install). | `npm run gentle-stop` |
 | `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--headless` | Start the dashboard server and, once the wallet is unlocked, every position saved as managed. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. The log flags: see [Logging to a File](#logging-to-a-file). | `npm start -- --log-file --delete-pre-existing-log-file` · `npm start -- --verbose` · `npm start -- --help` |
 | `stop` | — | Force-stop: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. The server exits within three seconds, cutting off any rebalance or compound under way; prefer `npm run gentle-stop`. Falls back to an lsof-by-port lookup when there is no PID file, or its PID is no longer the server's. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
 
@@ -200,24 +200,29 @@ this run will not replace.
 ### Stopping a Running Install
 
 **Stop the server with `npm run gentle-stop`**, the recommended way: it
-lets a rebalance or compound under way finish first. Ctrl+C and
-`npm stop` are force-stops.
+lets a rebalance, compound or blockchain scan under way finish first.
+Ctrl+C and `npm stop` are force-stops.
 
-**`npm run gentle-stop` waits.** At once, then every five minutes
-(`shutdown.gentleStopPollMs`), it asks the server whether a rebalance or
-compound is under way (`GET /api/is-position-being-adjusted`). While one
-is, it says so and waits. Once none is, it asks the server to stop
-itself (`POST /api/shutdown`). The server stops every position, lets a
-rebalance or compound that began meanwhile finish, sends the shutdown
-alert, and exits; the command returns once it has. An unanswered
-question, or a stop request the server does not take, is sent again
-next time, since a server too busy to answer may be mid-rebalance. With
-no server listening, it just exits.
+**`npm run gentle-stop` waits.** It asks the server to stop once nothing
+is under way (`POST /api/stop-when-all-clear`). The server holds that
+stop: from the request on it starts nothing new, and once each
+rebalance, compound and scan under way has finished, it sends the
+shutdown alert and exits. The server decides, so no check can begin a
+rebalance between an all-clear and the stop. The command sends the
+request again every two seconds (`shutdown.gentleStopPollMs`); a repeat
+changes nothing, and each answer says what the server is still
+finishing, which the command prints when it changes and once a minute
+while it does not. It returns once the server has exited. That can take
+as long as a scan: minutes after a rebalance, about an hour for a
+position read from scratch. A request the server does not answer, or
+does not take, is sent again; with no server listening, the command
+just exits.
 
 **Once a stop begins, nothing new starts.** No position starts, a
-Manage is refused, and a check that was part way through when the stop
-came starts no rebalance or compound. Stop Managing on one position
-keeps that position's check from starting one too.
+Manage is refused, a check that was part way through when the stop came
+starts no rebalance or compound, and Reload Current Position and Re-scan
+Prices are refused. Stop Managing on one position keeps that position's
+check from starting one too.
 
 **The managed positions stay managed.** No stop, gentle or forced,
 takes a position off the list of managed positions. Once the wallet is
@@ -247,7 +252,7 @@ the moment the server is listening, before the wallet key is resolved
 and the managed positions start.
 
 The server removes its PID file whenever it exits on its own: a
-shutdown, `POST /api/shutdown`, or an uncaught error. A server killed
+shutdown, `POST /api/stop-when-all-clear`, or an uncaught error. A server killed
 outright runs no code and leaves the file behind, and its PID may later
 belong to another process. So `npm stop` signals the PID only while it
 still runs `server.js`; otherwise it clears the file and falls back to an

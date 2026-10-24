@@ -3,9 +3,9 @@
  * @module bot-pnl-current-nft
  * @description
  *   Current-panel per-NFT figures for the Managed dashboard:
- *   "Fees Compounded" and "Gas".  Both must match what the Unmanaged
- *   on-chain scan reports for the same NFT (see
- *   `position-details-compound.js`).
+ *   "Fees Compounded", the fees its compounds left in the wallet, and
+ *   "Gas".  Each must match what the Unmanaged view reports for the same
+ *   NFT (see `position-details-compound.js` and `position-details.js`).
  *
  *   Lives outside `bot-pnl-updater.js` so the heavy `compounder` require
  *   chain (ethers Interface construction at module-load) doesn't get
@@ -23,6 +23,11 @@ const config = require("./config");
 const { fetchTokenPriceUsd } = require("./price-fetcher");
 const { detectCompoundsOnChain } = require("./compounder");
 const { coinsToUsd } = require("./coin-value");
+const {
+  compoundedCoins,
+  recordedCompounds,
+  feesLeftInWallet,
+} = require("./compounded-coins");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const {
@@ -46,6 +51,17 @@ async function _weiToUsd(weiStr) {
   } catch {
     return 0;
   }
+}
+
+/**
+ * The compounds the bot recorded for this position, by transaction: each
+ * names the fees its deposit put back (src/compounded-coins.js).
+ *
+ * @param {object} deps  Bot deps; `_botState` holds the compound list.
+ * @returns {Map<string, object>}
+ */
+function _recordedOf(deps) {
+  return recordedCompounds(deps._botState?.compoundHistory);
 }
 
 /*-
@@ -117,11 +133,19 @@ async function _scanNftTotals(deps, position, poolState) {
      *  open for one that succeeds. */
     /*- The coins this NFT compounded, kept instead of their value: the
      *  figure on screen is priced every poll, so it follows the pair.
+     *  The fees each compound put back, as its record names them, not
+     *  the coins the wallet already held that its deposit took in
+     *  (src/compounded-coins.js).
      *
      *  Read before the gas is judged, because these come from the event
      *  logs and are unaffected by a receipt that would not load. Handing
      *  back zeros here would blank a figure that was read correctly. */
-    const amounts = _sumDeposited(r.compounds, opts.decimals0, opts.decimals1);
+    const amounts = compoundedCoins(
+      r.compounds,
+      _recordedOf(deps),
+      opts.decimals0,
+      opts.decimals1,
+    );
     if (r.totalNftGasWei === null || r.totalNftGasWei === undefined) {
       log.warn(
         "[pnl-current-nft] gas for NFT #%s left unknown — a receipt in its" +
@@ -157,29 +181,12 @@ async function _scanNftTotals(deps, position, poolState) {
   }
 }
 
-/*-
- *  Populate `snap.currentGasUsd` and (when the cache is fresher than the
- *  history-derived value) `snap.currentCompoundedUsd` for the Current panel.
- *  Match Unmanaged's `currentGasUsd` / `current` so both views agree on the
- *  same NFT.  Best-effort — never throws; on any failure leaves snap fields
- *  untouched so the dashboard's existing `?? liveEpoch.gas` fallback kicks in.
- */
-/*- The coins a list of compound events put back, in token units. */
-function _sumDeposited(compounds, d0, d1) {
-  let amount0 = 0,
-    amount1 = 0;
-  for (const c of compounds || []) {
-    amount0 += Number(c.amount0Deposited || 0) / 10 ** d0;
-    amount1 += Number(c.amount1Deposited || 0) / 10 ** d1;
-  }
-  return { amount0, amount1 };
-}
-
-/*-
- *  The coins compoundHistory records against the current tokenId. Used
- *  when the bot's lifetime scan populated history (entries carry
- *  tokenId) but the per-NFT amounts are missing. Avoids an unnecessary
- *  chain scan when the figure can be derived locally.
+/**
+ * The coins compoundHistory records against the current tokenId, the
+ * fees each compound put back. Used when the bot's lifetime scan
+ * populated history (entries carry tokenId) but the per-NFT amounts are
+ * missing. Avoids an unnecessary chain scan when the figure can be
+ * derived locally.
  */
 function _compoundedFromHistory(deps, tid, d0, d1) {
   const history = deps._botState?.compoundHistory;
@@ -187,7 +194,7 @@ function _compoundedFromHistory(deps, tid, d0, d1) {
   const mine = history.filter(
     (c) => c.tokenId !== undefined && String(c.tokenId) === tid,
   );
-  return _sumDeposited(mine, d0, d1);
+  return compoundedCoins(mine, undefined, d0, d1);
 }
 
 /*- The coins, at this poll's prices. Everything on the Current panel is
@@ -196,11 +203,23 @@ function _priced(amounts, deps) {
   return coinsToUsd(amounts, deps._lastPrice0, deps._lastPrice1);
 }
 
+/**
+ * Populate `snap.currentGasUsd` and (when the cache is fresher than the
+ * history-derived value) `snap.currentCompoundedUsd` for the Current panel.
+ * Match Unmanaged's `currentGasUsd` / `current` so both views agree on the
+ * same NFT.  Best-effort — never throws; on any failure leaves snap fields
+ * untouched so the dashboard's existing `?? liveEpoch.gas` fallback kicks in.
+ */
 async function applyCurrentNftFigures(snap, deps, position, poolState) {
   if (!snap || !position?.tokenId || !poolState) return;
   const tid = String(position.tokenId);
   const d0 = poolState.decimals0,
     d1 = poolState.decimals1;
+  /*- The fees this NFT's compounds collected and could not put back,
+   *  waiting in the wallet: earned, so the Current panel counts them, but
+   *  not in the position, so the Current IL/G does not. */
+  const left = feesLeftInWallet(deps._botState?.compoundHistory, tid, d0, d1);
+  snap.currentFeesLeftUsd = _priced(left, deps);
   const cachedGas = deps._botState?.nftGasWeiByTokenId?.[tid];
   const cachedComp = deps._botState?.nftCompoundedAmountsByTokenId?.[tid];
   if (cachedGas !== undefined) {

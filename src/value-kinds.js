@@ -171,6 +171,7 @@ const KINDS = Object.freeze({
   positive: kind("a number above 0", { type: "number", exclusiveMinimum: 0 }),
   usd: kind("a number of dollars, at least 0", { type: "number", minimum: 0 }),
   coins: kind("a number of coins, at least 0", { type: "number", minimum: 0 }),
+  percent: kind("a percentage, at least 0", { type: "number", minimum: 0 }),
   // An amount in a token's smallest unit, too large for a number.
   digits: kind("a whole number written in digits", {
     type: "string",

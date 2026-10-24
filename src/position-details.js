@@ -40,6 +40,8 @@ const {
 const {
   _detectCurrentNftValues,
   savedNftCompoundedUsd,
+  savedWalletCoinsPutIn,
+  savedFeesLeftUsd,
 } = require("./position-details-compound");
 const { resolvePositionSymbols } = require("./resolve-position-symbols");
 const { applyInitialResidualFromCache } = require("./bot-pnl-initial-residual");
@@ -266,6 +268,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
      *  same position. Zero while the position has never been managed,
      *  since only the bot's lifetime scan writes those coins. */
     savedNftCompoundedUsd(diskConfig, posKey, position.tokenId, price0, price1),
+    savedWalletCoinsPutIn(diskConfig, posKey, position.tokenId, ps),
   );
   // Position with the metadata the lifetime HODL needs (same as managed path)
   const _posWithMeta = {
@@ -314,8 +317,11 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
    *  are about the NFT being looked at, and reading it is a single scan
    *  bounded to that NFT's own mint block. The lifetime total across
    *  every NFT in the chain would cost the whole walk, for a figure the
-   *  Lifetime panel does not display.
+   *  Lifetime panel does not display. The saved compound list names the
+   *  fees of each compound the bot made, so this figure matches the one
+   *  the bot shows for the same NFT.
    */
+  const savedCompounds = diskConfig.positions[posKey]?.compoundHistory;
   const { compoundUsd: curCompounded, gasUsd: curGasUsd } =
     await _detectCurrentNftValues(
       position,
@@ -323,6 +329,7 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
       ps,
       { price0, price1 },
       events,
+      savedCompounds,
     );
   log.info(
     "[position details] tokenId=%s epochs=%d baseline=%s",
@@ -354,6 +361,17 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
    *  path needs the same field so _syncLifetimeState and the dashboard
    *  Lifetime panel see live unclaimed fees (not undefined). */
   if (snap) snap.currentFeesUsd = feesUsd;
+  /*- And `currentFeesLeftUsd`, the fees this NFT's compounds left in the
+   *  wallet, which the bot sets in src/bot-pnl-current-nft.js. */
+  if (snap)
+    snap.currentFeesLeftUsd = savedFeesLeftUsd(
+      diskConfig,
+      posKey,
+      position.tokenId,
+      ps,
+      price0,
+      price1,
+    );
   /*-
    *  Exactly what an unmanaged position displays: the Rebalance Events
    *  table, and the Current panel's Fees Compounded and Gas. Lifetime
