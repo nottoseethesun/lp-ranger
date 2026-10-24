@@ -1398,8 +1398,9 @@ readings alone cannot tell fees from a deposit that landed meanwhile.
 The Current panel shows them on its Fees Left Over line, from
 `currentFeesLeftUsd` (`feesLeftInWallet`, the bot in
 `src/bot-pnl-current-nft.js`, the unmanaged view from the saved list),
-and Profit adds them: they are in neither fee line, and the Current IL/G
-counts no coin in the wallet. Net P&L does not count them, since a later
+and a managed position's Profit adds them, since they are in neither fee
+line and the Current IL/G counts no coin in the wallet; an unmanaged
+position shows no Profit. Net P&L does not count them, since a later
 compound can sweep them into the position, which Current Value then
 holds. The Lifetime IL/G still counts them as the wallet's coins until a
 rebuild of the compound list counts every fee collected.
@@ -1437,8 +1438,8 @@ readings alone to decide.
   position's side, as the wallet's coins and, once a rebalance mints
   them, in the position's value, until Re-scan Prices or Reload Current
   Position rebuilds the compound list, whose total is every fee
-  collected. The Current panel counts them nowhere, so its Profit is
-  low by them until the next rebalance starts a new NFT.
+  collected. The Current panel shows them on its Fees Left Over line,
+  which its Profit adds.
 
 ---
 

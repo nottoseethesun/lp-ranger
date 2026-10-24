@@ -108,7 +108,6 @@ function load(cachedEpochs) {
         return {
           value: 500,
           il: null,
-          profit: null,
           priceGainLoss: null,
           residualValueUsd: 0,
         };

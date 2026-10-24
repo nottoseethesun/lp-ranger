@@ -453,8 +453,16 @@ function _renderPnlGas(curGas) {
  *  the compound list the bot saved while it managed the position.
  *  Both currentCompoundedUsd and currentGasUsd are computed by the
  *  unmanaged scan from chain (mint TX + standalone compound TXs at
- *  current native price), independent of any prior Manage cycle. */
-function _applyUnmanagedSnapshotOverlay(d) {
+ *  current native price), independent of any prior Manage cycle.
+ *
+ *  Profit shows no figure, the user's ruling (2026-10-23): it needs LP
+ *  Ranger's record of each compound, which fees it put back and which it
+ *  left in the wallet, and that record is kept only while LP Ranger
+ *  manages the position. Dashed on every answer, so a figure from before
+ *  Stop Managing does not stay on screen. */
+export function _applyUnmanagedSnapshotOverlay(d) {
+  const profit = g("curProfit");
+  if (profit) _dashProfitKpi(profit);
   if (!d.pnlSnapshot) return;
   const curComp = d.pnlSnapshot.currentCompoundedUsd || 0;
   setKpiValue("pnlCompounded", curComp > 0 ? curComp : null);
@@ -498,12 +506,16 @@ export function _updateKpis(d) {
     !histOk,
   );
 }
+/** A Profit card with no figure: a dash, coloured as neither gain nor loss. */
+function _dashProfitKpi(el) {
+  _setLeadingText(el, "\u2014");
+  el.className = "kpi-value 9mm-pos-mgr-kpi-pct-row neu";
+}
 export function _setProfitKpi(id, fees, gas, ilg) {
   const el = g(id);
   if (!el) return;
   if (ilg === null || ilg === undefined) {
-    _setLeadingText(el, "\u2014");
-    el.className = "kpi-value 9mm-pos-mgr-kpi-pct-row neu";
+    _dashProfitKpi(el);
     return;
   }
   const p = (fees || 0) - (gas || 0) + ilg;

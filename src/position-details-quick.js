@@ -219,7 +219,6 @@ function _currentPnl(
     priceGainLoss: pgl,
     il,
     netPnl: entryValue > 0 ? (pgl || 0) + feesUsd : null,
-    profit: il !== null ? feesUsd + il : null,
     residualValueUsd: rUsd,
     residualUsd0: residuals?.usd0 || 0,
     residualUsd1: residuals?.usd1 || 0,

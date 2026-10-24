@@ -161,7 +161,10 @@ export function _applyCurrentKpis(d) {
     d.baselineEntryValue,
   );
   setKpiValue("kpiPnl", d.netPnl);
-  setKpiValue("curProfit", d.profit);
+  /*- No Profit: an unmanaged position can never have the compound records
+   *  it needs (the user's ruling, 2026-10-23). Its card keeps the dash the
+   *  fetch put there, and each status answer puts back
+   *  (`_applyUnmanagedSnapshotOverlay`, public/dashboard-data-kpi.js). */
   setKpiValue("curIL", d.il);
   setKpiValue("pnlRealized", 0);
   // Populate the trailing %/APR spans on the pct-row cards so the layout

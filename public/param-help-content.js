@@ -1538,6 +1538,16 @@ export function buildParamHelp(f) {
             "Realized Gains (tokens you sold). Profit excludes both &mdash; " +
             "it isolates the fee-earning performance from market movements.",
         },
+        {
+          heading: "For a position LP Ranger does not manage",
+          body:
+            "No Profit is shown. Profit needs LP Ranger&rsquo;s own record " +
+            "of each compound: which of the coins it put back were fees, " +
+            "and which fees it left in the wallet. LP Ranger keeps that " +
+            "record only while it manages a position, so for one it does " +
+            "not manage the figure could never be complete. Click " +
+            "<strong>Manage</strong> to see it.",
+        },
       ],
     },
 

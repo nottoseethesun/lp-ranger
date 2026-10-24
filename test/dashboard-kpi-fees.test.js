@@ -8,6 +8,9 @@
  *   `feesAccrued + compoundedAccrued`. Rendering that as "Fees Earned"
  *   and then adding Fees Compounded counts the compounded portion twice
  *   — on a real position that was $40.76 of the $79.78 Profit shown.
+ *
+ *   An unmanaged position shows no Profit at all, since it can never
+ *   have the compound records Profit needs.
  */
 
 "use strict";
@@ -254,6 +257,75 @@ describe("Current panel composition", () => {
       document.getElementById("pnlFeesLeft").textContent.includes("—"),
       true,
     );
+  });
+});
+
+describe("an unmanaged position's Profit", () => {
+  /*-
+   *  The user, 2026-10-23: "An Unmanaged Position should not show any
+   *  Profit figure, because it simply can never have the required info."
+   *  Profit needs LP Ranger's record of each compound, kept only while
+   *  LP Ranger manages the position.
+   */
+  let kpi;
+  let unmanaged;
+
+  before(async () => {
+    kpi = await import("../public/dashboard-data-kpi.js");
+    unmanaged = await import("../public/dashboard-unmanaged-apply.js");
+  });
+
+  beforeEach(() => {
+    document.body.innerHTML = [
+      "kpiValue",
+      "pnlFees",
+      "pnlCompounded",
+      "pnlFeesLeft",
+      "pnlGas",
+      "pnlPrice",
+      "kpiPnl",
+      "curProfit",
+      "curIL",
+      "pnlRealized",
+    ]
+      .map((id) => '<div id="' + id + '"></div>')
+      .join("");
+  });
+
+  const text = (id) => document.getElementById(id).textContent;
+
+  it("shows no figure from the first step, whatever its answer carries", () => {
+    // The dash the fetch puts on every card before asking.
+    document.getElementById("curProfit").textContent = "—";
+    unmanaged._applyCurrentKpis({
+      value: 100,
+      feesUsd: 2,
+      il: 30,
+      profit: 32,
+      netPnl: 5,
+    });
+    assert.equal(text("curProfit"), "—");
+    assert.ok(text("curIL").includes("30"), "the IL/G still shows");
+  });
+
+  it("puts the dash back on each status answer, over a figure from managing it", () => {
+    kpi._setProfitKpi("curProfit", 12, 0.5, -1);
+    assert.ok(text("curProfit").includes("10.50"), "the managed figure");
+    kpi._applyUnmanagedSnapshotOverlay({
+      pnlSnapshot: {
+        currentCompoundedUsd: 10,
+        currentFeesLeftUsd: 1,
+        currentGasUsd: 0.5,
+      },
+    });
+    assert.equal(text("curProfit"), "—");
+    assert.ok(text("pnlCompounded").includes("10"), "the lines above it show");
+  });
+
+  it("puts the dash back before the second step's figures arrive, too", () => {
+    kpi._setProfitKpi("curProfit", 12, 0.5, -1);
+    kpi._applyUnmanagedSnapshotOverlay({});
+    assert.equal(text("curProfit"), "—");
   });
 });
 
