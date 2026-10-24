@@ -44,6 +44,8 @@ const {
 const { parseCompositeKey } = require("./composite-key");
 const { RECORD_POSITION_KEYS } = require("./bot-config-keys");
 const { walletStates } = require("./deposit-attribution-inputs");
+const { coinInOtherNfts } = require("./wallet-coin-share");
+const { joinOrLeave, wakeOthersSharingACoin } = require("./shared-coin-wake");
 
 /** Per-position bot state (in-memory, keyed by composite key). */
 const _positionBotStates = new Map();
@@ -188,7 +190,13 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr, dir) {
     state = {};
     _positionBotStates.set(key, state);
   }
+  /*- A position whose first check has saved its NFT's coins, or which
+   *  stops, changes how the others divide a coin their pools share
+   *  (src/lib/shared-coin-wake.js). */
+  const change = joinOrLeave(state, patch);
   Object.assign(state, patch, { updatedAt: new Date().toISOString() });
+  if (change !== null)
+    wakeOthersSharingACoin(_positionBotStates.values(), state, change);
 
   // Persist position-specific data to v2 config when important fields change
   if (patch.pnlEpochs) _persistEpochCache(state, patch.pnlEpochs);
@@ -251,30 +259,15 @@ function attachMultiPosDeps(botState, positionMgr) {
     );
   botState._canRebalancePool = positionMgr.canRebalancePool;
   botState._recordPoolRebalance = positionMgr.recordPoolRebalance;
-  /**
-   * Sum the in-position amount of a token across all managed positions.
-   * Used for pro-rata wallet residual split.
-   * @param {string} tokenAddress  ERC-20 address to look up.
-   * @returns {number} Total human-readable amount across all positions.
-   */
   /*- The running positions of this wallet, whose deposits of a coin they
    *  share count where the coins went (src/lib/deposit-attribution.js). */
   botState._walletDepositStates = () =>
     walletStates(_positionBotStates, botState);
-  botState._getTokenPositionAmounts = (tokenAddress) => {
-    const ta = tokenAddress.toLowerCase();
-    let total = 0;
-    for (const [, s] of _positionBotStates) {
-      if (!s.running || !s.positionStats) continue;
-      const ap = s.activePosition;
-      if (!ap) continue;
-      if (ap.token0?.toLowerCase() === ta)
-        total += Number(s.positionStats.balance0) || 0;
-      if (ap.token1?.toLowerCase() === ta)
-        total += Number(s.positionStats.balance1) || 0;
-    }
-    return total;
-  };
+  /*- The other running positions whose pool contains a coin, which this
+   *  position's part of the wallet's balance of it is divided beside
+   *  (src/lib/wallet-coin-share.js). */
+  botState._coinInOtherNfts = (coin) =>
+    coinInOtherNfts(_positionBotStates.values(), botState, coin);
 }
 
 /**

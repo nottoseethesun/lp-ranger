@@ -34,15 +34,17 @@ const {
 const _ERC20_BAL_ABI = ["function balanceOf(address) view returns (uint256)"];
 
 /**
- * Fetch this position's pro-rata share of wallet token balances.
+ * The wallet's balance of each of the position's pool's two coins, all of
+ * which the unmanaged view counts as the position's: an unmanaged
+ * position takes no part in the managed positions' division of a coin
+ * their pools share (src/lib/wallet-coin-share.js).
  * @param {object} provider
  * @param {object} ethersLib
- * @param {object} position   { token0, token1, liquidity, tickLower, tickUpper }
- * @param {object} ps         Pool state with tick, decimals0, decimals1.
+ * @param {object} position   { token0, token1 }
+ * @param {object} ps         Pool state with decimals0, decimals1.
  * @param {number} price0
  * @param {number} price1
  * @param {string} walletAddr
- * @param {Function} [getTokenAmounts]  Sum of in-position amounts across all managed positions.
  * @returns {Promise<{ usd: number, amount0: number, amount1: number }>}
  */
 async function _walletResiduals(
@@ -53,7 +55,6 @@ async function _walletResiduals(
   price0,
   price1,
   walletAddr,
-  getTokenAmounts,
 ) {
   const empty = { usd: 0, amount0: 0, amount1: 0 };
   if (!walletAddr) return empty;
@@ -72,24 +73,8 @@ async function _walletResiduals(
       t0c.balanceOf(walletAddr),
       t1c.balanceOf(walletAddr),
     ]);
-    const wf0 = Number(wb0) / 10 ** ps.decimals0;
-    const wf1 = Number(wb1) / 10 ** ps.decimals1;
-    const pa = rangeMath.positionAmounts(
-      position.liquidity || 0,
-      ps.tick,
-      position.tickLower,
-      position.tickUpper,
-      ps.decimals0,
-      ps.decimals1,
-    );
-    const total0 = getTokenAmounts
-      ? getTokenAmounts(position.token0)
-      : pa.amount0;
-    const total1 = getTokenAmounts
-      ? getTokenAmounts(position.token1)
-      : pa.amount1;
-    const share0 = total0 > 0 ? (pa.amount0 / total0) * wf0 : wf0;
-    const share1 = total1 > 0 ? (pa.amount1 / total1) * wf1 : wf1;
+    const share0 = Number(wb0) / 10 ** ps.decimals0;
+    const share1 = Number(wb1) / 10 ** ps.decimals1;
     const usd0 = share0 * price0;
     const usd1 = share1 * price1;
     return {

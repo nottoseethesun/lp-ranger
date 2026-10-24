@@ -24,6 +24,7 @@ const {
   walletResiduals,
 } = require("../src/lib/bot-pnl-updater");
 const rangeMath = require("../src/lib/range-math");
+const { NO_OTHER_NFTS } = require("../src/lib/wallet-coin-share");
 const { _resetForTest } = require("../src/lib/gecko-rate-limit");
 
 let _originalFetch;
@@ -144,11 +145,13 @@ describe("walletResiduals: each coin's share", () => {
   const position = { ...POS, token0: "0xc", token1: "0xx" };
   const own = rangeMath.positionAmounts(1000n, 0, -600, 600, 0, 0);
 
-  it("is the position's holding of each coin over all the running positions' holdings", async () => {
+  it("is the amount of each coin in the position's NFT, out of the amount in the NFTs of every running position whose pool contains it", async () => {
     const deps = {
       signer: { getAddress: async () => "0xw" },
-      _getTokenPositionAmounts: (token) =>
-        token === "0xc" ? own.amount0 / 0.6 : own.amount1,
+      _coinInOtherNfts: (coin) =>
+        coin === "0xc"
+          ? { amount: own.amount0 / 0.6 - own.amount0, value: 0, positions: 1 }
+          : NO_OTHER_NFTS,
     };
     const r = await walletResiduals(
       deps,
@@ -164,10 +167,10 @@ describe("walletResiduals: each coin's share", () => {
     assert.ok(Math.abs(r.amount0 - 60) < 1e-9, "its share of the coins");
   });
 
-  it("is the whole balance when no running position holds any of the coin", async () => {
+  it("is the whole balance of a coin no other running position's pool contains", async () => {
     const deps = {
       signer: { getAddress: async () => "0xw" },
-      _getTokenPositionAmounts: () => 0,
+      _coinInOtherNfts: () => NO_OTHER_NFTS,
     };
     const r = await walletResiduals(
       deps,

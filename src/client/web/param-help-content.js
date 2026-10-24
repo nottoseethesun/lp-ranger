@@ -1779,10 +1779,10 @@ export function buildParamHelp(f) {
             "reach the wallet are counted at the bot&rsquo;s next check, " +
             "and again before each rebalance and compound. Rebalance " +
             "re-mints and compounds are not counted. A deposit of a coin " +
-            "another managed position also holds counts here only for the " +
-            "part that went into this position, or that its Wallet " +
-            "Residual credits it while the coins wait in the wallet. Edit " +
-            "manually only if auto-detection is inaccurate.",
+            "another managed position&rsquo;s pool also contains counts here " +
+            "only for the part that went into this position, or that its " +
+            "Wallet Residual (Pool) line credits it while the coins wait in " +
+            "the wallet. Edit manually only if auto-detection is inaccurate.",
         },
         {
           heading: "Buttons on the edit dialog",

@@ -1280,6 +1280,30 @@ only once a rebalance has minted them into a new NFT: it reads the
 wallet's transfers in the window between one mint and the next
 (`src/lib/lifetime-hodl.js`).
 
+**The wallet's balance of a coin two pools share.** When the pools of two
+or more running managed positions contain the same coin, WPLS for
+example, the wallet's balance of it is divided between those positions,
+so the Wallet Residual counts it once in all
+(`src/lib/wallet-coin-share.js`). Each position's part is the amount of
+the coin its own NFT contains at the current price, out of the amount
+the NFTs of all those positions contain. Inside its range an NFT contains
+some of each of its pool's two coins; outside it, only one of them and
+none of the other. Each position works its own amount out at its check,
+and takes each other position's amount as that position saved it at the
+end of its last check (`positionStats`), so a position counts for the
+others from the end of its first check until it stops. At both moments each other
+running position whose pool contains one of its coins is checked again
+at once (`src/lib/shared-coin-wake.js`), with the wake-up Rebalance Now
+uses; a position whose scan is running is left to the check its scan
+pass ends with, and nothing is woken while the app itself is stopping.
+When none of those NFTs contains any of the coin, the balance is divided
+by each position's value in dollars instead, each other position's value
+as it published it at its last check, and evenly when none of them has
+any value. A coin no other running position's pool contains is the
+position's alone, whatever its NFT contains. A deposit of the coin
+waiting in the wallet is divided the same way (**A coin two positions
+hold**, below).
+
 **What it counts.** The same transfers by the same rules, from the block
 after the last one counted up to the chain's head, one entry per
 transaction (`depositsInWindow`, `src/lib/wallet-deposits.js`, which the
@@ -1387,13 +1411,13 @@ twice for coins that arrived once. So each such deposit counts where its
 coins went (`src/lib/deposit-attribution.js`, the user's design,
 2026-10-24):
 
-- **while the coins wait in the wallet**, each position holding the
-  coin counts the share of them the Wallet Residual (Pool) credits it:
-  its own holding of the coin over all the running managed positions'
-  holdings of it (`fraction0`, `fraction1` from `walletResiduals`). What
-  it counts as put in then matches the coins it is credited with, so the
-  deposit moves none of its Lifetime figures. The share moves from poll
-  to poll as prices move the holdings, and Total Lifetime Deposit with
+- **while the coins wait in the wallet**, each position whose pool
+  contains the coin counts the share of them the Wallet Residual (Pool)
+  credits it (**The wallet's balance of a coin two pools share**, above;
+  `fraction0`, `fraction1` from `walletResiduals`). What it counts as
+  put in then matches the coins it is credited with, so the deposit
+  moves none of its Lifetime figures. The share moves from poll to poll
+  as prices move the coins in each NFT, and Total Lifetime Deposit with
   it;
 - **a rebalance takes them all**, since it mints with the wallet's whole
   balance: from its mint on, the position it minted for counts every

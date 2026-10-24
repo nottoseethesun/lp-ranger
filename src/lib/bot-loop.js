@@ -615,7 +615,7 @@ async function startBotLoop(opts) {
         _pnlTracker: pnlTracker,
         _rebalanceEvents: rebalanceEvents,
         _residualTracker: residualTracker,
-        _getTokenPositionAmounts: botState._getTokenPositionAmounts || null,
+        _coinInOtherNfts: botState._coinInOtherNfts || null,
         _walletDepositStates: botState._walletDepositStates,
         _getConfig: gc,
         _poolKey: botState._poolKey || null,

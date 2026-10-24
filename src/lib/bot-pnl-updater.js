@@ -21,6 +21,7 @@ const { coinsToUsd, nftCoinsToUsd } = require("./coin-value");
 const { hasCompoundedTotal } = require("./bot-config-keys");
 const { _computeIL } = require("./bot-pnl-il");
 const _attribution = require("./deposit-attribution-inputs");
+const { poolCoinShares } = require("./wallet-coin-share");
 const { PM_ABI } = require("./pm-abi");
 const {
   maybeNotifyBalanced,
@@ -220,9 +221,10 @@ async function addPoolShare(
 }
 
 /**
- * Compute this position's pro-rata share of wallet token balances.
- * Each token's wallet balance is split across all managed positions
- * that use it, proportional to the in-position amount.
+ * This position's part of the wallet's balance of each of its pool's two
+ * coins, the Wallet Residual (Pool) credit. A coin the pool of another
+ * running managed position also contains is divided between them by the
+ * amount of it each one's NFT contains (src/lib/wallet-coin-share.js).
  *
  * @returns {{ usd: number, amount0: number, amount1: number,
  *   wallet?: {raw0: bigint, raw1: bigint} }}
@@ -264,7 +266,7 @@ async function walletResiduals(
       d1 = poolState.decimals1;
     const wf0 = toFloat(wb0, d0),
       wf1 = toFloat(wb1, d1);
-    // This position's in-range token amounts
+    // The coins this position's NFT contains at this check's price.
     const pa = rangeMath.positionAmounts(
       position.liquidity || 0,
       poolState.tick,
@@ -273,12 +275,13 @@ async function walletResiduals(
       d0,
       d1,
     );
-    // Pro-rata: query all managed positions' amounts for shared tokens
-    const gta = deps._getTokenPositionAmounts;
-    const total0 = gta ? gta(position.token0) : pa.amount0;
-    const total1 = gta ? gta(position.token1) : pa.amount1;
-    const fraction0 = total0 > 0 ? pa.amount0 / total0 : 1;
-    const fraction1 = total1 > 0 ? pa.amount1 / total1 : 1;
+    const ownValue = positionValueUsd(position, poolState, price0, price1);
+    const [fraction0, fraction1] = poolCoinShares(
+      deps._coinInOtherNfts,
+      position,
+      pa,
+      ownValue,
+    );
     const share0 = fraction0 * wf0;
     const share1 = fraction1 * wf1;
     const usd0 = share0 * price0;
