@@ -3,8 +3,8 @@
 /**
  * @file test/setting-bounds.test.js
  * @description `setting-bounds.json` is the one place a checked setting's
- *   range is declared, `src/setting-bounds.js` the one reader of it, and
- *   `src/range-check.js` the one rule for whether a value lies inside a
+ *   range is declared, `src/lib/setting-bounds.js` the one reader of it, and
+ *   `src/lib/range-check.js` the one rule for whether a value lies inside a
  *   range, on the server and in the dashboard alike.
  *
  *   Three things are pinned here. The rule itself: inclusive ends, either
@@ -21,12 +21,12 @@ const fs = require("fs");
 const path = require("path");
 const OPENAPI = require("../docs/openapi.json");
 
-const { SETTING_BOUNDS } = require("../src/setting-bounds");
-const { withinBound, boundText } = require("../src/range-check");
-const { loadShippedDefaults } = require("../src/load-merged-defaults");
-const { BOUNDS } = require("../src/config-bounds");
-const { assertTimerSec } = require("../src/timer-bounds");
-const { GAS_FEE_PCT_MIN, GAS_FEE_PCT_MAX } = require("../src/swap-gates");
+const { SETTING_BOUNDS } = require("../src/lib/setting-bounds");
+const { withinBound, boundText } = require("../src/lib/range-check");
+const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
+const { BOUNDS } = require("../src/lib/config-bounds");
+const { assertTimerSec } = require("../src/lib/timer-bounds");
+const { GAS_FEE_PCT_MIN, GAS_FEE_PCT_MAX } = require("../src/lib/swap-gates");
 
 const BOT = loadShippedDefaults("bot-config-defaults.json");
 const RUNTIME = loadShippedDefaults("app-runtime.json");
@@ -76,10 +76,10 @@ describe("withinBound", () => {
   });
 });
 
-describe("src/range-check.js", () => {
+describe("src/lib/range-check.js", () => {
   it("imports nothing, so the dashboard bundle can take it whole", () => {
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "range-check.js"),
+      path.join(__dirname, "..", "src", "lib", "range-check.js"),
       "utf8",
     );
     assert.doesNotMatch(src, /\brequire\(|^\s*import\s/m);

@@ -2,7 +2,7 @@
  * @file test/lifetime-deposit-polled.test.js
  * @description Total Lifetime Deposit adds the deposits a poll's count
  *   found since the last move's count (`overridePnlWithRealValues`,
- *   src/bot-pnl-updater.js).
+ *   src/lib/bot-pnl-updater.js).
  *
  *   A move's count saves its deposits into the Lifetime results, where
  *   they are priced into the saved total. A poll's count between moves
@@ -16,8 +16,8 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
-const { _resetForTest } = require("../src/gecko-rate-limit");
+const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
+const { _resetForTest } = require("../src/lib/gecko-rate-limit");
 
 let _originalFetch;
 beforeEach(() => {

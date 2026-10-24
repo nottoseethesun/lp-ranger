@@ -12,7 +12,7 @@ const assert = require("node:assert/strict");
 const {
   fetchDustUnitPriceUsd,
   _resetDustUnitPriceCache,
-} = require("../src/price-fetcher");
+} = require("../src/lib/price-fetcher");
 
 let _origFetch;
 

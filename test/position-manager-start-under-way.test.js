@@ -3,7 +3,7 @@
 /**
  * @file test/position-manager-start-under-way.test.js
  * @description A position whose start is under way, in the position
- *   manager (src/position-manager.js).
+ *   manager (src/lib/position-manager.js).
  *
  *   A bot loop runs its first check of the pool before its start hands
  *   back the handle that stops it, and that check can take minutes and
@@ -17,9 +17,9 @@
 
 const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { createPositionManager } = require("../src/position-manager");
-const { createRebalanceLock } = require("../src/rebalance-lock");
-const appPhase = require("../src/app-phase");
+const { createPositionManager } = require("../src/lib/position-manager");
+const { createRebalanceLock } = require("../src/lib/rebalance-lock");
+const appPhase = require("../src/lib/app-phase");
 
 const makeMgr = () =>
   createPositionManager({ rebalanceLock: createRebalanceLock() });

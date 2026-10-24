@@ -5,7 +5,7 @@
  * @description
  * A migration step: move the scan caches an older release kept in
  * `tmp/` into `app-data/scan-cache/`, where this release keeps them
- * (src/scan-cache-dir.js), so an updated install starts warm rather than
+ * (src/lib/scan-cache-dir.js), so an updated install starts warm rather than
  * re-reading every position's history from the blockchain.
  *
  * The names are the caches those releases wrote, fixed as they were; a

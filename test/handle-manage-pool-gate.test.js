@@ -20,8 +20,8 @@ const assert = require("assert");
 const {
   createPositionRoutes,
   getAllPositionBotStates,
-} = require("../src/server-positions");
-const { compositeKey } = require("../src/bot-config-v2");
+} = require("../src/lib/server-positions");
+const { compositeKey } = require("../src/lib/bot-config-v2");
 
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
 const A = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
@@ -138,7 +138,7 @@ describe("handleManage one-position-per-pool gate", () => {
      *  refused needs to know which position to stop. */
     assert.strictEqual(res._body.conflictTokenId, "111");
     assert.strictEqual(res._body.conflictKey, held);
-    // The refusal names the position refused (src/position-answer-tag.js).
+    // The refusal names the position refused (src/lib/position-answer-tag.js).
     assert.match(res._body.positionKey, /-222$/);
     /*- Refused BEFORE anything starts — no bot loop, no disk entry. */
     assert.deepStrictEqual(started, []);
@@ -162,7 +162,7 @@ describe("handleManage one-position-per-pool gate", () => {
 
     assert.notStrictEqual(res._status, 409);
     assert.strictEqual(started.length, 1);
-    // The answer names the position started (src/position-answer-tag.js).
+    // The answer names the position started (src/lib/position-answer-tag.js).
     assert.match(res._body.positionKey, /-222$/);
   });
 

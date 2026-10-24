@@ -51,13 +51,13 @@ describe("the oldest NFT's mint lookup is reached", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/position-history")];
-    ({ getPositionHistory } = require("../src/position-history"));
+    delete require.cache[require.resolve("../src/lib/position-history")];
+    ({ getPositionHistory } = require("../src/lib/position-history"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/position-history")];
+    delete require.cache[require.resolve("../src/lib/position-history")];
   });
 
   beforeEach(() => {
@@ -116,7 +116,9 @@ describe("the mint lookup is scoped to one NFT contract", () => {
      *  id 100 exists in both. A cache keyed on the id alone hands the
      *  first provider's mint back for the second provider's NFT: wrong
      *  date, wrong opening value, wrong creation gas, no error. */
-    const { supplementMintFromChain } = require("../src/position-history-mint");
+    const {
+      supplementMintFromChain,
+    } = require("../src/lib/position-history-mint");
 
     const seen = [];
     const a = { mintBlockNumber: 1000 };
@@ -144,7 +146,7 @@ describe("the mint lookup is scoped to one NFT contract", () => {
 
   it("accepts the contract as a parameter rather than assuming one", () => {
     const src = require("node:fs").readFileSync(
-      require.resolve("../src/position-history-mint"),
+      require.resolve("../src/lib/position-history-mint"),
       "utf8",
     );
     assert.match(

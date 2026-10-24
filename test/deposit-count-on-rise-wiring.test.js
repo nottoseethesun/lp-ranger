@@ -2,12 +2,12 @@
  * @file test/deposit-count-on-rise-wiring.test.js
  * @description Every poll hands the wallet's coins to the deposit count
  *   before it works out the figures (`updatePnlAndStats`,
- *   src/bot-pnl-updater.js), and the bot loop hands every poll that
- *   count (src/bot-loop.js).
+ *   src/lib/bot-pnl-updater.js), and the bot loop hands every poll that
+ *   count (src/lib/bot-loop.js).
  *
  *   A poll already reads the wallet's two coins for the Wallet Residual.
  *   When they have risen since the last poll, the deposit count runs
- *   (src/deposit-count.js), and what it finds must be in that poll's own
+ *   (src/lib/deposit-count.js), and what it finds must be in that poll's own
  *   Lifetime figures: coins that arrived are credited to the position
  *   there at once, so a deposit counted a poll later would read as a gain
  *   until then.
@@ -25,8 +25,8 @@ const path = require("path");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
 const { _poll } = require("./_bot-loop-helpers");
-const { createPnlTracker } = require("../src/pnl-tracker");
-const { _resetForTest } = require("../src/gecko-rate-limit");
+const { createPnlTracker } = require("../src/lib/pnl-tracker");
+const { _resetForTest } = require("../src/lib/gecko-rate-limit");
 
 let _originalFetch;
 beforeEach(() => {
@@ -91,7 +91,7 @@ describe("a poll's deposit count", () => {
     assert.equal(typeof seen[0].raw1, "bigint");
     assert.equal(captured.pnlSnapshot.ilInputs.lt.hodlAmount0, 2);
     /*- The Current IL/G counts no coin in the wallet, so no deposit
-     *  either (src/bot-pnl-il.js). */
+     *  either (src/lib/bot-pnl-il.js). */
     assert.equal(captured.pnlSnapshot.ilInputs.cur.hodlAmount0, 1);
   });
 });
@@ -99,7 +99,7 @@ describe("a poll's deposit count", () => {
 describe("the bot loop", () => {
   it("hands every poll the deposit count", () => {
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "bot-loop.js"),
+      path.join(__dirname, "..", "src", "lib", "bot-loop.js"),
       "utf8",
     );
     assert.match(src, /_countDepositsOnRise: countDepositsOnRise,/);

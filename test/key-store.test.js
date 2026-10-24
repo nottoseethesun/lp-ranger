@@ -10,7 +10,7 @@ const {
   loadAndDecrypt,
   _FORMAT_VERSION,
   _PBKDF2_ITERATIONS,
-} = require("../src/key-store");
+} = require("../src/lib/key-store");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

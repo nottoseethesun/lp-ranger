@@ -2,7 +2,7 @@
 
 /**
  * @file test/nft-events-batch-share-read.test.js
- * @description Tests for `shareRead` in `src/nft-events-batch.js`: a pass
+ * @description Tests for `shareRead` in `src/lib/nft-events-batch.js`: a pass
  *   reads the chain once however many consumers ask, and a failed read is
  *   not kept.
  *
@@ -13,7 +13,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { shareRead } = require("../src/nft-events-batch");
+const { shareRead } = require("../src/lib/nft-events-batch");
 
 describe("shareRead", () => {
   it("reads nothing until first asked", () => {

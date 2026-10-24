@@ -6,7 +6,7 @@
  * @description
  * A coin's price in USD for a transaction, from LP Ranger's own price
  * library rather than a copy of it: `fetchHistoricalTokenPriceUsd`
- * (src/historical-token-price.js), the lookup the app uses to price gas
+ * (src/lib/historical-token-price.js), the lookup the app uses to price gas
  * on a past day. It prices one coin by its address, so the one call
  * serves a pool's two coins, the chain's own coin through its wrapped
  * form, and any other coin.
@@ -28,9 +28,9 @@
  * of the report at a time writes the tools' copies, under the lock
  * `./price-cache-lock.js` takes beside them (`cachePath`). Under
  * `node --test` the files go to the test process's own folder instead
- * (src/scan-cache-dir.js), so a test never reaches the install's.
+ * (src/lib/scan-cache-dir.js), so a test never reaches the install's.
  *
- * The library loads LP Ranger's configuration (src/config.js), and with
+ * The library loads LP Ranger's configuration (src/lib/config.js), and with
  * it the chain the prices are for, so `./blockchain` is required first:
  * it settles that chain from `--blockchain` before the configuration
  * reads it.
@@ -42,7 +42,7 @@
 
 const path = require("path");
 require("./blockchain");
-const { scanCachePath } = require("../../src/scan-cache-dir");
+const { scanCachePath } = require("../../src/lib/scan-cache-dir");
 
 /** The bookkeeping tools' own cache folder, beside their reports. */
 const CACHE_DIR = path.resolve(
@@ -52,7 +52,7 @@ const CACHE_DIR = path.resolve(
 
 /**
  * Where one of the library's cache files goes: the tools' own folder, or
- * the test process's own under `node --test`, as src/scan-cache-dir.js
+ * the test process's own under `node --test`, as src/lib/scan-cache-dir.js
  * decides for the app's.
  * @param {string} fileName
  * @returns {string}
@@ -72,7 +72,7 @@ process.env.GECKO_POOL_CACHE_PATH = cachePath("gecko-pool-cache.json");
 
 const {
   fetchHistoricalTokenPriceUsd,
-} = require("../../src/historical-token-price");
+} = require("../../src/lib/historical-token-price");
 
 /**
  * What a run that stops for want of a price tells the user to do.

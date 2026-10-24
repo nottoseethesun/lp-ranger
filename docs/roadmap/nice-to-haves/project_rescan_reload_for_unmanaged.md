@@ -8,7 +8,7 @@ say why. This is about removing the refusal.
 Both dialogs open on an unmanaged position and disable their action with
 a notice naming **Manage** as the route. Behind that, the server would
 refuse anyway: `_resolveStateAndPosition`
-(`src/server-reload-position.js`) resolves the position out of the
+(`src/lib/server-reload-position.js`) resolves the position out of the
 per-position **bot state** map, which only holds entries for positions
 with a running bot loop. Without one there is no `activePosition`, and
 the route answers `404 position not resolvable`.
@@ -25,7 +25,7 @@ entry value, and counts Fees Compounded again from the chain; an
 unmanaged position shows **no Lifetime panel** at all (see
 `docs/claude/memory/project_unmanaged_na_principle.md`).
 Its Current panel is recomputed from chain on each request by
-`src/position-details.js`, so the failure these buttons exist to
+`src/lib/position-details.js`, so the failure these buttons exist to
 correct — a bad price recorded once and treated as settled — mostly does
 not arise.
 
@@ -62,5 +62,5 @@ position. Until then the Manage-and-stop workaround covers it.
 
 - `docs/claude/memory/project_unmanaged_na_principle.md` — what an
   unmanaged position deliberately does not show.
-- `src/server-rescan-prices.js` — the route's own contract, including
+- `src/lib/server-rescan-prices.js` — the route's own contract, including
   what it deliberately does not touch.

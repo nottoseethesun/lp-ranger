@@ -22,8 +22,8 @@ let mod;
 let logMod;
 
 before(async () => {
-  logMod = await import("../public/dashboard-log.js");
-  mod = await import("../public/dashboard-param-help.js");
+  logMod = await import("../src/client/web/dashboard-log.js");
+  mod = await import("../src/client/web/dashboard-param-help.js");
   document.body.innerHTML = `
     <template id="tplParamHelpModal">
       <div class="9mm-pos-mgr-modal">

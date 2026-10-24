@@ -17,7 +17,7 @@ anyone who glances at it.
 Improve the sync badge / gating for the Unmanaged view so the OOR
 indicator (and possibly the range bar) stays hidden or shows
 "Syncing..." until the Unmanaged data has fully populated. Likely
-touch points: `public/dashboard-unmanaged.js`,
-`public/dashboard-unmanaged-apply.js`, range render in
-`public/dashboard-data-status.js` or
-`public/dashboard-data-range.js`.
+touch points: `src/client/web/dashboard-unmanaged.js`,
+`src/client/web/dashboard-unmanaged-apply.js`, range render in
+`src/client/web/dashboard-data-status.js` or
+`src/client/web/dashboard-data-range.js`.

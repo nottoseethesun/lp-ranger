@@ -2,7 +2,7 @@
 
 /**
  * @file test/nft-events-batch.test.js
- * @description Tests for `src/nft-events-batch.js`, which fetches a
+ * @description Tests for `src/lib/nft-events-batch.js`, which fetches a
  *   whole chain of NFTs' event history in one pass instead of one pass
  *   per NFT.
  *
@@ -22,8 +22,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { format } = require("node:util");
-const { _setSinkForTests } = require("../src/log");
-const { emojiId } = require("../src/logger");
+const { _setSinkForTests } = require("../src/lib/log");
+const { emojiId } = require("../src/lib/logger");
 
 const {
   ID_BATCH_SIZE,
@@ -37,8 +37,8 @@ const {
   _chunkIds,
   _keepAtOrAbove,
   _byChainOrder,
-} = require("../src/nft-events-batch");
-const { topicForTokenId } = require("../src/nft-token-topic");
+} = require("../src/lib/nft-events-batch");
+const { topicForTokenId } = require("../src/lib/nft-token-topic");
 const {
   IFACE,
   PM,

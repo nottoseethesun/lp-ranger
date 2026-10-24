@@ -27,8 +27,8 @@ const {
   fourNumbers,
   finishRebalanceFigures,
   figuresNeedNftEvents,
-} = require("../src/rebalance-activity-figures");
-const { rebalanceIlPct } = require("../src/coin-value");
+} = require("../src/lib/rebalance-activity-figures");
+const { rebalanceIlPct } = require("../src/lib/coin-value");
 
 const READINGS = Object.freeze({
   beforeDrain: { amount0: 100, amount1: 50 },

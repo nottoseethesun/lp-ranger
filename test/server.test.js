@@ -1,6 +1,6 @@
 /**
  * @file test/server.test.js
- * @description Integration tests for server.js.
+ * @description Integration tests for src/server.js.
  *
  * Starts the server on a random high port (to avoid conflicts), exercises
  * each route, then shuts down cleanly.  No external HTTP library needed —
@@ -14,13 +14,13 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const http = require("http");
-const { start, stop } = require("../server");
+const { start, stop } = require("../src/server");
 const {
   isPaused,
   _resetPauseStateForTests,
-} = require("../src/price-fetcher-gate");
-const { getAllPositionBotStates } = require("../src/server-positions");
-const { isItOkayToStartAscan } = require("../src/scan-state");
+} = require("../src/lib/price-fetcher-gate");
+const { getAllPositionBotStates } = require("../src/lib/server-positions");
+const { isItOkayToStartAscan } = require("../src/lib/scan-state");
 
 // Production file protection is handled globally by scripts/check.sh
 // (backup before tests, restore after). No per-test snapshot needed.
@@ -268,7 +268,7 @@ describe("server", () => {
     /*-
      *  A position no bot is running is refused 409, and the refusal
      *  names the position, as every answer about one does
-     *  (src/position-answer-tag.js).
+     *  (src/lib/position-answer-tag.js).
      */
     const key =
       "pulsechain-0x1111111111111111111111111111111111111111-" +
@@ -291,7 +291,7 @@ describe("server", () => {
     it(`POST ${path} refuses while a scan is running on the position`, async () => {
       /*-
        *  A move made during its position's scan would be left out of the
-       *  figures the scan rebuilds (src/scan-state.js). The refusal says
+       *  figures the scan rebuilds (src/lib/scan-state.js). The refusal says
        *  so, names the position, is marked for the dialog to wait on,
        *  and asks nothing of the bot.
        */

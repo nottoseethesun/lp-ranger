@@ -17,7 +17,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("http");
 const { format } = require("node:util");
-const { _setSinkForTests } = require("../src/log");
+const { _setSinkForTests } = require("../src/lib/log");
 const {
   askToStop,
   waitForServerExit,

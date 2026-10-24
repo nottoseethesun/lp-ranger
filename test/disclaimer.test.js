@@ -92,13 +92,17 @@ describe("disclaimer — modal behaviour", () => {
 
 describe("disclosure-content", () => {
   it("exports DISCLOSURE_VERSION as a date string", () => {
-    const { DISCLOSURE_VERSION } = require("../public/disclosure-content.js");
+    const {
+      DISCLOSURE_VERSION,
+    } = require("../src/client/web/disclosure-content.js");
     assert.ok(typeof DISCLOSURE_VERSION === "string");
     assert.match(DISCLOSURE_VERSION, /^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("exports DISCLOSURE_HTML with required sections", () => {
-    const { DISCLOSURE_HTML } = require("../public/disclosure-content.js");
+    const {
+      DISCLOSURE_HTML,
+    } = require("../src/client/web/disclosure-content.js");
     assert.ok(DISCLOSURE_HTML.includes("Venue Relationships"));
     assert.ok(DISCLOSURE_HTML.includes("Transaction History"));
     assert.ok(DISCLOSURE_HTML.includes("AS IS"));

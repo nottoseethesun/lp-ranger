@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
-  modified: 2026-10-21T16:34:29.413Z
+  modified: 2026-10-24T04:54:55.368Z
 ---
 
 LP Ranger persists state to three distinct top-level directories,
@@ -15,7 +15,7 @@ each with a sharply different semantic:
 |-----|-------|-----------------------|---------------------------|
 | `app-config/` | Configuration (defaults + per-install overrides). | Yes — read at every startup. | Defaults are overwritten on upgrade; operator overrides under `user-configurable/` survive. |
 | `app-data/` | Durable per-install runtime DATA the app reads back later (e.g. `rebalance_log.json` consumed by `position-history.js`). | Yes — read on demand. | Yes (gitignored, tarball-excluded). |
-| `logs/` | Write-only diagnostic output (e.g. `lp-ranger.log` written by `src/log-file.js`). | NO — the app never reads its own logs. | N/A — fully gitignored, tarball-excluded, auto-created on first write, never backed up. |
+| `logs/` | Write-only diagnostic output (e.g. `lp-ranger.log` written by `src/lib/log-file.js`). | NO — the app never reads its own logs. | N/A — fully gitignored, tarball-excluded, auto-created on first write, never backed up. |
 
 **`app-config/` has a hard "only two subdirs at the top" invariant:**
 

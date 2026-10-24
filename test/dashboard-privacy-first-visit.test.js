@@ -15,7 +15,7 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { loadShippedDefaults } = require("../src/load-merged-defaults");
+const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
 const { learnActiveChain } = require("./helpers/active-chain");
 const { indexHtmlDocument } = require("./helpers/index-html");
 
@@ -43,10 +43,11 @@ before(async () => {
   });
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  const ui = await import("../public/dashboard-ui-settings.js");
-  events = await import("../public/dashboard-events-manage.js");
-  browser = await import("../public/dashboard-positions-browser.js");
-  const { posStore } = await import("../public/dashboard-positions-store.js");
+  const ui = await import("../src/client/web/dashboard-ui-settings.js");
+  events = await import("../src/client/web/dashboard-events-manage.js");
+  browser = await import("../src/client/web/dashboard-positions-browser.js");
+  const { posStore } =
+    await import("../src/client/web/dashboard-positions-store.js");
   posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,

@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-activity-figures.test.js
  * @description The figures under the date of each Rebalance and Compound
- *   entry in the Activity Log (public/dashboard-activity-figures.js), as
+ *   entry in the Activity Log (src/client/web/dashboard-activity-figures.js), as
  *   `act()` draws them into the page's own entry template: the label, the
  *   Current and Historical percents, and "Old Log: Unavailable" for an
  *   entry written before the figures existed. Also the one record of the
@@ -34,8 +34,8 @@ let figs;
 let act;
 
 before(async () => {
-  figs = await import("../public/dashboard-activity-figures.js");
-  ({ act } = await import("../public/dashboard-helpers.js"));
+  figs = await import("../src/client/web/dashboard-activity-figures.js");
+  ({ act } = await import("../src/client/web/dashboard-helpers.js"));
   // A short log, so a test can see the oldest entry trimmed.
   await learnUiSettings({ activityLogMaxEntries: 2 });
 });

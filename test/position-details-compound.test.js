@@ -22,7 +22,7 @@ const {
   _detectCurrentNftValues,
   savedNftCompoundedUsd,
   savedWalletCoinsPutIn,
-} = require("../src/position-details-compound");
+} = require("../src/lib/position-details-compound");
 
 /** #100 → #200 → #300, the later two minted 5M and 6M blocks in. */
 const CHAIN = [

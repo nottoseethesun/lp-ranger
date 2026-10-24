@@ -37,9 +37,11 @@
 
 "use strict";
 
-const { log } = require("../src/log");
-const { getErrorLogPath } = require("../src/error-log");
-const { removeLeftoverTestTempFolders } = require("../src/test-temp-folders");
+const { log } = require("../src/lib/log");
+const { getErrorLogPath } = require("../src/lib/error-log");
+const {
+  removeLeftoverTestTempFolders,
+} = require("../src/lib/test-temp-folders");
 const { checkErrorLogPath } = require("./_check-error-log");
 const { runAsync } = require("./_run-async");
 const {
@@ -63,7 +65,7 @@ const ROOT = path.resolve(__dirname, "..");
  *  below) can reference them without hitting the temporal-dead-zone. */
 const _USER_CFG_DIR = path.join("app-config", "user-configurable");
 const _APP_DATA_DIR = "app-data";
-// The scan caches (src/scan-cache-dir.js), a folder inside app-data/.
+// The scan caches (src/lib/scan-cache-dir.js), a folder inside app-data/.
 const _SCAN_CACHE_DIR = path.join("app-data", "scan-cache");
 const _OPERATOR_STATE_DIRS = [_USER_CFG_DIR, _APP_DATA_DIR, _SCAN_CACHE_DIR];
 
@@ -79,7 +81,7 @@ const RAW_DIR = path.join(REPORT_DIR, "raw-data");
 const TXT_DIR = path.join(REPORT_DIR, "text-reports");
 
 /*-
- *  The catastrophic-failure log, at the path src/error-log.js owns, and
+ *  The catastrophic-failure log, at the path src/lib/error-log.js owns, and
  *  the name a test run's entries are kept under beside it. Resolved
  *  after the chdir above, since the log's path is relative to the
  *  working directory.
@@ -169,12 +171,12 @@ fs.writeFileSync(
 // eslint.json's rulesMeta is empty when nothing fires.
 fs.writeFileSync(
   path.join(RAW_DIR, "eslint-config.json"),
-  run(bin("eslint"), ["--print-config", "server.js"]).stdout,
+  run(bin("eslint"), ["--print-config", "src/server.js"]).stdout,
 );
 
 // ── Lint (CSS) ─────────────────────────────────────────────────────────────
 const stylelintRun = run(bin("stylelint"), [
-  "public/*.css",
+  "src/client/web/*.css",
   "--formatter",
   "json",
   "-o",
@@ -184,7 +186,7 @@ ensureOrWrite(path.join(RAW_DIR, "stylelint.json"), "[]");
 
 fs.writeFileSync(
   path.join(RAW_DIR, "stylelint-config.json"),
-  run(bin("stylelint"), ["--print-config", "public/style.css"]).stdout,
+  run(bin("stylelint"), ["--print-config", "src/client/web/style.css"]).stdout,
 );
 
 // ── Lint (HTML) ────────────────────────────────────────────────────────────
@@ -274,8 +276,8 @@ ensureOrWrite(
 
 // ── Dead code (knip) — unused FILES only ──────────────────────────────────
 // Only the `files` issue type is a gate.  knip's unused-exports pass is
-// noise here by design: `public/dashboard-*.js` is reached through HTML
-// script tags it cannot trace, and both `src/` and `util/` export their
+// noise here by design: `src/client/web/dashboard-*.js` is reached through HTML
+// script tags it cannot trace, and both `src/lib/` and `util/` export their
 // internals deliberately so tests and other tools can compose them — an
 // export nothing imports yet is a seam, not a defect.  An unused FILE is
 // different: nothing reaches it at all, so it is dead weight that still
@@ -377,7 +379,7 @@ fs.writeFileSync(
     "-c",
     "eslint-security.config.js",
     "--print-config",
-    "server.js",
+    "src/server.js",
   ]).stdout,
 );
 
@@ -471,7 +473,7 @@ async function runTestStages() {
       "--test",
       "--experimental-test-coverage",
       /*-
-       *  Browser-side files (public/dashboard-*.js) are covered by their
+       *  Browser-side files (src/client/web/dashboard-*.js) are covered by their
        *  own test suites that jsdom-drive them.  They are excluded from
        *  the aggregate coverage figure to preserve the existing 80% floor
        *  for src/ (Node-side) code.  Adding them without a dashboard-
@@ -481,7 +483,7 @@ async function runTestStages() {
        *  dashboard coverage is measured separately (see project
        *  nice-to-haves), we can drop this exclude.
        */
-      "--test-coverage-exclude=public/**",
+      "--test-coverage-exclude=src/client/web/**",
       /*-
        *  Two reporters for the one run. TAP goes to stdout, captured below
        *  as tests.tap. The lcov report names each branch no test took,
@@ -565,12 +567,13 @@ runTestStages().then(reportRun);
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-/** List public/*.html paths for html-validate. */
+/** List src/client/web/*.html paths for html-validate. */
 function listPublicHtmlFiles() {
+  const web = path.join("src", "client", "web");
   return fs
-    .readdirSync("public")
+    .readdirSync(web)
     .filter((f) => f.endsWith(".html"))
-    .map((f) => path.join("public", f));
+    .map((f) => path.join(web, f));
 }
 
 /** List .github/workflows/*.yml paths for actionlint. */
@@ -615,7 +618,7 @@ function configValueTests() {
  * check` must execute the same set, or a suite can pass one gate while
  * never running in the other.  `util/test/` is included so
  * util/ is covered — and counted toward the coverage floor — on the
- * same footing as src/.
+ * same footing as src/lib/.
  */
 function listTestFiles() {
   const dirs = [

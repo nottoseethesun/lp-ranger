@@ -1,6 +1,6 @@
 /**
  * @file test/dust.test.js
- * @description Unit tests for src/dust.js — inflation-resistant dust threshold.
+ * @description Unit tests for src/lib/dust.js — inflation-resistant dust threshold.
  */
 
 "use strict";
@@ -11,7 +11,7 @@ const assert = require("node:assert/strict");
 // ── Mock price-fetcher so we don't hit the network ───────────────────────────
 
 let _stubUnitPriceUsd = 4800;
-const _priceFetcherStubPath = require.resolve("../src/price-fetcher");
+const _priceFetcherStubPath = require.resolve("../src/lib/price-fetcher");
 
 function _installStub() {
   require.cache[_priceFetcherStubPath] = {
@@ -27,7 +27,7 @@ function _installStub() {
 
 function _clearDustCache() {
   // Force re-require of dust.js so it picks up fresh config/stub.
-  delete require.cache[require.resolve("../src/dust")];
+  delete require.cache[require.resolve("../src/lib/dust")];
 }
 
 beforeEach(() => {
@@ -43,7 +43,7 @@ afterEach(() => {
 
 describe("dust.DUST_THRESHOLD_UNITS (universal constant)", () => {
   it("is exported as a finite, positive number", () => {
-    const { DUST_THRESHOLD_UNITS } = require("../src/dust");
+    const { DUST_THRESHOLD_UNITS } = require("../src/lib/dust");
     assert.ok(Number.isFinite(DUST_THRESHOLD_UNITS));
     assert.ok(DUST_THRESHOLD_UNITS > 0);
   });
@@ -66,7 +66,7 @@ describe("dust.DUST_THRESHOLD_UNITS (universal constant)", () => {
         "utf8",
       ),
     );
-    const { DUST_THRESHOLD_UNITS } = require("../src/dust");
+    const { DUST_THRESHOLD_UNITS } = require("../src/lib/dust");
     assert.strictEqual(DUST_THRESHOLD_UNITS, raw.thresholdUnits);
   });
 });
@@ -74,7 +74,7 @@ describe("dust.DUST_THRESHOLD_UNITS (universal constant)", () => {
 describe("dust.getDustThresholdUsd", () => {
   it("multiplies units by USD/unit", async () => {
     _stubUnitPriceUsd = 4800;
-    const { getDustThresholdUsd } = require("../src/dust");
+    const { getDustThresholdUsd } = require("../src/lib/dust");
     const res = await getDustThresholdUsd();
     // Default units = 1/4800, so threshold ≈ $1
     assert.ok(Math.abs(res.thresholdUsd - 1) < 1e-9);
@@ -87,7 +87,7 @@ describe("dust.getDustThresholdUsd", () => {
     const {
       getDustThresholdUsd,
       _FALLBACK_THRESHOLD_USD,
-    } = require("../src/dust");
+    } = require("../src/lib/dust");
     const res = await getDustThresholdUsd();
     assert.strictEqual(res.usedFallback, true);
     assert.strictEqual(res.thresholdUsd, _FALLBACK_THRESHOLD_USD);
@@ -96,14 +96,14 @@ describe("dust.getDustThresholdUsd", () => {
 
 describe("dust.isDust", () => {
   it("returns true for non-finite inputs", async () => {
-    const { isDust } = require("../src/dust");
+    const { isDust } = require("../src/lib/dust");
     assert.strictEqual(await isDust(NaN), true);
     assert.strictEqual(await isDust(Infinity), true);
   });
 
   it("returns true below threshold and false above", async () => {
     _stubUnitPriceUsd = 4800; // threshold ≈ $1
-    const { isDust } = require("../src/dust");
+    const { isDust } = require("../src/lib/dust");
     assert.strictEqual(await isDust(0.5), true);
     assert.strictEqual(await isDust(-0.5), true); // sign ignored
     assert.strictEqual(await isDust(1.5), false);
@@ -112,7 +112,7 @@ describe("dust.isDust", () => {
 
   it("threshold scales with unit price", async () => {
     _stubUnitPriceUsd = 9600; // threshold ≈ $2
-    const { isDust } = require("../src/dust");
+    const { isDust } = require("../src/lib/dust");
     assert.strictEqual(await isDust(1.5), true);
     assert.strictEqual(await isDust(2.5), false);
   });

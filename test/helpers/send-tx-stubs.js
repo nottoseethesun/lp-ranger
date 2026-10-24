@@ -2,7 +2,7 @@
 
 /**
  * @file test/helpers/send-tx-stubs.js
- * @description Shared stubs for the `src/send-transaction.js` test files.
+ * @description Shared stubs for the `src/lib/send-transaction.js` test files.
  *
  * One copy, required by both `send-transaction-read-failover.test.js` and
  * `send-transaction-startup.test.js`. A second copy in either file would
@@ -10,9 +10,9 @@
  * green run would say nothing about whether both still matched.
  */
 
-const logModule = require("../../src/log");
-const { noteRpcResult } = require("../../src/rpc-out-of-service");
-const { UTC_TIMESTAMP_PATTERN } = require("../../src/utc-timestamp");
+const logModule = require("../../src/lib/log");
+const { noteRpcResult } = require("../../src/lib/rpc-out-of-service");
+const { UTC_TIMESTAMP_PATTERN } = require("../../src/lib/utc-timestamp");
 
 /** The two endpoints every test in this family walks between. */
 const PRI = "http://primary.test";
@@ -66,7 +66,7 @@ function _stripTs(args) {
 }
 
 /**
- * Capture log output through the `src/log.js` sink injector, so the
+ * Capture log output through the `src/lib/log.js` sink injector, so the
  * global `console` is never patched (see
  * [[feedback-no-global-monkey-patch]]).
  * @returns {{out: {warn: Array, log: Array, error: Array}, restore: Function}}

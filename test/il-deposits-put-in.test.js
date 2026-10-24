@@ -4,7 +4,7 @@
  * @file test/il-deposits-put-in.test.js
  * @description How a deposit the owner made to the wallet counts in the
  *   IL/G figures and the Impermanent Loss Guard (`_computeIL`,
- *   src/bot-pnl-il.js).
+ *   src/lib/bot-pnl-il.js).
  *
  *   The Current IL/G and the Guard compare evenly, the user's ruling
  *   (2026-10-23): the coins the NFT was minted with, held, against those
@@ -23,9 +23,9 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { checkIlGuard } = require("../src/il-guard");
-const { _computeIL } = require("../src/bot-pnl-il");
-const { _currentPnl } = require("../src/position-details-quick");
+const { checkIlGuard } = require("../src/lib/il-guard");
+const { _computeIL } = require("../src/lib/bot-pnl-il");
+const { _currentPnl } = require("../src/lib/position-details-quick");
 
 const TOKEN_ID = "100";
 const DECIMALS = { decimals0: 0, decimals1: 0 };
@@ -125,7 +125,7 @@ describe("a deposit a compound swept into the position", () => {
    *  deposit took the wallet's whole balance, the 100 A deposit with
    *  them: the position is worth $930, and the wallet holds nothing. Its
    *  record names the 10 A as the fees its deposit put back, of the
-   *  110 A it deposited (src/compounded-coins.js).
+   *  110 A it deposited (src/lib/compounded-coins.js).
    */
   const COMPOUND = {
     tokenId: TOKEN_ID,

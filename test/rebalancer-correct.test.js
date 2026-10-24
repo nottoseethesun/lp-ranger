@@ -1,6 +1,6 @@
 /**
  * @file test/rebalancer-correct.test.js
- * @description Tests for src/rebalancer-correct.js — post-swap corrective
+ * @description Tests for src/lib/rebalancer-correct.js — post-swap corrective
  *   rebalance that re-queries the pool after the primary swap, fires a
  *   corrective swap if the new R=need0/need1 produces an imbalance above
  *   the gold-pegged dust threshold.
@@ -17,11 +17,11 @@ const assert = require("node:assert/strict");
  *  lookups they found then, whatever a later case stubs.
  */
 require("./helpers/price-stand-ins");
-const POOLS_PATH = require.resolve("../src/rebalancer-pools");
-const SWAP_PATH = require.resolve("../src/rebalancer-swap");
-const PRICE_PATH = require.resolve("../src/price-fetcher");
-const DUST_PATH = require.resolve("../src/dust");
-const CORRECT_PATH = require.resolve("../src/rebalancer-correct");
+const POOLS_PATH = require.resolve("../src/lib/rebalancer-pools");
+const SWAP_PATH = require.resolve("../src/lib/rebalancer-swap");
+const PRICE_PATH = require.resolve("../src/lib/price-fetcher");
+const DUST_PATH = require.resolve("../src/lib/dust");
+const CORRECT_PATH = require.resolve("../src/lib/rebalancer-correct");
 const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 /** Simple mock ethers library (just Contract factory with a lookup table). */
@@ -145,7 +145,7 @@ describe("correctivelyRebalanceIfNeeded", () => {
     });
     const {
       correctivelyRebalanceIfNeeded,
-    } = require("../src/rebalancer-correct");
+    } = require("../src/lib/rebalancer-correct");
     const dispatch = {
       "0xT0": { balanceOf: async () => 1000n },
       "0xT1": { balanceOf: async () => 1000n },
@@ -181,7 +181,7 @@ describe("correctivelyRebalanceIfNeeded", () => {
     });
     const {
       correctivelyRebalanceIfNeeded,
-    } = require("../src/rebalancer-correct");
+    } = require("../src/lib/rebalancer-correct");
     const dispatch = {
       "0xT0": { balanceOf: async () => 10_000n },
       "0xT1": { balanceOf: async () => 10_000n },
@@ -224,7 +224,7 @@ describe("correctivelyRebalanceIfNeeded", () => {
     });
     const {
       correctivelyRebalanceIfNeeded,
-    } = require("../src/rebalancer-correct");
+    } = require("../src/lib/rebalancer-correct");
     const dispatch = {
       "0xT0": { balanceOf: async () => 50_000_000_000_000_000_000n },
       "0xT1": { balanceOf: async () => 0n },
@@ -280,7 +280,7 @@ describe("correctivelyRebalanceIfNeeded", () => {
     const {
       correctivelyRebalanceIfNeeded,
       _MAX_ITERATIONS,
-    } = require("../src/rebalancer-correct");
+    } = require("../src/lib/rebalancer-correct");
     const dispatch = {
       "0xT0": { balanceOf: async () => 50_000_000_000_000_000_000n },
       "0xT1": { balanceOf: async () => 0n },
@@ -314,7 +314,7 @@ describe("correctivelyRebalanceIfNeeded", () => {
 /*- Merges primary + corrective swap-source strings into a single display
  *  label; this is what the rebalance log row shows in the UI. */
 describe("_mergeSwapSources", () => {
-  const { _mergeSwapSources } = require("../src/rebalancer-execute");
+  const { _mergeSwapSources } = require("../src/lib/rebalancer-execute");
 
   it("returns undefined when neither primary nor corrective present", () => {
     assert.strictEqual(_mergeSwapSources(null, []), undefined);
@@ -376,8 +376,8 @@ describe("_mergeSwapSources", () => {
  *  "no swap" and logs the rebalance event that way even when the
  *  aggregator route was used. */
 describe("_swapAndAdjust — swapSources propagation", () => {
-  const EXEC_PATH = require.resolve("../src/rebalancer-execute");
-  const GATES_PATH = require.resolve("../src/swap-gates");
+  const EXEC_PATH = require.resolve("../src/lib/rebalancer-execute");
+  const GATES_PATH = require.resolve("../src/lib/swap-gates");
 
   function withSwapStub(swapResult, fn) {
     require.cache[SWAP_PATH] = {
@@ -446,7 +446,7 @@ describe("_swapAndAdjust — swapSources propagation", () => {
         swapSources: "Watergun Aggregator",
       },
       async () => {
-        const { _swapAndAdjust } = require("../src/rebalancer-execute");
+        const { _swapAndAdjust } = require("../src/lib/rebalancer-execute");
         const out = await _swapAndAdjust({}, {}, ctx("token0to1"));
         assert.strictEqual(out.swapSources, "Watergun Aggregator");
         assert.strictEqual(out.extra1, 500n);
@@ -464,7 +464,7 @@ describe("_swapAndAdjust — swapSources propagation", () => {
         swapSources: "9mm V3 Router",
       },
       async () => {
-        const { _swapAndAdjust } = require("../src/rebalancer-execute");
+        const { _swapAndAdjust } = require("../src/lib/rebalancer-execute");
         const out = await _swapAndAdjust({}, {}, ctx("token1to0"));
         assert.strictEqual(out.swapSources, "9mm V3 Router");
         assert.strictEqual(out.extra0, 200n);
@@ -476,7 +476,7 @@ describe("_swapAndAdjust — swapSources propagation", () => {
     await withSwapStub(
       { amountOut: 100n, txHash: null, gasCostWei: 0n },
       async () => {
-        const { _swapAndAdjust } = require("../src/rebalancer-execute");
+        const { _swapAndAdjust } = require("../src/lib/rebalancer-execute");
         const out = await _swapAndAdjust({}, {}, ctx("token0to1"));
         assert.ok(
           !("swapSources" in out),

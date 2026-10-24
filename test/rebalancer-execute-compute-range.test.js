@@ -1,7 +1,7 @@
 /**
  * @file test/rebalancer-execute-compute-range.test.js
  * @description Tests for the `_computeRange` seam in
- *   `src/rebalancer-execute.js` — the seam that decides whether a
+ *   `src/lib/rebalancer-execute.js` — the seam that decides whether a
  *   rebalance uses (a) the explicit Full-Range checkbox, (b) a custom
  *   Price Range Extension widthPct, or (c) preserveRange from the
  *   on-chain spread.
@@ -19,8 +19,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { _computeRange } = require("../src/rebalancer-execute");
-const { MIN_TICK, MAX_TICK } = require("../src/range-math");
+const { _computeRange } = require("../src/lib/rebalancer-execute");
+const { MIN_TICK, MAX_TICK } = require("../src/lib/range-math");
 
 /*- Minimal pool state; only the fields _computeRange reads matter. */
 const ps = {

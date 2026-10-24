@@ -88,14 +88,13 @@ module.exports = [
   // ── 1. Files to lint ────────────────────────────────────────────────────────
   {
     files: [
-      "src/**/*.js",
+      "src/*.js",
+      "src/lib/**/*.js",
       "test/**/*.js",
       "scripts/**/*.js",
       "util/**/*.js",
-      "server.js",
-      "bot.js",
-      "public/dashboard-*.js",
-      "public/ethers-adapter.js",
+      "src/client/web/dashboard-*.js",
+      "src/client/web/ethers-adapter.js",
       "eslint-rules/**/*.js",
       "stylelint-rules/**/*.js",
     ],
@@ -106,20 +105,21 @@ module.exports = [
     ignores: [
       "node_modules/**",
       "coverage/**",
-      "public/index.html",
-      "public/dist/**",
+      "src/client/web/index.html",
+      "src/client/web/dist/**",
       "*.min.js",
     ],
   },
 
   // ── 3. Source files — Node.js environment ───────────────────────────────────
+  /*- The server side only: the web client in `src/client/web/` is
+   *  browser code, under section 4. */
   {
     files: [
-      "src/**/*.js",
+      "src/*.js",
+      "src/lib/**/*.js",
       "scripts/**/*.js",
       "util/**/*.js",
-      "server.js",
-      "bot.js",
       "eslint-rules/**/*.js",
       "stylelint-rules/**/*.js",
     ],
@@ -181,7 +181,10 @@ module.exports = [
 
   // ── 4. Dashboard files — browser ES modules ───────────────────────────────
   {
-    files: ["public/dashboard-*.js", "public/ethers-adapter.js"],
+    files: [
+      "src/client/web/dashboard-*.js",
+      "src/client/web/ethers-adapter.js",
+    ],
     plugins: {
       "9mm": {
         rules: {
@@ -241,7 +244,7 @@ module.exports = [
         ...globals.node,
         /*- Browser tests use jsdom (via `global-jsdom/register`) to
          *  populate `document`, `window`, `HTMLElement`, etc. as real
-         *  globals so `public/dashboard-*.js` can be imported and
+         *  globals so `src/client/web/dashboard-*.js` can be imported and
          *  driven directly.  Registering the browser globals here
          *  means individual tests do not need a per-file
          *  `eslint-env browser` pragma. */

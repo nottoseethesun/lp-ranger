@@ -29,8 +29,8 @@
  */
 
 const http = require("http");
-const config = require("../../src/config");
-const sendTx = require("../../src/send-transaction");
+const config = require("../../src/lib/config");
+const sendTx = require("../../src/lib/send-transaction");
 const { ADDR, mockSigner, defaultDispatch } = require("./rebalancer-mocks");
 
 /** The exchange proxy a quote names as both `to` and spender. */

@@ -1,7 +1,7 @@
 /**
  * @file test/compounded-coins.test.js
  * @description What a compound counts as Fees Compounded
- *   (src/compounded-coins.js): the fees its deposit put back, worked out
+ *   (src/lib/compounded-coins.js): the fees its deposit put back, worked out
  *   from the wallet's readings, and never the coins the wallet already
  *   held that a ratio swap's deposit takes in.
  *
@@ -23,7 +23,7 @@ const {
   compoundedCoins,
   walletCoinsPutIn,
   feesLeftInWallet,
-} = require("../src/compounded-coins");
+} = require("../src/lib/compounded-coins");
 
 /** A pair of amounts in the coins' smallest units. */
 const pair = (raw0, raw1) => ({ raw0, raw1 });

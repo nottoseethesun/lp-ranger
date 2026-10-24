@@ -6,8 +6,8 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const { startLocalAggregator } = require("./helpers/local-aggregator");
-const { mintPosition, executeRebalance } = require("../src/rebalancer");
-const { swapIfNeeded } = require("../src/rebalancer-swap");
+const { mintPosition, executeRebalance } = require("../src/lib/rebalancer");
+const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
 const {
   ADDR,
   ONE_ETH,

@@ -18,7 +18,7 @@ const {
   nearestUsableTick,
   MIN_TICK,
   MAX_TICK,
-} = require("../src/range-math");
+} = require("../src/lib/range-math");
 
 // ── Fuzz helpers ────────────────────────────────────────────────────────────
 

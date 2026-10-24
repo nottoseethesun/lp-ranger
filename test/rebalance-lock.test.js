@@ -7,7 +7,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createRebalanceLock } = require("../src/rebalance-lock");
+const { createRebalanceLock } = require("../src/lib/rebalance-lock");
 
 describe("rebalance-lock", () => {
   it("grants lock immediately when idle", async () => {

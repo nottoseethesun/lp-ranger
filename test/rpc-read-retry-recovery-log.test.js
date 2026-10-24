@@ -22,8 +22,8 @@ const assert = require("node:assert/strict");
 
 const { format } = require("node:util");
 
-const { retryRead } = require("../src/rpc-read-retry");
-const { _setSinkForTests } = require("../src/log");
+const { retryRead } = require("../src/lib/rpc-read-retry");
+const { _setSinkForTests } = require("../src/lib/log");
 
 /*- Both levels are captured: failures go to warn and the recovery to
  *  info, and a test that watched only one could not tell a missing

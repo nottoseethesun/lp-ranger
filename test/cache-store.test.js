@@ -8,7 +8,7 @@
 
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("assert");
-const { createCacheStore, eventCachePath } = require("../src/cache-store");
+const { createCacheStore, eventCachePath } = require("../src/lib/cache-store");
 const path = require("path");
 
 // A store's lifetime is its caller's to give; these tests give a minute.

@@ -1,6 +1,6 @@
 /**
  * @file test/bot-loop-pnl.test.js
- * @description Tests for src/bot-loop.js — IL/PnL override,
+ * @description Tests for src/lib/bot-loop.js — IL/PnL override,
  * gas deferral, pnlSnapshot, positionStats, closed position guard,
  * lifetime P&L, and OOR timeout suites.
  */
@@ -9,9 +9,9 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
-const { _overridePnlWithRealValues } = require("../src/bot-loop");
+const { _overridePnlWithRealValues } = require("../src/lib/bot-loop");
 const { _poll } = require("./_bot-loop-helpers");
-const { _resetForTest } = require("../src/gecko-rate-limit");
+const { _resetForTest } = require("../src/lib/gecko-rate-limit");
 
 let _originalFetch;
 beforeEach(() => {
@@ -213,7 +213,7 @@ describe("bot-loop: gas deferral", () => {
 
 describe("bot-loop: pnlSnapshot with dailyPnl", () => {
   it("emits pnlSnapshot containing dailyPnl in updateBotState when in range with tracker", async () => {
-    const { createPnlTracker } = require("../src/pnl-tracker");
+    const { createPnlTracker } = require("../src/lib/pnl-tracker");
     const tracker = createPnlTracker({ initialDeposit: 100 });
     tracker.openEpoch({
       entryValue: 100,
@@ -340,7 +340,7 @@ describe("bot-loop: closed position skips range check", () => {
 
 describe("bot-loop: lifetime P&L is independent of selected position", () => {
   it("pnlSnapshot.initialDeposit is from tracker, not from position tokenId", async () => {
-    const { createPnlTracker } = require("../src/pnl-tracker");
+    const { createPnlTracker } = require("../src/lib/pnl-tracker");
     const LIFETIME_DEPOSIT = 500;
     const tracker = createPnlTracker({ initialDeposit: LIFETIME_DEPOSIT });
     tracker.openEpoch({

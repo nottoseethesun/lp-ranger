@@ -6,7 +6,7 @@
  *
  * A rebalance or a compound can pay for transactions that do not complete
  * it: an approval mined before an aggregator quote that then fails, a swap
- * that reverts on chain, a cancel. `src/spent-gas.js` carries that cost on
+ * that reverts on chain, a cancel. `src/lib/spent-gas.js` carries that cost on
  * whatever the attempt ends with, and the cycle that ran the move records
  * it in the position's records when the move fails outright, apart from
  * the P&L periods a rebuild could drop (test/failed-move-gas.test.js
@@ -25,9 +25,13 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { spentGasOf, addSpentGas, recordSpentGas } = require("../src/spent-gas");
-const { createPnlTracker } = require("../src/pnl-tracker");
-const { executeRebalance } = require("../src/rebalancer");
+const {
+  spentGasOf,
+  addSpentGas,
+  recordSpentGas,
+} = require("../src/lib/spent-gas");
+const { createPnlTracker } = require("../src/lib/pnl-tracker");
+const { executeRebalance } = require("../src/lib/rebalancer");
 const {
   ADDR,
   mockSigner,
@@ -202,11 +206,11 @@ describe("executeRebalance — a failure result carries the error's gas", () => 
 
 // ── The cycles that record a failed move ─────────────────────────────
 
-const PNL = require.resolve("../src/bot-pnl-updater");
-const REBALANCER = require.resolve("../src/rebalancer");
-const COMPOUNDER = require.resolve("../src/compounder");
-const CYCLE = require.resolve("../src/bot-cycle");
-const COMPOUND_CYCLE = require.resolve("../src/bot-cycle-compound");
+const PNL = require.resolve("../src/lib/bot-pnl-updater");
+const REBALANCER = require.resolve("../src/lib/rebalancer");
+const COMPOUNDER = require.resolve("../src/lib/compounder");
+const CYCLE = require.resolve("../src/lib/bot-cycle");
+const COMPOUND_CYCLE = require.resolve("../src/lib/bot-cycle-compound");
 
 /**
  * Load a cycle module with chosen exports of its dependencies replaced.

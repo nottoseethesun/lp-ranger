@@ -5,18 +5,18 @@
  * @description When the Activity Log draws a position's entries again
  *   from the records a scan left: as the last step of a scan of the
  *   position on screen, on the status answer that first says the scan has
- *   finished, and on no answer before it (public/dashboard-data.js,
+ *   finished, and on no answer before it (src/client/web/dashboard-data.js,
  *   `_onScanFinished`).
  *
  *   Re-scan Prices is the case. It marks the position's lifetime scan
- *   unfinished (src/server-rescan-prices.js), and the scan rebuilds the
+ *   unfinished (src/lib/server-rescan-prices.js), and the scan rebuilds the
  *   compound list, working out from the chain the figures of each
  *   compound that had none, and writing each amount at today's prices,
  *   before it marks itself finished. So for a while the status answers
  *   carry the rebuilt records while the scan still runs.
  *
  *   Driven through the page's own switch (`activateByTokenId`) and poll
- *   (`pollNow`), on its markup from public/index.html, with the server's
+ *   (`pollNow`), on its markup from src/client/web/index.html, with the server's
  *   status answers scripted.
  */
 
@@ -129,13 +129,13 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../public/dashboard-positions-store.js");
-  const data = await import("../public/dashboard-data.js");
-  poll = await import("../public/dashboard-data-poll.js");
-  const positions = await import("../public/dashboard-positions.js");
-  const unmanaged = await import("../public/dashboard-unmanaged.js");
-  const closed = await import("../public/dashboard-closed-pos.js");
-  const walletModule = await import("../public/dashboard-wallet.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
+  const data = await import("../src/client/web/dashboard-data.js");
+  poll = await import("../src/client/web/dashboard-data-poll.js");
+  const positions = await import("../src/client/web/dashboard-positions.js");
+  const unmanaged = await import("../src/client/web/dashboard-unmanaged.js");
+  const closed = await import("../src/client/web/dashboard-closed-pos.js");
+  const walletModule = await import("../src/client/web/dashboard-wallet.js");
   await walletModule.checkWalletLocked();
   walletModule.wallet.address = WALLET;
   positions.injectPositionDeps({

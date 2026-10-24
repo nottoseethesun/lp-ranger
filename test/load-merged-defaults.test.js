@@ -1,6 +1,6 @@
 /**
  * @file test/load-merged-defaults.test.js
- * @description Tests for src/load-merged-defaults.js — the two-layer
+ * @description Tests for src/lib/load-merged-defaults.js — the two-layer
  * shipped-defaults + user-override merge helper.
  */
 
@@ -16,7 +16,7 @@ const {
   _resetMemoForTests,
   DEFAULTS_DIR,
   USER_DIR,
-} = require("../src/load-merged-defaults");
+} = require("../src/lib/load-merged-defaults");
 
 const _NAME = "test-load-merged-defaults-fixture.json";
 const _DEF = path.join(DEFAULTS_DIR, _NAME);

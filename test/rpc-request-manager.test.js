@@ -19,7 +19,7 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("assert");
 
-const mgr = require("../src/rpc-request-manager");
+const mgr = require("../src/lib/rpc-request-manager");
 const SHIPPED = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 const INTERVAL = mgr.getIntervalMs();
@@ -112,7 +112,7 @@ describe("rpc-request-manager — errors belong to the consumer", () => {
    *  and range-cap detection in get-logs-chunked.js — each needs the
    *  original error object to do its job, so anything the manager did
    *  to an error would break one of them silently. */
-  const { buildProvider } = require("../src/bot-provider");
+  const { buildProvider } = require("../src/lib/bot-provider");
 
   /** A provider whose `send` fails for one method and succeeds otherwise. */
   function stubProvider(sentinel) {
@@ -204,7 +204,7 @@ describe("rpc-request-manager — provider wiring", () => {
      *  enough to breach the published rate.  buildProvider wraps
      *  `send`, which is the single funnel ethers routes everything
      *  through. */
-    const { buildProvider } = require("../src/bot-provider");
+    const { buildProvider } = require("../src/lib/bot-provider");
     const sent = [];
     class StubProvider {
       constructor(url) {

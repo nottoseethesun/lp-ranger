@@ -9,7 +9,7 @@
  * Usage:
  *   node scripts/import-wallet.js
  *     → interactive prompts for private key and password, which show
- *       nothing of what is typed (src/ask-password.js)
+ *       nothing of what is typed (src/lib/ask-password.js)
  *
  *   echo "0xABC..." | node scripts/import-wallet.js --password mypass
  *     → reads private key from stdin, password from flag (scripted use)
@@ -21,10 +21,10 @@
 
 "use strict";
 
-const { log } = require("../src/log");
-const { askPassword } = require("../src/ask-password");
+const { log } = require("../src/lib/log");
+const { askPassword } = require("../src/lib/ask-password");
 const { Wallet } = require("ethers");
-const { migrateAppConfig } = require("../src/migrate-app-config");
+const { migrateAppConfig } = require("../src/lib/migrate-app-config");
 
 // Run the legacy root → app-config/user-configurable/ migration in case
 // the operator still has files at the old project-root layout.  Also
@@ -32,7 +32,7 @@ const { migrateAppConfig } = require("../src/migrate-app-config");
 // tries to write the new wallet file.
 migrateAppConfig();
 
-const walletManager = require("../src/wallet-manager");
+const walletManager = require("../src/lib/wallet-manager");
 
 // ── Argument parsing ─────────────────────────────────────────────────────────
 

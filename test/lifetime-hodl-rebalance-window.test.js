@@ -4,7 +4,7 @@
  * `computeLifetimeHodl`.
  *
  * A rebalance mints with the wallet's whole balance of both pool tokens
- * (`src/rebalancer.js`, steps 5 and 7), so coins that arrived in the
+ * (`src/lib/rebalancer.js`, steps 5 and 7), so coins that arrived in the
  * wallet since the previous mint are deposits in the new NFT. Finding
  * them means scanning the wallet's transfers between the two mints, and
  * these tests pin both halves of that: the coins are counted, and only
@@ -16,7 +16,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { computeLifetimeHodl } = require("../src/lifetime-hodl");
+const { computeLifetimeHodl } = require("../src/lib/lifetime-hodl");
 const {
   TRANSFER_TOPIC0,
   ilEvent,

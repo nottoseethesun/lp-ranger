@@ -11,9 +11,9 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const config = require("../src/config");
-const { eventCachePath } = require("../src/cache-store");
-const poolScanner = require("../src/pool-scanner");
+const config = require("../src/lib/config");
+const { eventCachePath } = require("../src/lib/cache-store");
+const poolScanner = require("../src/lib/pool-scanner");
 
 const {
   scanPoolHistory,

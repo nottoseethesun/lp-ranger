@@ -8,7 +8,7 @@
  *   PulseChain's copy of Ethereum's state means many do. A cache keyed by
  *   address alone would hand one chain's answer to the other the first
  *   time the server ran on a different `CHAIN_NAME`. The canonical key is
- *   `cacheKey(chain, ...parts)` in `src/cache-store.js`: the chain's key
+ *   `cacheKey(chain, ...parts)` in `src/lib/cache-store.js`: the chain's key
  *   in chains.json, then what identifies the entry, dash-joined and
  *   lower-cased.
  *
@@ -20,13 +20,13 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const config = require("../src/config");
-const { cacheKey } = require("../src/cache-store");
+const config = require("../src/lib/config");
+const { cacheKey } = require("../src/lib/cache-store");
 const {
   getTokenSymbol,
   setTokenSymbol,
   _resetSymbolCache,
-} = require("../src/token-symbol-cache");
+} = require("../src/lib/token-symbol-cache");
 
 const TOKEN = "0x00000000000000000000000000000000000AbCdE";
 

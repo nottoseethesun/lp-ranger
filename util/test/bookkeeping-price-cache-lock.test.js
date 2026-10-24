@@ -19,7 +19,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 const {
   PRICE_CACHE_LOCK_FILE,
   takePriceCacheLock,

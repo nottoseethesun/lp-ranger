@@ -23,7 +23,7 @@ const path = require("path");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
 const { ADDR, _poll } = require("./_bot-loop-helpers");
-const { executeCompound } = require("../src/bot-cycle-compound");
+const { executeCompound } = require("../src/lib/bot-cycle-compound");
 
 /**
  * A rebalance lock that counts its releases, and runs `onAcquire` while
@@ -186,10 +186,10 @@ describe("the bot loop's stop flag", () => {
     /*-
      *  A loop's first poll runs while its start is under way, before
      *  anything holds the handle that stops it, so only the app's stop
-     *  (src/app-phase.js) can keep that poll from starting a move.
+     *  (src/lib/app-phase.js) can keep that poll from starting a move.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "bot-loop.js"),
+      path.join(__dirname, "..", "src", "lib", "bot-loop.js"),
       "utf8",
     );
     assert.match(src, /_isStopped: \(\) => _stopped \|\| isStopping\(\),/);
@@ -203,7 +203,7 @@ describe("the bot loop's stop flag", () => {
      *  begun finish rather than be cut off.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "bot-loop.js"),
+      path.join(__dirname, "..", "src", "lib", "bot-loop.js"),
       "utf8",
     );
     const stop = src.slice(src.indexOf("    stop() {"));
@@ -224,7 +224,7 @@ describe("the bot loop's stop flag", () => {
      *  rebalance to finish, and the exit would cut it off.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "bot-loop.js"),
+      path.join(__dirname, "..", "src", "lib", "bot-loop.js"),
       "utf8",
     );
     const stop = src.slice(

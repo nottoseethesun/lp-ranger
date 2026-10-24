@@ -1,7 +1,7 @@
 /**
  * @file test/dashboard-log.test.js
  * @description Tests for the browser-side opt-in logger in
- * `public/dashboard-log.js`.  Covers the rules introduced to fix the
+ * `src/client/web/dashboard-log.js`.  Covers the rules introduced to fix the
  * user-reported browser-console issues:
  *
  *   1. Every browser log line MUST start with the `[lp-ranger]` app
@@ -30,7 +30,7 @@ const assert = require("node:assert/strict");
 /*- The format is described by reference, not restated — the browser
  *  logger and the server logger share one definition, and these
  *  assertions follow it rather than a copy. */
-const { UTC_TIMESTAMP_PATTERN } = require("../src/utc-timestamp");
+const { UTC_TIMESTAMP_PATTERN } = require("../src/lib/utc-timestamp");
 const TS = new RegExp(`\\[${UTC_TIMESTAMP_PATTERN}\\]`);
 
 /**
@@ -52,7 +52,7 @@ test("dynamically load the ESM browser module under test", async () => {
   /*- node:test doesn't expose `before`/`beforeEach` from `node:test`
    *  as named helpers, so we just inline the import in a leading
    *  test that runs before the others (tests run in file order). */
-  const mod = await import("../public/dashboard-log.js");
+  const mod = await import("../src/client/web/dashboard-log.js");
   _withTimestamp = mod._withTimestamp;
   _scanTags = mod._scanTags;
   _skipFormatNoise = mod._skipFormatNoise;
@@ -202,7 +202,7 @@ test("log.info / warn / error route to matching console methods", () => {
   const origWarn = console.warn;
   const origErr = console.error;
   /*- Direct console swap is necessary here because dashboard-log.js
-   *  has no sink-injector (kept minimal vs src/log.js).  Restore in
+   *  has no sink-injector (kept minimal vs src/lib/log.js).  Restore in
    *  finally so a failing assertion can't leak state into the next
    *  test. */
   console.log = (...a) => calls.push(["log", ...a]);

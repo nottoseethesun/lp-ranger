@@ -9,7 +9,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createRouteHandlers } = require("../src/server-routes");
+const { createRouteHandlers } = require("../src/lib/server-routes");
 
 /** Build a minimal deps object with stubs. */
 function makeDeps(overrides = {}) {

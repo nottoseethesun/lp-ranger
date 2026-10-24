@@ -6,14 +6,14 @@
  *   positions saved as managed, one at a time after a launch.
  *
  *   The server reports the start-up's progress in its status answer
- *   (`startingManagedPositions`, src/handle-api-status.js), and while it
+ *   (`startingManagedPositions`, src/lib/handle-api-status.js), and while it
  *   does, the badge reads Syncing whatever position is on screen, naming
  *   the progress in its tooltip; the Syncing state is what keeps Manage
  *   and Stop Managing disabled. Once the start-up ends, the badge follows
  *   the position on screen again.
  *
  *   Driven end to end: the real status handler builds the answer, and the
- *   page's own poll shows it on its markup from public/index.html.
+ *   page's own poll shows it on its markup from src/client/web/index.html.
  */
 
 require("global-jsdom/register");
@@ -23,12 +23,12 @@ const assert = require("node:assert/strict");
 const { learnActiveChain } = require("./helpers/active-chain");
 const { learnUiSettings } = require("./helpers/ui-settings");
 const { indexHtmlDocument } = require("./helpers/index-html");
-const config = require("../src/config");
-const appPhase = require("../src/app-phase");
-const { createApiStatusHandler } = require("../src/handle-api-status");
-const { managedKeys } = require("../src/bot-config-v2");
-const { primaryRouteLabel } = require("../src/rebalancer-swap");
-const { moralisEnabledIn } = require("../src/server-moralis");
+const config = require("../src/lib/config");
+const appPhase = require("../src/lib/app-phase");
+const { createApiStatusHandler } = require("../src/lib/handle-api-status");
+const { managedKeys } = require("../src/lib/bot-config-v2");
+const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/lib/server-moralis");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -108,10 +108,10 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../public/dashboard-positions-store.js");
-  data = await import("../public/dashboard-data.js");
-  poll = await import("../public/dashboard-data-poll.js");
-  const { wallet } = await import("../public/dashboard-wallet.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
+  data = await import("../src/client/web/dashboard-data.js");
+  poll = await import("../src/client/web/dashboard-data-poll.js");
+  const { wallet } = await import("../src/client/web/dashboard-wallet.js");
   wallet.address = WALLET;
   store.posStore.add({
     walletAddress: WALLET,

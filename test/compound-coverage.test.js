@@ -9,7 +9,7 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 
-const sendTx = require("../src/send-transaction");
+const sendTx = require("../src/lib/send-transaction");
 
 /*- A poll cycle reads pool state, and that read takes its endpoint from
  *  the app's failover the way every other read does — so the rpc layer
@@ -33,7 +33,7 @@ after(() => sendTx._resetForTests());
 
 describe("bot-cycle compound gates", () => {
   // Import pollCycle to exercise _checkCompound and _handleForceCompound
-  const { pollCycle } = require("../src/bot-cycle");
+  const { pollCycle } = require("../src/lib/bot-cycle");
 
   function makeDeps(overrides = {}) {
     const position = {
@@ -161,7 +161,7 @@ describe("bot-cycle compound gates", () => {
 });
 
 describe("bot-cycle _checkCompound trigger path", () => {
-  const { pollCycle } = require("../src/bot-cycle");
+  const { pollCycle } = require("../src/lib/bot-cycle");
 
   function deps(overrides = {}) {
     return {
@@ -343,7 +343,9 @@ describe("bot-recorder _detectHistoricalCompounds", () => {
 
 describe("server-positions compound state", () => {
   it("createPerPositionBotState with all compound fields", () => {
-    const { createPerPositionBotState } = require("../src/server-positions");
+    const {
+      createPerPositionBotState,
+    } = require("../src/lib/server-positions");
     const state = createPerPositionBotState(
       {},
       {
@@ -367,7 +369,9 @@ describe("server-positions compound state", () => {
   });
 
   it("createPerPositionBotState with null saved", () => {
-    const { createPerPositionBotState } = require("../src/server-positions");
+    const {
+      createPerPositionBotState,
+    } = require("../src/lib/server-positions");
     const state = createPerPositionBotState({}, null);
     assert.equal(state.running, false);
     assert.equal(state.compoundedAmount0, undefined);
@@ -378,8 +382,8 @@ describe("server-positions compound state", () => {
     const os = require("os");
     const path = require("path");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cc-persist-"));
-    const { updatePositionState } = require("../src/server-positions");
-    const { getOrCreatePositionConfig } = require("../src/bot-config-v2");
+    const { updatePositionState } = require("../src/lib/server-positions");
+    const { getOrCreatePositionConfig } = require("../src/lib/bot-config-v2");
     const cfg = { global: {}, positions: {} };
     /*- Use the explicit lazy-create form for fixture setup; the non-
      *  lazy `getPositionConfig` returns null and won't create a slot. */
@@ -402,7 +406,7 @@ describe("server-positions compound state", () => {
 
 describe("pnl-tracker residual and missingPrice", () => {
   it("daily P&L entries have an inOut field defaulting to 0", () => {
-    const { createPnlTracker } = require("../src/pnl-tracker");
+    const { createPnlTracker } = require("../src/lib/pnl-tracker");
     const t = createPnlTracker({ initialDeposit: 100 });
     t.openEpoch({
       entryValue: 100,
@@ -418,7 +422,7 @@ describe("pnl-tracker residual and missingPrice", () => {
   });
 
   it("cumulative includes residual in calculation", () => {
-    const { createPnlTracker } = require("../src/pnl-tracker");
+    const { createPnlTracker } = require("../src/lib/pnl-tracker");
     const t = createPnlTracker({ initialDeposit: 100 });
     const now = Date.now();
     t.restore({
@@ -466,7 +470,7 @@ describe("pnl-tracker residual and missingPrice", () => {
 
 describe("bot-pnl-updater compound override", () => {
   it("snapshot prices the botState coins into totalCompoundedUsd", () => {
-    const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
+    const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
     const snap = {
       closedEpochs: [],
       liveEpoch: { entryValue: 500, fees: 20 },
@@ -497,7 +501,7 @@ describe("bot-pnl-updater compound override", () => {
    *  the second as an em-dash. Every arithmetic consumer coalesces to
    *  zero, so netReturn is unaffected either way. */
   const _runOverride = (botState) => {
-    const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
+    const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
     const snap = {
       closedEpochs: [],
       liveEpoch: { entryValue: 100, fees: 5 },
@@ -539,7 +543,7 @@ describe("override exposes lifetime fee-earnings inputs", () => {
    *  per-epoch total cannot serve, because fees folded back in during a
    *  rebalance are no longer unclaimed and fall outside it. */
   it("exposes currentFeesUsd and totalCompoundedUsd separately", () => {
-    const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
+    const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
     const snap = {
       totalGas: 0,
       liveEpoch: { entryValue: 100, fees: 1 },

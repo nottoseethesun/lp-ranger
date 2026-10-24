@@ -11,7 +11,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const SETTINGS_DIR = makeTestTempFolder("event-scanner-settings");
 fs.writeFileSync(
@@ -35,11 +35,11 @@ const {
   scanRebalanceHistory,
   buildCacheKey,
   _PAIRING_WINDOW_SEC,
-} = require("../src/event-scanner");
-const { BLOCKS_PER_YEAR } = require("../src/history-lookback");
-const { _DEFAULT_CHUNK_SIZE } = require("../src/get-logs-chunked");
+} = require("../src/lib/event-scanner");
+const { BLOCKS_PER_YEAR } = require("../src/lib/history-lookback");
+const { _DEFAULT_CHUNK_SIZE } = require("../src/lib/get-logs-chunked");
 const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
-const poolCreationBlock = require("../src/pool-creation-block");
+const poolCreationBlock = require("../src/lib/pool-creation-block");
 
 const WALLET = "0xABCDEF0000000000000000000000000000000001";
 const POS_MGR = "0x1234560000000000000000000000000000000099";

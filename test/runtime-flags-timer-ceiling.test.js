@@ -3,7 +3,7 @@
 /**
  * @file test/runtime-flags-timer-ceiling.test.js
  * @description
- * `src/timer-bounds.js` decides whether a configured number of seconds
+ * `src/lib/timer-bounds.js` decides whether a configured number of seconds
  * may become a `setTimeout` delay, and it is the only thing that
  * decides. Three roads lead to such a value — the shipped-defaults JSON,
  * `.env`, and `POST /api/config` — and each asks this module, because
@@ -26,8 +26,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { assertTimerSec } = require("../src/timer-bounds");
-const { parseTimerSec } = require("../src/runtime-flags");
+const { assertTimerSec } = require("../src/lib/timer-bounds");
+const { parseTimerSec } = require("../src/lib/runtime-flags");
 
 /** Shipped defaults, in seconds. */
 const SPEEDUP = 120;
@@ -282,7 +282,7 @@ describe("timer bounds: the .env road", () => {
 
   it("refuses text that is not a whole number, naming the setting", () => {
     /*-
-     *  Read by its rule in src/env-settings.js, never coerced: a comma or
+     *  Read by its rule in src/lib/env-settings.js, never coerced: a comma or
      *  an exponent once read as 1 second, and a zero, a sign or a word as
      *  the default, with nothing said.
      */

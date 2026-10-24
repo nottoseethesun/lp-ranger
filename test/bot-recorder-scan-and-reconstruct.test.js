@@ -27,10 +27,10 @@ const Module = require("node:module");
 const os = require("node:os");
 const path = require("node:path");
 const { format } = require("node:util");
-const config = require("../src/config");
-const { _setSinkForTests } = require("../src/log");
-const { emptyEvents } = require("../src/nft-events-batch");
-const { collectTokenIds } = require("../src/bot-recorder-scan-helpers");
+const config = require("../src/lib/config");
+const { _setSinkForTests } = require("../src/lib/log");
+const { emptyEvents } = require("../src/lib/nft-events-batch");
+const { collectTokenIds } = require("../src/lib/bot-recorder-scan-helpers");
 const { captureWarnings } = require("./helpers/capture-warnings");
 const {
   state,
@@ -198,7 +198,7 @@ function load(mode) {
     if (Object.prototype.hasOwnProperty.call(stubs, id)) return stubs[id];
     return harnessRequire.apply(this, arguments);
   };
-  const file = require.resolve("../src/bot-recorder");
+  const file = require.resolve("../src/lib/bot-recorder");
   delete require.cache[file];
   try {
     return require(file)._scanAndReconstruct;

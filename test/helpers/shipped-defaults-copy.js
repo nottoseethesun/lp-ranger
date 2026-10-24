@@ -2,7 +2,7 @@
  * @file test/helpers/shipped-defaults-copy.js
  * @description A copy of the shipped settings folder
  *   (`app-config/app-defaults-for-user-configurable/`) for one test
- *   process, which src/load-merged-defaults.js reads in place of the
+ *   process, which src/lib/load-merged-defaults.js reads in place of the
  *   tracked folder (`LP_RANGER_DEFAULTS_DIR`).
  *
  *   A test that has to replace or remove a shipped file, to show how its
@@ -12,14 +12,14 @@
  *   The copy is a test temp folder, removed when the process exits.
  *
  *   The loader reads the variable when it loads, so a test calls this
- *   before it requires anything under src/ that reads a settings file.
+ *   before it requires anything under src/lib/ that reads a settings file.
  */
 
 "use strict";
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 
 const _SHIPPED = path.join(
   __dirname,

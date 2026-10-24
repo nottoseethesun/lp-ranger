@@ -11,8 +11,8 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const { executeRebalance } = require("../src/rebalancer");
-const { priceToTick, nearestUsableTick } = require("../src/range-math");
+const { executeRebalance } = require("../src/lib/rebalancer");
+const { priceToTick, nearestUsableTick } = require("../src/lib/range-math");
 
 /*
  * Local fee→spacing map for parameterized tests.  Production code reads
@@ -235,7 +235,7 @@ describe("Integration: extreme prices", () => {
 
 // ── enrichResultUsd — token decimal handling ─────────────────────────────────
 
-const { enrichResultUsd } = require("../src/rebalancer");
+const { enrichResultUsd } = require("../src/lib/rebalancer");
 
 describe("enrichResultUsd — token decimal handling", () => {
   it("uses 18 decimals for both tokens when decimals match (e.g. WPLS/WETH)", async () => {

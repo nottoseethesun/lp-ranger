@@ -7,7 +7,7 @@
  * Two places hold it:
  *
  * - **The scan-cache folder**, `app-data/scan-cache/`
- *   (src/scan-cache-dir.js) — event scans, LP position enumeration, P&L
+ *   (src/lib/scan-cache-dir.js) — event scans, LP position enumeration, P&L
  *   epochs and the lifetime HODL amounts kept beside them, block
  *   timestamps, pool creation blocks, token symbols, fetched prices.
  * - **Scan-derived records for each position** in
@@ -43,9 +43,9 @@
 
 const fs = require("fs");
 const path = require("path");
-const { loadConfig, saveConfig } = require("../src/bot-config-v2");
-const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
-const { scanCacheDir } = require("../src/scan-cache-dir");
+const { loadConfig, saveConfig } = require("../src/lib/bot-config-v2");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/lib/bot-config-keys");
+const { scanCacheDir } = require("../src/lib/scan-cache-dir");
 
 const ROOT = path.resolve(__dirname, "..");
 const PID_FILE = path.join(ROOT, "tmp", "lp-ranger.pid");

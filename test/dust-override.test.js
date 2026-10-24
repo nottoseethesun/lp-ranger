@@ -7,13 +7,13 @@
  *
  *   The threshold decides which amounts are too small to act on: a
  *   fraction of one unit of a reference asset, priced live, with a dollar
- *   floor for when no price arrives. src/dust.js read both figures from
+ *   floor for when no price arrives. src/lib/dust.js read both figures from
  *   the shipped file alone, so an operator's copy changed nothing. It now
  *   reads the shipped file with the operator's copy on top, and holds
  *   each figure to the kind the tests hold the shipped file to, a number
  *   above 0, stopping the app at load over anything else.
  *
- *   The override directory is set before anything under src/ loads,
+ *   The override directory is set before anything under src/lib/ loads,
  *   because the loader reads its path at load. Each case writes the
  *   operator's copy, clears what the loader has kept, and loads the dust
  *   module afresh. The price lookup is stubbed, so no case touches the
@@ -30,10 +30,10 @@ const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "dust-override-"));
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 
 const SHIPPED = require("../app-config/app-defaults-for-user-configurable/dust-threshold.json");
-const mergedLoader = require("../src/load-merged-defaults");
+const mergedLoader = require("../src/lib/load-merged-defaults");
 
 let unitPriceUsd;
-const _priceFetcherPath = require.resolve("../src/price-fetcher");
+const _priceFetcherPath = require.resolve("../src/lib/price-fetcher");
 
 beforeEach(() => {
   require.cache[_priceFetcherPath] = {
@@ -56,8 +56,8 @@ function dustWith(override) {
     JSON.stringify(override),
   );
   mergedLoader._resetMemoForTests();
-  delete require.cache[require.resolve("../src/dust")];
-  return require("../src/dust");
+  delete require.cache[require.resolve("../src/lib/dust")];
+  return require("../src/lib/dust");
 }
 
 describe("an operator's dust threshold", () => {

@@ -3,7 +3,7 @@
 /**
  * @file test/per-day-pnl-help.test.js
  * @description The two circle-i help entries on the Per-Day P&L card,
- *   checked against the real `public/index.html` markup.
+ *   checked against the real `src/client/web/index.html` markup.
  *
  *   Both were hover-only popovers, which no touch device can reach.
  *   They are now click-to-dialog buttons using the project's canonical
@@ -21,13 +21,14 @@ const { shippedFigures } = require("../scripts/build-manual-content");
 let PARAM_HELP;
 
 const HTML = fs.readFileSync(
-  path.join(__dirname, "..", "public", "index.html"),
+  path.join(__dirname, "..", "src", "client", "web", "index.html"),
   "utf8",
 );
 const BODY = HTML.slice(HTML.indexOf("<body>") + 6, HTML.indexOf("</body>"));
 
 before(async () => {
-  const { buildParamHelp } = await import("../public/param-help-content.js");
+  const { buildParamHelp } =
+    await import("../src/client/web/param-help-content.js");
   PARAM_HELP = buildParamHelp(shippedFigures());
 });
 

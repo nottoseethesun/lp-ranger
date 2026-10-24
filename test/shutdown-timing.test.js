@@ -15,7 +15,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const SETTINGS_DIR = makeTestTempFolder("shutdown-settings");
 fs.writeFileSync(
@@ -37,8 +37,8 @@ const assert = require("node:assert/strict");
 const {
   readShutdownTimings,
   shutdownTimingsFrom,
-} = require("../src/shutdown-timing");
-const { SETTING_BOUNDS } = require("../src/setting-bounds");
+} = require("../src/lib/shutdown-timing");
+const { SETTING_BOUNDS } = require("../src/lib/setting-bounds");
 const shipped = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
 describe("shutdown timings", () => {

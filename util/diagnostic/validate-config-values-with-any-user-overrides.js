@@ -10,7 +10,7 @@
  *
  * It holds them to the rules the server and the bot hold them to at
  * startup, where any problem stops them: both ask the same library,
- * src/settings-check.js, so this tool's verdict is startup's. The test
+ * src/lib/settings-check.js, so this tool's verdict is startup's. The test
  * suite checks only the files that ship, so its answer is the same on
  * every machine; this is how an install's own values are checked, before
  * a restart or after an upgrade.
@@ -31,7 +31,7 @@ const { Command } = require("commander");
 const {
   settingsProblems,
   problemsReport,
-} = require("../../src/settings-check");
+} = require("../../src/lib/settings-check");
 
 /**
  * The command, declared once, so Commander both parses it and renders

@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-rebalance-scan-gate.test.js
  * @description Tests for the pure decisions extracted from
- *   `_handleRebalance` in `public/dashboard-data-events.js`:
+ *   `_handleRebalance` in `src/client/web/dashboard-data-events.js`:
  *   `_shouldTriggerRebalanceScan(lastRebalanceAt, trackedAt)` and
  *   `_shouldCommitRebalanceScan(scanResult, at, trackedAt, ev)`.
  *   The prior test file mirrored the whole orchestrator; the extracts
@@ -33,7 +33,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-data-events.js");
+  mod = await import("../src/client/web/dashboard-data-events.js");
 });
 
 // ── _shouldTriggerRebalanceScan ────────────────────────────────────────

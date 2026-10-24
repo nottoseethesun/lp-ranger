@@ -16,7 +16,7 @@
  *   field correctly."
  *
  *   Driven through the page's own Save, switch and status poll on its
- *   markup from public/index.html, with the server's answers scripted.
+ *   markup from src/client/web/index.html, with the server's answers scripted.
  */
 
 require("global-jsdom/register");
@@ -115,15 +115,15 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../public/dashboard-positions-store.js");
-  positions = await import("../public/dashboard-positions.js");
-  slippage = await import("../public/dashboard-per-token-slippage.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
+  positions = await import("../src/client/web/dashboard-positions.js");
+  slippage = await import("../src/client/web/dashboard-per-token-slippage.js");
   // Loaded as the page loads it: it announces how the panel refills.
-  await import("../public/dashboard-data.js");
+  await import("../src/client/web/dashboard-data.js");
   const { setConfigInputDefault } =
-    await import("../public/dashboard-config-inputs.js");
+    await import("../src/client/web/dashboard-config-inputs.js");
   setConfigInputDefault("slippagePct", SHIPPED.slippagePct);
-  const { wallet } = await import("../public/dashboard-wallet.js");
+  const { wallet } = await import("../src/client/web/dashboard-wallet.js");
   wallet.address = WALLET;
   store.posStore.add(A);
   store.posStore.add(B);

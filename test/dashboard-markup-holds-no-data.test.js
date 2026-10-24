@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-markup-holds-no-data.test.js
- * @description Guards the rule that `public/index.html` carries no data
+ * @description Guards the rule that `src/client/web/index.html` carries no data
  *   — no default values, no bounds — only presentation.
  *
  *   This project has been bitten by both halves of it.
@@ -23,7 +23,7 @@
  *   The two checks below differ in reach on purpose. A default in the
  *   markup is always wrong, so that one sweeps every number input. A
  *   bound is wrong only where the server has taken over the question,
- *   so that one is driven by the keys `src/config-bounds.js` actually
+ *   so that one is driven by the keys `src/lib/config-bounds.js` actually
  *   declares — the handful of inputs with no server-side rule keep
  *   theirs, since stripping those would leave them checked nowhere.
  */
@@ -34,7 +34,7 @@ const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { indexHtmlDocument } = require("./helpers/index-html");
-const { BOUNDS } = require("../src/config-bounds");
+const { BOUNDS } = require("../src/lib/config-bounds");
 
 let doc;
 
@@ -42,7 +42,7 @@ before(() => {
   doc = indexHtmlDocument();
 });
 
-/*- Every setting `src/config-bounds.js` declares a numeric range for,
+/*- Every setting `src/lib/config-bounds.js` declares a numeric range for,
  *  and the input an operator types it into — or `null` where there is
  *  no input. The third test below fails if this list falls behind the
  *  checker. */
@@ -71,7 +71,7 @@ const INPUT_BY_KEY = {
   pricePauseExceptionPollWindowMultiple: null,
 };
 
-describe("public/index.html holds no data", () => {
+describe("src/client/web/index.html holds no data", () => {
   it("has no Check Interval field: how often the bot checks is global", () => {
     /*-
      *  One value for every position, in bot-config-defaults.json or

@@ -3,7 +3,7 @@
 /**
  * @file test/bot-cycle-gates.test.js
  * @description The Impermanent Loss Guard measures with fresh prices
- *   (`snapForGuard`, src/bot-cycle-gates.js).
+ *   (`snapForGuard`, src/lib/bot-cycle-gates.js).
  *
  *   The Guard compares the position with holding its NFT's minted coins
  *   at today's prices, read from the poll's figures. While price lookups
@@ -20,8 +20,8 @@ const {
   pausePriceLookups,
   _resetPauseStateForTests,
   inMove,
-} = require("../src/price-fetcher-gate");
-const { snapForGuard, gatesFromGuard } = require("../src/bot-cycle-gates");
+} = require("../src/lib/price-fetcher-gate");
+const { snapForGuard, gatesFromGuard } = require("../src/lib/bot-cycle-gates");
 
 const STALE = { totalIL: 50 };
 const POSITION = {

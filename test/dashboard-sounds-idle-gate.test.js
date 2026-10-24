@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-sounds-idle-gate.test.js
  * @description Tests the pure `_playSoundGate` decision extracted from
- *   `playSound` in `public/dashboard-sounds.js`.  Previously mirrored
+ *   `playSound` in `src/client/web/dashboard-sounds.js`.  Previously mirrored
  *   because `playSound` reached across modules to `isSoundsEnabled`
  *   (localStorage-backed) and `isBrowserPaused` (dashboard-idle
  *   singleton); the pure gate takes both booleans as parameters so the
@@ -28,7 +28,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-sounds.js");
+  mod = await import("../src/client/web/dashboard-sounds.js");
 });
 
 describe("_playSoundGate()", () => {

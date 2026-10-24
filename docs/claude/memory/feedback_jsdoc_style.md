@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T17:59:08.758Z
+  modified: 2026-10-24T04:55:01.155Z
 ---
 
 A doc block answers three questions, in this order: **what does this do,
@@ -61,7 +61,7 @@ header, and the architecture note in CLAUDE.md. A regression test header
 is the right home for a chain of causes, because reproducing it is that
 file's job — but the same flow rules apply there too.
 
-The worked example is `_knownNetwork` in `src/bot-provider.js`, written
+The worked example is `_knownNetwork` in `src/lib/bot-provider.js`, written
 against this standard on the third attempt.
 
 Related: [[feedback_general_to_specific]] (the same ordering, applied to

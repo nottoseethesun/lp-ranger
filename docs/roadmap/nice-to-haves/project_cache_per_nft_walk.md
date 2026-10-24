@@ -14,7 +14,7 @@ lifetime profit.
 
 It used to walk them one at a time. Since Fix 1 it reads the whole
 chain in one batched pass (`scanChainNftEvents`,
-`src/nft-events-batch.js`). It still keeps the answers in memory only,
+`src/lib/nft-events-batch.js`). It still keeps the answers in memory only,
 so that pass is repeated in full on every start.
 
 ## Measured, on the $eHex/$hex chain in the dev wallet
@@ -33,7 +33,7 @@ chain takes two groups: about 1,000 queries, a few minutes.
 
 ## Fix 1: batch the filter — shipped
 
-Kept as the record of why it works. `scanNftEvents` (`src/compounder.js`),
+Kept as the record of why it works. `scanNftEvents` (`src/lib/compounder.js`),
 which still serves single-NFT reads, filters one NFT per query:
 
 ```js

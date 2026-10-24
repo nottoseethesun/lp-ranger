@@ -1,16 +1,16 @@
 ---
 name: project_rpc_gateway_bypass_audit
-description: "CLOSED 2026-10-03: every provider in src/ originates at the centralized rpc gateway. Audit by tracing provider ORIGINS, not the forty functions that take one as a parameter — a threaded provider inherits its origin, and the bypass that mattered constructed nothing at all."
+description: "CLOSED 2026-10-03: every provider in src/lib/ originates at the centralized rpc gateway. Audit by tracing provider ORIGINS, not the forty functions that take one as a parameter — a threaded provider inherits its origin, and the bypass that mattered constructed nothing at all."
 metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-03T20:16:05.008Z
+  modified: 2026-10-24T04:54:55.428Z
 ---
 
 Asked by the user as "are we done with this class of bug — meaning, not
 using the centralized rpc gateway." **Closed 2026-10-03.** No bypass
-remains in `src/`.
+remains in `src/lib/`.
 
 ## The method, which is the reusable part
 
@@ -31,19 +31,19 @@ parameter below them is too.
 
 ```bash
 # the origins
-grep -rnE "(const|let|var) +(provider|prov|_provider|readProvider) *=" src/*.js
+grep -rnE "(const|let|var) +(provider|prov|_provider|readProvider) *=" src/lib/*.js
 # construction, which must appear only in the factory
-grep -rn "JsonRpcProvider(" src/*.js
+grep -rn "JsonRpcProvider(" src/lib/*.js
 # providers baked into an object by ethers — the shape that hid
-grep -rn "\.wait(\|signer\.provider\|runner\.provider" src/*.js
+grep -rn "\.wait(\|signer\.provider\|runner\.provider" src/lib/*.js
 # and rule out rpc over raw HTTP
-grep -rn "fetch(" src/*.js | grep -iE "rpc|RPC_URL"
+grep -rn "fetch(" src/lib/*.js | grep -iE "rpc|RPC_URL"
 ```
 
 ## What the trace found
 
 **Construction is centralized.** `JsonRpcProvider` is instantiated only
-in `src/bot-provider.js`, the factory. Nothing else in the app builds
+in `src/lib/bot-provider.js`, the factory. Nothing else in the app builds
 one.
 
 **Twenty-eight provider assignments, two origins.** Twenty are

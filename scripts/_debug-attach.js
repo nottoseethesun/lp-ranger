@@ -12,15 +12,15 @@
 "use strict";
 
 const dotenv = require("dotenv");
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const { execSync } = require("child_process");
 const { findListenerPids, psCmd } = require("./_find-process");
-const { readEnv } = require("../src/env-settings");
+const { readEnv } = require("../src/lib/env-settings");
 
 /*-
  *  `.env` is loaded so INSPECTOR_PORT and LP_RANGER_PID may be set there
  *  as well as on the command line, where a value already set stands.
- *  Each is read by its rule in src/env-settings.js.
+ *  Each is read by its rule in src/lib/env-settings.js.
  */
 dotenv.config();
 
@@ -29,13 +29,15 @@ const INSPECTOR_PORT = readEnv("INSPECTOR_PORT") ?? 9229;
 
 /*- `pgrep -af` walks /proc and prints `<pid> <full-cmd>` for each
  *  matching process.  The `-f` flag means the regex matches the full
- *  command line, so an npm-script wrapper like `sh -c 'node bot.js'`
- *  ALSO matches.  Filter to processes whose command starts with
- *  `node ` so we get the real Node process, not its shell wrapper —
- *  signalling the wrapper does not reach the inner Node interpreter. */
+ *  command line, so an npm-script wrapper like `sh -c 'node src/bot.js'`
+ *  ALSO matches.  The entry file may be named with its folder
+ *  (`node src/bot.js`, as `npm run bot` starts it) or without.  Filter to
+ *  processes whose command starts with `node ` so we get the real Node
+ *  process, not its shell wrapper — signalling the wrapper does not reach
+ *  the inner Node interpreter. */
 function _pgrepByEntry(entry) {
   try {
-    const out = execSync(`pgrep -af 'node ${entry}\\.js'`, {
+    const out = execSync(`pgrep -af 'node ([^ ]*/)?${entry}\\.js'`, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();

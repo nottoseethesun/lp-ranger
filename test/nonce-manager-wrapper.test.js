@@ -1,6 +1,6 @@
 /**
  * @file test/nonce-manager-wrapper.test.js
- * @description Unit tests for src/nonce-manager-wrapper.js.
+ * @description Unit tests for src/lib/nonce-manager-wrapper.js.
  *
  * Covers:
  *   - lazy `_sync()` rebinds when the active RPC URL changes
@@ -15,12 +15,12 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const sendTx = require("../src/send-transaction");
+const sendTx = require("../src/lib/send-transaction");
 const { condemn } = require("./helpers/send-tx-stubs");
 const {
   FailoverNonceManager,
   createFailoverSigner,
-} = require("../src/nonce-manager-wrapper");
+} = require("../src/lib/nonce-manager-wrapper");
 
 /*- Stand-in NonceManager: records its constructed provider URL so
     tests can assert which RPC the inner NM is currently bound to. */

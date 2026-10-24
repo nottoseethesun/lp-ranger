@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-setting-labels.test.js
  * @description Tests for `formatSettingChange` and `labelForKey` in
- *   `public/dashboard-setting-labels.js`.  Uses jsdom (via
+ *   `src/client/web/dashboard-setting-labels.js`.  Uses jsdom (via
  *   `global-jsdom/register`) to populate `document` + `fetch`, then
  *   imports the real browser module.  The module's private `_LABELS`
  *   map is (re-)populated per test by stubbing `fetch("/api/setting-labels")`
@@ -34,7 +34,7 @@ async function _installLabels(labels) {
 }
 
 before(async () => {
-  mod = await import("../public/dashboard-setting-labels.js");
+  mod = await import("../src/client/web/dashboard-setting-labels.js");
 });
 
 beforeEach(async () => {

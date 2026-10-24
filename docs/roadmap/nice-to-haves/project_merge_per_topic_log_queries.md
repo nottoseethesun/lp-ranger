@@ -28,9 +28,9 @@ identical across those queries; only `topics[0]` differs.
 
 | Call site | Reads | Event types | Queries per chunk |
 | --- | --- | --- | --- |
-| `scanChainNftEvents` (`src/nft-events-batch.js`) | a whole chain, ids in groups of up to 100 | the ones the caller names, up to three | one per type, per id group |
-| `scanCollectAndDrain` (`src/position-history-scan-helpers.js`) | one NFT | `Collect`, `DecreaseLiquidity` | 2 |
-| `scanNftEvents` (`src/compounder.js`) | one NFT | `IncreaseLiquidity`, `Collect`, `DecreaseLiquidity` | 3 |
+| `scanChainNftEvents` (`src/lib/nft-events-batch.js`) | a whole chain, ids in groups of up to 100 | the ones the caller names, up to three | one per type, per id group |
+| `scanCollectAndDrain` (`src/lib/position-history-scan-helpers.js`) | one NFT | `Collect`, `DecreaseLiquidity` | 2 |
+| `scanNftEvents` (`src/lib/compounder.js`) | one NFT | `IncreaseLiquidity`, `Collect`, `DecreaseLiquidity` | 3 |
 
 The server log shows the queries moving in lockstep, which is the tell:
 
@@ -66,7 +66,7 @@ shape changes, so no caller moves:
   for each event type the caller named.
 - `scanCollectAndDrain` keeps `{ collectEvents, dlEvents }` and its
   `collectEvents.length === 0 → null` contract. One production caller,
-  `src/position-history.js`.
+  `src/lib/position-history.js`.
 - `scanNftEvents` keeps
   `{ ilEvents, collectEvents, dlEvents, ilLogsCount }`. One production
   caller, `detectCompoundsOnChain` in the same file.
@@ -86,7 +86,7 @@ rebuild from cold is rare, so spending that risk to shorten a scan
 nobody waits on is a poor trade while stability outranks speed.
 
 A cheaper lever on the same problem has since been pulled. In the run
-above, `_findMintEvent` in `src/hodl-baseline.js` walked a pool's entire
+above, `_findMintEvent` in `src/lib/hodl-baseline.js` walked a pool's entire
 history, 944 chunks, for a mint that sat in the last 44. It now walks
 newest-first and stops at the first hit (`direction: "desc"`,
 `onChunk`); see [Walk Mint Lookups Newest-First](project_mint_lookup_scan_direction.md).

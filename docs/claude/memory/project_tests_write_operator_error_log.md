@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-18T08:46:43.081Z
+  modified: 2026-10-24T04:54:55.452Z
 ---
 
 # Tests write the operator's error log
@@ -20,7 +20,7 @@ now:
    other operator files), renames whatever they wrote to
    `logs/error-npm-run-check.log`.
 
-The path comes from `getErrorLogPath()` in `src/error-log.js`. Verified
+The path comes from `getErrorLogPath()` in `src/lib/error-log.js`. Verified
 on a real gate run: `logs/error.log` gone, the fake entry in
 `logs/error-npm-run-check.log`. Documented in CLAUDE-TESTING.md § "`logs/`"
 and in docs/npm-project-commands.md.

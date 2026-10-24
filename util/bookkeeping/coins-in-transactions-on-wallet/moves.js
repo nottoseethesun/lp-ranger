@@ -26,7 +26,7 @@
 const fs = require("fs");
 const path = require("path");
 const { ethers } = require("ethers");
-const { parseCompositeKey } = require("../../../src/composite-key");
+const { parseCompositeKey } = require("../../../src/lib/composite-key");
 const { sameAddress } = require("../coins-in-transaction");
 
 /**

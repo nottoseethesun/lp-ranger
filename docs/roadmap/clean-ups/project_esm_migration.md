@@ -6,7 +6,7 @@
 
 Move the server side, tests and scripts from CommonJS (`require` /
 `module.exports`) to ESM (`import` / `export`). The dashboard modules in
-`public/` are ESM already; esbuild bundles them.
+`src/client/web/` are ESM already; esbuild bundles them.
 
 **Why:** ESM is the modern Node default; ESM-only ecosystem packages
 keep landing; static `import` enables better tree-shaking, top-level
@@ -19,8 +19,7 @@ Treat as a dedicated branch — DO NOT mix with feature work.
 - Add `"type": "module"` to package.json (or rename source files to
   `.mjs`); decide policy.
 - Convert every `require()` → `import` and every `module.exports` →
-  `export` across `src/`, `test/`, `scripts/`, `server.js`,
-  `bot.js`, `eslint-rules/`.
+  `export` across `src/`, `test/`, `scripts/`, `eslint-rules/`.
 - Add `.js` extensions to all relative imports (ESM requires them).
 - Replace `__dirname`/`__filename`/`require.resolve` with
   `import.meta.url` equivalents.

@@ -22,7 +22,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const SHIPPED_CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
 const SETTINGS_DIR = makeTestTempFolder("agg-paths-settings");
@@ -43,14 +43,14 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { format } = require("node:util");
 
-const config = require("../src/config");
-const logModule = require("../src/log");
+const config = require("../src/lib/config");
+const logModule = require("../src/lib/log");
 const {
   swapViaAggregator,
   AGGREGATOR_LABEL,
   _setWaitMsForTests,
-} = require("../src/rebalancer-aggregator");
-const { swapIfNeeded } = require("../src/rebalancer-swap");
+} = require("../src/lib/rebalancer-aggregator");
+const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
 const { ADDR, buildMockEthersLib } = require("./helpers/rebalancer-mocks");
 const {
   EXCHANGE,

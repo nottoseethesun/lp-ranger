@@ -3,7 +3,7 @@
 /**
  * @file test/bot-recorder-lifetime-compound-list.test.js
  * @description The compound list a rebuild writes (`_classifyAllCompounds`,
- *   src/bot-recorder-lifetime.js): every compound the chain shows, with its
+ *   src/lib/bot-recorder-lifetime.js): every compound the chain shows, with its
  *   Activity Log figures, keeping the trigger and figures of each compound
  *   the bot recorded when it happened.
  *
@@ -11,7 +11,7 @@
  *   rebuild, so the rebuild's list replaces it whether or not the chain
  *   shows compounded coins. The classifier is the shared
  *   harness's stand-in; the figures are worked out by the real code
- *   (src/compound-activity-figures.js).
+ *   (src/lib/compound-activity-figures.js).
  *
  *   The fixture NFT #1 was minted with liquidity 900, its fees collected
  *   (10 of token0, 20 of token1), and those fees compounded (8 and 16,
@@ -84,7 +84,7 @@ describe("_classifyAllCompounds — the compound list it writes", () => {
   beforeEach(() => {
     resetState();
     installMocks();
-    ({ _classifyAllCompounds } = require("../src/bot-recorder-lifetime"));
+    ({ _classifyAllCompounds } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);

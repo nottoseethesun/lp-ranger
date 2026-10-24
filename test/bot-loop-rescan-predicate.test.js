@@ -1,7 +1,7 @@
 /**
  * @file test/bot-loop-rescan-predicate.test.js
  * @description Tests for the two pieces of the 30-minute auto-rescan
- * timer in src/bot-loop.js that were extracted to be testable:
+ * timer in src/lib/bot-loop.js that were extracted to be testable:
  * `_needsLifetimeRescan`, which decides whether to rescan and why, and
  * `_countRescan`, which numbers the attempts for the log.
  *
@@ -22,7 +22,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { _needsLifetimeRescan, _countRescan } = require("../src/bot-loop");
+const { _needsLifetimeRescan, _countRescan } = require("../src/lib/bot-loop");
 
 /*- A settled position: scan finished, history complete, deposits found.
  *  Every case below is this with one thing changed, so the assertions

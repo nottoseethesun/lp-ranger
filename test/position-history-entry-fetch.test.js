@@ -17,7 +17,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { needsEntryFromChain } = require("../src/position-history");
+const { needsEntryFromChain } = require("../src/lib/position-history");
 
 /** A result with everything the fetch requires, plus overrides. */
 const result = (over = {}) => ({

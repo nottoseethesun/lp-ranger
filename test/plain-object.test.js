@@ -2,7 +2,7 @@
 
 /**
  * @file test/plain-object.test.js
- * @description `isPlainObject` (src/plain-object.js): whether a value is
+ * @description `isPlainObject` (src/lib/plain-object.js): whether a value is
  *   something JSON writes with braces. Records read from `app-data/` and
  *   answers sent to the dashboard are checked this way before their
  *   fields are read, so the dashboard bundles the module too, and it
@@ -13,7 +13,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { isPlainObject } = require("../src/plain-object");
+const { isPlainObject } = require("../src/lib/plain-object");
 
 describe("isPlainObject", () => {
   it("is true for an object, whatever it holds", () => {
@@ -33,7 +33,7 @@ describe("isPlainObject", () => {
      *  show as a broken dashboard, not a failing test.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "plain-object.js"),
+      path.join(__dirname, "..", "src", "lib", "plain-object.js"),
       "utf8",
     );
     assert.deepEqual(src.match(/\brequire\s*\(/g) || [], []);

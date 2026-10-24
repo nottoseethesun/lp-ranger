@@ -1,0 +1,670 @@
+/**
+ * @file src/lib/bot-recorder.js
+ * @module bot-recorder
+ * @description
+ * Logging, epoch closing, history scanning, rebalance recording,
+ * and HODL baseline updates.
+ * Extracted from bot-loop.js.
+ */
+
+"use strict";
+
+const { log } = require("./log");
+// Loading any bot module signals the bot subsystem is active — bot-banner
+// prints on first require (cached, so exactly once per process). Server.js
+// pulls in bot-recorder unconditionally for managed + unmanaged data work,
+// so this is where the bot announces itself in server mode.
+require("./bot-banner");
+
+const fs = require("fs");
+const path = require("path");
+const config = require("./config");
+const rangeMath = require("./range-math");
+const { getPoolState } = require("./rebalancer-pools");
+const { scanPoolHistory } = require("./pool-scanner");
+const { reconstructEpochs } = require("./epoch-reconstructor");
+const { clearLpPositionCache } = require("./lp-position-cache");
+const { buildUpdatePatch } = require("./bot-recorder-patch");
+const { coinDecimals } = require("./coin-decimals");
+const { updateHodlBaseline } = require("./bot-recorder-baseline");
+const { duration } = require("./help-figures");
+const {
+  hasCompoundedTotal,
+  isRecordedCoinTotal,
+} = require("./bot-config-keys");
+const {
+  collectTokenIds: _collectTokenIds,
+} = require("./bot-recorder-scan-helpers");
+const {
+  toFloat: _toFloat,
+  fetchTokenPrices: _fetchTokenPrices,
+  estimateGasCostUsd: _estimateGasCostUsd,
+  actualGasCostUsd: _actualGasCostUsd,
+} = require("./bot-pnl-updater");
+const {
+  _scanLifetimePoolData,
+  scanLogCtx,
+} = require("./bot-recorder-lifetime");
+const { prepareSharedRead, epochEventsFrom } = require("./shared-chain-read");
+const { ensureInitialResidualData } = require("./liquidity-pair-details");
+const { activityFieldsOf } = require("./rebalance-activity-figures");
+const { finishPassRebalanceFigures } = require("./bot-rebalance-figures");
+
+/** JSON-safe replacer that converts BigInt to string. */
+function _bigIntReplacer(_key, value) {
+  return typeof value === "bigint" ? value.toString() : value;
+}
+
+/**
+ * Read the on-disk rebalance log and return its entries.
+ * Returns [] for missing, empty, or malformed files — callers should
+ * treat "no seed available" the same as "no rebalances".
+ * @returns {Array<object>}
+ */
+function readLog() {
+  try {
+    const raw = fs.readFileSync(path.resolve(config.LOG_FILE), "utf8");
+    const entries = JSON.parse(raw);
+    return Array.isArray(entries) ? entries : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+/**
+ * Append a rebalance result to the on-disk JSON log.
+ * Creates the file if it does not exist.
+ * @param {object} result  The rebalance result object.
+ */
+function appendLog(result) {
+  const logPath = path.resolve(config.LOG_FILE);
+  let entries = [];
+  try {
+    const raw = fs.readFileSync(logPath, "utf8");
+    entries = JSON.parse(raw);
+  } catch (_) {
+    // File missing or corrupt — start fresh.
+  }
+  entries.push({ ...result, loggedAt: new Date().toISOString() });
+  // Ensure parent dir exists (e.g. app-config/ on first run).
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  fs.writeFileSync(logPath, JSON.stringify(entries, _bigIntReplacer, 2));
+}
+
+/**
+ * After an epoch close, credit unclaimed fees that were re-deposited via
+ * the rebalance flow (drain → swap → mint).  These were already in the
+ * NFT and would otherwise be invisible to the compounded totals (only
+ * standalone compounds bump those via bot-cycle-compound).  See the
+ * Lifetime "Fees Compounded" info dialog for the user-facing
+ * explanation.
+ *
+ * The coins are what is added, not their value: `_lastUnclaimedFee0` and
+ * `_lastUnclaimedFee1` are in token units, and whoever displays the
+ * total prices it at the moment it is shown.
+ */
+function _bumpRebalanceFees(deps) {
+  const fee0 = deps._lastUnclaimedFee0 || 0;
+  const fee1 = deps._lastUnclaimedFee1 || 0;
+  if (fee0 <= 0 && fee1 <= 0) return;
+  const gc = deps._getConfig;
+  /*- Disk first, then the in-memory state, then nothing — and a saved
+   *  zero is a real answer that must stop the search, not fall through
+   *  to the next source. */
+  const saved = (key) => (gc ? gc(key) : undefined);
+  const prev0 = saved("compoundedAmount0") ?? deps._botState?.compoundedAmount0;
+  const prev1 = saved("compoundedAmount1") ?? deps._botState?.compoundedAmount1;
+  /*- Credit the chain's total only where there is one. With none saved,
+   *  the chain has not been classified yet — see `hasCompoundedTotal` —
+   *  and these fees would be passed off as the whole chain's, which the
+   *  lifetime scan then believes and skips the classification. The fees
+   *  are not lost: they went on chain with the rebalance, so the scan
+   *  counts them when it runs. The pending amounts are still cleared
+   *  below, because they HAVE been swept into the position and are no
+   *  longer unclaimed, whoever ends up totalling them. */
+  if (!hasCompoundedTotal(prev0, prev1)) {
+    /*- Ask for the classification, for the reason `lifetimeScanPlan`
+     *  gives: if these coins landed during a scan, that scan read the
+     *  chain before they existed, and its write would settle a total
+     *  without them. */
+    if (deps._botState) deps._botState._needsCompoundReclassify = true;
+    if (deps.updateBotState)
+      deps.updateBotState({ _needsCompoundReclassify: true });
+    log.info(
+      "[bot] Rebalance compound: %s/%s fees re-deposited; lifetime total left for the chain scan to establish",
+      fee0.toFixed(6),
+      fee1.toFixed(6),
+    );
+  } else {
+    /*- Each side on its own merit: either alone established the total, so
+     *  the other may hold anything the config can express, and adding to
+     *  a string would concatenate rather than sum. */
+    const newAmount0 = (isRecordedCoinTotal(prev0) ? prev0 : 0) + fee0;
+    const newAmount1 = (isRecordedCoinTotal(prev1) ? prev1 : 0) + fee1;
+    if (deps.updateBotState)
+      deps.updateBotState({
+        compoundedAmount0: newAmount0,
+        compoundedAmount1: newAmount1,
+      });
+    log.info(
+      "[bot] Rebalance compound: %s/%s fees re-deposited (lifetime %s/%s)",
+      fee0.toFixed(6),
+      fee1.toFixed(6),
+      newAmount0.toFixed(6),
+      newAmount1.toFixed(6),
+    );
+  }
+  deps._lastUnclaimedFeesUsd = 0;
+  /*- The token amounts behind that figure are cleared with it. They are
+   *  what `_freshFeesUsd` (src/lib/bot-cycle-compound.js) re-values when
+   *  deciding whether to compound, so leaving them set would describe
+   *  fees this rebalance has just swept into the position as still
+   *  unclaimed. The poll refreshes all three before that decision is
+   *  reached, so this keeps a pair consistent rather than repairing a
+   *  reachable fault — but the pair has to move together, or the next
+   *  reader of one gets an answer the other contradicts. */
+  deps._lastUnclaimedFee0 = 0;
+  deps._lastUnclaimedFee1 = 0;
+}
+
+/** Close the current P&L epoch after a rebalance and open a new one. */
+async function _closePnlEpoch(deps, result) {
+  const tracker = deps._pnlTracker;
+  if (!tracker || tracker.epochCount() === 0) return;
+  try {
+    let price0 = result.token0UsdPrice,
+      price1 = result.token1UsdPrice;
+    if (price0 === undefined || price1 === undefined) {
+      const p = await _fetchTokenPrices(
+        deps.position.token0,
+        deps.position.token1,
+      );
+      price0 = p.price0;
+      price1 = p.price1;
+    }
+    const { d0: rd0, d1: rd1 } = coinDecimals(
+      result,
+      "the rebalance result",
+      "the closing period's exit value",
+    );
+    const exitVal =
+      result.exitValueUsd ||
+      _toFloat(result.amount0Collected, rd0) * price0 +
+        _toFloat(result.amount1Collected, rd1) * price1;
+    const gasCost = result.totalGasCostWei
+      ? await _actualGasCostUsd(result.totalGasCostWei)
+      : await _estimateGasCostUsd(deps.provider);
+    const gasNative = result.totalGasCostWei
+      ? Number(BigInt(result.totalGasCostWei)) / 1e18
+      : 0;
+    tracker.closeEpoch({
+      exitValue: exitVal,
+      gasCost,
+      gasNative,
+      token0UsdPrice: price0,
+      token1UsdPrice: price1,
+    });
+    if (deps.updateBotState)
+      deps.updateBotState({ pnlEpochs: tracker.serialize() });
+    _bumpRebalanceFees(deps);
+    const entryVal =
+      result.entryValueUsd ||
+      _toFloat(result.amount0Minted, rd0) * price0 +
+        _toFloat(result.amount1Minted, rd1) * price1;
+    tracker.openEpoch({
+      entryValue: entryVal || exitVal,
+      entryPrice: result.currentPrice,
+      lowerPrice: rangeMath.tickToPrice(result.newTickLower, rd0, rd1),
+      upperPrice: rangeMath.tickToPrice(result.newTickUpper, rd0, rd1),
+      token0UsdPrice: price0,
+      token1UsdPrice: price1,
+    });
+  } catch (err) {
+    log.warn("[bot] P&L epoch close error:", err.message);
+  }
+}
+
+/**
+ * Resolve initial-residual snapshot for the wallet/pool scope and attach to
+ * the state patch. The snapshot captures the wallet's token balances at the
+ * end of the block containing the very first IncreaseLiquidity TX — i.e.
+ * what was left over after the initial LP creation consumed its inputs.
+ * Best-effort: failures are warned and swallowed so the scan completes
+ * regardless.
+ */
+async function _attachInitialResidual(stPatch, ctx) {
+  const { address, position, found, poolState, provider, ethersLib, refresh } =
+    ctx;
+  log.info(
+    "[bot] Attaching initial residual (firstMintBlock=%s firstMintTimestamp=%s poolAddress=%s)",
+    found.firstMintBlockNumber,
+    found.firstMintTimestamp,
+    poolState.poolAddress,
+  );
+  try {
+    const initialResidualData = await ensureInitialResidualData({
+      chain: config.CHAIN_NAME,
+      factory: config.POSITION_MANAGER,
+      wallet: address,
+      token0: position.token0,
+      token1: position.token1,
+      fee: position.fee,
+      firstMintBlock: found.firstMintBlockNumber,
+      firstMintTimestamp: found.firstMintTimestamp,
+      poolAddress: poolState.poolAddress,
+      provider,
+      ethersLib,
+      /*- Set when the operator asked for a repair — Reload Position or
+       *  Re-scan Prices. Without it this figure is the one stored value a
+       *  re-scan would leave untouched, because it is written once and
+       *  returned ever after. */
+      refresh,
+    });
+    if (initialResidualData) stPatch.initialResidualData = initialResidualData;
+  } catch (err) {
+    log.warn("[bot] Initial residual lookup failed: %s", err.message ?? err);
+  }
+}
+
+/**
+ * Resolve pool address and scan on-chain rebalance history (fire-and-forget).
+ *
+ * @returns {Promise<boolean>}  False when the scan failed. `events` then
+ *   still holds what it held before the pass, which on a cold start is
+ *   nothing.
+ */
+/**
+ * @param {boolean} [refreshInitialResidual]  True when the operator has
+ *   asked for a repair — Reload Position or Re-scan Prices. The
+ *   first-deposit leftover is written once and returned ever after, so
+ *   without this it is the one stored figure a re-scan leaves alone.
+ */
+async function _scanHistory(
+  provider,
+  ethersLib,
+  address,
+  position,
+  events,
+  updateState,
+  throttle,
+  computeFromHistoricalPrices,
+  refreshInitialResidual,
+) {
+  try {
+    updateState({
+      rebalanceScanComplete: false,
+      lifetimeScanComplete: false,
+      rebalanceScanProgress: 0,
+    });
+    const poolState = await getPoolState(ethersLib, {
+      factoryAddress: config.FACTORY,
+      token0: position.token0,
+      token1: position.token1,
+      fee: position.fee,
+    });
+    log.info(
+      "[bot] Scanning rebalance history for %s (pool %s)",
+      address,
+      poolState.poolAddress,
+    );
+    updateState({ rebalanceScanProgress: 5 });
+    const found = await scanPoolHistory(provider, ethersLib, {
+      walletAddress: address,
+      position,
+      poolAddress: poolState.poolAddress || null,
+      onPoolCreationProgress: (done, total) =>
+        updateState({
+          rebalanceScanProgress: 5 + Math.round((done / total) * 45),
+        }),
+      onProgress: (done, total) =>
+        updateState({
+          rebalanceScanProgress: 50 + Math.round((done / total) * 45),
+        }),
+      computeFromHistoricalPrices: computeFromHistoricalPrices || undefined,
+    });
+    updateState({ rebalanceScanProgress: 95 });
+    /* Replace the in-memory events list with the (already deduped + merged)
+     * scan result.  A plain push(...found) caused duplicate rows because
+     * _triggerScan runs after every rebalance and the scan now includes the
+     * event appendToPoolCache just wrote to the disk cache. */
+    events.length = 0;
+    events.push(...found);
+    /*- The event scanner hangs `firstMintTimestamp`,
+     *  `firstMintBlockNumber` and `firstMintTokenId` on the array as
+     *  non-index properties, and `push(...found)` copies only the
+     *  elements — so without this they are lost the moment the scan
+     *  result is transplanted into the bot's own array.
+     *
+     *  `firstMintBlockNumber` is the mint of the oldest NFT the wallet
+     *  holds in this pool, and the only lower bound that NFT can get:
+     *  no rebalance event names its mint, so it otherwise falls back to
+     *  the pool's creation block. On a pool older than the operator's
+     *  first deposit that is the single most expensive scan of the run
+     *  — see `chainScanFloor` in src/lib/nft-mint-blocks.js.
+     *
+     *  `firstMintTokenId` says which NFT that mint belongs to. Without
+     *  it the block cannot be attributed, because the oldest arrival is
+     *  not always the chain's oldest `oldTokenId`. */
+    events.firstMintTimestamp = found.firstMintTimestamp;
+    events.firstMintBlockNumber = found.firstMintBlockNumber;
+    events.firstMintTokenId = found.firstMintTokenId;
+    /*- The first link of the inferred chain and its mint block. Per-day
+     *  P&L opens its first row from these; dropping them here sends that
+     *  lookup to the chain instead. */
+    events.chainFirstTokenId = found.chainFirstTokenId;
+    events.chainFirstMintBlock = found.chainFirstMintBlock;
+    events.chainFirstMintTimestamp = found.chainFirstMintTimestamp;
+    log.info("[bot] Found %d historical rebalance events", found.length);
+    if (throttle && found.length > 0) {
+      const cutoff = Math.floor(
+        (throttle.getState().dailyResetAt - 86_400_000) / 1000,
+      );
+      const recent = found.filter((e) => e.timestamp >= cutoff).length;
+      if (recent > 0) throttle.rehydrate(recent);
+    }
+    const _d = (ts) =>
+      ts ? new Date(ts * 1000).toISOString().slice(0, 10) : undefined;
+    const mintEv = found.find(
+      (e) => String(e.newTokenId) === String(position.tokenId),
+    );
+    const mintTs = mintEv?.timestamp
+      ? new Date(mintEv.timestamp * 1000).toISOString()
+      : undefined;
+    const mintDate = mintTs ? mintTs.slice(0, 10) : undefined,
+      poolFirstMintDate = _d(found.firstMintTimestamp);
+    if (mintDate)
+      log.info("[bot] Position #%s minted on %s", position.tokenId, mintDate);
+    if (poolFirstMintDate)
+      log.info("[bot] Pool first LP minted on %s", poolFirstMintDate);
+    const stPatch = {
+      rebalanceEvents: [...events],
+      rebalanceScanProgress: 100,
+    };
+    if (mintDate) {
+      stPatch.positionMintDate = mintDate;
+      stPatch.positionMintTimestamp = mintTs;
+    }
+    if (poolFirstMintDate) stPatch.poolFirstMintDate = poolFirstMintDate;
+    if (throttle) stPatch.throttleState = throttle.getState();
+    await _attachInitialResidual(stPatch, {
+      address,
+      position,
+      found,
+      poolState,
+      provider,
+      ethersLib,
+      refresh: refreshInitialResidual,
+    });
+    updateState(stPatch);
+    return true;
+  } catch (err) {
+    /*- The operator reaches this line from the Manual's FAQ, sent here
+     *  by a Sync badge that has stayed on "Syncing…". So it carries what
+     *  every other scan line carries — which position, and its pair —
+     *  plus the error's class, and what the failure costs: the lifetime
+     *  figures are skipped rather than built from a history this read
+     *  did not finish. Keep the words "Event scan error", which is what
+     *  the FAQ tells them to search for. */
+    const ctx = scanLogCtx(position);
+    log.warn(
+      "[bot] %s/%s NFT #%s %s: Event scan error (%s): %s — lifetime figures skipped; the Sync badge stays on Syncing and the scan retries in %s",
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
+      err.name || "Error",
+      err.message,
+      duration(config.LIFETIME_RESCAN_CHECK_MS / 1000),
+    );
+    updateState({ rebalanceScanComplete: true });
+    return false;
+  }
+}
+
+/** Scan history and reconstruct P&L epochs under the pool lock. */
+async function _scanAndReconstruct(
+  provider,
+  ethersLib,
+  address,
+  position,
+  _cache,
+  events,
+  updateState,
+  throttle,
+  pnlTracker,
+  botState,
+  epochKey,
+) {
+  /*-
+   *  One chain read for the pass. Epoch reconstruction, the lifetime
+   *  scan and the Rebalance events' Activity Log figures all need the
+   *  chain's history. When the lifetime scan or the figures are going
+   *  to need the whole chain's NFT events, the read is prepared here,
+   *  once the event scan has found the chain, and reconstruction takes
+   *  its events from it. See src/lib/bot-recorder-lifetime-read.js.
+   */
+  let sharedRead = null;
+  const chainFound = await _scanHistory(
+    provider,
+    ethersLib,
+    address,
+    position,
+    events,
+    updateState,
+    throttle,
+    async (scannedEvents) => {
+      const evts = scannedEvents || events;
+      if (!evts.length) return;
+      sharedRead = prepareSharedRead(position, botState, evts, epochKey);
+      log.info("[bot] Reconstructing epochs (%d events)\u2026", evts.length);
+      const fb = await _fetchTokenPrices(
+        position.token0,
+        position.token1,
+      ).catch(() => ({ price0: 0, price1: 0 }));
+      const readChainEvents = epochEventsFrom(sharedRead);
+      await reconstructEpochs({
+        pnlTracker,
+        rebalanceEvents: evts,
+        botState,
+        updateBotState: updateState,
+        fallbackPrices: fb,
+        readChainEvents,
+      }).catch((e) => log.warn("[pnl] Epoch reconstruction error:", e.message));
+    },
+    /*- Only a request for fresh prices, never a request to recompute.
+     *
+     *  The two are not the same, and keying this to the wrong one cost
+     *  real quota. A rebalance asks for a recompute — it must, because a
+     *  new NFT means the saved figures no longer describe the chain — so
+     *  keying off that fired this re-read after every rebalance. What it
+     *  re-reads cannot change: the leftover and the day it was left on
+     *  are fixed history, which is why its price is cached with no expiry.
+     *  Bypassing that cache to ask again for a number that could not have
+     *  moved spends a quota-limited lookup for nothing.
+     *
+     *  Reload Position raises this flag as well as the recompute one, so
+     *  both repair actions still reach the figure. */
+    botState?._needsPriceRevalue === true,
+  );
+  await _scanLifetimePoolData(
+    position,
+    botState,
+    updateState,
+    events,
+    address,
+    pnlTracker,
+    epochKey,
+    sharedRead,
+    chainFound,
+  );
+  await finishPassRebalanceFigures({
+    events,
+    position,
+    address,
+    provider,
+    ethersLib,
+    sharedRead,
+    epochKey,
+    botState,
+    updateState,
+    readLog,
+  });
+  log.info("[bot] Scan + epoch reconstruction complete");
+  updateState({
+    rebalanceScanComplete: true,
+    rebalanceScanProgress: 100,
+  });
+}
+
+/** Record residual delta and persist. */
+function _recordResidual(deps, result) {
+  if (!deps._residualTracker || !result.poolAddress) return;
+  deps._residualTracker.addDelta(
+    result.poolAddress,
+    result.amount0Collected - result.amount0Minted,
+    result.amount1Collected - result.amount1Minted,
+  );
+  if (deps.updateBotState)
+    deps.updateBotState({
+      residuals: deps._residualTracker.serialize(),
+    });
+}
+
+function _activePosSummary(p) {
+  return {
+    tokenId: String(p.tokenId),
+    token0: p.token0,
+    token1: p.token1,
+    fee: p.fee,
+    tickLower: p.tickLower,
+    tickUpper: p.tickUpper,
+    liquidity: String(p.liquidity || 0),
+    /*- Symbols are included so the dashboard can keep its posStore
+     *  entry's `token0Symbol` / `token1Symbol` in sync after a
+     *  rebalance-follow migration.  Without these, the entry's
+     *  addresses/fee can drift to a new pool while the stale Maximus-
+     *  era symbols persist forever in localStorage, producing the
+     *  "tokenId correct, pool name wrong" mixed-state render bug. */
+    token0Symbol: p.token0Symbol,
+    token1Symbol: p.token1Symbol,
+  };
+}
+
+function _notifyRebalance(deps, throttle, position, events) {
+  /*- `lastRebalanceAt` is a ms-since-epoch number (matches what
+   *  `bot-cycle-residual._updateCleanupState` writes and what callers
+   *  compare against `Date.now()`).  Previously this wrote an ISO
+   *  string via `Object.assign` which stomped the numeric value and
+   *  produced NaN arithmetic in the residual-cleanup cooldown gate. */
+  deps.updateBotState({
+    rebalanceCount: (deps._rebalanceCount || 0) + 1,
+    lastRebalanceAt: Date.now(),
+    throttleState: throttle.getState(),
+    rebalanceEvents: events ? [...events] : undefined,
+    activePosition: _activePosSummary(position),
+    activePositionId: String(position.tokenId),
+  });
+}
+
+/** Append a rebalance event to the in-memory event list. */
+function _pushRebalanceEvent(events, result) {
+  if (!events) return;
+  const ts = Math.floor(Date.now() / 1000);
+  events.push({
+    index: events.length + 1,
+    timestamp: ts,
+    dateStr: new Date(ts * 1000).toISOString(),
+    oldTokenId: String(result.oldTokenId || "?"),
+    newTokenId: String(result.newTokenId || "?"),
+    txHash:
+      (result.txHashes && result.txHashes[result.txHashes.length - 1]) || "",
+    // The mint's block, where every read of the new NFT's history starts.
+    blockNumber: result.blockNumber,
+    swapSources: result.swapSources || "(no swap)",
+    /*- Trigger is set in bot-cycle._executeAndRecord before rebalance
+     *  runs; falls back to "out-of-range" for safety.  Historical
+     *  chain-scanned events won't have a trigger field — consumers
+     *  treat that as unknown/legacy. */
+    trigger: result.trigger || "out-of-range",
+    ...activityFieldsOf(result),
+  });
+  log.info(
+    "[route-trace] event pushed ss=%s trigger=%s",
+    result.swapSources,
+    result.trigger,
+  );
+}
+
+/** Update in-memory position + events after a successful rebalance. */
+function _applyRebalanceResult(deps, result) {
+  const { position } = deps;
+  if (result.newTokenId && result.newTokenId !== 0n)
+    position.tokenId = String(result.newTokenId);
+  position.tickLower = result.newTickLower;
+  position.tickUpper = result.newTickUpper;
+  if (result.liquidity !== undefined)
+    position.liquidity = String(result.liquidity);
+  _pushRebalanceEvent(deps._rebalanceEvents, result);
+  const mintNow = new Date().toISOString();
+  if (deps._botState) {
+    deps._botState.oorSince = null;
+    /*- Flag the next lifetime scan to re-derive the chain-wide figures.
+     *  There is a new NFT in the rebalance chain, and the mint took the
+     *  wallet's whole balance of both tokens — so anything that arrived
+     *  in the wallet since the previous mint is now a deposit in the
+     *  position, and only that scan counts it.
+     *
+     *  Do NOT clear in-memory or on-disk lifetime totals here — if the
+     *  subsequent scan fails (Moralis quota, RPC hiccup, etc.) the bot
+     *  would be stuck with null forever and the dashboard's Lifetime
+     *  panel would silently fall back to a wrong value.  Old data with
+     *  `_needsFullRescan=true` is strictly better than null until the
+     *  new scan succeeds and overwrites it.
+     */
+    deps._botState._needsFullRescan = true;
+    /*- A rebalance just extended the chain, so the prior lifetime
+     *  scan no longer reflects current chain state.  Flip the
+     *  readiness flag back to false until the queued re-scan finishes;
+     *  the Syncing badge + blur kick in until then. */
+    deps._botState.lifetimeScanComplete = false;
+    deps.updateBotState?.({ lifetimeScanComplete: false });
+    const ctx = scanLogCtx(position);
+    log.info(
+      "[bot] %s/%s NFT #%s %s: Rebalance complete, queuing lifetime re-scan",
+      ctx.t0Sym,
+      ctx.t1Sym,
+      ctx.tokenIdStr,
+      ctx.tokenEmoji,
+    );
+    updateHodlBaseline(deps._botState, result, mintNow);
+  }
+  log.info(
+    "[bot] Post-rebalance: position.tokenId=%s",
+    String(position.tokenId),
+  );
+  if (deps._botState?.walletAddress)
+    clearLpPositionCache(deps._botState.walletAddress, {
+      blockchain: config.CHAIN_NAME,
+      contract: config.POSITION_MANAGER,
+    });
+  if (!deps.updateBotState) return;
+  const events = deps._rebalanceEvents;
+  _notifyRebalance(deps, deps.throttle || deps._throttle, position, events);
+  deps.updateBotState(buildUpdatePatch(deps, result, mintNow));
+}
+
+module.exports = {
+  _bigIntReplacer,
+  appendLog,
+  readLog,
+  _closePnlEpoch,
+  _scanHistory,
+  _scanAndReconstruct,
+  _recordResidual,
+  _activePosSummary,
+  _notifyRebalance,
+  _applyRebalanceResult,
+  _collectTokenIds,
+  _pushRebalanceEvent,
+  _bumpRebalanceFees, // exported for tests
+};

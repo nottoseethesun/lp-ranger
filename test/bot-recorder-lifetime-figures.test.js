@@ -1,7 +1,7 @@
 /**
  * @file test/bot-recorder-lifetime-figures.test.js
  * @description Tests for how the lifetime scan in
- * `src/bot-recorder-lifetime.js` treats its saved figures. It skips its
+ * `src/lib/bot-recorder-lifetime.js` treats its saved figures. It skips its
  * read only when all three are saved. A read that computes a missing
  * figure starts from the pool's creation block.
  *
@@ -34,7 +34,7 @@ describe("lifetimeFiguresSaved", () => {
 
   beforeEach(() => {
     installMocks();
-    ({ lifetimeFiguresSaved } = require("../src/bot-recorder-lifetime"));
+    ({ lifetimeFiguresSaved } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);
@@ -85,7 +85,7 @@ describe("_scanLifetimePoolData — one figure missing", () => {
     // Not zero, so an assertion shows the read was given this block.
     state.poolCreationBlock = 100;
     installMocks();
-    ({ _scanLifetimePoolData } = require("../src/bot-recorder-lifetime"));
+    ({ _scanLifetimePoolData } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);
@@ -131,7 +131,7 @@ describe("_mintBlockOf", () => {
 
   beforeEach(() => {
     installMocks();
-    ({ _mintBlockOf } = require("../src/bot-recorder-lifetime"));
+    ({ _mintBlockOf } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);
@@ -174,7 +174,7 @@ describe("_classifyAllCompounds — the per-NFT figure", () => {
   beforeEach(() => {
     resetState();
     installMocks();
-    ({ _classifyAllCompounds } = require("../src/bot-recorder-lifetime"));
+    ({ _classifyAllCompounds } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);
@@ -271,7 +271,7 @@ describe("_recordScanSuccess — which requests a scan answers", () => {
   beforeEach(() => {
     resetState();
     installMocks();
-    ({ _recordScanSuccess } = require("../src/bot-recorder-lifetime"));
+    ({ _recordScanSuccess } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);
@@ -323,7 +323,7 @@ describe("_scanLifetimePoolData — after a rebalance", () => {
     resetState();
     state.poolCreationBlock = 100;
     installMocks();
-    ({ _scanLifetimePoolData } = require("../src/bot-recorder-lifetime"));
+    ({ _scanLifetimePoolData } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);
@@ -387,7 +387,7 @@ describe("_scanLifetimePoolData — Re-scan Prices", () => {
     ({
       _scanLifetimePoolData,
       lifetimeScanPlan,
-    } = require("../src/bot-recorder-lifetime"));
+    } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);

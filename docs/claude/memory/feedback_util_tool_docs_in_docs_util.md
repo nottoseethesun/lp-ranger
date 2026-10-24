@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: f8b08a58-72ba-4f26-a891-71b9e99630e4
-  modified: 2026-10-22T01:23:59.274Z
+  modified: 2026-10-24T05:23:48.489Z
 ---
 
 A tool under `util/` with documentation of its own keeps it in a folder
@@ -13,7 +13,7 @@ under `docs/util/`, as the bookkeeping tools do in
 `docs/util/bookkeeping-for-coins-in-transactions/`:
 
 - `user-manual.md`, patterned on LP Ranger's User Manual
-  (`public/help-and-user-manual.html`), leaving out what does not apply,
+  (`src/client/web/help-and-user-manual.html`), leaving out what does not apply,
   such as Checking for Updates;
 - `commands.md`, patterned on `docs/npm-project-commands.md`;
 - `engineering.md`, patterned on `docs/engineering.md`.

@@ -5,7 +5,7 @@
  * @description
  * A migration step: move each position's records out of bot-config.json,
  * where releases before the records file kept them beside the settings,
- * into `app-data/position-records.json` (src/position-records.js). A
+ * into `app-data/position-records.json` (src/lib/position-records.js). A
  * record is what the bot worked out or logged about a position, such as
  * its HODL baseline or compound history (`RECORD_POSITION_KEYS`); what is
  * left in bot-config.json is the operator's settings and each position's
@@ -22,7 +22,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { RECORD_POSITION_KEYS } = require("../../../src/bot-config-keys");
+const { RECORD_POSITION_KEYS } = require("../../../src/lib/bot-config-keys");
 
 /** Whether `v` is a plain object. */
 const _isGroup = (v) =>

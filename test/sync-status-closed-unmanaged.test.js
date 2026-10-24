@@ -3,7 +3,7 @@
 /**
  * @file test/sync-status-closed-unmanaged.test.js
  * @description Tests the pure `_computeSyncStatus` decision extracted
- *   from `_syncStatus` in `public/dashboard-data.js`.  The prior file
+ *   from `_syncStatus` in `src/client/web/dashboard-data.js`.  The prior file
  *   mirrored the decision inline; the extract lets the tests drive the
  *   real module directly under jsdom.
  *
@@ -24,7 +24,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-sync-decisions.js");
+  mod = await import("../src/client/web/dashboard-sync-decisions.js");
 });
 
 const _base = {

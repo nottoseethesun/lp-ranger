@@ -14,16 +14,16 @@
  *   A read made as the library loaded could not be told to skip them.
  *
  *   Under `node --test` both files live in the test process's own folders
- *   (src/test-temp-folders.js), so the operator's are never read.
+ *   (src/lib/test-temp-folders.js), so the operator's are never read.
  */
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const { botConfigPath } = require("../src/bot-config-v2");
-const { positionRecordsPath } = require("../src/position-records");
-const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+const { botConfigPath } = require("../src/lib/bot-config-v2");
+const { positionRecordsPath } = require("../src/lib/position-records");
+const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
 const KEY =
   "pulsechain-0x1111111111111111111111111111111111111111-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-101";
@@ -60,10 +60,10 @@ function seed() {
 
 /** Load the price library afresh, as a program that prices with it does. */
 function loadLibrary() {
-  delete require.cache[require.resolve("../src/price-fetcher-gate")];
-  delete require.cache[require.resolve("../src/price-fetcher")];
-  const fetcher = require("../src/price-fetcher");
-  const gate = require("../src/price-fetcher-gate");
+  delete require.cache[require.resolve("../src/lib/price-fetcher-gate")];
+  delete require.cache[require.resolve("../src/lib/price-fetcher")];
+  const fetcher = require("../src/lib/price-fetcher");
+  const gate = require("../src/lib/price-fetcher-gate");
   return { fetcher, gate };
 }
 

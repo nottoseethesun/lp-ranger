@@ -25,7 +25,7 @@ const {
   coinsFromUnits,
   rebalanceIlPct,
   shareOfValuePct,
-} = require("../src/coin-value");
+} = require("../src/lib/coin-value");
 
 /*- 4 of token0 at $3 is 12; 5 of token1 at $7 is 35; total 47. Every
  *  number distinct, so no swap or omission lands on 47 by accident. */
@@ -258,7 +258,7 @@ describe("the module stays importable from the browser bundle", () => {
      *  broken dashboard, not a failing test.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "coin-value.js"),
+      path.join(__dirname, "..", "src", "lib", "coin-value.js"),
       "utf8",
     );
     assert.deepEqual(src.match(/\brequire\s*\(/g) || [], []);

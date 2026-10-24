@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-19T06:50:44.078Z
+  modified: 2026-10-24T04:55:09.016Z
 ---
 
 # Never hard-code a blockchain
@@ -30,7 +30,7 @@ initially as with the other case and accept the wait for the server poll."
 **Where it lives instead.** The chain's entry in `chains.json`:
 `displayName`, `homepage`, `logo`, `tokenList`, `blockTimeSec`,
 `nativeCurrencySymbol`, `cacheTag`, `priceServices`, plus the existing
-contracts, rpc, aggregator and chart providers. `src/config.js` checks
+contracts, rpc, aggregator and chart providers. `src/lib/config.js` checks
 each at startup and stops naming the setting; there are no fallbacks.
 Time windows are configured in seconds and turned into blocks with
 `blockTimeSec`. The dashboard holds no chain until `GET /api/chain`

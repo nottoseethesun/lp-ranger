@@ -25,8 +25,8 @@ const { describe, it, before, after, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
 
-const { _bumpRebalanceFees } = require("../src/bot-recorder");
-const { hasCompoundedTotal } = require("../src/bot-config-keys");
+const { _bumpRebalanceFees } = require("../src/lib/bot-recorder");
+const { hasCompoundedTotal } = require("../src/lib/bot-config-keys");
 
 /*- A config slot, read and written the way the app does: `_getConfig`
  *  reads it, and the bot-state patch is applied back onto it. Applying
@@ -108,15 +108,15 @@ describe("the lifetime compounded total is established by the chain scan", () =>
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-cycle-compound")];
-    delete require.cache[require.resolve("../src/bot-recorder-lifetime")];
-    ({ recordCompound } = require("../src/bot-cycle-compound"));
+    delete require.cache[require.resolve("../src/lib/bot-cycle-compound")];
+    delete require.cache[require.resolve("../src/lib/bot-recorder-lifetime")];
+    ({ recordCompound } = require("../src/lib/bot-cycle-compound"));
     ({
       _resolveDiskState,
       lifetimeScanPlan,
       _recordScanSuccess,
       _classifyAllCompounds,
-    } = require("../src/bot-recorder-lifetime"));
+    } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   /*- Both stubs are module-level, so a test that sets one and then fails
@@ -128,8 +128,8 @@ describe("the lifetime compounded total is established by the chain scan", () =>
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/bot-cycle-compound")];
-    delete require.cache[require.resolve("../src/bot-recorder-lifetime")];
+    delete require.cache[require.resolve("../src/lib/bot-cycle-compound")];
+    delete require.cache[require.resolve("../src/lib/bot-recorder-lifetime")];
   });
 
   it("a compound after a cache clear leaves the classification still owed", async () => {

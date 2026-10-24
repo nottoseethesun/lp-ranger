@@ -12,7 +12,7 @@
  *   what ships and from the others. The setting ranges stay as shipped,
  *   since no operator can change them.
  *
- *   Called before anything under src/ or scripts/ that reads a settings
+ *   Called before anything under src/lib/ or scripts/ that reads a settings
  *   file is required, since the loader reads the copy's path as it loads.
  */
 

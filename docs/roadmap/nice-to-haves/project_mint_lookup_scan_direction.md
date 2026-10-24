@@ -21,8 +21,8 @@ Two call sites do this lookup:
 
 | Call site | Looks up | Walks |
 | --- | --- | --- |
-| `_findMintEvent`, `src/hodl-baseline.js` | the mint of the position's current NFT, for its HODL baseline | newest-first (`direction: "desc"`), since a managed position mints a new NFT at every rebalance |
-| `findOriginalMintOnChain`, `src/event-scanner-mint-lookup.js` | the mint of a chain's first NFT | oldest-first, the default, since that mint is the oldest in the chain |
+| `_findMintEvent`, `src/lib/hodl-baseline.js` | the mint of the position's current NFT, for its HODL baseline | newest-first (`direction: "desc"`), since a managed position mints a new NFT at every rebalance |
+| `findOriginalMintOnChain`, `src/lib/event-scanner-mint-lookup.js` | the mint of a chain's first NFT | oldest-first, the default, since that mint is the oldest in the chain |
 
 Both stop at the first window that returns anything
 (`onChunk: (found) => found.length > 0`).

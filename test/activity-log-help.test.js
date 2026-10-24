@@ -3,7 +3,7 @@
 /**
  * @file test/activity-log-help.test.js
  * @description The help on the Activity Log's prices is written once, in
- *   public/shared-help-content.json (`activityLogPrices`), and read by
+ *   src/lib/shared-help-content.json (`activityLogPrices`), and read by
  *   both places that show it: the Activity Log's circle-i dialog, and the
  *   User Manual's Activity Log section, which the manual's build renders
  *   it into. The entry has no manual heading of its own, since it is part
@@ -20,15 +20,18 @@ const {
   renderEntry,
   shippedFigures,
 } = require("../scripts/build-manual-content");
-const { fillEntryFigures, spanFigureTokens } = require("../src/help-figures");
+const {
+  fillEntryFigures,
+  spanFigureTokens,
+} = require("../src/lib/help-figures");
 
 const ROOT = path.join(__dirname, "..");
 const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
-const shared = () => JSON.parse(read("public/shared-help-content.json"));
+const shared = () => JSON.parse(read("src/lib/shared-help-content.json"));
 
 /** The dialogs' help, built as the dashboard builds it. */
 async function paramHelp() {
-  const mod = await import("../public/param-help-content.js");
+  const mod = await import("../src/client/web/param-help-content.js");
   return mod.buildParamHelp(shippedFigures());
 }
 
@@ -48,7 +51,7 @@ describe("the Activity Log's help on prices", () => {
   });
 
   it("is in the manual's Activity Log section, as the JSON has it", () => {
-    const html = read("public/help-and-user-manual.html");
+    const html = read("src/client/web/help-and-user-manual.html");
     const start = html.indexOf('<h2 id="activity-log">');
     const end = html.indexOf("<h2 ", start + 1);
     assert.ok(start !== -1 && end !== -1, "the manual has the section");

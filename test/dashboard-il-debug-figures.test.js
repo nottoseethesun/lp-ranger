@@ -6,7 +6,7 @@
  *   scientific notation to four significant digits, trailing zeros
  *   dropped and its sign kept, so a coin priced in billionths of a
  *   dollar fits its row. Driven on the popover's templates from
- *   public/index.html.
+ *   src/client/web/index.html.
  */
 
 require("global-jsdom/register");
@@ -34,7 +34,7 @@ before(async () => {
   await learnActiveChain();
   await learnUiSettings();
   document.body.innerHTML = indexHtmlDocument().body.innerHTML;
-  ilDebug = await import("../public/dashboard-il-debug.js");
+  ilDebug = await import("../src/client/web/dashboard-il-debug.js");
 });
 
 /**
@@ -124,7 +124,7 @@ describe("the IL/G popover's sections and the Wallet Residual", () => {
   it("leaves the residual out of the Current Position IL/G", () => {
     /*-
      *  The current figure counts no coin in the wallet, so that it
-     *  compares evenly (src/bot-pnl-il.js).
+     *  compares evenly (src/lib/bot-pnl-il.js).
      */
     const root = open("cur");
     assert.equal(tpl(root, "residualRow").hidden, true);

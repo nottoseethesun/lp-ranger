@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-09-13T05:44:50.095Z
+  modified: 2026-10-24T04:57:19.794Z
 ---
 
 Never write a computation inside a parameter. No `await`, no function
@@ -32,6 +32,6 @@ I/O.
 anything that touches the network, disk, or cache, hoist it to its own
 statement. When it is genuinely a fallback, make the laziness explicit
 with a `null` sentinel and a branch — see `_detectCurrentNftValues` in
-`src/position-details-compound.js` and `_backfill` in
-`src/bot-pnl-current-nft.js`, which both use that shape. Related:
+`src/lib/position-details-compound.js` and `_backfill` in
+`src/lib/bot-pnl-current-nft.js`, which both use that shape. Related:
 [[feedback_no_duplication]].

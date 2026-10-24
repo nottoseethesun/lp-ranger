@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 8264efa3-921c-4733-b040-c9845e2b3a5e
-  modified: 2026-08-04T21:49:55.327Z
+  modified: 2026-10-24T05:29:00.571Z
 ---
 
 NEVER use `npx` under any circumstances. Corrected many times, still recurring
@@ -18,9 +18,9 @@ has already made, which is why it lands as exasperation rather than a note.
 **How to apply:** Before reaching for ANY tool binary, grep `package.json`
 scripts for it — the script is almost always already there. Known ones:
 
-- Prettier → `npm run format` / `npm run format:check` (covers `src/`,
-  `scripts/`, `util/`, `public/dashboard-*.js`, `test/`, `server.js`,
-  `bot.js`, `eslint-rules/`)
+- Prettier → `npm run format` / `npm run format:check` (covers `src/*.js`,
+  `src/lib/`, `src/client/web/dashboard-*.js`, `scripts/`, `util/`, `test/`,
+  `eslint-rules/`)
 - ESLint + stylelint + markdownlint → `npm run lint` / `npm run lint:fix`
 - Tests → `npm run check` (see [[feedback_never_node_test_directly]]),
   `npm run test:util` for `util/diagnostic/`

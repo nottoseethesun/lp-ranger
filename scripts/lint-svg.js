@@ -2,7 +2,7 @@
 /**
  * @file scripts/lint-svg.js
  * @description Strict validator for every `.svg` file under
- * `public/icons/`.  Fails the process (exit code 1) on any of:
+ * `src/client/web/icons/`.  Fails the process (exit code 1) on any of:
  *   1. Malformed XML  — anything the DOMParser flags as an error.
  *   2. Missing root `<svg>` element.
  *   3. Missing `viewBox` on the root.
@@ -32,7 +32,7 @@ const fs = require("fs");
 const path = require("path");
 const { DOMParser } = require("@xmldom/xmldom");
 
-const _ICONS_DIR = path.join(__dirname, "..", "public", "icons");
+const _ICONS_DIR = path.join(__dirname, "..", "src", "client", "web", "icons");
 
 /** Format one problem as `<relative path>: <what is wrong>`. */
 function _problem(file, msg) {
@@ -105,7 +105,7 @@ function _iconProblems(file) {
  * Returns the result rather than printing it or exiting, so the CLI
  * below and `test/lint-svg.test.js` can both drive the same code.
  *
- * @param {string} [dir]  Directory to scan.  Defaults to public/icons.
+ * @param {string} [dir]  Directory to scan.  Defaults to src/client/web/icons.
  * @returns {{ok: boolean, files: number, errors: number, problems: string[]}}
  */
 function lintSvgIcons(dir = _ICONS_DIR) {

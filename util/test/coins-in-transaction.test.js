@@ -46,7 +46,7 @@ const {
   blockchainMismatch,
   main,
 } = require("../bookkeeping/coins-in-transaction");
-const config = require("../../src/config");
+const config = require("../../src/lib/config");
 const { CHAIN_NAMES, oneChainNotice } = require("../bookkeeping/blockchain");
 
 const CHAIN = config.CHAIN_NAME;

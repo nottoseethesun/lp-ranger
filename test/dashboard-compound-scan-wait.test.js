@@ -2,14 +2,14 @@
 
 /**
  * @file test/dashboard-compound-scan-wait.test.js
- * @description The Compound Now dialog (public/dashboard-compound.js),
+ * @description The Compound Now dialog (src/client/web/dashboard-compound.js),
  *   which opens when the server refuses a Compound Now because a scan is
  *   running on the position: the server's words beside a spinner, with
  *   Cancel and no confirm button. Once a status answer says the scan has
  *   ended, its Compound Now button comes back, and asks again.
  *
  *   Uses jsdom (via `global-jsdom/register`) and the real dialog from
- *   `public/index.html`. A `globalThis.fetch` stub answers the requests,
+ *   `src/client/web/index.html`. A `globalThis.fetch` stub answers the requests,
  *   the dialog reads its status answers from the test, and the test
  *   runner's mocked `setTimeout` means the dialog looks at the next one
  *   only when a test advances the clock.
@@ -45,8 +45,8 @@ let requests;
 before(async () => {
   await learnActiveChain();
   pollMs = (await learnUiSettings()).dashboardPollIntervalMs;
-  compound = await import("../public/dashboard-compound.js");
-  const store = await import("../public/dashboard-positions-store.js");
+  compound = await import("../src/client/web/dashboard-compound.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
   store.posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,
@@ -56,7 +56,7 @@ before(async () => {
   store.posStore.select(0);
   store.setPositionManaged("2", true);
   const { _setStatusReaderForTests } =
-    await import("../public/dashboard-scan-wait.js");
+    await import("../src/client/web/dashboard-scan-wait.js");
   _setStatusReaderForTests(() => ({
     _allPositionStates: { [KEY]: { scanInProgress: scanning } },
   }));

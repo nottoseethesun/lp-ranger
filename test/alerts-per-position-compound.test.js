@@ -3,7 +3,7 @@
 /**
  * @file test/alerts-per-position-compound.test.js
  * @description Parity tests for the Compound-failure modal in
- * public/dashboard-alerts.js :: showPerPositionAlerts().  Rebalance and
+ * src/client/web/dashboard-alerts.js :: showPerPositionAlerts().  Rebalance and
  * compound failures are the two alert kinds users MUST see, so each
  * needs its own per-position label + dedup coverage.  Mirrors the
  * dispatch logic the way alerts-per-position.test.js does — real

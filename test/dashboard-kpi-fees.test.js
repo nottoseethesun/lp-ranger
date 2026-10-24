@@ -24,7 +24,7 @@ describe("currentUnclaimedFees", () => {
 
   before(async () => {
     ({ currentUnclaimedFees } =
-      await import("../public/dashboard-data-kpi-fees.js"));
+      await import("../src/client/web/dashboard-data-kpi-fees.js"));
   });
 
   it("reports the unclaimed figure the bot published", () => {
@@ -97,7 +97,7 @@ describe("unmanaged unclaimed fees", () => {
   let remember, read;
 
   before(async () => {
-    const m = await import("../public/dashboard-data-kpi-fees.js");
+    const m = await import("../src/client/web/dashboard-data-kpi-fees.js");
     remember = m.rememberUnmanagedUnclaimedFees;
     read = m.unmanagedUnclaimedFees;
   });
@@ -139,7 +139,7 @@ describe("Current panel composition", () => {
   let kpi;
 
   before(async () => {
-    kpi = await import("../public/dashboard-data-kpi.js");
+    kpi = await import("../src/client/web/dashboard-data-kpi.js");
   });
 
   beforeEach(() => {
@@ -271,8 +271,8 @@ describe("an unmanaged position's Profit", () => {
   let unmanaged;
 
   before(async () => {
-    kpi = await import("../public/dashboard-data-kpi.js");
-    unmanaged = await import("../public/dashboard-unmanaged-apply.js");
+    kpi = await import("../src/client/web/dashboard-data-kpi.js");
+    unmanaged = await import("../src/client/web/dashboard-unmanaged-apply.js");
   });
 
   beforeEach(() => {
@@ -333,7 +333,7 @@ describe("Lifetime Net P&L", () => {
   let kpi;
 
   before(async () => {
-    kpi = await import("../public/dashboard-data-kpi.js");
+    kpi = await import("../src/client/web/dashboard-data-kpi.js");
   });
 
   /** A lifetime snapshot: $1,000 deposited, prices flat. */

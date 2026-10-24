@@ -22,11 +22,11 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { _fetchGeckoOhlcvAtTimeframe } = require("../src/price-fetcher");
+const { _fetchGeckoOhlcvAtTimeframe } = require("../src/lib/price-fetcher");
 const {
   _resetForTest: _resetGeckoRateLimit,
   _getPenaltyUntilMs,
-} = require("../src/gecko-rate-limit");
+} = require("../src/lib/gecko-rate-limit");
 /*- The schedule is owned by price-source-backoff.js and shared by every
  *  price source, so it is imported from there rather than through
  *  price-fetcher (per feedback_no_reexports) — and RESTORED from what it
@@ -36,7 +36,7 @@ const {
 const {
   _setDelays: _setOhlcv429Delays,
   _getDelays,
-} = require("../src/price-source-backoff");
+} = require("../src/lib/price-source-backoff");
 
 const _REAL_DELAYS = _getDelays();
 

@@ -1,6 +1,6 @@
 /**
  * @file test/server-csrf.test.js
- * @description Unit tests for the CSRF token module in src/server-csrf.js.
+ * @description Unit tests for the CSRF token module in src/lib/server-csrf.js.
  */
 
 "use strict";
@@ -14,10 +14,10 @@ const {
   verifyToken,
   readCsrfTunable,
   handleCsrf,
-} = require("../src/server-csrf");
-const { CSRF_REFUSALS } = require("../src/csrf-refusals");
-const { _setSinkForTests } = require("../src/log");
-const { UTC_TIMESTAMP_PATTERN } = require("../src/utc-timestamp");
+} = require("../src/lib/server-csrf");
+const { CSRF_REFUSALS } = require("../src/lib/csrf-refusals");
+const { _setSinkForTests } = require("../src/lib/log");
+const { UTC_TIMESTAMP_PATTERN } = require("../src/lib/utc-timestamp");
 
 describe("CSRF token module", () => {
   it("createToken returns a token, future expiry, and refreshIntervalMs", () => {
@@ -84,7 +84,7 @@ describe("handleCsrf — silent-retry observability", () => {
   let _warns;
   let _origLog; // _setSinkForTests restore fn
 
-  /*- Capture log output via the `src/log.js` sink injector — strips the
+  /*- Capture log output via the `src/lib/log.js` sink injector — strips the
    *  injected `[YYYY-MM-DD HH:MM:SS] ` prefix so substring assertions
    *  like `.includes("[csrf] 403")` match the original tag+message
    *  contiguously.  Routed through the log module's sink instead of

@@ -23,10 +23,10 @@
 
 "use strict";
 
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const fs = require("fs");
 const path = require("path");
-const { scanCachePath } = require("../src/scan-cache-dir");
+const { scanCachePath } = require("../src/lib/scan-cache-dir");
 
 const PRICE_CACHE_PATH = scanCachePath("historical-price-cache.json");
 const GECKO_POOL_CACHE_PATH = scanCachePath("gecko-pool-cache.json");

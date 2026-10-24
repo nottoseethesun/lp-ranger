@@ -16,7 +16,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const { InvalidArgumentError } = require("commander");
 
-const { loadMergedDefaults } = require("../../src/load-merged-defaults");
+const { loadMergedDefaults } = require("../../src/lib/load-merged-defaults");
 const {
   CHAIN_NAMES,
   parseBlockchain,

@@ -3,10 +3,10 @@
 /**
  * @file test/bot-recorder-lifetime-price-overrides.test.js
  * @description The prices the Lifetime scan values a rebuilt compound
- *   list at (`_scanLifetimePoolData`, src/bot-recorder-lifetime.js): the
+ *   list at (`_scanLifetimePoolData`, src/lib/bot-recorder-lifetime.js): the
  *   fetched current prices, with the operator's price overrides applied
  *   by the rule the poll applies to the panels' figures
- *   (`applyPriceOverrides`, src/price-overrides.js). A Compound entry's
+ *   (`applyPriceOverrides`, src/lib/price-overrides.js). A Compound entry's
  *   dollar amount after Re-scan Prices or Reload Current Position is
  *   worked out at these prices, so a coin no price service has, which
  *   the operator priced by hand, counts at the operator's price, as it
@@ -34,7 +34,7 @@ describe("_scanLifetimePoolData — the prices a rebuilt compound list is valued
   beforeEach(() => {
     resetState();
     installMocks();
-    ({ _scanLifetimePoolData } = require("../src/bot-recorder-lifetime"));
+    ({ _scanLifetimePoolData } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);

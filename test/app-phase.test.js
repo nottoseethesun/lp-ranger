@@ -3,7 +3,7 @@
 /**
  * @file test/app-phase.test.js
  * @description What the app as a whole is doing, where that decides
- *   whether anything may start (src/app-phase.js): the start-up, which
+ *   whether anything may start (src/lib/app-phase.js): the start-up, which
  *   starts the positions saved as managed one at a time, and the stop for
  *   good.
  *
@@ -15,7 +15,7 @@
 
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const phase = require("../src/app-phase");
+const phase = require("../src/lib/app-phase");
 
 beforeEach(() => phase._resetAppPhaseForTests());
 

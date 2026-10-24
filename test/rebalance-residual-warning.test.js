@@ -11,7 +11,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { _applyRebalanceResult } = require("../src/bot-recorder");
+const { _applyRebalanceResult } = require("../src/lib/bot-recorder");
 
 describe("_applyRebalanceResult — residualWarning surfacing", () => {
   it("surfaces residualWarning from the rebalance result with a timestamp", () => {

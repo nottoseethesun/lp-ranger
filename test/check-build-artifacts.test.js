@@ -8,7 +8,7 @@
  *     - error message includes the "re-download release asset" guidance
  *
  *   Uses child_process to invoke the script with a sandboxed working
- *   directory so we never touch real `public/dist/bundle.js` etc.
+ *   directory so we never touch real `src/client/web/dist/bundle.js` etc.
  */
 
 "use strict";
@@ -35,17 +35,19 @@ const SCRIPT = path.resolve(
 function setupSandbox(present) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cba-test-"));
   fs.mkdirSync(path.join(root, "scripts"));
-  fs.mkdirSync(path.join(root, "public", "dist"), { recursive: true });
-  fs.mkdirSync(path.join(root, "src"));
+  fs.mkdirSync(path.join(root, "src", "client", "web", "dist"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(root, "src", "lib"), { recursive: true });
   fs.copyFileSync(
     SCRIPT,
     path.join(root, "scripts", "check-build-artifacts.js"),
   );
   const all = [
-    "public/dist/bundle.js",
-    "public/build-info.js",
-    "public/disclosure-content.js",
-    "src/build-info.json",
+    "src/client/web/dist/bundle.js",
+    "src/client/web/build-info.js",
+    "src/client/web/disclosure-content.js",
+    "src/lib/build-info.json",
   ];
   for (const rel of all) {
     if (present.includes(rel))
@@ -68,10 +70,10 @@ function cleanup(root) {
 
 test("exits 0 when all four required artifacts exist", () => {
   const root = setupSandbox([
-    "public/dist/bundle.js",
-    "public/build-info.js",
-    "public/disclosure-content.js",
-    "src/build-info.json",
+    "src/client/web/dist/bundle.js",
+    "src/client/web/build-info.js",
+    "src/client/web/disclosure-content.js",
+    "src/lib/build-info.json",
   ]);
   try {
     const r = runGuard(root);
@@ -84,15 +86,15 @@ test("exits 0 when all four required artifacts exist", () => {
 
 test("exits 1 with a clear error when bundle.js is missing", () => {
   const root = setupSandbox([
-    "public/build-info.js",
-    "public/disclosure-content.js",
-    "src/build-info.json",
+    "src/client/web/build-info.js",
+    "src/client/web/disclosure-content.js",
+    "src/lib/build-info.json",
   ]);
   try {
     const r = runGuard(root);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /Missing build artifacts/);
-    assert.match(r.stderr, /public\/dist\/bundle\.js/);
+    assert.match(r.stderr, /src\/client\/web\/dist\/bundle\.js/);
   } finally {
     cleanup(root);
   }
@@ -103,10 +105,10 @@ test("lists EVERY missing file, not just the first", () => {
   try {
     const r = runGuard(root);
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /public\/dist\/bundle\.js/);
-    assert.match(r.stderr, /public\/build-info\.js/);
-    assert.match(r.stderr, /public\/disclosure-content\.js/);
-    assert.match(r.stderr, /src\/build-info\.json/);
+    assert.match(r.stderr, /src\/client\/web\/dist\/bundle\.js/);
+    assert.match(r.stderr, /src\/client\/web\/build-info\.js/);
+    assert.match(r.stderr, /src\/client\/web\/disclosure-content\.js/);
+    assert.match(r.stderr, /src\/lib\/build-info\.json/);
   } finally {
     cleanup(root);
   }

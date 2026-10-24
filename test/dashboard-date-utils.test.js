@@ -20,7 +20,7 @@ describe("pickEarliestDate", () => {
   let pickEarliestDate;
 
   before(async () => {
-    const mod = await import("../public/dashboard-date-utils.js");
+    const mod = await import("../src/client/web/dashboard-date-utils.js");
     pickEarliestDate = mod.pickEarliestDate;
   });
 
@@ -80,7 +80,7 @@ describe("ltStartDate", () => {
   let ltStartDate;
 
   before(async () => {
-    const mod = await import("../public/dashboard-date-utils.js");
+    const mod = await import("../src/client/web/dashboard-date-utils.js");
     ltStartDate = mod.ltStartDate;
   });
 
@@ -137,7 +137,7 @@ describe("toMintTsSeconds", () => {
   let toMintTsSeconds;
 
   before(async () => {
-    const mod = await import("../public/dashboard-date-utils.js");
+    const mod = await import("../src/client/web/dashboard-date-utils.js");
     toMintTsSeconds = mod.toMintTsSeconds;
   });
 

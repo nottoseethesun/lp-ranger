@@ -3,7 +3,7 @@
 /**
  * @file test/helpers/mock-pool-rpc.js
  * @description A stand-in chain for the real `getPoolState`
- *   (src/rebalancer-pools.js), shared by the tests that run it.
+ *   (src/lib/rebalancer-pools.js), shared by the tests that run it.
  *
  *   `getPoolState` takes its endpoints from the app's failover, so a test
  *   stands that layer up with a mocked ethers library, as the app does at
@@ -24,8 +24,8 @@
  * @returns {Promise<*>}  What `fn` returns.
  */
 function withMockRpc(lib, fn) {
-  const sendTx = require("../../src/send-transaction");
-  const { RPC_URLS } = require("../../src/config");
+  const sendTx = require("../../src/lib/send-transaction");
+  const { RPC_URLS } = require("../../src/lib/config");
   sendTx._resetForTests();
   sendTx.init({ urls: [...RPC_URLS] }, lib);
   return (async () => fn())().finally(() => sendTx._resetForTests());

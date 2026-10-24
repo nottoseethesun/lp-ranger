@@ -6,13 +6,13 @@
  *   mixed-state render bug fixes across three modules:
  *
  *     1. `posStore.add()` dedup branch in
- *        `public/dashboard-positions-store.js` refreshes pool-identity
+ *        `src/client/web/dashboard-positions-store.js` refreshes pool-identity
  *        fields (via the now-exported `_refreshDuplicateEntry`).
  *     2. `_applyLiqAndTicks` / `_applyPoolFields` / `_applySymbols` in
- *        `public/dashboard-active-sync.js` propagate pool identity +
+ *        `src/client/web/dashboard-active-sync.js` propagate pool identity +
  *        symbols from `data.activePosition` to the posStore active
  *        entry.  All three are now exported.
- *     3. `_activeMatches` in `public/dashboard-unmanaged.js` (also now
+ *     3. `_activeMatches` in `src/client/web/dashboard-unmanaged.js` (also now
  *        exported) drops stale pending fetches and stale in-flight
  *        phase1 results when posStore's active tokenId no longer
  *        matches.  Server-side `_activePosSummary` still ships symbols.
@@ -24,16 +24,16 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { _activePosSummary } = require("../src/bot-recorder");
+const { _activePosSummary } = require("../src/lib/bot-recorder");
 
 let store;
 let activeSync;
 let unmanaged;
 
 before(async () => {
-  store = await import("../public/dashboard-positions-store.js");
-  activeSync = await import("../public/dashboard-active-sync.js");
-  unmanaged = await import("../public/dashboard-unmanaged.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
+  activeSync = await import("../src/client/web/dashboard-active-sync.js");
+  unmanaged = await import("../src/client/web/dashboard-unmanaged.js");
 });
 
 beforeEach(() => {

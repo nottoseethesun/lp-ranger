@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-idle.test.js
  * @description Tests for the no-input timer's staleness guard in
- *   `public/dashboard-idle.js`.  The prior file mirrored the whole
+ *   `src/client/web/dashboard-idle.js`.  The prior file mirrored the whole
  *   arming path in CJS; this file drives the real `_isStaleFire`
  *   export directly under jsdom.  The pure staleness check
  *   (`nowMs - armedAt > 15 min + 2 s`) is the entire load-bearing
@@ -33,7 +33,7 @@ const STALE_MARGIN_MS = 2_000;
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-idle.js");
+  mod = await import("../src/client/web/dashboard-idle.js");
 });
 
 describe("_isStaleFire()", () => {

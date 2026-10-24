@@ -48,7 +48,7 @@ const MIME = {
  * @returns {string[]} Missing filenames, empty when the gallery is whole.
  */
 function findMissingImages() {
-  const src = "public/screenshot-gallery.html";
+  const src = "src/client/web/screenshot-gallery.html";
   if (!fs.existsSync(src)) return [];
   const html = fs.readFileSync(src, "utf8");
   const referenced = new Set(

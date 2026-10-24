@@ -20,8 +20,8 @@ const {
   handleRpcEndpoints,
   _describe,
   readSavedRpcUrls,
-} = require("../src/rpc-endpoints");
-const config = require("../src/config");
+} = require("../src/lib/rpc-endpoints");
+const config = require("../src/lib/config");
 
 describe("_describe — how one endpoint is presented", () => {
   it("labels the first endpoint as the primary", () => {

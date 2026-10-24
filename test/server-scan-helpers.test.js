@@ -16,8 +16,8 @@ const {
   poolKey,
   fetchPoolTicks,
   createScanHandlers,
-} = require("../src/server-scan");
-const { getTokenSymbol } = require("../src/token-symbol-cache");
+} = require("../src/lib/server-scan");
+const { getTokenSymbol } = require("../src/lib/token-symbol-cache");
 
 // ── getTokenSymbol ──────────────────────────────────────────────────
 

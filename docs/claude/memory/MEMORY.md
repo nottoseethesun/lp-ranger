@@ -7,7 +7,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 `CLAUDE.md` covers architecture; `private/` is machine-local, `archive/` is resolved history. New here? Read [renamed lp ranger](project_renamed_lp_ranger.md) first.
 
 ## Workflow, git, CI & testing
-- [always build](feedback_always_build.md) — Edited public/? Run `npm run build`
+- [always build](feedback_always_build.md) — Edited src/client/web/? Run `npm run build`
 - [branching](feedback_branching.md) — Never push to main: branch + PR, ONE branch at a time
 - [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push
 - [check both Node versions](feedback_check_both_node_versions.md) — `npm run check` runs one Node; CI runs 22 and 24. Run the gate under 22 too (`PATH=` Node 22 first), never the raw suite
@@ -25,7 +25,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [Prettier only JS, JSON, YAML](feedback_prettier_only_js_json_yaml.md) — Never `prettier --write` Markdown or HTML; it rewrites the whole file
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile + node_modules, `npm i` first
 - [reset --keep, not --hard](feedback_reset_keep_not_hard.md) — Protocol step 4's `--hard` destroys uncommitted work; use `--keep` on a dirty tree
-- [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap anything loading `src/` in wipe/restore-settings
+- [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap anything loading `src/lib/` in wipe/restore-settings
 - [test suite checks only what ships](feedback_test_suite_checks_only_what_ships.md) — Never an operator's `.env` or overrides; local and CI must agree; the diagnostic tool and startup check those
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the linter to find where a rule fires; don't guess
 - [tag format, no v](project_tag_format_no_v.md) — Strict semver; latest tag needs `--sort=-v:refname` plus `grep -v '^v'`
@@ -136,7 +136,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [docs always updated](feedback_docs_always_updated.md) — A doc a change makes stale is updated in the same change, without asking
 - [one home per fact in a doc set](feedback_doc_set_one_home_per_fact.md) — Quick Start in the user manual; an engineering doc's Commands section only points; user-facing rules live in the manual, the others refer
 - [util tool docs in docs/util](feedback_util_tool_docs_in_docs_util.md) — A util/ tool's docs: `docs/util/<folder>/` with user-manual.md, commands.md, engineering.md; move and rewrite in two commits
-- [terminal secrets never shown](feedback_terminal_secrets_never_shown.md) — Passwords, keys and api keys typed at a terminal never echo; always `src/ask-password.js`
+- [terminal secrets never shown](feedback_terminal_secrets_never_shown.md) — Passwords, keys and api keys typed at a terminal never echo; always `src/lib/ask-password.js`
 - [built-in before package](feedback_builtin_before_package.md) — Node's own way first, confirmed in its docs; else only a widely used npm package
 - [util tools keep to their own folders](feedback_util_tools_keep_to_their_own_folders.md) — A util/ tool writes only app-data/util/<tool>/, caches in its scan-cache/; never the app's files, except a secret the app also uses, kept only in the app's store
 - [util tools use core settings only](feedback_util_tools_use_core_settings_only.md) — A util/ tool reads core settings (chains, endpoints, keys), never app preferences such as the Moralis on/off switch
@@ -145,4 +145,4 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [links go direct](feedback_links_go_direct.md) — A redirecting link is replaced by its final address; check with curl's `%{redirect_url}`
 - [no new HTML in JS](feedback_no_new_html_in_js.md) — No interpolated innerHTML in dashboard JS
 - [sound gate scope](feedback_sound_gate_scope.md) — Jingles gated on the browser idle timer is correct
-- [help page](project_help_page.md) — The User Manual is public/help-and-user-manual.html, its own CSS; never call it "Help"
+- [help page](project_help_page.md) — The User Manual is src/client/web/help-and-user-manual.html, its own CSS; never call it "Help"

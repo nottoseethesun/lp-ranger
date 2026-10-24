@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T17:58:59.937Z
+  modified: 2026-10-24T05:23:58.424Z
 ---
 
 Step 4 of the CI protocol undoes the local merge-to-main check with
@@ -19,7 +19,7 @@ files that do not differ between the two commits — so the merge is
 undone and unrelated work survives.
 
 **Why:** on 2026-10-04 the tree carried two uncommitted files,
-`public/9mm-pos-mgr.css` and `public/index.html`, holding nothing but
+`src/client/web/9mm-pos-mgr.css` and `src/client/web/index.html`, holding nothing but
 cache-bust stamps from the operator's own build. A `--hard` would have
 reverted them silently, and
 [[feedback_never_revert_cache_bust_stamps]] exists precisely because

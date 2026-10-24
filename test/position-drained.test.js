@@ -1,7 +1,7 @@
 /**
  * @file test/position-drained.test.js
  * @description Whether a position holds no liquidity
- *   (src/position-drained.js): the one test the Impermanent Loss Guard,
+ *   (src/lib/position-drained.js): the one test the Impermanent Loss Guard,
  *   the drained-position checks and the mid-rebalance retry all ask.
  */
 
@@ -9,7 +9,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { isThisPositionDrained } = require("../src/position-drained");
+const { isThisPositionDrained } = require("../src/lib/position-drained");
 
 describe("isThisPositionDrained", () => {
   it("is true for no liquidity, however the chain read wrote it", () => {

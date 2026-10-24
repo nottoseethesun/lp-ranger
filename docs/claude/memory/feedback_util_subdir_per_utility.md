@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 8264efa3-921c-4733-b040-c9845e2b3a5e
-  modified: 2026-09-28T21:59:38.807Z
+  modified: 2026-10-24T04:57:19.831Z
 ---
 
 In `util/`, one file per utility OR one directory per utility. The moment a
@@ -23,7 +23,7 @@ tools rather than a list of fragments.
 formatting, no I/O). Tests do NOT move with the tool: every `util/` test
 lives in `util/test/`, one directory for the whole tree, and
 `npm run test:util` globs `util/test/*.test.js`. Watch the relative
-require depth when moving files in: `../../src/x` becomes `../../../src/x`, and
+require depth when moving files in: `../../src/lib/x` becomes `../../../src/lib/x`, and
 `n/no-missing-require` catches it (see [[feedback_use_linter_to_locate_issues]]).
 Per [[feedback_no_reexports]], the entry must not re-export the sibling
 module's helpers — tests import each from its owner. Convention is documented

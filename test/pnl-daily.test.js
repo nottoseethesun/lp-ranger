@@ -8,7 +8,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { createPnlTracker } = require("../src/pnl-tracker");
+const { createPnlTracker } = require("../src/lib/pnl-tracker");
 
 describe("dailyPnl In/Out", () => {
   it("a gap between epochs shows as value moving IN", () => {

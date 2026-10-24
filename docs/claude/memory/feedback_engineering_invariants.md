@@ -1,7 +1,11 @@
 ---
-name: Respect engineering invariants in every corner
+name: respect-engineering-invariants-in-every-corner
 description: Never violate single-source-of-truth or singleton-required invariants out of expedience; a duplicated resolution path counts even when no literal is duplicated
-type: feedback
+metadata:
+  node_type: memory
+  type: feedback
+  originSessionId: b6a0b30e-9cd6-4560-a6cd-597053c26378
+  modified: 2026-10-24T04:54:38.336Z
 ---
 
 Do not take shortcuts that violate baseline engineering practice — even in places that "feel" peripheral (HTML defaults, test setup, throwaway helpers, init code). The user assumes basic invariants are upheld everywhere and won't think to check the corners.
@@ -36,7 +40,7 @@ it.  Wrong: `buildStatusPositions` spreads `posDefaults` into every
 position payload, so the first `/api/status` poll overwrites the box with
 the same `config.*` figure.  The endpoint value paints the field for one
 poll at startup and nothing more.  Env-over-JSON is this project's
-documented layering (`src/config.js` header) and the reason a headless
+documented layering (`src/lib/config.js` header) and the reason a headless
 install can set anything at all.  **Trace the value to the pixel before
 calling two readers a divergence, and never drop an established pattern
 on the strength of a reading — [[feedback-instrument-before-inferring]]

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T07:07:40.028Z
+  modified: 2026-10-24T04:55:01.296Z
 ---
 
 Found 2026-10-03 in the whole-app audit for the conflation behind
@@ -15,7 +15,7 @@ with [[project_hodl_baseline_zero_from_rpc_failure]] and
 
 ## What happens
 
-`ensureInitialResidualData` (`src/liquidity-pair-details.js`) records
+`ensureInitialResidualData` (`src/lib/liquidity-pair-details.js`) records
 what the wallet still held right after the position's very first
 deposit. It reads two things: the balances at that block from the chain,
 and their USD prices at that block from GeckoTerminal.

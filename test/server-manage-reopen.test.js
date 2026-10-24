@@ -1,10 +1,10 @@
 /**
  * @file test/server-manage-reopen.test.js
- * @description The Manage route's re-open path in src/server-positions.js
+ * @description The Manage route's re-open path in src/lib/server-positions.js
  *   (`POST /api/position/manage` with `forceRebalance: true`): the flag a
  *   re-open stamps on the position's bot state before its first poll, the
  *   retry on a position already running, and that retry refused while a
- *   scan is running on the position (src/scan-state.js). Split from
+ *   scan is running on the position (src/lib/scan-state.js). Split from
  *   test/server-can-reopen.test.js at the line cap.
  */
 
@@ -15,9 +15,9 @@ const assert = require("assert");
 const {
   createPositionRoutes,
   getAllPositionBotStates,
-} = require("../src/server-positions");
-const { compositeKey } = require("../src/bot-config-v2");
-const config = require("../src/config");
+} = require("../src/lib/server-positions");
+const { compositeKey } = require("../src/lib/bot-config-v2");
+const config = require("../src/lib/config");
 const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
 const { makeRes } = require("./helpers/route-handler-deps");
 
@@ -248,7 +248,7 @@ describe("handleManage re-open flag propagation", () => {
 
   it("refuses a re-open retried while a scan is running on the position", async () => {
     /*- The bot would make the rebalance during the scan, and leave it
-     *  out of the figures the scan rebuilds (src/scan-state.js), so the
+     *  out of the figures the scan rebuilds (src/lib/scan-state.js), so the
      *  retry is refused as a Rebalance Now is, and nothing is stamped.
      *  A plain Manage of the same position is answered as before. */
     const dc = _makeDiskConfig();

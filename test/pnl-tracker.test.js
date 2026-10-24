@@ -9,7 +9,7 @@
 const { describe, it } = require("node:test");
 
 const assert = require("assert");
-const { createPnlTracker } = require("../src/pnl-tracker");
+const { createPnlTracker } = require("../src/lib/pnl-tracker");
 
 // ── createPnlTracker — basic lifecycle ───────────────────────────────────────
 

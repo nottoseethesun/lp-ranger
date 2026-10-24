@@ -11,7 +11,10 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { drainBefore, collectBeforeDeposit } = require("../src/nft-move-rules");
+const {
+  drainBefore,
+  collectBeforeDeposit,
+} = require("../src/lib/nft-move-rules");
 
 const hash = (n) => "0x" + String(n).padStart(64, "0");
 const SPAN = 9000;

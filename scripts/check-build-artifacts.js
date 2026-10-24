@@ -2,7 +2,7 @@
  * @file scripts/check-build-artifacts.js
  * @description Fail-loud pre-start guard.  Verifies that the build
  *   artifacts which `npm run build` generates are present on disk
- *   before `node server.js` starts.  Without them, the dashboard
+ *   before `node src/server.js` starts.  Without them, the dashboard
  *   would load a 404'd `bundle.js` and silently skip the disclaimer
  *   and setup-wallet modals — a frustrating debugging trap that bit
  *   us in production on 0.8.0.
@@ -14,8 +14,8 @@
  *     1. Operator downloaded the GitHub-auto-generated "Source code
  *        (tar.gz)" archive instead of the release ASSET — the source
  *        archive is `git archive` output which strips every gitignored
- *        path, including `public/dist/`, `public/build-info.js`,
- *        `public/disclosure-content.js`, and `src/build-info.json`.
+ *        path, including `src/client/web/dist/`, `src/client/web/build-info.js`,
+ *        `src/client/web/disclosure-content.js`, and `src/lib/build-info.json`.
  *     2. Operator cloned the repo with `git clone` and skipped
  *        `npm run build` before `npm start`.
  *
@@ -55,20 +55,20 @@ function _detectVersion() {
  *  is" so the error message points at the symptom each one causes. */
 const REQUIRED = [
   {
-    rel: "public/dist/bundle.js",
+    rel: "src/client/web/dist/bundle.js",
     role: "dashboard JS bundle (built by esbuild from dashboard-init.js)",
   },
   {
-    rel: "public/build-info.js",
+    rel: "src/client/web/build-info.js",
     role: "version banner module imported by the dashboard bundle",
   },
   {
-    rel: "public/disclosure-content.js",
+    rel: "src/client/web/disclosure-content.js",
     role: "disclaimer modal content (extracted from docs/disclosure.md)",
   },
   {
-    rel: "src/build-info.json",
-    role: "server-side version sidecar read by src/build-info.js at boot",
+    rel: "src/lib/build-info.json",
+    role: "server-side version sidecar read by src/lib/build-info.js at boot",
   },
 ];
 

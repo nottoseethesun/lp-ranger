@@ -1,7 +1,7 @@
 /**
  * @file test/bot-loop-kick-poll.test.js
  * @description Tests the real `createBotPollScheduler` factory from
- *   `src/bot-loop-scheduler.js`.  The scheduler + kick logic was
+ *   `src/lib/bot-loop-scheduler.js`.  The scheduler + kick logic was
  *   extracted from the closure inside `startBotLoop` (bot-loop.js) so
  *   the invariants can be pinned against the real code — no mirror.
  *
@@ -20,7 +20,7 @@
 
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { createBotPollScheduler } = require("../src/bot-loop-scheduler");
+const { createBotPollScheduler } = require("../src/lib/bot-loop-scheduler");
 
 function makeSpies() {
   const timeoutCalls = [];

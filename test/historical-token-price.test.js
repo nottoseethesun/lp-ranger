@@ -34,7 +34,7 @@ let _poolAnswer;
  *  operator's own price cache. `toUtcDayKey` stays the real one, since
  *  collapsing a timestamp onto its day is exactly what is under test.
  */
-const { toUtcDayKey: _realDayKey } = require("../src/price-cache");
+const { toUtcDayKey: _realDayKey } = require("../src/lib/price-cache");
 let _dayCache;
 
 const _origRequire = Module.prototype.require;
@@ -77,13 +77,15 @@ before(() => {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/historical-token-price")];
-  ({ fetchHistoricalTokenPriceUsd } = require("../src/historical-token-price"));
+  delete require.cache[require.resolve("../src/lib/historical-token-price")];
+  ({
+    fetchHistoricalTokenPriceUsd,
+  } = require("../src/lib/historical-token-price"));
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/historical-token-price")];
+  delete require.cache[require.resolve("../src/lib/historical-token-price")];
 });
 
 beforeEach(() => {

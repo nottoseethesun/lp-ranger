@@ -19,7 +19,7 @@ const assert = require("node:assert/strict");
 const {
   createRescanPricesHandler,
   requestPriceRevalue,
-} = require("../src/server-rescan-prices");
+} = require("../src/lib/server-rescan-prices");
 
 // ── what the request does to state ──────────────────────────────────────────
 
@@ -107,7 +107,7 @@ test("handler — refuses a position that is not managed", async () => {
 
 /*-
  *  From a move's first gate, before it holds the rebalance lock and
- *  raises rebalanceInProgress or compoundInProgress (src/scan-state.js).
+ *  raises rebalanceInProgress or compoundInProgress (src/lib/scan-state.js).
  */
 for (const [when, flags] of [
   ["a poll decides or makes a move", { _moveInitiations: 1 }],

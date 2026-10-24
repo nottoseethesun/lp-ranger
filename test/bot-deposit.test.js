@@ -11,7 +11,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { totalLifetimeDeposit } = require("../src/bot-deposit");
+const { totalLifetimeDeposit } = require("../src/lib/bot-deposit");
 
 /*- One deposit: 1.0 token0 and 2.0 token1 (18 decimals each), fresh per call
  *  because `totalLifetimeDeposit` memoizes computed USD onto each entry. */

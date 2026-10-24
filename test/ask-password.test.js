@@ -3,7 +3,7 @@
 /**
  * @file test/ask-password.test.js
  * @description
- * Tests for the terminal prompt for a secret (src/ask-password.js): what
+ * Tests for the terminal prompt for a secret (src/lib/ask-password.js): what
  * is typed reaches the caller, and none of it reaches the screen. The
  * keys are written to a stream standing in for the terminal, and what the
  * prompt shows is gathered from a stream standing in for stderr.
@@ -12,7 +12,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { PassThrough, Writable } = require("stream");
-const { askPassword } = require("../src/ask-password");
+const { askPassword } = require("../src/lib/ask-password");
 
 /**
  * A stand-in for stderr that keeps what is written to it.

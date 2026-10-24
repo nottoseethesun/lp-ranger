@@ -22,7 +22,7 @@ let realFetch;
 let answer;
 
 before(async () => {
-  mod = await import("../public/dashboard-helpers.js");
+  mod = await import("../src/client/web/dashboard-helpers.js");
 });
 
 beforeEach(() => {

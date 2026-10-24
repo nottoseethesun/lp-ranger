@@ -7,7 +7,7 @@
  */
 
 const { format } = require("node:util");
-const { _setSinkForTests } = require("../../src/log");
+const { _setSinkForTests } = require("../../src/lib/log");
 
 /**
  * Capture `log.warn` output as formatted strings.

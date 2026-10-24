@@ -26,7 +26,7 @@
 
 const path = require("path");
 const { spawnSync } = require("child_process");
-const cliHelp = require("../src/cli-help");
+const cliHelp = require("../src/lib/cli-help");
 
 const ROOT = path.join(__dirname, "..");
 
@@ -55,7 +55,7 @@ if (build.status !== 0) process.exit(build.status === null ? 1 : build.status);
  *  The operator's flags go here, where the server reads them. */
 const server = spawnSync(
   process.execPath,
-  [path.join(ROOT, "server.js"), ...args],
+  [path.join(ROOT, "src", "server.js"), ...args],
   {
     cwd: ROOT,
     stdio: "inherit",

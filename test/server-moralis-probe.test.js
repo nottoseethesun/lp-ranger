@@ -13,7 +13,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const MORALIS_BASE = "https://moralis.example.org/api/v9";
 const SETTINGS_DIR = makeTestTempFolder("moralis-probe-settings");
@@ -26,12 +26,12 @@ process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const config = require("../src/config");
-const { setApiKey } = require("../src/api-key-holder");
+const config = require("../src/lib/config");
+const { setApiKey } = require("../src/lib/api-key-holder");
 const {
   moralisProbeUrl,
   handleApiKeyStatus,
-} = require("../src/server-moralis");
+} = require("../src/lib/server-moralis");
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
 const TOKEN = "0x" + "12".repeat(20);

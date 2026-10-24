@@ -28,8 +28,8 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const sendTx = require("../src/send-transaction");
-const rpcQueue = require("../src/rpc-request-manager");
+const sendTx = require("../src/lib/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
 const { condemn } = require("./helpers/send-tx-stubs");
 
 const URLS = ["http://one.test", "http://two.test", "http://three.test"];
@@ -295,7 +295,7 @@ describe("the retry loop reports the endpoint it actually used", () => {
     /*- Without this the loop would keep reporting the provider it
      *  started on, so every later report would be spent and the list
      *  would never advance past the second endpoint. */
-    const { retryRead } = require("../src/rpc-read-retry");
+    const { retryRead } = require("../src/lib/rpc-read-retry");
     const providers = [{ id: 0 }, { id: 1 }, { id: 2 }];
     let idx = 0;
     const reported = [];

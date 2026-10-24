@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-10-19T20:36:22.541Z
+  modified: 2026-10-24T04:54:43.151Z
 ---
 
 Bounds checking and bad-value rejection are **always** done on the server, or in the app's core — never in the user interface.
@@ -16,4 +16,4 @@ Bounds checking and bad-value rejection are **always** done on the server, or in
 
 Not covered by this rule: a confirmation prompt for a value that IS accepted and merely risky or expensive (the slippage confirmations above 5% and 10%). That is asking the user to mean it, not deciding whether the value is legal, and it belongs in the UI.
 
-In LP Ranger the core module is `src/config-bounds.js`, with `src/timer-bounds.js` for anything that becomes a `setTimeout` delay. Related: [[feedback_no_duplication]], [[feedback_engineering_invariants]].
+In LP Ranger the core module is `src/lib/config-bounds.js`, with `src/lib/timer-bounds.js` for anything that becomes a `setTimeout` delay. Related: [[feedback_no_duplication]], [[feedback_engineering_invariants]].

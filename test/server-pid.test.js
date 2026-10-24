@@ -1,6 +1,6 @@
 /**
  * @file test/server-pid.test.js
- * @description Tests for src/server-pid.js — write / read / remove the PID
+ * @description Tests for src/lib/server-pid.js — write / read / remove the PID
  *   file using a temp path, so the real tmp/lp-ranger.pid is never touched.
  */
 
@@ -17,8 +17,8 @@ const {
   removePidFile,
   readPid,
   getPidFilePath,
-} = require("../src/server-pid");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+} = require("../src/lib/server-pid");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 function _tmpPath() {
   return path.join(makeTestTempFolder("pid"), "lp-ranger.pid");
@@ -66,7 +66,7 @@ test("readPid rejects zero and negative PIDs", () => {
  * test process cannot fire on itself.
  */
 function _childWritesThen(how, p) {
-  const serverPid = require.resolve("../src/server-pid");
+  const serverPid = require.resolve("../src/lib/server-pid");
   const script =
     `const s = require(${JSON.stringify(serverPid)});` +
     `s.writePidFile({ filePath: ${JSON.stringify(p)} });` +
@@ -108,7 +108,7 @@ test("the server records its PID and takes its signals before resolving the wall
    *  end the process on the spot, positions mid-start.
    */
   const src = fs
-    .readFileSync(path.join(__dirname, "..", "server.js"), "utf8")
+    .readFileSync(path.join(__dirname, "..", "src", "server.js"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/[^\n]*/g, "");
   const entry = src.slice(src.indexOf("if (require.main === module)"));

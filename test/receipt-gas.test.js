@@ -17,7 +17,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { receiptGasWei } = require("../src/receipt-gas");
+const { receiptGasWei } = require("../src/lib/receipt-gas");
 
 describe("receiptGasWei", () => {
   it("computes gas cost from receipt", () => {

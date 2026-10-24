@@ -18,7 +18,7 @@ const fs = require("fs");
 const {
   createOnRetire,
   getAllPositionBotStates,
-} = require("../src/server-positions");
+} = require("../src/lib/server-positions");
 
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
 const CONTRACT = "0xCC05BF51E2B8f0A457E8F15FD5E8e25F34f8b279";

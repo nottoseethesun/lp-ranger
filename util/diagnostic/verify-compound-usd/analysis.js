@@ -7,7 +7,7 @@
  * without standing up a provider.
  *
  * The one project import is `_filterRebalances` from
- * `src/compounder.js` — `classifyIl` deliberately delegates the
+ * `src/lib/compounder.js` — `classifyIl` deliberately delegates the
  * compound-vs-rebalance split to the production classifier so the
  * tool's labels always match the bot's own bookkeeping rather than
  * drifting from a second copy of the rule.
@@ -19,7 +19,7 @@
 
 "use strict";
 
-const { _filterRebalances } = require("../../../src/compounder");
+const { _filterRebalances } = require("../../../src/lib/compounder");
 
 /** How far either side of the on-chain decimals the shift search looks. */
 const SHIFT_RANGE = 4;
@@ -29,7 +29,7 @@ const SHIFT_TOLERANCE = 0.05;
 
 /**
  * USD value of a token pair, using the exact expression
- * `src/compounder.js` `executeCompound` uses so a reproduction here is
+ * `src/lib/compounder.js` `executeCompound` uses so a reproduction here is
  * a reproduction there.
  *
  * @param {bigint} raw0  Raw token0 amount (chain units).

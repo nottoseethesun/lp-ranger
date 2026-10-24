@@ -16,7 +16,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 
 const {
   MIGRATED_ITEMS,
@@ -59,7 +59,7 @@ function makeOld(root, name) {
 function makeNew(root, name) {
   const d = path.join(root, name);
   put(path.join(d, "package.json"), '{"name":"lp-ranger"}');
-  put(path.join(d, "src/bot.js"), "NEW CODE");
+  put(path.join(d, "src/lib/bot.js"), "NEW CODE");
   put(
     path.join(d, "app-config/app-defaults-for-user-configurable/chains.json"),
     "SHIPPED",
@@ -223,7 +223,7 @@ describe("buildPlan / applyPlan", () => {
     const src = makeOld(root, "lp-ranger-0.9.1");
     const dest = makeNew(root, "lp-ranger-0.9.2");
     put(path.join(src, "app-config/user-configurable/README.md"), "OLD README");
-    put(path.join(src, "src/bot.js"), "OLD CODE");
+    put(path.join(src, "src/lib/bot.js"), "OLD CODE");
     const written = applyPlan(src, dest, buildPlan(src, dest, MIGRATED_ITEMS));
     assert.equal(written, 4);
     assert.equal(fs.readFileSync(path.join(dest, ".env"), "utf8"), "SECRET=1");
@@ -235,9 +235,9 @@ describe("buildPlan / applyPlan", () => {
       ),
       "SHIPPED README",
     );
-    /*- src/ is not an operator path, so old code cannot leak in. */
+    /*- src/lib/ is not an operator path, so old code cannot leak in. */
     assert.equal(
-      fs.readFileSync(path.join(dest, "src/bot.js"), "utf8"),
+      fs.readFileSync(path.join(dest, "src/lib/bot.js"), "utf8"),
       "NEW CODE",
     );
     assert.equal(fs.existsSync(path.join(dest, "node_modules")), false);

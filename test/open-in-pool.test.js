@@ -3,7 +3,7 @@
 /**
  * @file test/open-in-pool.test.js
  * @description Whether the wallet holds an open position in a pool,
- *   other than the one being re-opened (src/open-in-pool.js).
+ *   other than the one being re-opened (src/lib/open-in-pool.js).
  *
  *   The candidates are the positions the last wallet scan saw open in the
  *   pool. The scan can be old, so the chain is asked about each, and only
@@ -13,8 +13,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { openInPool } = require("../src/open-in-pool");
-const { createPositionManager } = require("../src/position-manager");
+const { openInPool } = require("../src/lib/open-in-pool");
+const { createPositionManager } = require("../src/lib/position-manager");
 const { captureWarnings } = require("./helpers/capture-warnings");
 const {
   contractReverted,

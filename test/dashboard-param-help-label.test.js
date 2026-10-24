@@ -17,7 +17,7 @@
  * others (jsdom flips the box regardless), so it would have shipped a
  * guard that only appeared to work.
  *
- * These tests assert the structure, over the shipped `public/index.html`
+ * These tests assert the structure, over the shipped `src/client/web/index.html`
  * itself, so a future edit that nests an info icon back inside a label
  * trips CI rather than reaching the browser.  The first test proves the
  * hazard is real in this DOM implementation; the rest prove no shipped

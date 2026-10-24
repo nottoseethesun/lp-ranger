@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: ef6c5215-1055-44cf-b98a-f7aa871665e8
-  modified: 2026-09-20T22:45:15.929Z
+  modified: 2026-10-24T05:24:12.636Z
 ---
 
 For **type checks**, never rely on JavaScript's built-in type conversions.
@@ -46,9 +46,9 @@ const v = x ?? defaultValue;
 ```
 
 **Why:** A type audit on 2026-07-10 flagged two pre-existing bare
-`!== undefined` guards (`public/dashboard-active-sync.js` `_applyLiqAndTicks`
-and `public/dashboard-positions.js` `_backgroundRefresh`) plus a
-`String(x || 0)` normalisation in `src/bot-cycle.js` `_liquidityChanged`.
+`!== undefined` guards (`src/client/web/dashboard-active-sync.js` `_applyLiqAndTicks`
+and `src/client/web/dashboard-positions.js` `_backgroundRefresh`) plus a
+`String(x || 0)` normalisation in `src/lib/bot-cycle.js` `_liquidityChanged`.
 All three worked by accident (the server never sent the type they'd
 mishandle) but the class of bug was real.  Ten-plus explicit
 `!== undefined && !== null` guards already exist across the codebase

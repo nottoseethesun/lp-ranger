@@ -1,6 +1,6 @@
 /**
  * @file test/server-positions-poolkey.test.js
- * @description Unit tests for attachPoolKeys() in src/server-positions.js.
+ * @description Unit tests for attachPoolKeys() in src/lib/server-positions.js.
  *
  * Validates that the dashboard status response gets a canonical poolKey
  * on each managed entry so per-pool daily rebalance counts line up
@@ -12,7 +12,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { attachPoolKeys } = require("../src/server-positions");
+const { attachPoolKeys } = require("../src/lib/server-positions");
 
 // Spy that records the arguments it's called with and returns a
 // deterministic key so we can assert both plumbing and that the

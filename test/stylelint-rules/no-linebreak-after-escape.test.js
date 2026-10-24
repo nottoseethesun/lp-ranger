@@ -176,7 +176,7 @@ describe("no-linebreak-after-escape — repo stylesheets", () => {
     /*- Guards the fix itself: if a formatter re-breaks one of these
      *  selectors, this fails before the toggles do. */
     const { results } = await stylelint.lint({
-      files: ["public/*.css"],
+      files: ["src/client/web/*.css"],
       config: { plugins: [plugin], rules: { [RULE]: true } },
     });
 

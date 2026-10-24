@@ -1,8 +1,11 @@
 ---
 name: feedback_never_stash_to_compare
-description: Never `git stash` to peek at another ref — a clean tree saves nothing and the pop grabs ANOTHER branch's stash; use a worktree
+description: "Never `git stash` to peek at another ref — a clean tree saves nothing and the pop grabs ANOTHER branch's stash; use a worktree"
 metadata:
+  node_type: memory
   type: feedback
+  originSessionId: b6a0b30e-9cd6-4560-a6cd-597053c26378
+  modified: 2026-10-24T05:23:58.381Z
 ---
 
 # Never use `git stash` to compare against another ref
@@ -18,7 +21,7 @@ things went wrong at once:
    **nothing** — no stash was created, and the command exited quietly.
 2. `git stash pop` therefore popped the **top of the existing stash
    stack**, which was a months-old WIP from a completely different
-   branch. It conflicted on `public/index.html` and left the working tree
+   branch. It conflicted on `src/client/web/index.html` and left the working tree
    in a `UU` unmerged state with another branch's changes half-applied.
 
 Worse, the measurement was silently garbage: because the stash saved

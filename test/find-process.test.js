@@ -64,7 +64,7 @@ test("a program open on server.js in this install's root is not the server", asy
    *  the one a killed server left in the PID file. Its command line names
    *  server.js and it runs from the install's root, but it is not node.
    */
-  const viewer = spawn("tail", ["-f", "server.js"], {
+  const viewer = spawn("tail", ["-f", "src/server.js"], {
     stdio: "ignore",
     cwd: process.cwd(),
   });

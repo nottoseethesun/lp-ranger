@@ -1,6 +1,6 @@
 /**
  * @file test/bot-config-defaults.test.js
- * @description Unit tests for src/bot-config-defaults.js and the
+ * @description Unit tests for src/lib/bot-config-defaults.js and the
  * GET /api/bot-config-defaults route handler.
  *
  * Tests write a `bot-config-defaults.json` operator override and let
@@ -17,11 +17,11 @@
  * process on the machine, and the runner starts a separate process per
  * test file and runs 24 at once — so a bad override left there for even
  * a moment is the live config of 23 unrelated test processes, and one
- * of them requiring `src/config.js` in that window dies on the startup
+ * of them requiring `src/lib/config.js` in that window dies on the startup
  * throw.  That produced a real intermittent (`bot-hodl-scan` failing
  * once in CI and never on a re-run).  `LP_RANGER_USER_CONFIG_DIR` is
- * read by `src/load-merged-defaults.js` at module load, so it is set
- * here BEFORE anything under `src/` is required.
+ * read by `src/lib/load-merged-defaults.js` at module load, so it is set
+ * here BEFORE anything under `src/lib/` is required.
  */
 
 "use strict";
@@ -62,11 +62,11 @@ const SETTING_BOUNDS = JSON.parse(
 );
 
 // Dependency-free, so loading it here reads no configuration.
-const { boundText } = require("../src/range-check");
+const { boundText } = require("../src/lib/range-check");
 
 function _clearModuleCache() {
-  delete require.cache[require.resolve("../src/bot-config-defaults")];
-  delete require.cache[require.resolve("../src/load-merged-defaults")];
+  delete require.cache[require.resolve("../src/lib/bot-config-defaults")];
+  delete require.cache[require.resolve("../src/lib/load-merged-defaults")];
 }
 
 function _writeUser(obj) {
@@ -80,7 +80,7 @@ function _writeUser(obj) {
    *  drops the loader from the require cache, so a reference captured
    *  at file load would reset an instance nothing reads any more while
    *  the fresh one kept its memo. */
-  require("../src/load-merged-defaults")._resetMemoForTests();
+  require("../src/lib/load-merged-defaults")._resetMemoForTests();
 }
 
 function _clearUser() {
@@ -92,7 +92,7 @@ function _clearUser() {
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
   }
-  require("../src/load-merged-defaults")._resetMemoForTests();
+  require("../src/lib/load-merged-defaults")._resetMemoForTests();
 }
 
 beforeEach(() => {
@@ -107,28 +107,28 @@ afterEach(() => {
 
 describe("bot-config-defaults.readBotConfigDefaults", () => {
   it("returns approvalMultiple from the shipped JSON when no override exists", () => {
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.approvalMultiple, _SHIPPED.approvalMultiple);
   });
 
   it("returns operator-edited approvalMultiple from the user override", () => {
     _writeUser({ approvalMultiple: 50 });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.approvalMultiple, 50);
   });
 
   it("falls back to shipped default when user override is malformed JSON", () => {
     fs.writeFileSync(_USER_FILE, "{ not valid json");
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.approvalMultiple, _SHIPPED.approvalMultiple);
   });
 
   it("ignores non-numeric override values (falls back to shipped)", () => {
     _writeUser({ approvalMultiple: "forty" });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.approvalMultiple, _SHIPPED.approvalMultiple);
   });
@@ -140,7 +140,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
      *  default stands, as for any other value outside its range.
      */
     _writeUser({ approvalMultiple: 25.8 });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.approvalMultiple, _SHIPPED.approvalMultiple);
   });
@@ -149,7 +149,9 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
     for (const bad of [0, -5]) {
       _writeUser({ approvalMultiple: bad });
       _clearModuleCache();
-      const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+      const {
+        readBotConfigDefaults,
+      } = require("../src/lib/bot-config-defaults");
       const out = readBotConfigDefaults();
       assert.equal(out.approvalMultiple, _SHIPPED.approvalMultiple);
     }
@@ -157,21 +159,21 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
 
   it("rejects approvalMultiple above the 1_000_000 cap (falls back to shipped)", () => {
     _writeUser({ approvalMultiple: 2_000_000 });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.approvalMultiple, _SHIPPED.approvalMultiple);
   });
 
   it("ignores _comment / _*-prefixed keys in the override (just doc fields)", () => {
     _writeUser({ _comment: "doc", approvalMultiple: 30 });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.approvalMultiple, 30);
     assert.equal(out._comment, undefined);
   });
 
   it("returns all shipped user-setting defaults when no override exists", () => {
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(
       out.rebalanceOutOfRangeThresholdPercent,
@@ -195,7 +197,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
       maxRebalancesPerDay: 10,
       offsetToken0Pct: 60,
     });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.rebalanceOutOfRangeThresholdPercent, 7);
     assert.equal(out.rebalanceTimeoutMin, 0);
@@ -212,21 +214,21 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
      *  cap a Bot Settings save is refused past.
      */
     _writeUser({ maxRebalancesPerDay: 50 });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.maxRebalancesPerDay, _SHIPPED.maxRebalancesPerDay);
   });
 
   it("STRICT refuses an out-of-range checkIntervalSec rather than resetting it", () => {
     /*- The poll interval becomes a `setTimeout` delay, so it is bounded
-     *  by `src/timer-bounds.js` — the same module `.env` and
+     *  by `src/lib/timer-bounds.js` — the same module `.env` and
      *  `POST /api/config` ask. At startup it is refused rather than
      *  replaced, because a schedule silently swapped for a default is a
      *  bot running on a cadence nobody chose, and the cadence is then
      *  the last thing anyone would think to check. */
     const {
       readBotConfigDefaultsStrict,
-    } = require("../src/bot-config-defaults");
+    } = require("../src/lib/bot-config-defaults");
     for (const bad of [1, 9, 3601, 7200, "abc", 0, -5]) {
       _writeUser({ checkIntervalSec: bad });
       assert.throws(
@@ -249,7 +251,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
      */
     const {
       readBotConfigDefaultsStrict,
-    } = require("../src/bot-config-defaults");
+    } = require("../src/lib/bot-config-defaults");
     for (const bad of [0, 4, -1]) {
       _writeUser({ globalRPCRequestRateIntervalMS: bad });
       assert.throws(
@@ -273,7 +275,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
      *  which the file header promises never 500s. An edit made while
      *  the bot is running must not break a poll; it falls back here and
      *  is refused at the next start. */
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     for (const bad of [1, 9, 3601, 7200, "abc", 0, -5]) {
       _writeUser({ checkIntervalSec: bad });
       assert.equal(
@@ -290,7 +292,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
      *  a timer; the strict one, at startup, refuses it.
      */
     _writeUser({ slippagePct: 99, checkIntervalSec: 300 });
-    const mod = require("../src/bot-config-defaults");
+    const mod = require("../src/lib/bot-config-defaults");
     assert.throws(() => mod.readBotConfigDefaultsStrict(), /slippagePct/);
     assert.equal(mod.readBotConfigDefaults().slippagePct, _SHIPPED.slippagePct);
   });
@@ -305,7 +307,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
       maxRebalancesPerDay: 0, // below min
       offsetToken0Pct: 200, // above max
     });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(
       out.rebalanceOutOfRangeThresholdPercent,
@@ -320,7 +322,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
   });
 
   it("returns priceCacheTtlMs and dustUnitPriceCacheMultiplier shipped defaults", () => {
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.priceCacheTtlMs, _SHIPPED.priceCacheTtlMs);
     assert.equal(
@@ -334,7 +336,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
       priceCacheTtlMs: 0, // below 1_000 ms floor
       dustUnitPriceCacheMultiplier: 0, // below 1 floor
     });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(
       out.priceCacheTtlMs,
@@ -353,7 +355,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
       priceCacheTtlMs: 60_000,
       dustUnitPriceCacheMultiplier: 60,
     });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.priceCacheTtlMs, 60_000);
     assert.equal(out.dustUnitPriceCacheMultiplier, 60);
@@ -365,7 +367,7 @@ describe("bot-config-defaults.readBotConfigDefaults", () => {
       checkIntervalSec: null,
       offsetToken0Pct: true,
     });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.slippagePct, _SHIPPED.slippagePct);
     assert.equal(out.checkIntervalSec, _SHIPPED.checkIntervalSec);
@@ -391,7 +393,7 @@ describe("bot-config-defaults: rpc and history-scan plumbing", () => {
   ];
 
   it("are shipped, each with a value", () => {
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     for (const [key] of CASES) assert.equal(out[key], _SHIPPED[key], key);
   });
@@ -399,12 +401,12 @@ describe("bot-config-defaults: rpc and history-scan plumbing", () => {
   for (const [key, inRange, outOfRange] of CASES) {
     it(`${key}: takes ${inRange}, refuses ${outOfRange} for the shipped value`, () => {
       _writeUser({ [key]: inRange });
-      let mod = require("../src/bot-config-defaults");
+      let mod = require("../src/lib/bot-config-defaults");
       assert.equal(mod.readBotConfigDefaults()[key], inRange);
 
       _clearModuleCache();
       _writeUser({ [key]: outOfRange });
-      mod = require("../src/bot-config-defaults");
+      mod = require("../src/lib/bot-config-defaults");
       assert.equal(mod.readBotConfigDefaults()[key], _SHIPPED[key]);
     });
   }
@@ -414,7 +416,7 @@ describe("bot-config-defaults: rpc and history-scan plumbing", () => {
     _writeUser({ boundedReadRetryDelayMs: 0 });
     const {
       readBotConfigDefaultsStrict,
-    } = require("../src/bot-config-defaults");
+    } = require("../src/lib/bot-config-defaults");
     assert.throws(
       () => readBotConfigDefaultsStrict(),
       /boundedReadRetryDelayMs/,
@@ -436,7 +438,7 @@ describe("bot-config-defaults: STRICT refuses any setting outside its range", ()
     _writeUser(override);
     const {
       readBotConfigDefaultsStrict,
-    } = require("../src/bot-config-defaults");
+    } = require("../src/lib/bot-config-defaults");
     let refusal = null;
     assert.throws(
       () => readBotConfigDefaultsStrict(),
@@ -523,7 +525,7 @@ describe("bot-config-defaults: STRICT refuses any setting outside its range", ()
     });
     const {
       readBotConfigDefaultsStrict,
-    } = require("../src/bot-config-defaults");
+    } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaultsStrict();
     assert.equal(out.maxRebalancesPerDay, max);
     assert.equal(out.residualCleanup.delayMs, 1);
@@ -541,7 +543,7 @@ describe("bot-config-defaults: STRICT refuses any setting outside its range", ()
       residualCleanup: { delayMs: 0 },
       rpcRetryOn429DelaysMs: [0],
     });
-    const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+    const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
     const out = readBotConfigDefaults();
     assert.equal(out.maxRebalancesPerDay, _SHIPPED.maxRebalancesPerDay);
     assert.equal(out.residualCleanup.delayMs, _SHIPPED.residualCleanup.delayMs);
@@ -555,7 +557,7 @@ describe("bot-config-defaults: the file is read once", () => {
      *  callers include a poll cycle and a per-request path.  One read
      *  is also the semantics the file documents: override it and
      *  restart. */
-    const mod = require("../src/bot-config-defaults");
+    const mod = require("../src/lib/bot-config-defaults");
     const first = mod.readBotConfigDefaults();
     assert.equal(mod.readBotConfigDefaults(), first, "same object");
     assert.equal(Object.isFrozen(first), true, "frozen");
@@ -565,7 +567,7 @@ describe("bot-config-defaults: the file is read once", () => {
     /*- Every caller shares one object now, so the memo is what makes a
      *  mid-run edit invisible until restart — and the reset hook is
      *  what lets a test stand in for that restart. */
-    const mod = require("../src/bot-config-defaults");
+    const mod = require("../src/lib/bot-config-defaults");
     assert.equal(
       mod.readBotConfigDefaults().approvalMultiple,
       _SHIPPED.approvalMultiple,

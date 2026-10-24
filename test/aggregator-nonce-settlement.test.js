@@ -24,7 +24,7 @@ const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const { Wallet, Transaction } = require("ethers");
 
-const { _handleSwapError } = require("../src/rebalancer-aggregator");
+const { _handleSwapError } = require("../src/lib/rebalancer-aggregator");
 const { nonceTooLow } = require("./helpers/ethers-rpc-errors");
 /*-
  *  From the module that owns them, not through the aggregator: both moved
@@ -33,7 +33,7 @@ const { nonceTooLow } = require("./helpers/ethers-rpc-errors");
 const {
   settleNonce: _settleNonce,
   resolveSwapOutcome: _resolveSwapOutcome,
-} = require("../src/aggregator-nonce-settle");
+} = require("../src/lib/aggregator-nonce-settle");
 
 const SWAP_HASH = "0xswap";
 const CANCEL_HASH = "0xcancel";

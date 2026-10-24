@@ -7,7 +7,7 @@
  *
  *   The Current panel's Fees Compounded and Gas reach the dashboard by a
  *   long route: this response's `pnlSnapshot` → `_syncLifetimeState`
- *   (src/server-routes.js) → the position's bot state → the next
+ *   (src/lib/server-routes.js) → the position's bot state → the next
  *   `/api/status` poll → `_applyUnmanagedSnapshotOverlay`. Every step
  *   drops the figures when the snapshot is absent, and the last one
  *   leaves the two rows as dashes.
@@ -25,7 +25,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
-const config = require("../src/config");
+const config = require("../src/lib/config");
 
 const WALLET = "0x" + "3".repeat(40);
 const BODY = {
@@ -147,7 +147,7 @@ function load(cachedEpochs) {
     if (Object.prototype.hasOwnProperty.call(stubs, id)) return stubs[id];
     return origRequire.apply(this, arguments);
   };
-  const file = require.resolve("../src/position-details");
+  const file = require.resolve("../src/lib/position-details");
   delete require.cache[file];
   try {
     return {
@@ -249,7 +249,7 @@ describe("the unmanaged details response", () => {
   it("measures the Current IL/G against the coins compounds took from the wallet", async () => {
     /*-
      *  The bot saved its compound list while it managed the position, so
-     *  the figure stays where the bot had it (src/bot-pnl-il.js).
+     *  the figure stays where the bot had it (src/lib/bot-pnl-il.js).
      */
     const { pnlArgs } = await run();
     assert.equal(pnlArgs.length, 1);
@@ -269,7 +269,7 @@ describe("the unmanaged details response", () => {
 
 describe("the route's own key shape is unchanged", () => {
   it("builds the composite key the sync writes against", () => {
-    const { compositeKey } = require("../src/bot-config-v2");
+    const { compositeKey } = require("../src/lib/bot-config-v2");
     const key = compositeKey(
       "pulsechain",
       WALLET,
@@ -288,7 +288,7 @@ describe("the unmanaged details' price override", () => {
      *  request, so its figures (the position's value, Fees Compounded)
      *  went without it.
      */
-    const { compositeKey } = require("../src/bot-config-v2");
+    const { compositeKey } = require("../src/lib/bot-config-v2");
     const key = compositeKey(
       config.CHAIN_NAME,
       WALLET,

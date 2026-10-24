@@ -18,7 +18,7 @@ rules that are most commonly violated, so they are impossible to miss.
 
 ## File Size
 
-- Every `src/` and `public/dashboard-*.js` file ≤ **500 non-comment lines**
+- Every `src/*.js`, `src/lib/` and `src/client/web/dashboard-*.js` file ≤ **500 non-comment lines**
   (`max-lines` with `skipBlankLines skipComments`).
 - When a file grows past 500 lines, **split it** following the existing
   pattern (e.g. `dashboard-data.js` → `dashboard-data-kpi.js`,

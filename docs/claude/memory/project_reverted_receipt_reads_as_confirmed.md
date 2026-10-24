@@ -5,11 +5,11 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-18T08:46:46.358Z
+  modified: 2026-10-24T04:54:38.531Z
 ---
 
 **Fixed 2026-10-17, committed in 5bf48d2, approved by the user ("#4:
-Yes, fix").** `confirmedReceipt` in src/tx-speedup.js reads a receipt's
+Yes, fix").** `confirmedReceipt` in src/lib/tx-speedup.js reads a receipt's
 `status` and throws, for status 0, the CALL_EXCEPTION ethers' own wait
 throws, carrying the receipt. Both doors below hand their receipt
 through it. A CALL_EXCEPTION that reaches `sendTx.sendTransaction`
@@ -23,7 +23,7 @@ chain was reported as confirmed.
 **How it happens.** The wait asks the broadcasting endpoint first, through
 ethers' `tx.wait()`, which throws CALL_EXCEPTION for a reverted
 transaction. When that endpoint fails instead (a 502, a timeout),
-`_receiptAcrossEndpoints` in `src/send-transaction.js` asks the other
+`_receiptAcrossEndpoints` in `src/lib/send-transaction.js` asks the other
 endpoints with `getTransactionReceipt` and returns the first receipt it
 gets. It never reads the receipt's `status`, and a reverted transaction
 has a receipt, with status 0.
@@ -45,7 +45,7 @@ It needs an endpoint failure during the wait and a revert at once; both
 happen on Production (outages, stale aggregator routes).
 
 **A second door, found 2026-10-17 in the state-and-sequence audit.**
-`_tolerantWait` in src/tx-speedup.js returns the receipt ethers attaches
+`_tolerantWait` in src/lib/tx-speedup.js returns the receipt ethers attaches
 to TRANSACTION_REPLACED without reading its `status`. A speed-up that
 replaced the move and then reverted therefore comes back as the move's
 confirmation, with no endpoint failure needed. The same fix shape covers

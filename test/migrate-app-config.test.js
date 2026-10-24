@@ -16,7 +16,7 @@ const {
   migrateAppConfig,
   _MIGRATIONS,
   _DROP,
-} = require("../src/migrate-app-config");
+} = require("../src/lib/migrate-app-config");
 
 /** Create a fresh isolated temp dir per test. */
 function makeTmpDir() {

@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
+  modified: 2026-10-24T04:57:19.920Z
 ---
 
 The dashboard's Lifetime panel surfaces two related-but-distinct
@@ -33,8 +34,8 @@ was wrong.  The two metrics have different jobs and the initial-
 residual subtraction belongs in one of them, not both.
 
 Future reasoning:
-- For IL/G code changes (`src/il-calculator.js`, `_computeIL` in
-  `src/bot-pnl-updater.js`, the IL/G debug modal), stay with the
+- For IL/G code changes (`src/lib/il-calculator.js`, `_computeIL` in
+  `src/lib/bot-pnl-updater.js`, the IL/G debug modal), stay with the
   gross-credit formula.  No initial-residual term.
 - For Net P&L code changes (anywhere the Lifetime panel's "Net P&L
   Return" or the "PROFIT" line is computed), the initial-residual

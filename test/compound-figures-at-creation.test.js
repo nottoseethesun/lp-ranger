@@ -2,7 +2,7 @@
  * @file test/compound-figures-at-creation.test.js
  * @description The figure a Compound entry in the Activity Log keeps from
  * the moment the bot made the compound (`compoundFiguresAtCreation`,
- * src/compound-activity-figures.js): the fee coins it collected, and
+ * src/lib/compound-activity-figures.js): the fee coins it collected, and
  * their share of the position right after it. Split from
  * test/compound-activity-figures.test.js at the 500-line cap; that file
  * covers the figures a rebuild works out from the chain and what it keeps.
@@ -19,7 +19,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   compoundFiguresAtCreation,
-} = require("../src/compound-activity-figures");
+} = require("../src/lib/compound-activity-figures");
 
 const close = (a, b) => Math.abs(a - b) < 1e-9;
 

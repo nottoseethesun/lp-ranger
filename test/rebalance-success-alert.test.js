@@ -9,7 +9,7 @@
  *   sent, the mint last. The alert read the list as if it were an object
  *   with a `mint` field, found nothing there, and so never wrote its
  *   "TX:" line. The rebalance cycle (`_executeAndRecord`,
- *   src/bot-cycle.js) is driven here with the rebalance itself and the
+ *   src/lib/bot-cycle.js) is driven here with the rebalance itself and the
  *   recorder's writes stood in for, and the alert it sends is captured.
  *
  *   The same cycle stores the rebalance's Activity Log figure the moment
@@ -21,11 +21,11 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const REBALANCER = require.resolve("../src/rebalancer");
-const RECORDER = require.resolve("../src/bot-recorder");
-const TELEGRAM = require.resolve("../src/telegram-notifications/telegram");
-const PNL = require.resolve("../src/bot-pnl-updater");
-const CYCLE = require.resolve("../src/bot-cycle");
+const REBALANCER = require.resolve("../src/lib/rebalancer");
+const RECORDER = require.resolve("../src/lib/bot-recorder");
+const TELEGRAM = require.resolve("../src/lib/telegram-notifications/telegram");
+const PNL = require.resolve("../src/lib/bot-pnl-updater");
+const CYCLE = require.resolve("../src/lib/bot-cycle");
 
 /**
  * Load the cycle with chosen exports of its dependencies replaced, then

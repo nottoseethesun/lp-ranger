@@ -100,12 +100,12 @@ function _installMocks() {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/bot-hodl-scan")];
+  delete require.cache[require.resolve("../src/lib/bot-hodl-scan")];
 }
 
 function _restoreMocks() {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/bot-hodl-scan")];
+  delete require.cache[require.resolve("../src/lib/bot-hodl-scan")];
 }
 
 // ── computeAndCacheHodl ordering ────────────────────────────────────────
@@ -117,7 +117,7 @@ describe("computeAndCacheHodl — poolAddress ordering", () => {
     _cachedHodlWrites = [];
     _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
     _installMocks();
-    ({ computeAndCacheHodl } = require("../src/bot-hodl-scan"));
+    ({ computeAndCacheHodl } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(_restoreMocks);
@@ -184,7 +184,7 @@ describe("computeAndCacheHodl — poolAddress ordering", () => {
 describe("computeAndCacheHodl — the compounds this install made", () => {
   /*-
    *  The tally takes no compound this install made as money put in
-   *  (src/lifetime-hodl.js), so it is handed the compound list as saved
+   *  (src/lib/lifetime-hodl.js), so it is handed the compound list as saved
    *  when it runs: after this pass's rebuild of it, which keeps every
    *  compound the bot recorded.
    */
@@ -194,7 +194,7 @@ describe("computeAndCacheHodl — the compounds this install made", () => {
     _cachedHodlWrites = [];
     _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
     _installMocks();
-    ({ computeAndCacheHodl } = require("../src/bot-hodl-scan"));
+    ({ computeAndCacheHodl } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(_restoreMocks);
@@ -255,7 +255,7 @@ describe("computeAndCacheHodl — a deposit count saved while the scan ran", () 
     _freshWrites = [];
     _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
     _installMocks();
-    ({ computeAndCacheHodl } = require("../src/bot-hodl-scan"));
+    ({ computeAndCacheHodl } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(() => {
@@ -312,7 +312,7 @@ describe("_ensureHodlPoolAddress", () => {
     _cachedHodlWrites = [];
     _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
     _installMocks();
-    ({ _ensureHodlPoolAddress } = require("../src/bot-hodl-scan"));
+    ({ _ensureHodlPoolAddress } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(_restoreMocks);
@@ -415,7 +415,7 @@ describe("revalueHodlBaseline", () => {
     _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
     _historicalImpl = async () => ({ price0: 2, price1: 3 });
     _installMocks();
-    ({ revalueHodlBaseline } = require("../src/bot-hodl-scan"));
+    ({ revalueHodlBaseline } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(_restoreMocks);
@@ -512,7 +512,7 @@ describe("computeDepositUsd — a deposit block with no readable time", () => {
       return { price0: 2, price1: 3 };
     };
     _installMocks();
-    ({ computeDepositUsd } = require("../src/bot-hodl-scan"));
+    ({ computeDepositUsd } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(() => {
@@ -555,7 +555,7 @@ describe("computeDepositUsd — a newer list saved while one is priced", () => {
   beforeEach(() => {
     _blockTsImpl = async () => 1_700_000_000;
     _installMocks();
-    ({ computeDepositUsd } = require("../src/bot-hodl-scan"));
+    ({ computeDepositUsd } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(() => {

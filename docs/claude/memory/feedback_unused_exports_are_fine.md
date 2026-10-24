@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T21:02:53.480Z
+  modified: 2026-10-24T05:23:58.870Z
 ---
 
 Exporting a function nothing currently imports is a **feature**. It
@@ -30,7 +30,7 @@ delete signal for the finding.
   finished work.
 - Do not delete one to quiet knip or any other dead-code pass. knip
   cannot see CLI entry points or test-only seams; its unused-file and
-  unused-export rows for `util/`, `scripts/` and `public/dashboard-*.js`
+  unused-export rows for `util/`, `scripts/` and `src/client/web/dashboard-*.js`
   are known false positives, and knip gates nothing — it is in neither
   `npm run lint` nor `npm run check`.
 - Export the internals when writing a new tool, before any test exists.

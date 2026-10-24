@@ -28,7 +28,7 @@ const { shippedFigures } = require("../scripts/build-manual-content");
 
 const ROOT = path.join(__dirname, "..");
 const SHIPPED_FIGURES = shippedFigures();
-const INDEX_HTML = path.join(ROOT, "public", "index.html");
+const INDEX_HTML = path.join(ROOT, "src", "client", "web", "index.html");
 
 /** Every `data-param-help="…"` key used in the markup. */
 function markupKeys() {
@@ -50,7 +50,7 @@ function markupKeys() {
  * figures stand in for them here.
  */
 async function paramHelp() {
-  const mod = await import("../public/param-help-content.js");
+  const mod = await import("../src/client/web/param-help-content.js");
   return mod.buildParamHelp(SHIPPED_FIGURES);
 }
 
@@ -110,7 +110,7 @@ test("Fees Earned and Fees Compounded both open a help dialog", async () => {
 });
 
 test("the Fees Earned tooltip does not claim compounded fees are included", async () => {
-  /*- `feesUsd` in src/bot-pnl-updater.js is
+  /*- `feesUsd` in src/lib/bot-pnl-updater.js is
    *  tokensOwed0*price0 + tokensOwed1*price1 — UNCLAIMED fees only,
    *  and compounding zeroes tokensOwed.  The two figures are disjoint,
    *  which is why the code adds them, so copy saying one includes the
@@ -134,7 +134,7 @@ test("each Current fee dialog names the remedy that applies, and where it is", a
   /*-
    *  Fees Earned is the unclaimed coins at this poll's prices, so a bad
    *  price is fixed by the price override; Re-scan Prices re-values only
-   *  stored figures (src/server-rescan-prices.js) and leaves it alone.
+   *  stored figures (src/lib/server-rescan-prices.js) and leaves it alone.
    *  Fees Compounded is a count of coins Re-scan Prices takes again.
    */
   const help = await paramHelp();
@@ -151,7 +151,7 @@ test("each Current fee dialog names the remedy that applies, and where it is", a
 
 test("curCompounded scopes itself to this NFT, not the whole chain", async () => {
   /*- snap.currentCompoundedUsd sums compoundHistory rows matching the
-   *  CURRENT tokenId (src/bot-pnl-current-nft.js), while the Lifetime
+   *  CURRENT tokenId (src/lib/bot-pnl-current-nft.js), while the Lifetime
    *  figure spans every NFT in the rebalance chain.  Conflating them
    *  would make the two panels look like they disagree. */
   const help = await paramHelp();
@@ -183,13 +183,13 @@ test("the shipped Price Range Extension default is one the server accepts", asyn
    *  user then clicks Save. A shipped default the server would refuse
    *  makes that button look broken.
    *
-   *  Checked against `src/config-bounds.js`, which is where the range
+   *  Checked against `src/lib/config-bounds.js`, which is where the range
    *  lives — not against a `min`/`max` on the input, which is where it
    *  used to live and no longer does: a bound stamped on an element
    *  binds only this one frontend, and it had already drifted from the
    *  server's answer in three places before it was removed. */
   const shipped = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
-  const { checkConfigValues } = require("../src/config-bounds");
+  const { checkConfigValues } = require("../src/lib/config-bounds");
   const v = shipped.rebalanceRangeWidthPct;
   assert.equal(typeof v, "number");
   const refused = checkConfigValues({ rebalanceRangeWidthPct: v });
@@ -219,7 +219,10 @@ test("the hand-rolled throttle modal is gone, markup and wiring alike", () => {
   assert.equal(html.includes('id="throttleInfoBtn"'), false);
   assert.equal(html.includes('id="throttleInfoOk"'), false);
   for (const f of ["dashboard-events.js", "dashboard-events-manage.js"]) {
-    const js = fs.readFileSync(path.join(ROOT, "public", f), "utf8");
+    const js = fs.readFileSync(
+      path.join(ROOT, "src", "client", "web", f),
+      "utf8",
+    );
     assert.equal(
       js.includes("throttleInfo"),
       false,
@@ -247,7 +250,7 @@ test("every circle-i in index.html opens something on click", async () => {
   /*- Ids dashboard-events.js wires a click to, read from source rather
    *  than hardcoded so rewiring cannot silently invalidate the list. */
   const events = fs.readFileSync(
-    path.join(ROOT, "public", "dashboard-events.js"),
+    path.join(ROOT, "src", "client", "web", "dashboard-events.js"),
     "utf8",
   );
   const wired = new Set(
@@ -290,7 +293,7 @@ test("every badge state the code can paint has a help section", async () => {
    *  asserted a fixed list that had silently drifted: the renderer grew
    *  NEAR LIMIT and N/A while the help kept four sections. */
   const src = fs.readFileSync(
-    path.join(ROOT, "public", "dashboard-throttle.js"),
+    path.join(ROOT, "src", "client", "web", "dashboard-throttle.js"),
     "utf8",
   );
   const fn = src.slice(

@@ -4,6 +4,8 @@ description: "Settled definitions for Fees, IL/G, Profit and Net P&L, agreed wit
 metadata:
   node_type: memory
   type: project
+  originSessionId: b6a0b30e-9cd6-4560-a6cd-597053c26378
+  modified: 2026-10-24T04:54:43.232Z
 ---
 
 Four figures, settled after a long back-and-forth. Do not re-derive
@@ -29,7 +31,7 @@ outperformance. This matches the standard definition — the closed form
 
 - **Fees** — everything the position earned, whether compounded away or
   still unclaimed. Per NFT that is `Σ(Collect) − Σ(drained principal)`;
-  `lifetimeFeeAmounts` in src/compounder.js is the single definition.
+  `lifetimeFeeAmounts` in src/lib/compounder.js is the single definition.
 - **IL/G** — as above. Two variants: lifetime removes
   `totalCompoundedUsd`; current-NFT removes only that NFT's share, since
   its mint value already contained the earlier ones.

@@ -42,10 +42,10 @@ const _origRequire = Module.prototype.require;
  *  with first, and the stubs below would not reach them.
  */
 const _LIFETIME_MODULES = [
-  "../../src/bot-recorder-lifetime",
-  "../../src/bot-recorder-lifetime-read",
-  "../../src/bot-recorder-decimals-heal",
-  "../../src/shared-chain-read",
+  "../../src/lib/bot-recorder-lifetime",
+  "../../src/lib/bot-recorder-lifetime-read",
+  "../../src/lib/bot-recorder-decimals-heal",
+  "../../src/lib/shared-chain-read",
 ];
 
 /** Drop the lifetime modules from the require cache. */

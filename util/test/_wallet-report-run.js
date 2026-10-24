@@ -29,9 +29,9 @@ const {
   receiptOf,
   standInChain,
 } = require("./_bookkeeping-chain");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 const { main } = require("../bookkeeping/coins-in-transactions-on-wallet");
-const config = require("../../src/config");
+const config = require("../../src/lib/config");
 const { usdPriceOn } = require("../bookkeeping/usd-prices");
 
 const CHAIN = config.CHAIN_NAME;

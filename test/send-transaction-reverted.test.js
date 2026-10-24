@@ -21,10 +21,10 @@ const { describe, it, before, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { Wallet, Transaction } = require("ethers");
 
-const sendTx = require("../src/send-transaction");
-const rpcQueue = require("../src/rpc-request-manager");
-const outOfService = require("../src/rpc-out-of-service");
-const logModule = require("../src/log");
+const sendTx = require("../src/lib/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const outOfService = require("../src/lib/rpc-out-of-service");
+const logModule = require("../src/lib/log");
 
 const PRI = "http://primary.test";
 const FALL = "http://fallback.test";

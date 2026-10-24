@@ -20,11 +20,11 @@ const {
   _resetPauseStateForTests,
   _resetDustUnitPriceCache,
   _cache,
-} = require("../src/price-fetcher");
+} = require("../src/lib/price-fetcher");
 const {
   _resetForTest: _resetGeckoRateLimit,
-} = require("../src/gecko-rate-limit");
-const gate = require("../src/price-fetcher-gate");
+} = require("../src/lib/gecko-rate-limit");
+const gate = require("../src/lib/price-fetcher-gate");
 
 const TOKEN = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
 

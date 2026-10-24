@@ -1,9 +1,9 @@
 /**
  * @file scripts/build-disclosure-content.js
- * @description Extracts the disclosure body from public/disclosure.html and
- * generates public/disclosure-content.js (a generated artifact, gitignored).
+ * @description Extracts the disclosure body from src/client/web/disclosure.html and
+ * generates src/client/web/disclosure-content.js (a generated artifact, gitignored).
  *
- * Single source of truth for disclosure text: public/disclosure.html.
+ * Single source of truth for disclosure text: src/client/web/disclosure.html.
  * The standalone HTML serves a GitHub Pages deployment; the generated JS
  * feeds the in-app startup modal and Settings &rarr; Disclosure item.
  *
@@ -18,12 +18,26 @@
 
 "use strict";
 
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const fs = require("fs");
 const path = require("path");
 
-const SRC = path.join(__dirname, "..", "public", "disclosure.html");
-const OUT = path.join(__dirname, "..", "public", "disclosure-content.js");
+const SRC = path.join(
+  __dirname,
+  "..",
+  "src",
+  "client",
+  "web",
+  "disclosure.html",
+);
+const OUT = path.join(
+  __dirname,
+  "..",
+  "src",
+  "client",
+  "web",
+  "disclosure-content.js",
+);
 
 const START = "<!-- DISCLOSURE:CONTENT:START -->";
 const END = "<!-- DISCLOSURE:CONTENT:END -->";
@@ -58,10 +72,10 @@ function renderModule(version, content) {
   return `/**
  * @file disclosure-content.js
  * @description GENERATED FILE &mdash; do not edit by hand.
- * Built by scripts/build-disclosure-content.js from public/disclosure.html.
+ * Built by scripts/build-disclosure-content.js from src/client/web/disclosure.html.
  */
 
-/** Disclosure version &mdash; parsed from public/disclosure.html. */
+/** Disclosure version &mdash; parsed from src/client/web/disclosure.html. */
 export const DISCLOSURE_VERSION = ${JSON.stringify(version)};
 
 /** Full disclosure HTML, rendered into the modal body. */

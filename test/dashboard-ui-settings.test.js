@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-ui-settings.test.js
  * @description The dashboard settings the server sends, as the page holds
- *   them (public/dashboard-ui-settings.js), and the page's code that can
+ *   them (src/client/web/dashboard-ui-settings.js), and the page's code that can
  *   run before they arrive.
  *
  *   Startup asks `GET /api/ui-defaults` right after the blockchain, and
@@ -22,7 +22,7 @@ const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const { loadShippedDefaults } = require("../src/load-merged-defaults");
+const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
 const { indexHtmlDocument } = require("./helpers/index-html");
 
 const SHIPPED = loadShippedDefaults(
@@ -51,10 +51,10 @@ let helpers;
 let ranOnceLoaded = false;
 
 before(async () => {
-  ui = await import("../public/dashboard-ui-settings.js");
-  sounds = await import("../public/dashboard-sounds.js");
-  privacy = await import("../public/dashboard-privacy-subform.js");
-  helpers = await import("../public/dashboard-helpers.js");
+  ui = await import("../src/client/web/dashboard-ui-settings.js");
+  sounds = await import("../src/client/web/dashboard-sounds.js");
+  privacy = await import("../src/client/web/dashboard-privacy-subform.js");
+  helpers = await import("../src/client/web/dashboard-helpers.js");
   localStorage.clear();
   /*-
    *  The Activity Log's list and entry template, from the real page, so
@@ -211,7 +211,7 @@ describe("startup", () => {
      *  the heap log among it.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "public", "dashboard-init.js"),
+      path.join(__dirname, "..", "src", "client", "web", "dashboard-init.js"),
       "utf8",
     );
     const chain = src.indexOf("await loadActiveChain(");

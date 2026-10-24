@@ -171,7 +171,7 @@ even involved.
 `HOST` defaults to `127.0.0.1` so the kernel itself refuses connections
 from outside the loopback interface. Overriding to `0.0.0.0` is
 documented as a conscious LAN-exposure choice rather than the default.
-The headless `bot.js` opens no inbound port at all. The Scalar API-docs
+The headless `src/bot.js` opens no inbound port at all. The Scalar API-docs
 server in `scripts/api-doc.js` is likewise locked to `127.0.0.1`. Because
 no application traffic crosses the public Internet in the default
 deployment, eavesdropping, MITM (man-in-the-middle), and on-path
@@ -212,7 +212,7 @@ to a localhost-only listener buys nothing and complicates setup.
 ### Rate Limiting
 
 The GeckoTerminal API caps free-tier callers at 30 calls/min.
-[`src/gecko-rate-limit.js`](../src/gecko-rate-limit.js) enforces a
+[`src/lib/gecko-rate-limit.js`](../src/lib/gecko-rate-limit.js) enforces a
 shared sliding-window limiter across every caller (price fetches, HODL
 baseline, epoch reconstruction, pool-orientation bootstraps) so a single
 misbehaving code path cannot burn the budget and trigger a 429 cascade.
@@ -230,7 +230,7 @@ relationship with the server.
 
 ### CORS Origin Guard
 
-[`src/server-cors.js`](../src/server-cors.js) sets
+[`src/lib/server-cors.js`](../src/lib/server-cors.js) sets
 `Access-Control-Allow-Origin: http://localhost:<PORT>` on every
 response and rejects with a 403 any mutating (`POST`, `DELETE`) request
 whose `Origin` header names another host or port. The allowed origin
@@ -243,7 +243,7 @@ accept-localhost and reject-foreign-origin paths.
 
 ### CSRF Tokens
 
-[`src/server-csrf.js`](../src/server-csrf.js) uses the `csrf` package
+[`src/lib/server-csrf.js`](../src/lib/server-csrf.js) uses the `csrf` package
 (pillarjs) to issue cryptographically random tokens bound to a
 server-generated secret. Every mutating request must carry a valid,
 non-expired token in an `x-csrf-token` header. Tokens are pruned from
@@ -259,7 +259,7 @@ defines two values:
 | `refreshIntervalMs` | `300000` (5 min) | Delivered to the dashboard in every `GET /api/csrf-token` response. Must be strictly less than `tokenTtlMs`, with a wide margin for a throttled hidden tab, a slow fetch and clock skew. |
 
 **Dashboard refresh mechanism.** The dashboard fetches a token at
-startup (`public/dashboard-init.js`), then again every
+startup (`src/client/web/dashboard-init.js`), then again every
 `refreshIntervalMs`, and whenever its tab becomes visible or its window
 gains focus. Until the first token arrives it uses the `refreshIntervalMs`
 built into the page from the shipped `csrf.json`. The timer is
@@ -275,10 +275,10 @@ To change either value, put it in an override copy at
 dashboard takes the new `refreshIntervalMs` with its next token.
 
 **Silent retry on a refused token.** `fetchWithCsrf` in
-`public/dashboard-helpers.js` answers a `403` that refuses its token by
+`src/client/web/dashboard-helpers.js` answers a `403` that refuses its token by
 fetching a fresh token and sending the request once more, at once. It
 does so for every refusal the server gives, listed in
-`src/csrf-refusals.js`, which `verifyToken` and the dashboard both read:
+`src/lib/csrf-refusals.js`, which `verifyToken` and the dashboard both read:
 
 | Server reason | Meaning |
 | --- | --- |
@@ -313,7 +313,7 @@ method overriding is ever introduced.
 
 ### HTTP Method Allowlist
 
-`server.js` dispatches only `GET`, `POST`, `DELETE`, and `OPTIONS`.
+`src/server.js` dispatches only `GET`, `POST`, `DELETE`, and `OPTIONS`.
 Any other verb (`PUT`, `PATCH`, `TRACE`, etc.) returns a `405 Method
 Not Allowed`. The CORS and CSRF checks are written against the four
 dispatched verbs, so a verb that reaches a handler without passing
@@ -321,9 +321,9 @@ through them would bypass both.
 
 ### Path Traversal in Static Serving
 
-`serveStatic()` in `server.js` resolves every request path against
+`serveStatic()` in `src/server.js` resolves every request path against
 `path.resolve(__dirname, 'public', relative)` and returns `403 Forbidden`
-when the result does not start with the `public/` directory, blocking
+when the result does not start with the `src/client/web/` directory, blocking
 the classic `../../etc/passwd` escape. All three loopback origins
 (`localhost`, `127.0.0.1`, `[::1]`) go through the same guard.
 
@@ -338,7 +338,7 @@ provides their wallet password through one of three methods
 1. **Dashboard unlock dialog** (default) — open LP Ranger in a
    browser, type the password, click "Unlock."
 2. **`--headless` terminal prompt** — run
-   `node server.js --headless` and type the password at the
+   `node src/server.js --headless` and type the password at the
    terminal. Same security as the dashboard (password in memory
    only), no browser needed.
 3. **`WALLET_PASSWORD` in `.env`** — fully unattended, for systemd /
@@ -356,10 +356,10 @@ The password is held only in server memory and discarded when the
 process exits.
 
 **How it works:** The encryption is handled by
-[`src/wallet-manager.js`](../src/wallet-manager.js) (wallet) and
-[`src/api-key-store.js`](../src/api-key-store.js) (third-party API
+[`src/lib/wallet-manager.js`](../src/lib/wallet-manager.js) (wallet) and
+[`src/lib/api-key-store.js`](../src/lib/api-key-store.js) (third-party API
 keys), both backed by the cryptographic primitives in
-[`src/key-store.js`](../src/key-store.js). All use the same scheme:
+[`src/lib/key-store.js`](../src/lib/key-store.js). All use the same scheme:
 
 1. **Your password is not stored inside the encrypted files.** The
    encrypted `wallet.json` and `api-keys.json` files contain
@@ -391,7 +391,7 @@ keys), both backed by the cryptographic primitives in
 Telegram, etc.) are encrypted with the **same wallet password** —
 there is no separate "API-keys password" to manage or lose. After
 the unlock, the server keeps the password in `_sessionPassword` in
-[`src/server-routes.js`](../src/server-routes.js), so saving an API key
+[`src/lib/server-routes.js`](../src/lib/server-routes.js), so saving an API key
 or the Telegram settings later in the same session needs no password.
 It is discarded when the process exits. Revealing the wallet's key
 always asks for the password again.
@@ -410,7 +410,7 @@ workflows, depending on how you run LP Ranger:
 Both workflows produce the same file and use the same password.
 There is no separate "CLI password" or "dashboard password."
 
-[`src/bot-cycle.js`](../src/bot-cycle.js)'s `resolvePrivateKey()`
+[`src/lib/bot-cycle.js`](../src/lib/bot-cycle.js)'s `resolvePrivateKey()`
 picks the signing-key source in fixed priority:
 `PRIVATE_KEY` (plaintext hex in `.env` — *not recommended*) →
 encrypted wallet unlocked by `WALLET_PASSWORD` env var, `--headless`
@@ -472,7 +472,7 @@ format stability.
 
 Once the wallet is unlocked, its plaintext key lives in the shared
 signer (an ethers `Wallet`, built in
-[`src/position-manager.js`](../src/position-manager.js)) for as long as
+[`src/lib/position-manager.js`](../src/lib/position-manager.js)) for as long as
 the server runs, and the wallet password in `_sessionPassword` for the
 session. Neither is ever written to disk unencrypted, returned by
 `GET /api/status`, or included in any log line. The key leaves the
@@ -496,7 +496,7 @@ and runs under `npm run audit:security`.
 ### Secret Scanning
 
 - **`secretlint`** (`npm run audit:secrets`) scans `src/**/*.js`,
-  `server.js`, `bot.js`, `.env*`, and `*.json` with the
+  `.env*`, and `*.json` with the
   `@secretlint/secretlint-rule-preset-recommend` preset, which covers
   AWS, GCP, GitHub, Slack, and generic private-key patterns.
 - **`eslint-plugin-no-secrets`** (wired into
@@ -581,7 +581,7 @@ rebalance, or a stop command to the wrong position — or to no position
 at all.
 
 `parseCompositeKey()` in
-[`src/composite-key.js`](../src/composite-key.js) validates the
+[`src/lib/composite-key.js`](../src/lib/composite-key.js) validates the
 format. Right to left, its dash-separated parts are the token ID, a
 `0x`-prefixed contract and wallet, and the chain's name, which must be
 present, without a `0x` part, and may hold a dash. If the key is
@@ -610,15 +610,15 @@ unexpected keys (for example, overwriting `status` to mark a
 position as stopped).
 
 LP Ranger prevents this with a strict `allowlist`. The route handler
-in `src/server-config-route.js` walks two hardcoded arrays —
+in `src/lib/server-config-route.js` walks two hardcoded arrays —
 `GLOBAL_KEYS` (RPC URLs, gas fee limit, etc.) and
 `SETTING_POSITION_KEYS` (slippage, threshold, timeout, auto-compound
-settings, etc.) defined in `src/bot-config-keys.js` — and copies only
+settings, etc.) defined in `src/lib/bot-config-keys.js` — and copies only
 those recognized names from the request body. Every other field is
 silently dropped, the bot's own records among them: the HODL baseline,
 residuals and compound history are written by the bot alone, to
 `app-data/position-records.json`. Each setting is then held to its
-range by `src/config-bounds.js` before anything is saved. A test fails
+range by `src/lib/config-bounds.js` before anything is saved. A test fails
 any key the route accepts without a check.
 The outer layers (the localhost binding, the origin check and the
 CSRF token) still stand in front of all of it. Because
@@ -694,7 +694,7 @@ server-owned config-scoped filenames.
 The rule cannot distinguish `path.join(__dirname, "app-config",
 "chains.json")` from `path.join(cwd, userInput)` — it flags both
 identically. With the rule enabled, the codebase produces **~90
-warnings** across `src/`, `scripts/`, and `server.js`. Suppressing
+warnings** across `src/` and `scripts/`. Suppressing
 each one with a per-line `eslint-disable-next-line` directive would
 add 90 noise lines without improving security, because the
 underlying condition — user-controlled paths reaching `fs` — does
@@ -720,10 +720,10 @@ The dashboard's rendered HTML is built from trusted sources only: the
 Uniswap v3 SDK's numeric output, server JSON, on-chain event data, and
 user-entered amounts that are either numeric or already-validated
 addresses. There is no external script tag in
-`public/index.html` — fonts are self-hosted via `@fontsource`, and the
-only bundled JavaScript is `public/dist/bundle.js`, with the User
-Manual's `public/dist/manual-figures.js`, produced by esbuild from the
-audited `public/dashboard-*.js` sources. Copy-to-clipboard
+`src/client/web/index.html` — fonts are self-hosted via `@fontsource`, and the
+only bundled JavaScript is `src/client/web/dist/bundle.js`, with the User
+Manual's `src/client/web/dist/manual-figures.js`, produced by esbuild from the
+audited `src/client/web/dashboard-*.js` sources. Copy-to-clipboard
 operations use `textContent`, never `innerHTML`, so pasted wallet
 addresses cannot be reflected as executable markup. The custom rule
 [`9mm/no-interpolated-innerhtml`](../eslint-rules/no-interpolated-innerhtml.js)
@@ -743,7 +743,7 @@ so it's important that an attacker can't trick it into reading or
 writing files outside its own directory (for example, reading
 `/etc/passwd` or overwriting a system file).
 
-Every `fs.readFileSync` / `fs.writeFileSync` call in `src/` resolves
+Every `fs.readFileSync` / `fs.writeFileSync` call in `src/lib/` resolves
 its path via `path.join(process.cwd(), CONSTANT)` — no user-controlled
 path component ever reaches the filesystem layer. Atomic writes
 (`.tmp` + `rename`) prevent partial-file corruption from an interrupted
@@ -764,7 +764,7 @@ itself.
 ### Nonce Serialization
 
 A single async-mutex rebalance lock in
-[`src/rebalance-lock.js`](../src/rebalance-lock.js) serializes every
+[`src/lib/rebalance-lock.js`](../src/lib/rebalance-lock.js) serializes every
 transaction across every managed position. Only one position signs at a
 time (same wallet = same nonce). The lock has no timeout because
 blockchains can hold a TX pending for days — a timeout would free the
@@ -774,7 +774,7 @@ recovery pipeline to completion before releasing.
 
 ### TX Recovery Pipeline
 
-`_waitOrSpeedUp()` in `src/tx-speedup.js` wraps the `tx.wait()` of every
+`_waitOrSpeedUp()` in `src/lib/tx-speedup.js` wraps the `tx.wait()` of every
 send that goes through `sendTx.sendTransaction` — approve, the
 removeLiquidity multicall, the V3-router swap, mint, and the compound's
 collect and increaseLiquidity. It recovers a stuck transaction in four
@@ -857,7 +857,7 @@ A swap's minimum output is set from a quote, not the spot price: on the
 V3 router, a `staticCall` quote less the slippage (`amountOutMinimum`);
 on the aggregator, the guaranteed price it quotes for the slippage sent
 with the request. If the quoted price impact exceeds the slippage setting
-(`_checkSwapImpact()` in `src/rebalancer-swap-impact.js`), the swap is
+(`_checkSwapImpact()` in `src/lib/rebalancer-swap-impact.js`), the swap is
 aborted, and the bot makes no further automatic rebalance of that
 position until the operator changes a Slippage setting or clicks
 Rebalance Now. An aggregator quote that names no price impact is
@@ -868,7 +868,7 @@ aggregator routes from silently draining the position on a single TX.
 
 Every swap call site (initial rebalance swap, post-swap corrective loop,
 and the ratio-correcting compound swap) routes through a single
-helper, `shouldSkipSwap()` in [`src/swap-gates.js`](../src/swap-gates.js).
+helper, `shouldSkipSwap()` in [`src/lib/swap-gates.js`](../src/lib/swap-gates.js).
 Two gates run in a fixed order:
 
 1. **Dust gate (first).** Skip when the swap value (in USD) is below the
@@ -988,7 +988,7 @@ against, not whatever the caret range might newly resolve to at
 release time. The workflow then regenerates
 `package-lock.json` against the pinned `package.json` with
 `--ignore-scripts`, writes an `.npmrc` with `save-exact=true`, and
-ships the prebuilt bundles in `public/dist/` so the end user's machine
+ships the prebuilt bundles in `src/client/web/dist/` so the end user's machine
 never runs esbuild on potentially-compromised source. The tarball
 users download from GitHub Releases is therefore byte-identical
 across installs on the same tag.
@@ -1054,7 +1054,7 @@ non-strict footguns.
 
 ### Error Guard
 
-[`src/server-error-guard.js`](../src/server-error-guard.js) installs
+[`src/lib/server-error-guard.js`](../src/lib/server-error-guard.js) installs
 `uncaughtException` and `unhandledRejection` handlers that downgrade
 transient RPC errors (`TIMEOUT`, `NETWORK_ERROR`, `SERVER_ERROR`) to a
 non-fatal warning but still crash the process on any other uncaught
@@ -1065,11 +1065,11 @@ error, so real bugs are never silently swallowed.
 `POST /api/stop-when-all-clear` (CSRF-protected like every other
 mutating route) marks the app stopping for good, so no position starts
 and no rebalance, compound or Reload begins after it
-(`src/app-phase.js`). It then calls `positionMgr.stopAll()`, waits for
+(`src/lib/app-phase.js`). It then calls `positionMgr.stopAll()`, waits for
 every scan still running, and exits cleanly so nonces are not left
 hanging. Each position's stop waits for a rebalance or compound under
 way, a position still starting included, so none is cut off
-(`src/stop-when-all-clear.js`). A repeat of the request changes
+(`src/lib/stop-when-all-clear.js`). A repeat of the request changes
 nothing. The recommended way is `npm run gentle-stop`, which sends it
 and prints what the server is still finishing.
 `npm stop` sends SIGTERM to the PID in `tmp/lp-ranger.pid`, running
@@ -1093,8 +1093,8 @@ cannot silence them in the server code. The main pass ignores unused
 directives, but the security pass reports every directive that
 suppresses nothing there, runs none of the quality rules, and fails on
 a single warning. So a directive silencing `max-lines` or `complexity`
-in `src/`, `scripts/`, `util/`, `server.js` or `bot.js` fails
-`npm run audit:security`. The dashboard's `public/dashboard-*.js` files
+in `src/`, `scripts/` or `util/` fails
+`npm run audit:security`. The dashboard's `src/client/web/dashboard-*.js` files
 are outside the security pass, so there the rule is held by review.
 
 The only directives allowed are per-line `eslint-disable-next-line`
@@ -1103,10 +1103,10 @@ documenting why the deviation is intentional. Current exceptions:
 
 | File | Line | Rule | Reason |
 | ---- | ---- | ---- | ------ |
-| `src/hodl-baseline.js` | 41 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/range-math.js` | 305 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/position-detector.js` | 185 | `9mm/no-number-from-bigint` | Zero-check only |
-| `scripts/cache-bust.js` | 24 | `security/detect-unsafe-regex` | Input is the app's own `public/*.html` pages, not user-supplied |
+| `src/lib/hodl-baseline.js` | 41 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/lib/range-math.js` | 305 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/lib/position-detector.js` | 185 | `9mm/no-number-from-bigint` | Zero-check only |
+| `scripts/cache-bust.js` | 24 | `security/detect-unsafe-regex` | Input is the app's own `src/client/web/*.html` pages, not user-supplied |
 | `scripts/cache-bust.js` | 50 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
 | `scripts/check-report-parse.js` | 283 | `security/detect-unsafe-regex` | Input is deterministic TAP v14 from `node --test` |
 | `scripts/import-wallet.js` | 97 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
@@ -1117,9 +1117,9 @@ that needs it. It must carry a `-- Safe: <reason>` note explaining
 why.
 
 A few paths do bypass ESLint. Generated and third-party output is
-skipped: `node_modules/`, `coverage/`, `public/dist/`, and
-`*.min.js`. The two hand-authored HTML files — `public/index.html`
-(the dashboard) and `public/help-and-user-manual.html` (the user manual) — are also
+skipped: `node_modules/`, `coverage/`, `src/client/web/dist/`, and
+`*.min.js`. The two hand-authored HTML files — `src/client/web/index.html`
+(the dashboard) and `src/client/web/help-and-user-manual.html` (the user manual) — are also
 outside ESLint's scope, but that's because they're markup, not
 JavaScript. They aren't left unchecked. Both are linted by
 `html-validate` as part of `npm run lint`.
@@ -1169,7 +1169,7 @@ source code:
 
 - **ESLint (main)** — `scripts/` is in the main config's file list and
   its Node-source section, so every script meets the same rules as
-  `src/` and `server.js`.
+  `src/`.
 - **Security lint** — `npm run audit:security` runs the security pass
   over `SECURITY_TARGETS` from `scripts/lint-targets.js`, which includes
   `scripts/`. The scripts' per-line exceptions are in the table above.

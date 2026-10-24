@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-rebalance-log.test.js
  * @description How a Rebalance entry in the Activity Log reads
- *   (public/dashboard-rebalance-log.js), the one wording both the live
+ *   (src/client/web/dashboard-rebalance-log.js), the one wording both the live
  *   check and the history pass draw it with: the NFT it drained and the
  *   one it minted, what started it when its record says, and its time
  *   from the chain.
@@ -16,7 +16,7 @@ let formatRebalanceEntry;
 
 before(async () => {
   ({ formatRebalanceEntry } =
-    await import("../public/dashboard-rebalance-log.js"));
+    await import("../src/client/web/dashboard-rebalance-log.js"));
 });
 
 const EV = Object.freeze({

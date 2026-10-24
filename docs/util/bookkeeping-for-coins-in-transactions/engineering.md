@@ -157,16 +157,16 @@ Moralis key typed into the report is saved in the app's own key store.
 
 | File | What for |
 | --- | --- |
-| `src/config.js` | The chain, its contracts and coins, and the endpoint list |
-| `src/load-merged-defaults.js` | `chains.json` with the operator's copy over it, which `--blockchain` is checked against |
-| `src/bot-config-defaults.js` | The pace of requests and the span of a log search |
-| `src/historical-token-price.js` | A price: Moralis's at a block, else GeckoTerminal's close for the UTC day |
-| `src/price-cache.js`, `src/gecko-pool-cache.js`, `src/shared-json-file.js` | The price library's two caches, and how a cache file is written |
-| `src/scan-cache-dir.js` | Where those caches go under `node --test` |
-| `src/api-key-store.js`, `src/api-key-holder.js` | The saved Moralis key, and the plain key in memory |
-| `src/ask-password.js` | The prompt for the key's password, which shows nothing of what is typed |
-| `src/server-moralis.js` | `pingMoralis`, which asks Moralis about the key |
-| `src/nft-move-rules.js` | The rules for which NFT event began a move, a rebalance's drain (`drainBefore`) and a compound's collect (`collectBeforeDeposit`), which the bot also applies for the Activity Log's figures; and `sameHex`, how two hashes or addresses are compared |
+| `src/lib/config.js` | The chain, its contracts and coins, and the endpoint list |
+| `src/lib/load-merged-defaults.js` | `chains.json` with the operator's copy over it, which `--blockchain` is checked against |
+| `src/lib/bot-config-defaults.js` | The pace of requests and the span of a log search |
+| `src/lib/historical-token-price.js` | A price: Moralis's at a block, else GeckoTerminal's close for the UTC day |
+| `src/lib/price-cache.js`, `src/lib/gecko-pool-cache.js`, `src/lib/shared-json-file.js` | The price library's two caches, and how a cache file is written |
+| `src/lib/scan-cache-dir.js` | Where those caches go under `node --test` |
+| `src/lib/api-key-store.js`, `src/lib/api-key-holder.js` | The saved Moralis key, and the plain key in memory |
+| `src/lib/ask-password.js` | The prompt for the key's password, which shows nothing of what is typed |
+| `src/lib/server-moralis.js` | `pingMoralis`, which asks Moralis about the key |
+| `src/lib/nft-move-rules.js` | The rules for which NFT event began a move, a rebalance's drain (`drainBefore`) and a compound's collect (`collectBeforeDeposit`), which the bot also applies for the Activity Log's figures; and `sameHex`, how two hashes or addresses are compared |
 | `util/diagnostic/check-rpc-health.js` | `parseEndpoint`, which reads `--rpc-endpoint` |
 
 **What they write.** The report writes its csv to
@@ -730,7 +730,7 @@ means for a report, back-to-back ranges included, is in
 ### Prices
 
 `usd-prices.js` prices each coin through LP Ranger's own library,
-`fetchHistoricalTokenPriceUsd` (`src/historical-token-price.js`), the
+`fetchHistoricalTokenPriceUsd` (`src/lib/historical-token-price.js`), the
 lookup the app uses to price gas on a past day. It passes the
 transaction's block, so the library asks Moralis first, for the price at
 that block, and GeckoTerminal for the UTC day's close where Moralis has
@@ -745,10 +745,10 @@ reads as it loads: `PRICE_CACHE_PATH` and `GECKO_POOL_CACHE_PATH`.
 `usd-prices.js` sets both to `app-data/util/bookkeeping/scan-cache/`
 first (`cachePath`), so the tools never write LP Ranger's own caches in
 `app-data/scan-cache/`. Under `node --test` both go to the test
-process's own folder (`src/scan-cache-dir.js`). A price is written as it
+process's own folder (`src/lib/scan-cache-dir.js`). A price is written as it
 arrives. Each write reads the file as it is at that moment, lays the
 run's own prices over it and replaces it whole
-(`src/shared-json-file.js`).
+(`src/lib/shared-json-file.js`).
 
 ### One Run at a Time
 
@@ -768,19 +768,19 @@ user sees, and how to release a lock left behind, are in
 ### The Moralis Key
 
 `moralis-key.js` uses LP Ranger's own Moralis key, through the app's key
-store (`src/api-key-store.js`): one key, in
+store (`src/lib/api-key-store.js`): one key, in
 `app-config/user-configurable/api-keys.json`, encrypted with the
 wallet's password by AES-256-GCM, with the encryption key made from the
 password by PBKDF2-SHA512 at 600,000 rounds. Git ignores the file. The
 report never opens the wallet file; it asks for the wallet's password
 only because the store encrypts every api key with it. The prompt is
-LP Ranger's own (`src/ask-password.js`), which shows nothing of what is
+LP Ranger's own (`src/lib/ask-password.js`), which shows nothing of what is
 typed. The password is never an argument, which shell history and `ps`
 would keep, and it is kept nowhere. The plain key is only in memory, in
-`src/api-key-holder.js`, where the price library reads it.
+`src/lib/api-key-holder.js`, where the price library reads it.
 
 Every run asks Moralis about the key once, before it prices anything
-(`pingMoralis`, `src/server-moralis.js`). The library answers a refused
+(`pingMoralis`, `src/lib/server-moralis.js`). The library answers a refused
 key as it answers a coin with no price, by asking CoinGecko. Without
 the check, a key Moralis stopped taking would leave CoinGecko to answer
 alone, and the run would stop only at the first day older than 180
@@ -790,7 +790,7 @@ A new key is saved only once Moralis takes it. The store reads its
 file, adds the key and writes the file back, so a key the dashboard
 saved in between could be lost; that is why the run first warns not to
 save one there. The password typed for a new key is not checked against
-the wallet's: LP Ranger's wallet module (`src/wallet-manager.js`) reads
+the wallet's: LP Ranger's wallet module (`src/lib/wallet-manager.js`) reads
 the wallet file as it loads, which would have the report, and each of
 its tests, read that file. Each prompt and answer, and what to do once
 the wallet is imported again under a new password, are in
@@ -847,7 +847,7 @@ block by nonce. What each column holds is in
 ## Configuration
 
 Every setting is LP Ranger's own, read through its resolver
-(`src/config.js`), so `.env` and the operator's settings files apply to
+(`src/lib/config.js`), so `.env` and the operator's settings files apply to
 the tools as to the app. The tools read only what reaching the chain and
 the price services needs, never the app's preferences: the report
 ignores the dashboard's Moralis on/off switch, for one.
@@ -875,7 +875,7 @@ saved in the dashboard first. Each setting's rules and range are in
 Each module in `util/bookkeeping/`, in full.
 
 - **`blockchain.js`** — Chooses the blockchain before the configuration
-  loads. `src/config.js` serves one chain, which it reads from
+  loads. `src/lib/config.js` serves one chain, which it reads from
   `CHAIN_NAME` as it loads, so every tool module that loads it requires
   this one first. It reads `--blockchain <name>` from the command line
   with a parser of its own that passes over every other argument,
@@ -910,7 +910,7 @@ Each module in `util/bookkeeping/`, in full.
   way a run can be stopped. Its tests are in
   `util/test/bookkeeping-price-cache-lock.test.js`.
 - **`moralis-key.js`** — The key of [The Moralis Key](#the-moralis-key).
-  The key goes into the in-memory `src/api-key-holder.js`, where the
+  The key goes into the in-memory `src/lib/api-key-holder.js`, where the
   price library reads it. A wrong password, or a key Moralis refuses or
   cannot check, stops the run with `keyRefused` set and a message saying
   what to do. Its tests are in

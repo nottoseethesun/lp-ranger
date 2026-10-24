@@ -5,7 +5,7 @@
  * @description The split of each position's slot between bot-config.json,
  *   which keeps the operator's settings and the position's status, and
  *   app-data/position-records.json, which keeps the bot's records
- *   (src/position-records.js). In memory a slot holds both; `saveConfig`
+ *   (src/lib/position-records.js). In memory a slot holds both; `saveConfig`
  *   writes each key to its own file and `loadConfig` merges them back.
  */
 
@@ -13,10 +13,10 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
-const { loadConfig, saveConfig } = require("../src/bot-config-v2");
-const { RECORD_POSITION_KEYS } = require("../src/bot-config-keys");
-const { positionRecordsPath } = require("../src/position-records");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+const { loadConfig, saveConfig } = require("../src/lib/bot-config-v2");
+const { RECORD_POSITION_KEYS } = require("../src/lib/bot-config-keys");
+const { positionRecordsPath } = require("../src/lib/position-records");
 
 const KEY =
   "pulsechain-0x1111111111111111111111111111111111111111-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-101";

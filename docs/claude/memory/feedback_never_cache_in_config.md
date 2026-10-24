@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-19T18:53:39.006Z
+  modified: 2026-10-24T04:54:55.269Z
 ---
 
 # NEVER PUT CACHE DATA IN A CONFIGURATION FILE
@@ -20,8 +20,8 @@ Where each kind of data goes instead:
 
 | What | Where |
 | --- | --- |
-| Anything read from the chain or a price service, kept to save reading it again | `app-data/scan-cache/`, its path from `scanCachePath` (src/scan-cache-dir.js) |
-| What the bot worked out or recorded about a position | `app-data/position-records.json`, a key in `RECORD_POSITION_KEYS` (src/position-records.js) |
+| Anything read from the chain or a price service, kept to save reading it again | `app-data/scan-cache/`, its path from `scanCachePath` (src/lib/scan-cache-dir.js) |
+| What the bot worked out or recorded about a position | `app-data/position-records.json`, a key in `RECORD_POSITION_KEYS` (src/lib/position-records.js) |
 | The operator's settings and which positions are managed | `app-config/user-configurable/bot-config.json` |
 | Nothing worth keeping | `tmp/` |
 
@@ -42,7 +42,7 @@ an operator reads as safe to delete.
   `RECORD_POSITION_KEYS`.
 - Convenience is never the reason. "The file is already keyed per
   position" is exactly how the records got into bot-config.json.
-- test/data-homes.test.js fails the build when a module under `src/`
+- test/data-homes.test.js fails the build when a module under `src/lib/`
   writes a cache outside the scan-cache folder, or a key is both a
   setting and a record.
 - A release that moves data adds a step to util/migration/.

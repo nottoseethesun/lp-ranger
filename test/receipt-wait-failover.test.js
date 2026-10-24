@@ -31,11 +31,11 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const sendTx = require("../src/send-transaction");
-const config = require("../src/config");
-const rpcQueue = require("../src/rpc-request-manager");
-const outOfService = require("../src/rpc-out-of-service");
-const logModule = require("../src/log");
+const sendTx = require("../src/lib/send-transaction");
+const config = require("../src/lib/config");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const outOfService = require("../src/lib/rpc-out-of-service");
+const logModule = require("../src/lib/log");
 
 const PRI = "http://primary.test";
 const FALL = "http://fallback.test";

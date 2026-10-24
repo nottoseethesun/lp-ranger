@@ -6,7 +6,7 @@
 When a rebalance's estimated gas would cost more than
 `rebalanceGasDeferPct` of the position's value (0.5% as shipped), the
 bot waits `gasDeferRetrySec` (one hour as shipped) and looks again
-(`nextCheckDelayMs`, `src/bot-loop-scheduler.js`). Nothing caps the
+(`nextCheckDelayMs`, `src/lib/bot-loop-scheduler.js`). Nothing caps the
 number of looks. A position too small for gas ever to fall under the
 threshold is looked at once an hour, forever.
 

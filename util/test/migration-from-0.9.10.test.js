@@ -21,8 +21,8 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
-const { settingsProblems } = require("../../src/settings-check");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
+const { settingsProblems } = require("../../src/lib/settings-check");
 const { runMigration, report } = require("../migration");
 const { keepCopy } = require("../migration/settings-copies");
 

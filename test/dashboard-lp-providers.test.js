@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-lp-providers.test.js
  * @description Tests for the browser-side LP-provider composite-key
- *   lookup in `public/dashboard-lp-providers.js`.  Uses jsdom (via
+ *   lookup in `src/client/web/dashboard-lp-providers.js`.  Uses jsdom (via
  *   `global-jsdom/register`) so `document`, `fetch`, and other browser
  *   globals are populated with realistic defaults, then imports the
  *   real browser module — no mirror.
@@ -62,7 +62,7 @@ before(async () => {
     }
     throw new Error(`unexpected fetch: ${url}`);
   };
-  mod = await import("../public/dashboard-lp-providers.js");
+  mod = await import("../src/client/web/dashboard-lp-providers.js");
   await mod.loadLpProviders();
 });
 
@@ -215,8 +215,8 @@ describe("a lookup made before the provider list arrives", () => {
   it("finds nothing and warns of nothing, and a real miss is reported after", async (t) => {
     await learnActiveChain("pulsechain");
     const fresh =
-      await import("../public/dashboard-lp-providers.js?before-the-list");
-    const logMod = await import("../public/dashboard-log.js");
+      await import("../src/client/web/dashboard-lp-providers.js?before-the-list");
+    const logMod = await import("../src/client/web/dashboard-log.js");
     const warned = [];
     t.mock.method(logMod.log, "warn", (...args) => warned.push(args));
     const { pm } = _unknownPair("ff0004");

@@ -9,7 +9,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 describe("compounder", () => {
   describe("compound P&L math consistency", () => {
@@ -38,7 +38,7 @@ describe("compounder", () => {
     const path = require("path");
 
     it("saveConfig uses temp file + rename for atomic write", () => {
-      const { saveConfig, loadConfig } = require("../src/bot-config-v2");
+      const { saveConfig, loadConfig } = require("../src/lib/bot-config-v2");
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "compound-test-"));
       const cfg = {
         global: {},
@@ -54,7 +54,7 @@ describe("compounder", () => {
     });
 
     it("no .tmp file remains after successful save", () => {
-      const { saveConfig } = require("../src/bot-config-v2");
+      const { saveConfig } = require("../src/lib/bot-config-v2");
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "compound-test-"));
       saveConfig({ global: {}, positions: {} }, dir);
       const files = fs.readdirSync(dir);
@@ -65,7 +65,9 @@ describe("compounder", () => {
 
   describe("bot state restoration", () => {
     it("createPerPositionBotState copies compound fields from saved config", () => {
-      const { createPerPositionBotState } = require("../src/server-positions");
+      const {
+        createPerPositionBotState,
+      } = require("../src/lib/server-positions");
       const saved = {
         compoundedAmount0: 12.5,
         compoundedAmount1: 3,
@@ -80,7 +82,9 @@ describe("compounder", () => {
     });
 
     it("createPerPositionBotState handles missing compound fields", () => {
-      const { createPerPositionBotState } = require("../src/server-positions");
+      const {
+        createPerPositionBotState,
+      } = require("../src/lib/server-positions");
       const state = createPerPositionBotState({}, {});
       assert.equal(state.compoundedAmount0, undefined);
       assert.equal(state.compoundHistory, undefined);
@@ -89,7 +93,9 @@ describe("compounder", () => {
 
   describe("P&L override with compound", () => {
     it("prices the compounded coins at the poll's prices", () => {
-      const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
+      const {
+        overridePnlWithRealValues,
+      } = require("../src/lib/bot-pnl-updater");
       const snap = {
         closedEpochs: [],
         liveEpoch: { entryValue: 100, fees: 5 },
@@ -132,7 +138,7 @@ describe("compounder", () => {
 
   describe("config SETTINGS_KEYS coverage", () => {
     it("status response includes compound settings", () => {
-      const { POSITION_KEYS } = require("../src/bot-config-keys");
+      const { POSITION_KEYS } = require("../src/lib/bot-config-keys");
       const compoundKeys = [
         "autoCompoundEnabled",
         "autoCompoundThresholdUsd",
@@ -150,8 +156,8 @@ describe("compounder", () => {
   describe("_persistPositionConfig with compound fields", () => {
     const _dir = makeTestTempFolder("comp-persist");
     it("persists compound fields to in-memory config", () => {
-      const { getOrCreatePositionConfig } = require("../src/bot-config-v2");
-      const { updatePositionState } = require("../src/server-positions");
+      const { getOrCreatePositionConfig } = require("../src/lib/bot-config-v2");
+      const { updatePositionState } = require("../src/lib/server-positions");
       const cfg = { global: {}, positions: {} };
       getOrCreatePositionConfig(cfg, "test-key");
       cfg.positions["test-key"].status = "running";
@@ -175,7 +181,7 @@ describe("compounder", () => {
 
   describe("pnl-tracker addGas", () => {
     it("addGas increments live epoch gas", () => {
-      const { createPnlTracker } = require("../src/pnl-tracker");
+      const { createPnlTracker } = require("../src/lib/pnl-tracker");
       const tracker = createPnlTracker({ initialDeposit: 100 });
       tracker.openEpoch({
         entryValue: 100,
@@ -189,13 +195,13 @@ describe("compounder", () => {
       assert.equal(snap.totalGas, 0.08);
     });
     it("addGas does nothing when no live epoch", () => {
-      const { createPnlTracker } = require("../src/pnl-tracker");
+      const { createPnlTracker } = require("../src/lib/pnl-tracker");
       const tracker = createPnlTracker({ initialDeposit: 100 });
       tracker.addGas(1.0); // no epoch open — should not throw
       assert.equal(tracker.epochCount(), 0);
     });
     it("addGas ignores zero and negative", () => {
-      const { createPnlTracker } = require("../src/pnl-tracker");
+      const { createPnlTracker } = require("../src/lib/pnl-tracker");
       const tracker = createPnlTracker({ initialDeposit: 100 });
       tracker.openEpoch({
         entryValue: 100,
@@ -213,7 +219,7 @@ describe("compounder", () => {
 
 describe("_filterRebalances", () => {
   it("excludes IncreaseLiquidity that follows a drain", () => {
-    const { _filterRebalances } = require("../src/compounder");
+    const { _filterRebalances } = require("../src/lib/compounder");
     const candidates = [
       { amount0: 100n, amount1: 0n, blockNumber: 2000 },
       { amount0: 50n, amount1: 10n, blockNumber: 100000 },
@@ -224,13 +230,13 @@ describe("_filterRebalances", () => {
     assert.equal(result[0].blockNumber, 100000, "only real compound kept");
   });
   it("keeps all when no drains exist", () => {
-    const { _filterRebalances } = require("../src/compounder");
+    const { _filterRebalances } = require("../src/lib/compounder");
     const candidates = [{ amount0: 50n, amount1: 10n, blockNumber: 100 }];
     const result = _filterRebalances(candidates, []);
     assert.equal(result.length, 1);
   });
   it("ignores zero-liquidity DecreaseLiquidity", () => {
-    const { _filterRebalances } = require("../src/compounder");
+    const { _filterRebalances } = require("../src/lib/compounder");
     const candidates = [{ amount0: 50n, amount1: 10n, blockNumber: 100 }];
     const drains = [{ liquidity: 0n, blockNumber: 95 }];
     const result = _filterRebalances(candidates, drains);

@@ -11,7 +11,7 @@
  *   figures), shows the gap from what is saved: while it stops short of
  *   the current NFT's mint, the scan reads the chain and recounts the
  *   deposits (`lifetimeScanPlan` and `_scanLifetimePoolData`,
- *   src/bot-recorder-lifetime.js). Without that, Total Lifetime Deposit
+ *   src/lib/bot-recorder-lifetime.js). Without that, Total Lifetime Deposit
  *   stays short of the coins the rebalance swept in until the next one.
  *
  *   Driven through the scan with the shared harness's stand-ins for the
@@ -49,7 +49,7 @@ describe("the Lifetime scan, when the counted deposits stop short of the current
   beforeEach(() => {
     resetState();
     installMocks();
-    lifetime = require("../src/bot-recorder-lifetime");
+    lifetime = require("../src/lib/bot-recorder-lifetime");
   });
 
   afterEach(restoreMocks);

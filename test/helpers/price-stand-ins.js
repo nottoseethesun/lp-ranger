@@ -18,12 +18,12 @@
  *
  *   The modules that read a price take the lookup when they load, so a
  *   test file requires this before any of them: at its top, after any
- *   setting the file moves and before anything else under src/.
+ *   setting the file moves and before anything else under src/lib/.
  */
 
-const config = require("../../src/config");
+const config = require("../../src/lib/config");
 
-const PRICE_MODULE = require.resolve("../../src/price-fetcher");
+const PRICE_MODULE = require.resolve("../../src/lib/price-fetcher");
 const real = require(PRICE_MODULE);
 
 // USD for one of the chain's wrapped native coin, near PulseChain's.

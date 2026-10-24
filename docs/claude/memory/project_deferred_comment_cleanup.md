@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-09-17T21:21:43.890Z
+  modified: 2026-10-24T04:54:43.196Z
 ---
 
 Three comment jobs, deliberately queued behind the two behaviour items:
@@ -13,7 +13,7 @@ the unmanaged view saving an empty rebuild (#2.2), and the Sync badge
 that stays on "Syncing…" with no reason shown (#3). The user set that
 order on 2026-09-17.
 
-**1. `src/position-history.js` — storytelling, and one false claim.**
+**1. `src/lib/position-history.js` — storytelling, and one false claim.**
 The JSDoc on `_supplementFeesFromChain` retells the 2026-09-02 fix: the
 "$149 of a lifetime $1,084" case and the old
 `Collect(last) − DecreaseLiquidity(last)` formula. Rewrite to state the
@@ -23,7 +23,7 @@ docs rule in CLAUDE-BEST-PRACTICES).
 One claim there is **wrong**: a comment says fees are re-derived from
 chain even for NFTs "the rebalance log already supplied a figure for,
 because that figure is the understated one". The log never records a
-fee — nothing in `src/` writes `feesEarnedUsd`. The understated figure
+fee — nothing in `src/lib/` writes `feesEarnedUsd`. The understated figure
 came from the old chain formula. `_applyCloseEntry` also still reads a
 `feesEarnedUsd` field the log never contains.
 

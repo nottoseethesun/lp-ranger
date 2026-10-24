@@ -4,13 +4,13 @@
  * @file test/dashboard-rebalance-scan-wait.test.js
  * @description The Rebalance Now dialog when the server refuses a
  *   rebalance because the position's scan is in progress
- *   (public/dashboard-rebalance-confirm.js): it stays open, showing the
+ *   (src/client/web/dashboard-rebalance-confirm.js): it stays open, showing the
  *   server's words beside a spinner, with Cancel and no confirm button;
  *   once a status answer says the scan has ended, the confirm button
  *   comes back, so the rebalance is confirmed at that moment's price.
  *
  *   Uses jsdom (via `global-jsdom/register`) and the real dialog from
- *   `public/index.html`. A `globalThis.fetch` stub answers the request,
+ *   `src/client/web/index.html`. A `globalThis.fetch` stub answers the request,
  *   the dialog reads its status answers from the test, and the test
  *   runner's mocked `setTimeout` means the dialog looks at the next one
  *   only when a test advances the clock.
@@ -45,8 +45,9 @@ let answer;
 before(async () => {
   await learnActiveChain();
   pollMs = (await learnUiSettings()).dashboardPollIntervalMs;
-  confirm = await import("../public/dashboard-rebalance-confirm.js");
-  const { posStore } = await import("../public/dashboard-positions-store.js");
+  confirm = await import("../src/client/web/dashboard-rebalance-confirm.js");
+  const { posStore } =
+    await import("../src/client/web/dashboard-positions-store.js");
   posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,
@@ -55,7 +56,7 @@ before(async () => {
   });
   posStore.select(0);
   const { _setStatusReaderForTests } =
-    await import("../public/dashboard-scan-wait.js");
+    await import("../src/client/web/dashboard-scan-wait.js");
   _setStatusReaderForTests(() => ({
     _allPositionStates: { [KEY]: { scanInProgress: scanning } },
   }));

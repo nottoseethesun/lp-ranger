@@ -2,7 +2,7 @@
 #
 # Deploy the User Manual to GitHub Pages.
 #
-# Assembles the site from docs/ (images, architecture docs) plus public/
+# Assembles the site from docs/ (images, architecture docs) plus src/client/web/
 # (help-and-user-manual.html, CSS, fonts) so there are no duplicate files in the repo.
 # The help-and-user-manual.html CSS paths are rewritten from absolute (/style.css) to
 # relative (style.css) since GitHub Pages serves under /lp-ranger/.
@@ -13,15 +13,15 @@ on:
   push:
     branches: [main]
     paths:
-      - "public/help-and-user-manual.html"
-      - "public/help.css"
-      - "public/disclosure.html"
-      - "public/screenshot-gallery.html"
-      - "public/gallery.css"
-      - "public/style.css"
-      - "public/9mm-pos-mgr.css"
-      - "public/fonts.css"
-      - "public/fonts/**"
+      - "src/client/web/help-and-user-manual.html"
+      - "src/client/web/help.css"
+      - "src/client/web/disclosure.html"
+      - "src/client/web/screenshot-gallery.html"
+      - "src/client/web/gallery.css"
+      - "src/client/web/style.css"
+      - "src/client/web/9mm-pos-mgr.css"
+      - "src/client/web/fonts.css"
+      - "src/client/web/fonts/**"
       - "docs/**"
       - ".github/workflows/pages.yml"
 
@@ -45,7 +45,7 @@ jobs:
       # Assembly itself lives in scripts/build-pages-site.js so the local
       # preview (npm run show-gallery) and this deploy share ONE
       # implementation and cannot drift. Only the two genuinely-CI steps
-      # stay here: `npm ci` and `copy-fonts` populate public/fonts, which
+      # stay here: `npm ci` and `copy-fonts` populate src/client/web/fonts, which
       # the builder then copies. Running those locally would wipe and
       # reinstall node_modules, which is why the preview calls the builder
       # rather than reusing this step.

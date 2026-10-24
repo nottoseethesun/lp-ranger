@@ -10,14 +10,14 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
-const { loadConfig, saveConfig } = require("../src/bot-config-v2");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { loadConfig, saveConfig } = require("../src/lib/bot-config-v2");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const {
   POSITION_KEYS,
   GLOBAL_KEYS,
   RETIRED_POSITION_KEYS,
   RETIRED_GLOBAL_KEYS,
-} = require("../src/bot-config-keys");
+} = require("../src/lib/bot-config-keys");
 
 /** Create a temp directory for each test, removed when the process exits. */
 function tmpDir() {

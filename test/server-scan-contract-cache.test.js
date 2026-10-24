@@ -24,13 +24,13 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const config = require("../src/config");
-const sendTx = require("../src/send-transaction");
-const { createScanHandlers } = require("../src/server-scan");
+const config = require("../src/lib/config");
+const sendTx = require("../src/lib/send-transaction");
+const { createScanHandlers } = require("../src/lib/server-scan");
 const {
   saveLpPositionCache,
   loadLpPositionCache,
-} = require("../src/lp-position-cache");
+} = require("../src/lib/lp-position-cache");
 
 const OTHER_PM = "0x" + "c".repeat(40);
 const WALLET = "0x" + "d".repeat(39) + "1";
@@ -45,7 +45,7 @@ describe("a wallet scan that names another position manager", () => {
 
   /*-
    *  The position cache lives in the scan-cache folder, which under
-   *  `node --test` is the test process's own (src/scan-cache-dir.js), so
+   *  `node --test` is the test process's own (src/lib/scan-cache-dir.js), so
    *  the install's caches are never touched; the case runs in a scratch
    *  directory too. Config is read from beside the code, so moving the
    *  working directory does not move it.

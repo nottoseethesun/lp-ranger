@@ -65,9 +65,9 @@ wallet.
 The bot can run in two modes:
 
 - **With dashboard** (`npm start` / `npm run build-and-start`): the default.
-  `server.js` starts an HTTP server that serves the web app and simultaneously
+  `src/server.js` starts an HTTP server that serves the web app and simultaneously
   runs bot loops for all managed positions.
-- **Headless** (`npm run bot`): `bot.js` runs the bot without any UI. Useful
+- **Headless** (`npm run bot`): `src/bot.js` runs the bot without any UI. Useful
   for server deployments where no browser access is needed.
 
 ### Frontend: The Web App
@@ -77,7 +77,7 @@ Node.js process that runs the bot. It provides a real-time view of every
 managed position — current value, fee earnings, P&L breakdown, range status,
 rebalance history — and a set of controls for managing the bot's behavior.
 
-The dashboard is built from small ES module source files in `public/`
+The dashboard is built from small ES module source files in `src/client/web/`
 (`dashboard-*.js`), bundled by esbuild into a single `bundle.js`. It uses no
 frontend framework — just vanilla JavaScript, DOM manipulation, and CSS.
 Fonts are self-hosted (no CDN dependencies). Client-side URL routing via
@@ -210,7 +210,7 @@ sequence under the rebalance lock:
    primary path is the active chain's aggregator: on PulseChain, the
    Watergun Aggregator, which routes across PulseChain DEXes for the lowest
    slippage. The V3 SwapRouter is the fallback, and the only path on a
-   chain with no aggregator. Two **swap-gates** (`src/swap-gates.js`) run
+   chain with no aggregator. Two **swap-gates** (`src/lib/swap-gates.js`) run
    before every swap:
    - **Dust gate** (first) — skips a swap worth less than the gold-pegged
      dust threshold. It is cheaper and more reliable to evaluate than the
@@ -222,7 +222,7 @@ sequence under the rebalance lock:
    When either gate trips, the rebalance goes on to mint with the balances
    unswapped; any leftover is mopped up later by the corrective swaps or the
    residual-cleanup rebalance.
-6. **Corrective swaps** (`src/rebalancer-correct.js`) — a swap routed
+6. **Corrective swaps** (`src/lib/rebalancer-correct.js`) — a swap routed
    through the position's own pool moves that pool's price, which can leave
    the coins off the new range's ratio. The pool is read again, and while
    the imbalance is above the dust threshold another swap follows, up to
@@ -231,7 +231,7 @@ sequence under the rebalance lock:
    swapped balances.
 
 A transaction stuck in this pipeline is recovered in four phases
-(`_waitOrSpeedUp`, in `src/tx-speedup.js`): wait for confirmation; resend at
+(`_waitOrSpeedUp`, in `src/lib/tx-speedup.js`): wait for confirmation; resend at
 the same nonce with higher gas (1.5× on PulseChain); wait again; then send a
 zero-value self-transfer at that nonce to cancel it, and wait until something
 mines there. This covers every transaction that goes through
@@ -248,7 +248,7 @@ Compounds are simpler than rebalances — same NFT, same range, just sweep
 unclaimed fees back into liquidity. The flow:
 
 1. **collect** — pull unclaimed fees from the position into the wallet.
-2. **swapForCompound** (`src/compounder-swap.js`) — optional
+2. **swapForCompound** (`src/lib/compounder-swap.js`) — optional
    ratio-correcting swap so the collected fees match the ratio the
    position currently expects. Without this step, the Position Manager
    would only accept the side that fits and leave the rest as residual.
@@ -311,7 +311,7 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
 
 - **Lifetime deposited amounts** (`lifetimeHodlAmounts`) — the tokens
   deposited into the pool from outside across the whole rebalance chain,
-  computed by `src/lifetime-hodl.js` and kept in the pool's epoch cache
+  computed by `src/lib/lifetime-hodl.js` and kept in the pool's epoch cache
   (`app-data/scan-cache/pnl-epochs-cache.json`). The first NFT's mint is the original
   deposit; a later IncreaseLiquidity worth more than the fees collected is
   an external deposit.
@@ -355,7 +355,7 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
   the one new boundary is scanned and the rest come back from cache.
 
   **Counted as they arrive.** Coins the owner sends to the wallet are
-  also counted as they arrive (`src/deposit-count.js`): as the first
+  also counted as they arrive (`src/lib/deposit-count.js`): as the first
   step of every rebalance and compound, saved into `lifetimeHodlAmounts`
   at each deposit's own block, and when a poll sees the wallet's coins
   rise, held in memory until the next move's count. The Lifetime scan's
@@ -374,7 +374,7 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
   The saved figure is coins, never dollars. A stored dollar total is true
   only at the price that computed it, so on an old position its error grows
   without bound. `snap.totalCompoundedUsd` is therefore computed fresh on
-  every poll, coins × current price, through `src/coin-value.js`. The
+  every poll, coins × current price, through `src/lib/coin-value.js`. The
   historical figures keep their own prices on purpose: Total Lifetime
   Deposit values each deposit at its own block, the HODL Baseline's Entry
   Value stands at the NFT's mint, and a closed epoch in the Per-Day P&L
@@ -411,10 +411,10 @@ comparison the Impermanent Loss Guard measures with: the position as it
 was minted against the same position now (the user's ruling,
 2026-10-23). Its LP side has no wallet residual, and its HODL side is
 the NFT's minted coins plus the wallet's coins its compounds took in
-beyond their fees (`walletCoinsPutIn`, `src/compounded-coins.js`).
+beyond their fees (`walletCoinsPutIn`, `src/lib/compounded-coins.js`).
 
-`ilFigures` (`src/bot-pnl-il.js`) computes both, and is the only place
-either is computed; it calls `computeHodlIL` from `src/il-calculator.js`.
+`ilFigures` (`src/lib/bot-pnl-il.js`) computes both, and is the only place
+either is computed; it calls `computeHodlIL` from `src/lib/il-calculator.js`.
 It is pure — every input is an argument — which is what lets the bot tier
 and the unmanaged details endpoint share it despite holding their state in
 different shapes. A position therefore reports the same IL/G managed or
@@ -433,7 +433,7 @@ HODL baseline while the scan has not run yet.
 
 To avoid duplicate RPC calls, the lifetime scan fetches IncreaseLiquidity,
 DecreaseLiquidity, and Collect events for the **whole rebalance chain in one
-batched read** (`scanChainNftEvents` in `src/nft-events-batch.js`). `tokenId`
+batched read** (`scanChainNftEvents` in `src/lib/nft-events-batch.js`). `tokenId`
 is the first indexed parameter on all three events, and a log filter's topic
 slot OR-matches an array, so one filter carries every NFT in the chain. The
 node returns the logs interleaved; the batch partitions them by `topics[1]`,
@@ -480,7 +480,7 @@ A read starts at the pool's creation block, lifted to the chain's first mint
 and taken from the pool when the read runs, because a figure computed from
 scratch needs the whole chain. The compound total and the lifetime deposit
 are saved and restored with the position's config (`PERSISTED_STATE_KEYS` in
-`src/server-positions.js`), and compounds and rebalances add to the compound
+`src/lib/server-positions.js`), and compounds and rebalances add to the compound
 total as they happen. The HODL amounts are kept in the pool's epoch cache.
 
 A pass whose event scan fails computes none of these figures. The chain the
@@ -518,7 +518,7 @@ imminent, fetching prices on every poll cycle just burns quota for data
 nobody reads. The idle-driven pause stops the cascade in those windows
 while keeping it instantly available for any move.
 
-All gating happens at the public API of `src/price-fetcher.js`, before the
+All gating happens at the public API of `src/lib/price-fetcher.js`, before the
 source cascade. The same module is required by both the bot tier
 (rebalance / compound hot path) and the server tier (view-only endpoints
 for unmanaged-position detail and closed-position history) — it is the
@@ -529,11 +529,11 @@ These set the pause flag, or bypass it:
 
 | Source | Effect | Notes |
 | --- | --- | --- |
-| `server.js` startup | flag = `false` | Browser idle tracker / endpoints take over from there. |
-| Server-side idle tracker | flag = `true` after 15 min of no `/api/*` traffic | Catches the "browser fully closed" case (`src/server-idle-tracker.js`). |
-| Browser-side idle (`public/dashboard-idle.js`) | flag = `true` via `POST /api/pause-price-lookups` after 15 min with no input; flag = `false` via `POST /api/unpause-price-lookups` on the next activity (focus / mouse / keyboard / touch / pointer) | 500 ms throttle on activity events. |
+| `src/server.js` startup | flag = `false` | Browser idle tracker / endpoints take over from there. |
+| Server-side idle tracker | flag = `true` after 15 min of no `/api/*` traffic | Catches the "browser fully closed" case (`src/lib/server-idle-tracker.js`). |
+| Browser-side idle (`src/client/web/dashboard-idle.js`) | flag = `true` via `POST /api/pause-price-lookups` after 15 min with no input; flag = `false` via `POST /api/unpause-price-lookups` on the next activity (focus / mouse / keyboard / touch / pointer) | 500 ms throttle on activity events. |
 | Move scope (`withFreshPricesAllowed`) | counter increment > 0 forces fresh fetches inside the move; restores prior flag on completion (success or throw) | Wraps every auto- and manual-triggered rebalance / compound. Purely scoped — no "remember to re-pause." |
-| `bot.js` headless startup | flag = `true` (default); opt out with `--start-with-price-lookups-unpaused` | No dashboard, no idle signal — only moves need prices. |
+| `src/bot.js` headless startup | flag = `true` (default); opt out with `--start-with-price-lookups-unpaused` | No dashboard, no idle signal — only moves need prices. |
 
 `/api/*` traffic resets the server-side idle countdown but does NOT
 auto-unpause. The 3-second `/api/status` poll loop would otherwise fight
@@ -551,12 +551,12 @@ global section, with their defaults in `bot-config-defaults.json`:
 `priceCacheTtlMs` (120000 as shipped), `dustUnitPriceCacheMultiplier` (30)
 and `moveCacheTtlMs` (4000, the cache's life inside a move). The server
 and the bot read them as they start (`readPriceCacheSettings`,
-`src/price-fetcher-gate.js`); until a program reads them, each is its
+`src/lib/price-fetcher-gate.js`); until a program reads them, each is its
 default. The dust-unit-price TTL is `priceCacheTtlMs × multiplier`, with
 a runtime assertion guarding the integer-multiple invariant.
 
-The browser-side flag (`isBrowserPaused()` in `public/dashboard-idle.js`)
-is also the gate for `playSound()` in `public/dashboard-sounds.js`:
+The browser-side flag (`isBrowserPaused()` in `src/client/web/dashboard-idle.js`)
+is also the gate for `playSound()` in `src/client/web/dashboard-sounds.js`:
 polling-driven rebalance and compound jingles are suppressed while the
 dashboard is idle, so a user returning to a long-untouched tab is not
 greeted with a backlog of event sounds. `playSoundAlways()` (Easter Egg,

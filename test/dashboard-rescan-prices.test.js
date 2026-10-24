@@ -2,9 +2,9 @@
 
 /**
  * @file test/dashboard-rescan-prices.test.js
- * @description The Re-scan Prices dialog (`public/dashboard-rescan-prices.js`),
+ * @description The Re-scan Prices dialog (`src/client/web/dashboard-rescan-prices.js`),
  *   opened from the real `tplRescanPricesModal` template in
- *   `public/index.html`. Uses jsdom (via `global-jsdom/register`) so the
+ *   `src/client/web/index.html`. Uses jsdom (via `global-jsdom/register`) so the
  *   browser module can be imported directly. A `globalThis.fetch` stub
  *   records every request. The test runner's mocked `setTimeout` means
  *   the dialog's completion poll runs only when a test advances it.
@@ -42,7 +42,7 @@ const SYNCED = () => true;
 let dialog;
 let requests;
 
-/** Copy the real dialog template from public/index.html into the page. */
+/** Copy the real dialog template from src/client/web/index.html into the page. */
 function installTemplate() {
   const page = indexHtmlDocument();
   const tpl = page.getElementById("tplRescanPricesModal");
@@ -73,8 +73,9 @@ const overlay = () => document.getElementById("rescanPricesModal");
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  dialog = await import("../public/dashboard-rescan-prices.js");
-  const { posStore } = await import("../public/dashboard-positions-store.js");
+  dialog = await import("../src/client/web/dashboard-rescan-prices.js");
+  const { posStore } =
+    await import("../src/client/web/dashboard-positions-store.js");
   posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,

@@ -1,6 +1,6 @@
 /**
  * @file test/compounder-fetch-gas.test.js
- * @description Unit tests for `_fetchCompoundGas` in `src/compounder.js`.
+ * @description Unit tests for `_fetchCompoundGas` in `src/lib/compounder.js`.
  *
  * Split out of test/compounder.test.js to keep that file under the
  * project-wide 500-line limit.
@@ -20,7 +20,7 @@ const assert = require("node:assert/strict");
 
 describe("_fetchCompoundGas", () => {
   it("populates timestamp + txHash for each compound event", async () => {
-    const { _fetchCompoundGas } = require("../src/compounder");
+    const { _fetchCompoundGas } = require("../src/lib/compounder");
     const blockTs = 1777000000;
     const prov = {
       getTransactionReceipt: async () => ({
@@ -48,7 +48,7 @@ describe("_fetchCompoundGas", () => {
   });
 
   it("caches block timestamps when multiple events share a block", async () => {
-    const { _fetchCompoundGas } = require("../src/compounder");
+    const { _fetchCompoundGas } = require("../src/lib/compounder");
     const fetchedBlocks = [];
     const prov = {
       getTransactionReceipt: async () => ({
@@ -70,7 +70,7 @@ describe("_fetchCompoundGas", () => {
   });
 
   it("falls back to null timestamp on getBlock failure", async () => {
-    const { _fetchCompoundGas } = require("../src/compounder");
+    const { _fetchCompoundGas } = require("../src/lib/compounder");
     const prov = {
       getTransactionReceipt: async () => ({
         gasUsed: 0n,

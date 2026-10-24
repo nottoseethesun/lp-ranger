@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-all-positions-stats-modal.test.js
  * @description Tests for the pure helpers backing the sortable modal
- *   table in `public/dashboard-all-positions-stats.js`:
+ *   table in `src/client/web/dashboard-all-positions-stats.js`:
  *   - `_computeNumerics` — Net P&L / Profit / IL formulas mirrored
  *     from `_resolveKpiTotals`.  Previously private, now exported.
  *   - `_sortRows` — stable sort with null-bubbles-to-bottom.
@@ -21,7 +21,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-all-positions-stats.js");
+  mod = await import("../src/client/web/dashboard-all-positions-stats.js");
 });
 
 // ── _computeNumerics ──────────────────────────────────────────

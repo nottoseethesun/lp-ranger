@@ -6,8 +6,8 @@
 
 "use strict";
 
-const { pollCycle } = require("../src/bot-loop");
-const config = require("../src/config");
+const { pollCycle } = require("../src/lib/bot-loop");
+const config = require("../src/lib/config");
 const { initSendTx } = require("./helpers/send-tx-mock");
 
 /*- Module-level slot for `mockSigner.sendTransaction` to look up the

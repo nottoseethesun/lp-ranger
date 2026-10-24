@@ -6,9 +6,9 @@
  *   after the P&L periods are rebuilt, and is counted once.
  *
  *   It is kept in the position's records (`failedMoveGas`, written by
- *   src/spent-gas.js), never in a period, and the P&L adds each charge to
+ *   src/lib/spent-gas.js), never in a period, and the P&L adds each charge to
  *   the period it was paid in whenever it works the figures out
- *   (`snapshot`, src/pnl-tracker.js). Reload Current Position rebuilds
+ *   (`snapshot`, src/lib/pnl-tracker.js). Reload Current Position rebuilds
  *   the closed periods from the chain, which shows none of this gas, and
  *   a cleared scan cache also starts the open period afresh at the
  *   restart. The user approved, 2026-10-19: "When the periods are
@@ -19,11 +19,11 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createPnlTracker } = require("../src/pnl-tracker");
+const { createPnlTracker } = require("../src/lib/pnl-tracker");
 const {
   RECORD_POSITION_KEYS,
   CHAIN_DERIVED_POSITION_KEYS,
-} = require("../src/bot-config-keys");
+} = require("../src/lib/bot-config-keys");
 
 const DAY = 86_400_000;
 const now = Date.now();

@@ -19,11 +19,11 @@ const {
   createPositionRoutes,
   getAllPositionBotStates,
   updatePositionState,
-} = require("../src/server-positions");
+} = require("../src/lib/server-positions");
 const {
   addManagedPosition,
   getPositionConfig,
-} = require("../src/bot-config-v2");
+} = require("../src/lib/bot-config-v2");
 const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
 
 // Valid EIP-55 checksummed addresses (parseCompositeKey validates them).
@@ -278,7 +278,7 @@ describe("handleRemove stale-key races", () => {
     /*-
      *  The answer names the position by both keys, so a dashboard that
      *  followed it to its new NFT still knows the answer is its own
-     *  (src/position-answer-tag.js).
+     *  (src/lib/position-answer-tag.js).
      */
     assert.strictEqual(res._body.positionKey, OLD_KEY);
     assert.strictEqual(res._body.livePositionKey, NEW_KEY);

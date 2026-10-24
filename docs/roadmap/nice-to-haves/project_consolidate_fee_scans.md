@@ -29,15 +29,15 @@ could drift apart again.
 ## What has been done
 
 - **One formula.** Since 2026-09-02 both call `lifetimeFeeAmounts` in
-  `src/compounder.js`, the single definition of
+  `src/lib/compounder.js`, the single definition of
   `Σ(Collect) − Σ(drained principal)`. Before that the Per-Day path used
   `Collect(last) − DecreaseLiquidity(last)`, and so missed every fee
   that auto-compound had already swept back into liquidity.
 - **One read.** Both need the same `Collect` and `DecreaseLiquidity`
   logs. When a scan pass runs both, the lifetime scan's chain read is
   prepared first and epoch reconstruction takes its events from it
-  (`_scanAndReconstruct` in `src/bot-recorder.js`,
-  `src/bot-recorder-lifetime-read.js`). When the lifetime scan is not
+  (`_scanAndReconstruct` in `src/lib/bot-recorder.js`,
+  `src/lib/bot-recorder-lifetime-read.js`). When the lifetime scan is not
   due, or its read cannot be prepared, reconstruction reads on its own,
   in one batched pass (`scanChainCollectAndDrain`).
 

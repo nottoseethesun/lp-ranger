@@ -46,8 +46,8 @@ describe("reconstructEpochs full flow", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/epoch-reconstructor")];
-    ({ reconstructEpochs } = require("../src/epoch-reconstructor"));
+    delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
+    ({ reconstructEpochs } = require("../src/lib/epoch-reconstructor"));
   });
 
   after(() => {
@@ -256,8 +256,8 @@ describe("reconstructEpochs full flow", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/epoch-reconstructor")];
-    const mod = require("../src/epoch-reconstructor");
+    delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
+    const mod = require("../src/lib/epoch-reconstructor");
     const tracker = mockTracker();
     const fb = { price0: 0.5, price1: 0.3 };
     await mod.reconstructEpochs({

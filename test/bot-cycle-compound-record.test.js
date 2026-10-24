@@ -26,13 +26,13 @@ describe("recordCompound", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-cycle-compound")];
-    ({ recordCompound } = require("../src/bot-cycle-compound"));
+    delete require.cache[require.resolve("../src/lib/bot-cycle-compound")];
+    ({ recordCompound } = require("../src/lib/bot-cycle-compound"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/bot-cycle-compound")];
+    delete require.cache[require.resolve("../src/lib/bot-cycle-compound")];
   });
 
   it("records compound with gas cost and updates history", async () => {
@@ -328,7 +328,7 @@ describe("recordCompound", () => {
 describe("the compound's Telegram message", () => {
   let _compoundMessage;
   before(() => {
-    ({ _compoundMessage } = require("../src/bot-cycle-compound"));
+    ({ _compoundMessage } = require("../src/lib/bot-cycle-compound"));
   });
   const base = {
     amount0Deposited: "110",

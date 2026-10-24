@@ -4,7 +4,7 @@
  * @file test/server-telegram-config.test.js
  * @description POST /api/telegram/config holds the alert choices to the
  *   schema the settings check holds the saved set to at startup
- *   (`ALERT_CHOICES`, src/telegram-notifications/telegram-events.js)
+ *   (`ALERT_CHOICES`, src/lib/telegram-notifications/telegram-events.js)
  *   before it saves anything. A set the next start would refuse is
  *   refused here instead, and the bot token sent with it is not saved
  *   either. GET /api/telegram/config quotes the Position Balanced band
@@ -15,7 +15,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const KEYS_FILE = path.join(makeTestTempFolder("tg-route"), "api-keys.json");
 process.env.API_KEYS_FILE_PATH = KEYS_FILE;
@@ -33,11 +33,11 @@ const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   createTelegramHandlers,
-} = require("../src/telegram-notifications/server-telegram");
-const telegram = require("../src/telegram-notifications/telegram");
+} = require("../src/lib/telegram-notifications/server-telegram");
+const telegram = require("../src/lib/telegram-notifications/telegram");
 const {
   EVENT_DEFAULTS,
-} = require("../src/telegram-notifications/telegram-events");
+} = require("../src/lib/telegram-notifications/telegram-events");
 
 let diskConfig, saves, answer, handlers;
 

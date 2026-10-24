@@ -21,7 +21,7 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
-const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
 /*-
  *  The historical price lookup is the module's one way out of the
@@ -41,12 +41,12 @@ Module.prototype.require = function (id) {
     };
   return _origRequire.apply(this, arguments);
 };
-delete require.cache[require.resolve("../src/compound-activity-figures")];
+delete require.cache[require.resolve("../src/lib/compound-activity-figures")];
 const {
   compoundFiguresFromChain,
   compoundHistoryFrom,
   compoundPricesFor,
-} = require("../src/compound-activity-figures");
+} = require("../src/lib/compound-activity-figures");
 Module.prototype.require = _origRequire;
 
 const SPAN = readBotConfigDefaults().getLogsChunkSize;
@@ -301,7 +301,7 @@ describe("compoundHistoryFrom", () => {
     /*-
      *  The Activity Log marks an amount "(historical $usd)" while its
      *  record carries the prices of the compound's own time
-     *  (public/dashboard-compound-log.js). A rebuild writes each amount
+     *  (src/client/web/dashboard-compound-log.js). A rebuild writes each amount
      *  at the prices it was handed, so the entry it writes carries none.
      *  A compound recorded during the chain read is kept as recorded.
      */

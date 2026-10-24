@@ -17,7 +17,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { findPoolCreationBlock } = require("../src/pool-creation-finder");
+const { findPoolCreationBlock } = require("../src/lib/pool-creation-finder");
 
 const POOL = "0xP00L000000000000000000000000000000000002";
 const CODE = "0x60806040";

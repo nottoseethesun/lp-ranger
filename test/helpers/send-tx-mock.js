@@ -2,7 +2,7 @@
 /**
  * @file test/helpers/send-tx-mock.js
  * @description
- * Shared test helpers for the unified `src/send-transaction.js` flow.
+ * Shared test helpers for the unified `src/lib/send-transaction.js` flow.
  *
  * `send-transaction.js` holds module-level provider singletons that must
  * be initialised before `sendTransaction` can run.  These helpers give
@@ -22,7 +22,7 @@
  *   - `POPULATED`         — default `{to, data, gasLimit}` populated TX.
  */
 
-const sendTx = require("../../src/send-transaction");
+const sendTx = require("../../src/lib/send-transaction");
 
 const STUB_LIB = {
   JsonRpcProvider: class {

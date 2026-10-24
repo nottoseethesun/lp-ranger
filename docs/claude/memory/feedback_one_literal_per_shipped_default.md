@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
-  modified: 2026-10-21T16:34:00.549Z
+  modified: 2026-10-24T05:24:12.681Z
 ---
 
 For every config value the app ships with a default, there must be at
@@ -28,10 +28,10 @@ chokepoint; everything else reads from it.
 **Why:** Months of accreted duplication caused two real drifts that
 the user discovered during an audit on 2026-06-21:
 
-- `SLIPPAGE_PCT` was `0.75` in `src/config.js` but `0.5` in the
+- `SLIPPAGE_PCT` was `0.75` in `src/lib/config.js` but `0.5` in the
   shipped JSON (operators setting the env var saw 0.75; operators not
   setting it saw 0.5).
-- `MAX_REBALANCES_PER_DAY` was `5` in `src/config.js` but `20` in the
+- `MAX_REBALANCES_PER_DAY` was `5` in `src/lib/config.js` but `20` in the
   shipped JSON (same kind of split).
 
 Each consumer was historically written self-contained with a
@@ -59,7 +59,7 @@ collapsed all ~42 duplicates to single-source.
   the lint rule would be brittle.  This is a serious engineering
   guideline enforced by convention + code review + the existence of
   the `loadShippedDefaults` / `loadMergedDefaults` chokepoint in
-  `src/load-merged-defaults.js`.
+  `src/lib/load-merged-defaults.js`.
 
 Per-install operator overrides live at
 `app-config/user-configurable/<same-name>.json` (gitignored,
@@ -80,7 +80,7 @@ this rule from shipped defaults to any value the app shows or acts on:
   provides: no `x || "pulsechain"`, no `|| AGGREGATOR_LABEL`, no `|| ""`
   standing in for a missing config key. A missing key stops startup and
   names the setting (`_chainContract`, `_routeName`, `_aggregatorUrl` in
-  `src/config.js`).
+  `src/lib/config.js`).
 - No values in HTML. An element the first poll fills stays empty until
   then, and that wait is fine.
 - Display names are static config too: the swap route names live in
@@ -88,7 +88,7 @@ this rule from shipped defaults to any value the app shows or acts on:
 - A value the dashboard needs before the server can answer is bundled
   from the shipped JSON at build time: `chainQueryTimeoutMs` in
   `ui-defaults_non-layout_for-server-down-scenario.json`, imported by
-  `public/dashboard-chain.js`, as `dialogMaxHeightPx` in
+  `src/client/web/dashboard-chain.js`, as `dialogMaxHeightPx` in
   `ui-defaults_layout.json` is baked into `ui-tokens.css`. Every other
   dashboard setting comes from the server.
 
@@ -100,20 +100,20 @@ value) and are still in the code, they should be moved to the
 appropriate json config." So the rule covers the numbers that check a
 value as well as the values themselves. Every range is in
 `setting-bounds.json`, at the setting's own path, read through
-`src/setting-bounds.js`, and the help copy that quotes a range or a
+`src/lib/setting-bounds.js`, and the help copy that quotes a range or a
 default reads it from the JSON rather than writing it into the
 sentence. The doubling numbers are `throttleDoubling` in
 `bot-config-defaults.json`. A number that defines a thing is not a
 tunable and stays: the 2 of "doubling", 60 seconds in a minute, the 0
 that means "off".
 
-The help copy reaches its figures through `src/help-figures.js`
+The help copy reaches its figures through `src/lib/help-figures.js`
 (user, 2026-10-17: "those values should be picked up from the numbers
 in the json config files"): `{{figure:name}}` tokens in
 `shared-help-content.json`, `<span data-figure="name">` in the manual's
 own prose and in `index.html`, and the `f` table `buildParamHelp`
 takes in the dialogs' copy. The figures are the install's own, resolved
-on the server (`src/resolved-settings.js`, `GET /api/help-figures`):
+on the server (`src/lib/resolved-settings.js`, `GET /api/help-figures`):
 the user, 2026-10-17, "All help text should just quote whatever is the
 final resolved json value, which means, of course, it should include
 overrides done by the user", and "include .env too". So help wording

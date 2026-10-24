@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: f8b08a58-72ba-4f26-a891-71b9e99630e4
-  modified: 2026-10-21T17:06:24.291Z
+  modified: 2026-10-24T04:54:38.416Z
 ---
 
 A tool under `util/` keeps what it writes in `app-data/util/<tool>/`, and
@@ -24,16 +24,16 @@ the same file can leave it cut short.
 **How to apply:** when a tool needs an app library that caches, find the
 library's path overrides (`PRICE_CACHE_PATH`, `GECKO_POOL_CACHE_PATH`)
 and set them to the tool's folder first. Under `node --test`, use the test
-process's own folder instead. Then list every `src/` module the tool
+process's own folder instead. Then list every `src/lib/` module the tool
 loads (`require.cache`) and check each for writes made as it loads, not
-only its caches: `src/price-fetcher-gate.js` called `loadConfig()`,
+only its caches: `src/lib/price-fetcher-gate.js` called `loadConfig()`,
 which copies `bot-config.json` and `position-records.json` over their
 backups (found 2026-10-20; since 2026-10-21 it reads nothing as it
 loads, and a tool that needs its settings calls
 `readPriceCacheSettings(true)`).
 
 **The one exception, a secret the app also uses**, such as the Moralis
-api key: it has one home, the app's own store (`src/api-key-store.js`),
+api key: it has one home, the app's own store (`src/lib/api-key-store.js`),
 and the tool reads it there and saves it there, never a copy in its own
 folder. The user, 2026-10-21: "the bookkeeping app needs to be able to
 read a saved Moralis key that the user has saved previously (e.g., using

@@ -29,9 +29,9 @@ const assert = require("node:assert/strict");
 const {
   _splitByWindow,
   _consumeRebuildRequest,
-} = require("../src/epoch-reconstructor");
-const { requestPriceRevalue } = require("../src/server-rescan-prices");
-const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+} = require("../src/lib/epoch-reconstructor");
+const { requestPriceRevalue } = require("../src/lib/server-rescan-prices");
+const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 8, 19);
@@ -220,7 +220,7 @@ describe("a short windowed read is never merged", () => {
    *  the cache. With a window the old periods are already present in
    *  `keep`, so the prepend would duplicate them. `_rebuildClosedEpochs`
    *  therefore abandons the window and rebuilds the whole chain. */
-  const { _rebuildClosedEpochs } = require("../src/epoch-reconstructor");
+  const { _rebuildClosedEpochs } = require("../src/lib/epoch-reconstructor");
 
   function harness(readsThatSucceed) {
     const events = [ev("1", 400), ev("2", 300), ev("3", 5), ev("4", 2)];

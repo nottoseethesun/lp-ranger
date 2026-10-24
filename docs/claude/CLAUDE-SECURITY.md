@@ -240,7 +240,7 @@ decisions documented here for security reviewers.
 
 ### Nonce management
 
-A single async-mutex rebalance lock (`src/rebalance-lock.js`)
+A single async-mutex rebalance lock (`src/lib/rebalance-lock.js`)
 serializes all transactions across all managed positions. Only one
 position sends TXs at a time. The lock has no timeout — it releases
 only after TX confirmation. This prevents nonce collisions that could
@@ -248,7 +248,7 @@ cause stuck or lost transactions.
 
 ### TX recovery pipeline
 
-`_waitOrSpeedUp()` in `src/tx-speedup.js` wraps the `tx.wait()` of
+`_waitOrSpeedUp()` in `src/lib/tx-speedup.js` wraps the `tx.wait()` of
 every send that goes through `sendTx.sendTransaction`, with a 4-phase
 pipeline: wait, speed-up (1.5x gas), wait again, auto-cancel (a
 zero-value self-transfer). The aggregator swap sends outside that entry point and
@@ -278,26 +278,26 @@ liquidity pools.
 
 ### Key storage
 
-`src/wallet-manager.js` encrypts the dashboard-imported (or CLI-
+`src/lib/wallet-manager.js` encrypts the dashboard-imported (or CLI-
 imported) wallet with AES-256-GCM and PBKDF2-SHA512 key derivation
 at **600,000 iterations** (OWASP 2023 guidance for SHA-512).
-`src/api-key-store.js` (third-party API keys) reuses
-`src/key-store.js`'s encryption helpers at the same 600,000
+`src/lib/api-key-store.js` (third-party API keys) reuses
+`src/lib/key-store.js`'s encryption helpers at the same 600,000
 iterations. Plaintext keys exist only in memory during signing. The
 encrypted `app-config/user-configurable/wallet.json` and
 `app-config/user-configurable/api-keys.json` files are both gitignored.
 
 The bookkeeping report (`util/bookkeeping/moralis-key.js`) uses the
-app's own Moralis key, through the same store (`src/api-key-store.js`),
+app's own Moralis key, through the same store (`src/lib/api-key-store.js`),
 so there is one key in one place. It never opens the wallet file; it
 asks for the wallet's password only because the app encrypts every api
 key with it, through a terminal prompt that shows nothing of what is
-typed (`src/ask-password.js`, shared with `--headless`, bot.js and
+typed (`src/lib/ask-password.js`, shared with `--headless`, src/bot.js and
 scripts/import-wallet.js), never as an argument, which shell history and
 `ps` would keep; the password is kept nowhere, and the plain key only in
 memory for the run. With no key saved, it asks for one and saves it there,
 encrypted with the wallet's password typed twice. That password is not
-checked against the wallet's, since `src/wallet-manager.js` reads the
+checked against the wallet's, since `src/lib/wallet-manager.js` reads the
 wallet file as it loads, and the report never loads it. A test
 (`util/test/bookkeeping-moralis-key.test.js`) asks `git check-ignore`
 whether `app-config/user-configurable/api-keys.json` is ignored, so a
@@ -319,7 +319,7 @@ Three modes, in order of security recommendation:
 
 1. **Dashboard unlock dialog** (default) — operator types password
    in the browser after each restart.
-2. **`--headless` terminal prompt** — `node server.js --headless`
+2. **`--headless` terminal prompt** — `node src/server.js --headless`
    prompts on stdin. Same security as the dashboard (memory only),
    no browser needed. If no password is provided, the server exits
    with an error rather than falling through to dashboard mode.
@@ -327,7 +327,7 @@ Three modes, in order of security recommendation:
    lives on disk as plaintext. Least recommended.
 
 In all three modes the password is cached in `_sessionPassword`
-in `src/server-routes.js` so subsequent API-key operations during
+in `src/lib/server-routes.js` so subsequent API-key operations during
 the same session don't re-prompt. The cache is discarded when the
 process exits.
 

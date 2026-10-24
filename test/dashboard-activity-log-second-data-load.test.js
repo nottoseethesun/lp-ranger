@@ -7,7 +7,7 @@
  *   fee tier and pool key once the server has read it from the
  *   blockchain. The Activity Log draws none of its Rebalance or Compound
  *   entries before the second (`canDrawPositionEntries`,
- *   public/dashboard-activity-figures.js), from neither the live event
+ *   src/client/web/dashboard-activity-figures.js), from neither the live event
  *   check nor the history pass. So each entry is drawn with its position
  *   line and filed under its pool, which is how the end of a scan finds
  *   it to draw again.
@@ -16,7 +16,7 @@
  *   managed one at a time, so a page open meanwhile gets a position's
  *   records some while before the rest of it. Driven through the page's
  *   own switch (`activateByTokenId`) and poll (`pollNow`), on its markup
- *   from public/index.html, with the server's status answers scripted.
+ *   from src/client/web/index.html, with the server's status answers scripted.
  */
 
 require("global-jsdom/register");
@@ -148,13 +148,13 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../public/dashboard-positions-store.js");
-  const data = await import("../public/dashboard-data.js");
-  poll = await import("../public/dashboard-data-poll.js");
-  const positions = await import("../public/dashboard-positions.js");
-  const unmanaged = await import("../public/dashboard-unmanaged.js");
-  const closed = await import("../public/dashboard-closed-pos.js");
-  const walletModule = await import("../public/dashboard-wallet.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
+  const data = await import("../src/client/web/dashboard-data.js");
+  poll = await import("../src/client/web/dashboard-data-poll.js");
+  const positions = await import("../src/client/web/dashboard-positions.js");
+  const unmanaged = await import("../src/client/web/dashboard-unmanaged.js");
+  const closed = await import("../src/client/web/dashboard-closed-pos.js");
+  const walletModule = await import("../src/client/web/dashboard-wallet.js");
   await walletModule.checkWalletLocked();
   walletModule.wallet.address = WALLET;
   positions.injectPositionDeps({

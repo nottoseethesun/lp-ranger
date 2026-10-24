@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-19T21:45:11.707Z
+  modified: 2026-10-24T04:57:19.779Z
 ---
 
 The JSON settings files, shipped and the operator's copies merged over
@@ -17,17 +17,17 @@ list where one number belongs) is refused before the app reads it.
 Ranges stay in `setting-bounds.json`: the schema for a ranged value takes
 its minimum and maximum from there, by name, so there is one literal
 per range. `.env` is not JSON: it is checked against the list of
-variables the app reads (`ENV_SETTINGS`, src/env-settings.js), and any
+variables the app reads (`ENV_SETTINGS`, src/lib/env-settings.js), and any
 other name is refused.
 
 bot-config.json is under JSON Schema too (2026-10-19). Each setting's
-schema is written once (`settingSchemas`, src/config-bounds.js): the
+schema is written once (`settingSchemas`, src/lib/config-bounds.js): the
 Save check (`POST /api/config`) holds a value to it and words a refusal
 in the dashboard's terms, and the startup check builds the file's schema
-from the same schemas (src/bot-config-checks.js). The Telegram alerts
+from the same schemas (src/lib/bot-config-checks.js). The Telegram alerts
 chosen likewise have one schema (`ALERT_CHOICES`) for their route and
 the file. The records file, app-data/position-records.json, is not a
-settings file and keeps its record checks (src/config-record-checks.js);
+settings file and keeps its record checks (src/lib/config-record-checks.js);
 bringing the app-data files under JSON Schema is filed as a
 nice-to-have, at the user's request
 (docs/roadmap/nice-to-haves/project_app_data_json_schema.md).

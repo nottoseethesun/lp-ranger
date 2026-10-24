@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-populate-history.test.js
- * @description The history pass (public/dashboard-populate-history.js)
+ * @description The history pass (src/client/web/dashboard-populate-history.js)
  *   draws a position's Rebalance entries in the same words as the live
  *   check, what started each one included. The log runs the pass again
  *   when a scan of the position on screen finishes, so a rebalance's
@@ -23,8 +23,8 @@ let history;
 let figs;
 
 before(async () => {
-  history = await import("../public/dashboard-populate-history.js");
-  figs = await import("../public/dashboard-activity-figures.js");
+  history = await import("../src/client/web/dashboard-populate-history.js");
+  figs = await import("../src/client/web/dashboard-activity-figures.js");
   await learnUiSettings();
 });
 

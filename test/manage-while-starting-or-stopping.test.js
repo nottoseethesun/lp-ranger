@@ -3,7 +3,7 @@
 /**
  * @file test/manage-while-starting-or-stopping.test.js
  * @description A Manage request while the app is starting the positions
- *   saved as managed, or stopping for good (src/app-phase.js).
+ *   saved as managed, or stopping for good (src/lib/app-phase.js).
  *
  *   It is refused with 409 and the reason in the operator's words, and
  *   nothing starts: during the start-up, a saved position the start-up
@@ -17,9 +17,9 @@ const assert = require("node:assert/strict");
 const {
   createPositionRoutes,
   getAllPositionBotStates,
-} = require("../src/server-positions");
-const { compositeKey } = require("../src/bot-config-v2");
-const appPhase = require("../src/app-phase");
+} = require("../src/lib/server-positions");
+const { compositeKey } = require("../src/lib/bot-config-v2");
+const appPhase = require("../src/lib/app-phase");
 
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";

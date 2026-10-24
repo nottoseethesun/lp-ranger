@@ -1,6 +1,6 @@
 /**
  * @file test/helpers/index-html.js
- * @description The dashboard's `public/index.html`, parsed into a DOM
+ * @description The dashboard's `src/client/web/index.html`, parsed into a DOM
  *   document, for tests that inspect its markup or clone its templates.
  *
  *   Uses the DOM implementation already in scope, so a caller registers
@@ -12,10 +12,18 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const INDEX_HTML = path.join(__dirname, "..", "..", "public", "index.html");
+const INDEX_HTML = path.join(
+  __dirname,
+  "..",
+  "..",
+  "src",
+  "client",
+  "web",
+  "index.html",
+);
 
 /**
- * Parse `public/index.html` into a new document.
+ * Parse `src/client/web/index.html` into a new document.
  *
  * @returns {Document}  Read from disk on every call, so each caller gets
  *   its own copy.

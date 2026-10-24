@@ -28,8 +28,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { createPnlTracker } = require("../src/pnl-tracker");
-const { recordSpentGas } = require("../src/spent-gas");
+const { createPnlTracker } = require("../src/lib/pnl-tracker");
+const { recordSpentGas } = require("../src/lib/spent-gas");
 
 const TMP = path.join(process.cwd(), "tmp");
 /*- Unique per process: the suite runs concurrently with others that
@@ -90,15 +90,15 @@ describe("a reconstruction keeps the live epoch", () => {
 
   before(() => {
     fs.mkdirSync(TMP, { recursive: true });
-    const cache = require("../src/epoch-cache");
+    const cache = require("../src/lib/epoch-cache");
     cache._setCachePath(_isolatedPath);
     ({ getCachedEpochs } = cache);
-    ({ _mergeAndPersist } = require("../src/epoch-reconstructor"));
+    ({ _mergeAndPersist } = require("../src/lib/epoch-reconstructor"));
   });
 
   after(() => {
     fs.rmSync(_isolatedPath, { force: true });
-    require("../src/epoch-cache")._setCachePath(
+    require("../src/lib/epoch-cache")._setCachePath(
       path.join(TMP, "pnl-epochs-cache.json"),
     );
   });

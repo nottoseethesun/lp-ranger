@@ -14,16 +14,22 @@
  * Its prose is fixed, which is the trap: a message with no variables
  * looks like it cannot break, and then someone adds a clause with a
  * hyphen or an exclamation mark in it.
+ *
+ * The same goes for the sender it starts: a path that names no file
+ * fails just as quietly, so the last test holds where the sender is.
  */
 
 "use strict";
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   buildShutdownMessage,
-} = require("../src/telegram-notifications/server-shutdown");
+  _SEND_SCRIPT,
+} = require("../src/lib/telegram-notifications/server-shutdown");
 const { assertValidMarkdownV2 } = require("./helpers/markdown-v2");
 
 describe("server-shutdown — the message Telegram receives", () => {
@@ -69,5 +75,17 @@ describe("server-shutdown — the message Telegram receives", () => {
     const { plain } = buildShutdownMessage("some-host");
     assert.ok(plain.includes("some-host"), plain);
     assert.ok(plain.includes("shutting down"), plain);
+  });
+});
+
+describe("server-shutdown — the sender it starts", () => {
+  it("starts src/telegram-send.js, and the file is there", () => {
+    /*- The sender runs detached, its output thrown away, so a path that
+     *  names no file leaves no trace: the shutdown alert never arrives. */
+    assert.equal(
+      _SEND_SCRIPT,
+      path.join(__dirname, "..", "src", "telegram-send.js"),
+    );
+    assert.ok(fs.existsSync(_SEND_SCRIPT), _SEND_SCRIPT);
   });
 });

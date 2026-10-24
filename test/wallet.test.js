@@ -16,7 +16,7 @@ const {
   sourceLabel,
   hasOnChainActivity,
   DEFAULT_DERIVATION_PATH,
-} = require("../src/wallet");
+} = require("../src/lib/wallet");
 
 // ── Mock ethers ───────────────────────────────────────────────────────────────
 

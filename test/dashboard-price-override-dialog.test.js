@@ -10,7 +10,7 @@
  *   The server is the only home of the override (`POST /api/config`,
  *   under the position's fully-qualified key), so the dialog shows it in
  *   any browser and after Clear Local Storage. Driven on the page's own
- *   markup from public/index.html, with the status answer scripted.
+ *   markup from src/client/web/index.html, with the status answer scripted.
  */
 
 require("global-jsdom/register");
@@ -67,10 +67,10 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  store = await import("../public/dashboard-positions-store.js");
-  override = await import("../public/dashboard-price-override.js");
-  await import("../public/dashboard-data.js");
-  poll = await import("../public/dashboard-data-poll.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
+  override = await import("../src/client/web/dashboard-price-override.js");
+  await import("../src/client/web/dashboard-data.js");
+  poll = await import("../src/client/web/dashboard-data-poll.js");
   store.posStore.add(A);
   store.posStore.add(B);
 });

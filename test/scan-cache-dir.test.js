@@ -2,7 +2,7 @@
 
 /**
  * @file test/scan-cache-dir.test.js
- * @description Where the scan caches live (src/scan-cache-dir.js):
+ * @description Where the scan caches live (src/lib/scan-cache-dir.js):
  *   `app-data/scan-cache/` in the install, and under `node --test` a
  *   folder of the test process's own, so no test reads or writes the
  *   operator's caches.
@@ -13,7 +13,7 @@ const assert = require("node:assert/strict");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { scanCacheDir, scanCachePath } = require("../src/scan-cache-dir");
+const { scanCacheDir, scanCachePath } = require("../src/lib/scan-cache-dir");
 
 describe("the scan-cache folder", () => {
   it("is the test process's own temp folder under node --test", () => {
@@ -31,7 +31,7 @@ describe("the scan-cache folder", () => {
 
   it("is app-data/scan-cache/ in the install's folder outside tests", () => {
     const src = JSON.stringify(
-      path.join(__dirname, "..", "src", "scan-cache-dir"),
+      path.join(__dirname, "..", "src", "lib", "scan-cache-dir"),
     );
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT;

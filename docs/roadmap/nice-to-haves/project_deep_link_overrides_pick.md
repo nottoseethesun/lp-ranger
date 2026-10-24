@@ -35,6 +35,6 @@ counter the Position Browser's row click advances, which the follow-up
 compares against the value it saw when it began.
 
 Likely touch points: `_tryActivatePosition` in
-`public/dashboard-router.js`, which starts the scan and asks the store
+`src/client/web/dashboard-router.js`, which starts the scan and asks the store
 again when it finishes, and the row-click handlers in
-`public/dashboard-positions-browser.js`.
+`src/client/web/dashboard-positions-browser.js`.

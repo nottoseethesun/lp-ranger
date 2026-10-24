@@ -22,7 +22,9 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { resolveChainFirstMint } = require("../src/event-scanner-mint-lookup");
+const {
+  resolveChainFirstMint,
+} = require("../src/lib/event-scanner-mint-lookup");
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const OTHER_WALLET = "0x00000000000000000000000000000000000000aa";

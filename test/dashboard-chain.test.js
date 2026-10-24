@@ -18,7 +18,7 @@ require("global-jsdom/register");
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const LINK = {
   displayName: "A Chain of the Test's Own",
@@ -49,13 +49,15 @@ process.env.CHAIN_NAME = "pulsechain-testnet";
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { userConfigurableRoutes } = require("../src/user-configurable-routes");
+const {
+  userConfigurableRoutes,
+} = require("../src/lib/user-configurable-routes");
 const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json");
 
 let chainMod;
 
 before(async () => {
-  chainMod = await import("../public/dashboard-chain.js");
+  chainMod = await import("../src/client/web/dashboard-chain.js");
 });
 
 /**

@@ -1,7 +1,7 @@
 /**
  * @file scripts/cache-bust.js
  * @description Stamps the build's time as a `?v=` query on every script
- *   and stylesheet the app's pages load (every `public/*.html`), and on
+ *   and stylesheet the app's pages load (every `src/client/web/*.html`), and on
  *   the drifting cloud PNGs `9mm-pos-mgr.css` names. The server lets a
  *   browser keep anything but HTML for a year (`serveStatic`,
  *   server.js), so a reference without a fresh stamp would leave a
@@ -10,11 +10,11 @@
 
 "use strict";
 
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const fs = require("fs");
 const path = require("path");
 
-const PUBLIC = "public";
+const PUBLIC = path.join("src", "client", "web");
 
 /*-
  *  A page's own script or stylesheet, stamped or not: `href="/style.css"`,

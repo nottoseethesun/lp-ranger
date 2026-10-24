@@ -48,11 +48,11 @@ getting code from a feature branch into `main`. The remote must
 
 | Check | Detail |
 | ----- | ------ |
-| **ESLint** | JS lint (`src/`, `test/`, `server.js`, `bot.js`, dashboard files, eslint-rules) — 0 warnings |
-| **stylelint** | CSS lint (`public/*.css`) |
+| **ESLint** | JS lint (`src/`, `test/`, dashboard files, eslint-rules) — 0 warnings |
+| **stylelint** | CSS lint (`src/client/web/*.css`) |
 | **markdownlint** | Markdown lint (`README.md`, `CLAUDE.md`, `docs/*.md`) |
-| **lint-svg** | `public/icons/*.svg` — strict XML, no `id=` attributes (`scripts/lint-svg.js`) |
-| **knip (files)** | Dead files — `knip --include files`. Only the `files` issue type gates; unused *exports* are deliberate seams, not defects. `knip.json` declares every real entry point (`scripts/`, `util/`, the dashboard bundle root, tests), without which CLI tools read as unreachable |
+| **lint-svg** | `src/client/web/icons/*.svg` — strict XML, no `id=` attributes (`scripts/lint-svg.js`) |
+| **knip (files)** | Dead files — `knip --include files`. Only the `files` issue type gates; unused *exports* are deliberate seams, not defects. `knip.json` declares every real entry point (`scripts/`, `util/`, `src/telegram-send.js`, the dashboard bundle root, tests), without which CLI tools read as unreachable |
 | **openapi-sync** | `docs/openapi.json` still matches the code — every registered route documented, every documented route still served, every `POST /api/config` key in its schema, every operation summarised, every tag declared |
 | **Config values** | The tests of the shipped config files themselves, run before every other test, so a wrong value is reported as the cause before what it broke — all must pass |
 | **Tests** | `node --test test/*.test.js` (every other test) — all must pass |

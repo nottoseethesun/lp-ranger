@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-range-override.test.js
- * @description Tests for `public/dashboard-range-override.js` — the
+ * @description Tests for `src/client/web/dashboard-range-override.js` — the
  * "No Override" toggle heading Bot Settings → Range, its status badge,
  * and the enable/disable state of every field it governs.
  *
@@ -41,9 +41,9 @@ let posted;
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  mod = await import("../public/dashboard-range-override.js");
-  helpers = await import("../public/dashboard-helpers.js");
-  const store = await import("../public/dashboard-positions-store.js");
+  mod = await import("../src/client/web/dashboard-range-override.js");
+  helpers = await import("../src/client/web/dashboard-helpers.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
   /*- Give the module an active position so it builds a composite key the
    *  way the running dashboard does.  posStore is a module-graph
    *  singleton; seed `entries` / `activeIdx` directly rather than going

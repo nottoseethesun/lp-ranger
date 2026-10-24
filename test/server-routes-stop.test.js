@@ -1,6 +1,6 @@
 /**
  * @file test/server-routes-stop.test.js
- * @description The held stop's route in src/server-routes.js,
+ * @description The held stop's route in src/lib/server-routes.js,
  *   `_handleStopWhenAllClear` (`POST /api/stop-when-all-clear`, which
  *   `npm run gentle-stop` sends): it answers at once, starts the stop in
  *   the background, and closes the server only once every position has
@@ -12,12 +12,12 @@
 
 const { describe, it, afterEach } = require("node:test");
 const assert = require("assert");
-const { createRouteHandlers } = require("../src/server-routes");
-const { compositeKey, managedKeys } = require("../src/bot-config-v2");
-const { CHAIN_NAME } = require("../src/config");
-const appPhase = require("../src/app-phase");
-const { createPositionManager } = require("../src/position-manager");
-const { updatePositionState } = require("../src/server-positions");
+const { createRouteHandlers } = require("../src/lib/server-routes");
+const { compositeKey, managedKeys } = require("../src/lib/bot-config-v2");
+const { CHAIN_NAME } = require("../src/lib/config");
+const appPhase = require("../src/lib/app-phase");
+const { createPositionManager } = require("../src/lib/position-manager");
+const { updatePositionState } = require("../src/lib/server-positions");
 const { makeDeps, makeRes } = require("./helpers/route-handler-deps");
 
 const WALLET_0X = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";

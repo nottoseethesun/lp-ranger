@@ -1,6 +1,6 @@
 /**
  * @file test/deposit-count.test.js
- * @description The deposit count (src/deposit-count.js): the deposits the
+ * @description The deposit count (src/lib/deposit-count.js): the deposits the
  *   owner made to the wallet since the last count, counted before each
  *   rebalance and compound, and when a poll sees the wallet's coins rise.
  *
@@ -75,7 +75,10 @@ Module.prototype.require = function (id) {
     return { getPoolState: async () => ({ poolAddress: "0xPOOL" }) };
   return _origRequire.apply(this, arguments);
 };
-const { countDeposits, countDepositsOnRise } = require("../src/deposit-count");
+const {
+  countDeposits,
+  countDepositsOnRise,
+} = require("../src/lib/deposit-count");
 Module.prototype.require = _origRequire;
 
 /** A token0 or token1 arrival in the wallet from outside. */

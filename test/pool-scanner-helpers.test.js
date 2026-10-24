@@ -12,10 +12,10 @@ const {
   getPoolScanLock,
   clearPoolCache,
   appendToPoolCache,
-} = require("../src/pool-scanner");
-const { createCacheStore, eventCachePath } = require("../src/cache-store");
-const { buildCacheKey } = require("../src/event-scanner");
-const config = require("../src/config");
+} = require("../src/lib/pool-scanner");
+const { createCacheStore, eventCachePath } = require("../src/lib/cache-store");
+const { buildCacheKey } = require("../src/lib/event-scanner");
+const config = require("../src/lib/config");
 
 /*-
  *  Read back what the cache holds for a position, through the same path

@@ -20,7 +20,7 @@ const {
   isNearEdge,
   MIN_TICK,
   MAX_TICK,
-} = require("../src/range-math");
+} = require("../src/lib/range-math");
 
 // ── sqrtPriceX96ToPrice ───────────────────────────────────────────────────────
 
@@ -505,7 +505,7 @@ describe("preserveRange", () => {
 // ── priceToTick edge cases ──────────────────────────────────────────
 
 describe("priceToTick edge cases", () => {
-  const { priceToTick } = require("../src/range-math");
+  const { priceToTick } = require("../src/lib/range-math");
 
   it("throws for zero price", () => {
     assert.throws(() => priceToTick(0, 18, 18), /must be > 0/);
@@ -519,7 +519,7 @@ describe("priceToTick edge cases", () => {
 // ── fullRange ──────────────────────────────────────────────────────────
 
 describe("fullRange", () => {
-  const { fullRange } = require("../src/range-math");
+  const { fullRange } = require("../src/lib/range-math");
 
   it("returns MIN_TICK/MAX_TICK-aligned bounds for tickSpacing=200 (fee=10000)", () => {
     /*- nearestUsableTick clamps MIN_TICK/MAX_TICK to the nearest

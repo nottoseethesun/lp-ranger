@@ -7,7 +7,7 @@
  *   `npm run check`.
  *
  *   Each case points the validator at a temp directory of its own, so
- *   no test can disturb `public/icons/` (see
+ *   no test can disturb `src/client/web/icons/` (see
  *   docs/claude/CLAUDE-BEST-PRACTICES.md § Test Isolation). The one
  *   case that reads the real directory only reads it.
  */

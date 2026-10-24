@@ -20,15 +20,15 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 
-const { _aggregatorBase } = require("../src/rebalancer-aggregator");
-const { primaryRouteLabel } = require("../src/rebalancer-swap");
-const { V3_ROUTER_LABEL } = require("../src/rebalancer-router");
-const { resolvedHelpFigures } = require("../src/resolved-settings");
+const { _aggregatorBase } = require("../src/lib/rebalancer-aggregator");
+const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
+const { V3_ROUTER_LABEL } = require("../src/lib/rebalancer-router");
+const { resolvedHelpFigures } = require("../src/lib/resolved-settings");
 const {
   aggregatorBaseUrlOf,
   aggregatorNameInUse,
-} = require("../src/aggregator-in-use");
-const config = require("../src/config");
+} = require("../src/lib/aggregator-in-use");
+const config = require("../src/lib/config");
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
 describe("aggregator base URL", () => {
@@ -81,7 +81,7 @@ describe("aggregator base URL", () => {
      *  The "Route:" badge, the help and the swap ask one
      *  question, so neither the badge nor the help can name the
      *  aggregator while every swap goes through the V3 router. A url
-     *  that is not a string never gets here: src/config.js refuses to
+     *  that is not a string never gets here: src/lib/config.js refuses to
      *  start on one (test/config-startup-checks.test.js).
      */
     const saved = config.AGGREGATOR_URL;
@@ -139,7 +139,7 @@ describe("aggregator url config", () => {
   it("every chain names both swap routes, even when blank", () => {
     /*-
      *  The names are what the badge and the Rebalance Events table show,
-     *  and src/config.js supplies none of its own.
+     *  and src/lib/config.js supplies none of its own.
      */
     for (const [name, chain] of Object.entries(CHAINS)) {
       assert.strictEqual(

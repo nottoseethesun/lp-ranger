@@ -26,8 +26,8 @@ const path = require("node:path");
 const {
   clearScanDerivedConfig,
 } = require("../scripts/clear-blockchain-scan-cache");
-const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
-const { loadConfig } = require("../src/bot-config-v2");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/lib/bot-config-keys");
+const { loadConfig } = require("../src/lib/bot-config-v2");
 
 const A = "pulsechain-0xW-0xC-100";
 const B = "pulsechain-0xW-0xC-200";

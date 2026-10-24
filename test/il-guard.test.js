@@ -3,7 +3,7 @@
 /**
  * @file test/il-guard.test.js
  * @description Tests for the Impermanent Loss Guard's RULES — the pure
- * decisions in `src/il-guard.js`, plus its shipped defaults and the
+ * decisions in `src/lib/il-guard.js`, plus its shipped defaults and the
  * Telegram message.  The gate that applies them to a poll cycle is
  * tested in `il-guard-gate.test.js`; the two files split when this one
  * passed the 500-line cap.
@@ -30,11 +30,14 @@ const {
   ilGuardInputs,
   ilGuardRetryWaitMs,
   checkIlGuard,
-} = require("../src/il-guard");
-const { readBotConfigDefaults } = require("../src/bot-config-defaults");
-const config = require("../src/config");
-const { SETTING_BOUNDS } = require("../src/setting-bounds");
-const { fillEntryFigures, spanFigureTokens } = require("../src/help-figures");
+} = require("../src/lib/il-guard");
+const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
+const config = require("../src/lib/config");
+const { SETTING_BOUNDS } = require("../src/lib/setting-bounds");
+const {
+  fillEntryFigures,
+  spanFigureTokens,
+} = require("../src/lib/help-figures");
 const { render, shippedFigures } = require("../scripts/build-manual-content");
 
 const _SHIPPED_ALL = readBotConfigDefaults();
@@ -370,7 +373,14 @@ describe("the Telegram message", () => {
     const fs = require("node:fs");
     const path = require("node:path");
     const html = fs.readFileSync(
-      path.join(__dirname, "..", "public", "help-and-user-manual.html"),
+      path.join(
+        __dirname,
+        "..",
+        "src",
+        "client",
+        "web",
+        "help-and-user-manual.html",
+      ),
       "utf8",
     );
     const anchor = MANUAL_URL.split("#")[1];
@@ -426,7 +436,7 @@ describe("the shipped defaults", () => {
     const fs = require("node:fs");
     const path = require("node:path");
     const html = fs.readFileSync(
-      path.join(__dirname, "..", "public", "index.html"),
+      path.join(__dirname, "..", "src", "client", "web", "index.html"),
       "utf8",
     );
     const tag = html.match(/<input[^>]*id="inIlGuard"[^>]*>/);
@@ -496,18 +506,18 @@ describe("the help copy is written once", () => {
    *  Guard explanation.  Two hand-written copies drift: the manual said
    *  "the bot keeps checking every poll" for a while after the backoff
    *  landed, because only the dialog had been updated.  Both now read
-   *  `public/shared-help-content.json`, and these pin that. */
+   *  `src/lib/shared-help-content.json`, and these pin that. */
   const fs = require("node:fs");
   const path = require("node:path");
   const ROOT = path.join(__dirname, "..");
   const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
-  const shared = () => JSON.parse(read("public/shared-help-content.json"));
+  const shared = () => JSON.parse(read("src/lib/shared-help-content.json"));
 
   it("the dialog imports the JSON rather than restating it", () => {
-    const src = read("public/param-help-content.js");
+    const src = read("src/client/web/param-help-content.js");
     assert.match(
       src,
-      /import SHARED_HELP from "\.\/shared-help-content\.json"/,
+      /import SHARED_HELP from "\.\.\/\.\.\/lib\/shared-help-content\.json"/,
     );
     assert.match(src, /fillEntryFigures\(SHARED_HELP\.inIlGuard, f\)/);
     assert.ok(
@@ -522,7 +532,7 @@ describe("the help copy is written once", () => {
      *  the span the served manual refills, so a section that silently
      *  failed to render would leave the manual short without any error.
      */
-    const html = read("public/help-and-user-manual.html");
+    const html = read("src/client/web/help-and-user-manual.html");
     const entry = fillEntryFigures(
       shared().inIlGuard,
       shippedFigures(),
@@ -547,11 +557,11 @@ describe("the help copy is written once", () => {
      *  revert them.
      *
      *  Computed in memory rather than by calling `build()`: that writes
-     *  `public/help-and-user-manual.html`, and a test must never mutate
+     *  `src/client/web/help-and-user-manual.html`, and a test must never mutate
      *  a tracked source file (CLAUDE-BEST-PRACTICES "Test Isolation" —
      *  and `check.js`'s backup pass covers app-config/ and app-data/,
-     *  not public/). */
-    const html = read("public/help-and-user-manual.html");
+     *  not src/client/web/). */
+    const html = read("src/client/web/help-and-user-manual.html");
     /*-
      *  The generator's own in-memory render, imported rather than
      *  re-expressed, so the two cannot disagree about what the build
@@ -599,7 +609,7 @@ describe("the badge figure is the figure the bot enforces", () => {
 
   it("moves badge and enforcement together under an env override", () => {
     /*-
-     *  Env-over-JSON is this project's layering (see the src/config.js
+     *  Env-over-JSON is this project's layering (see the src/lib/config.js
      *  header) — the point is not that the env var is ignored, but that
      *  it can never move one of these without the other.  Checked in a
      *  child process because config.js resolves once, at require time.
@@ -615,7 +625,7 @@ describe("the badge figure is the figure the bot enforces", () => {
       process.execPath,
       [
         "-e",
-        'const c=require("./src/config"),g=require("./src/il-guard");' +
+        'const c=require("./src/lib/config"),g=require("./src/lib/il-guard");' +
           "const r=g.checkIlGuard({_botState:{}," +
           "updateBotState:()=>{},position:{tokenId:'1',liquidity:'1000'}},false," +
           `${snap},()=>({}));` +

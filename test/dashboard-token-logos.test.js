@@ -3,14 +3,14 @@
 /**
  * @file test/dashboard-token-logos.test.js
  * @description Each token's logo, left of its name in the Pool line and
- *   atop Position Stats (public/dashboard-token-logos.js). The page reads
+ *   atop Position Stats (src/client/web/dashboard-token-logos.js). The page reads
  *   the chain's token list once, from the url the server names with the
  *   chain, and matches tokens by contract address. A token with no logo,
  *   a chain with no list, a list that cannot be read and a logo that
  *   fails to load all show the transparent placeholder.
  *
  *   Runs the real modules under jsdom, on the page's markup from
- *   public/index.html, and last drives the dashboard's own painting: a
+ *   src/client/web/index.html, and last drives the dashboard's own painting: a
  *   position coming on screen, the position strip's repaint, and the
  *   clearing when no position is on screen. The chain is learned through
  *   the real `loadActiveChain` and the list read through a scripted
@@ -47,8 +47,8 @@ let chain, logos;
 
 before(async () => {
   document.body.innerHTML = indexHtmlDocument().body.innerHTML;
-  chain = await import("../public/dashboard-chain.js");
-  logos = await import("../public/dashboard-token-logos.js");
+  chain = await import("../src/client/web/dashboard-chain.js");
+  logos = await import("../src/client/web/dashboard-token-logos.js");
 });
 
 /** Have the page learn a chain whose token list is at `tokenListUrl`. */
@@ -184,8 +184,8 @@ describe("the dashboard's own painting", () => {
       json: async () => ({}),
     });
     await learnUiSettings();
-    store = await import("../public/dashboard-positions-store.js");
-    positions = await import("../public/dashboard-positions.js");
+    store = await import("../src/client/web/dashboard-positions-store.js");
+    positions = await import("../src/client/web/dashboard-positions.js");
   });
 
   it("puts a position's logos in the Pool line and atop Position Stats as it comes on screen", () => {
@@ -221,7 +221,7 @@ describe("startup", () => {
      *  drawn from the page itself and asks no host.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "public", "dashboard-init.js"),
+      path.join(__dirname, "..", "src", "client", "web", "dashboard-init.js"),
       "utf8",
     );
     const gate = src.indexOf("initDisclaimer().then(");

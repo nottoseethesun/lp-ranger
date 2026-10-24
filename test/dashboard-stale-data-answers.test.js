@@ -7,14 +7,14 @@
  *
  *   An open managed position's figures come from the status poll, an
  *   unmanaged one's from its details request, a closed one's from its
- *   history request (public/dashboard-stale-data.js). An answer counts
+ *   history request (src/client/web/dashboard-stale-data.js). An answer counts
  *   only for the position it was about, an error answer counts, and with
  *   no answer the figures stay stale while each status answer asks again.
  *   A switch also empties the Bot Settings boxes holding the position's
  *   settings, which the new position's answer fills.
  *
  *   Driven through the page's own switch (`activateByTokenId`) and poll
- *   (`pollNow`), on its markup from public/index.html, with the server's
+ *   (`pollNow`), on its markup from src/client/web/index.html, with the server's
  *   answers scripted.
  */
 
@@ -133,15 +133,15 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  store = await import("../public/dashboard-positions-store.js");
-  stale = await import("../public/dashboard-stale-data.js");
-  data = await import("../public/dashboard-data.js");
-  poll = await import("../public/dashboard-data-poll.js");
-  positions = await import("../public/dashboard-positions.js");
-  const unmanaged = await import("../public/dashboard-unmanaged.js");
-  const closed = await import("../public/dashboard-closed-pos.js");
-  ({ wallet } = await import("../public/dashboard-wallet.js"));
-  const walletModule = await import("../public/dashboard-wallet.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
+  stale = await import("../src/client/web/dashboard-stale-data.js");
+  data = await import("../src/client/web/dashboard-data.js");
+  poll = await import("../src/client/web/dashboard-data-poll.js");
+  positions = await import("../src/client/web/dashboard-positions.js");
+  const unmanaged = await import("../src/client/web/dashboard-unmanaged.js");
+  const closed = await import("../src/client/web/dashboard-closed-pos.js");
+  ({ wallet } = await import("../src/client/web/dashboard-wallet.js"));
+  const walletModule = await import("../src/client/web/dashboard-wallet.js");
   await walletModule.checkWalletLocked();
   wallet.address = WALLET;
   positions.injectPositionDeps({

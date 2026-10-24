@@ -5,7 +5,7 @@
  * @description The out-of-range threshold the dashboard keeps in the
  *   browser for each position, saved and loaded through the real
  *   `savePositionOorThreshold` / `loadPositionOorThreshold` in
- *   `public/dashboard-helpers.js`, under jsdom's `localStorage`.
+ *   `src/client/web/dashboard-helpers.js`, under jsdom's `localStorage`.
  *
  *   The value is keyed by everything that tells one position from
  *   another: the chain, the wallet, the position's contract and, for an
@@ -51,8 +51,8 @@ function learnChain(chainId) {
 }
 
 before(async () => {
-  chainMod = await import("../public/dashboard-chain.js");
-  helpers = await import("../public/dashboard-helpers.js");
+  chainMod = await import("../src/client/web/dashboard-chain.js");
+  helpers = await import("../src/client/web/dashboard-helpers.js");
 });
 
 beforeEach(() => localStorage.clear());

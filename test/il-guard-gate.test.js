@@ -26,8 +26,8 @@ const {
   checkIlGuard,
   clearIlGuardWait,
   ilGuardWillMeasure,
-} = require("../src/il-guard");
-const { isRecoveryResult } = require("../src/bot-loop");
+} = require("../src/lib/il-guard");
+const { isRecoveryResult } = require("../src/lib/bot-loop");
 const { ilSnapshot } = require("./helpers/il-snapshot");
 
 describe("checkIlGuard — the gate", () => {

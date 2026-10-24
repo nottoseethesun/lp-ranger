@@ -5,7 +5,7 @@
  * @description
  * Tests for the Moralis api key the bookkeeping report prices with
  * (`util/bookkeeping/moralis-key.js`), which is LP Ranger's own, kept in
- * its api-key store (src/api-key-store.js). A key the app saved opens with
+ * its api-key store (src/lib/api-key-store.js). A key the app saved opens with
  * the wallet's password; with none saved, a key typed in is saved where
  * the app reads it, once Moralis takes it. Every prompt is answered by a
  * stand-in and every question to Moralis goes to one, so no case waits on
@@ -22,7 +22,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 
 /*-
  *  The store reads where its file is as it loads, so the test's own file
@@ -31,12 +31,12 @@ const { makeTestTempFolder } = require("../../src/test-temp-folders");
 const STORE = path.join(makeTestTempFolder("moralis-key"), "api-keys.json");
 process.env.API_KEYS_FILE_PATH = STORE;
 
-const { getApiKey, setApiKey } = require("../../src/api-key-holder");
+const { getApiKey, setApiKey } = require("../../src/lib/api-key-holder");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
   hasEncryptedKey,
-} = require("../../src/api-key-store");
+} = require("../../src/lib/api-key-store");
 const {
   STORE_FILE,
   SAVE_WARNING,

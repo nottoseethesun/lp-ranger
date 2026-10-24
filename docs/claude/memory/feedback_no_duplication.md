@@ -1,8 +1,11 @@
 ---
 name: feedback_no_duplication
-description: Never duplicate code or RPC calls — reuse the existing implementation; fetch once and pass the value down. Client/server is not an excuse: extract the pure part into a dependency-free module both tiers import
+description: "Never duplicate code or RPC calls — reuse the existing implementation; fetch once and pass the value down. Client/server is not an excuse: extract the pure part into a dependency-free module both tiers import"
 metadata:
+  node_type: memory
   type: feedback
+  originSessionId: b6a0b30e-9cd6-4560-a6cd-597053c26378
+  modified: 2026-10-24T05:23:58.839Z
 ---
 
 # No duplication
@@ -25,7 +28,7 @@ Never duplicate RPC calls. When multiple features need the same on-chain data, f
 
 ## client and server can almost always share
 
-A rule needed by both `src/` and `public/` looks unshareable — `src/`
+A rule needed by both `src/lib/` and `src/client/web/` looks unshareable — `src/lib/`
 is CommonJS and the dashboard bundle is ESM — but **the module format is
 rarely the real blocker**. esbuild bundles CommonJS into the browser
 build without complaint. What actually blocks the import is Node-only
@@ -34,10 +37,10 @@ dependencies further down the file: `fs`, `ethers`, `async-mutex`.
 **So extract the pure part into its own dependency-free module and have
 both tiers import it.** Established 2026-09-16 on the
 one-position-per-pool gate: `positionMgr.poolKey` lives in
-`src/position-manager.js`, which pulls in `async-mutex`, `ethers` and
+`src/lib/position-manager.js`, which pulls in `async-mutex`, `ethers` and
 `fs`, so the dashboard could not import it. The pair normalisation
-inside it was pure, so it moved to `src/pool-key.js` with zero imports,
-and `public/dashboard-manage-ui.js` now imports the very function the
+inside it was pure, so it moved to `src/lib/pool-key.js` with zero imports,
+and `src/client/web/dashboard-manage-ui.js` now imports the very function the
 server decides with.
 
 **Why it matters:** the user offered the duplication as acceptable in

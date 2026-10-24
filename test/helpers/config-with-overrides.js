@@ -2,14 +2,14 @@
 
 /**
  * @file test/helpers/config-with-overrides.js
- * @description Loads the real `src/config.js` as startup would, against
+ * @description Loads the real `src/lib/config.js` as startup would, against
  *   settings files of a test's own, so a test can watch it refuse a
  *   setting it cannot use, or read one moved off what ships.
  *
- *   `LP_RANGER_USER_CONFIG_DIR` is read by `src/load-merged-defaults.js`
+ *   `LP_RANGER_USER_CONFIG_DIR` is read by `src/lib/load-merged-defaults.js`
  *   when it loads, so requiring this helper points it at a temp folder
  *   of its own (`makeTestTempFolder`, removed when the process exits);
- *   require it before anything under `src/`. It also pins the `.env`
+ *   require it before anything under `src/lib/`. It also pins the `.env`
  *   keys that would override the settings under test, since dotenv
  *   leaves a key alone once it is set. Each load writes the overrides
  *   and loads afresh the modules that read the settings files.
@@ -18,7 +18,7 @@
 const fs = require("fs");
 const path = require("path");
 const assert = require("node:assert/strict");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 
 /** The folder the overrides are written to, as the operator's copies. */
 const USER_DIR = makeTestTempFolder("startup-checks");
@@ -35,7 +35,7 @@ const _OVERRIDABLE = [
 ];
 
 /**
- * Load `src/config.js` as startup would, with `overrides` as the
+ * Load `src/lib/config.js` as startup would, with `overrides` as the
  * operator's files: `{ "chains.json": {...} }` and so on. A chains.json
  * override is given for PulseChain's entry alone.
  * @param {object} [overrides]
@@ -56,8 +56,8 @@ function loadConfigWith(overrides = {}) {
     "cache-store",
     "config",
   ])
-    delete require.cache[require.resolve(`../../src/${mod}`)];
-  return require("../../src/config");
+    delete require.cache[require.resolve(`../../src/lib/${mod}`)];
+  return require("../../src/lib/config");
 }
 
 /** Load with one chains.json override, expecting startup to refuse it. */

@@ -9,7 +9,7 @@
  *   The Price Override dialog saves to the server (`POST /api/config`,
  *   under the position's key), as it does for a managed position, so the
  *   override holds in any browser and after Clear Local Storage.
- *   `computeQuickDetails` (src/position-details-quick.js) reads it there.
+ *   `computeQuickDetails` (src/lib/position-details-quick.js) reads it there.
  *   The pool, its prices and the token reads are stubbed; the override
  *   rule itself (`_applyPriceOverrides`) is tested in
  *   test/position-details-quick.test.js.
@@ -18,8 +18,8 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
-const config = require("../src/config");
-const { compositeKey } = require("../src/bot-config-v2");
+const config = require("../src/lib/config");
+const { compositeKey } = require("../src/lib/bot-config-v2");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -56,14 +56,14 @@ before(() => {
       };
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/position-details-quick")];
-  ({ computeQuickDetails } = require("../src/position-details-quick"));
+  delete require.cache[require.resolve("../src/lib/position-details-quick")];
+  ({ computeQuickDetails } = require("../src/lib/position-details-quick"));
   key = compositeKey(config.CHAIN_NAME, WALLET, PM, TOKEN_ID);
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/position-details-quick")];
+  delete require.cache[require.resolve("../src/lib/position-details-quick")];
 });
 
 /** A details request; `extra` adds what an older dashboard sent. */

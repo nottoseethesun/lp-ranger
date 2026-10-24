@@ -15,7 +15,7 @@
  *   operator has to go looking for.
  *
  *   Drives the exported decision against the REAL template from
- *   public/index.html, so a template that loses the notice or the
+ *   src/client/web/index.html, so a template that loses the notice or the
  *   button's hook fails here rather than in the browser.
  */
 
@@ -34,7 +34,7 @@ let frag;
 
 before(async () => {
   ({ applySyncGate, reloadDurationText } =
-    await import("../public/dashboard-reload-flow.js"));
+    await import("../src/client/web/dashboard-reload-flow.js"));
   // As at startup: the reload's longest wait is a setting the server sends.
   await learnUiSettings();
 });
@@ -43,7 +43,11 @@ before(async () => {
 beforeEach(() => {
   const page = indexHtmlDocument();
   const tpl = page.getElementById("tplReloadConfirmModal");
-  assert.notEqual(tpl, null, "the template must exist in public/index.html");
+  assert.notEqual(
+    tpl,
+    null,
+    "the template must exist in src/client/web/index.html",
+  );
   document.body.replaceChildren(document.importNode(tpl.content, true));
   frag = document.body;
 });

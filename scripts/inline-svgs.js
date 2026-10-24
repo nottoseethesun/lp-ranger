@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
  * @file scripts/inline-svgs.js
- * @description Build-time SVG inliner for `public/index.html`.
+ * @description Build-time SVG inliner for `src/client/web/index.html`.
  *
  * Reads the source HTML (with `data-svg="icons/…" data-w=".." data-h=".."`
- * placeholder attributes) and writes `public/dist/index.html` (checked
+ * placeholder attributes) and writes `src/client/web/dist/index.html` (checked
  * into `.gitignore`) with each placeholder replaced by the actual
  * `<svg>` element from disk, sized per the `data-w` / `data-h` values.
  *
- * The server (`server.js`) serves `public/dist/index.html` at `/` when
- * it exists, falling back to `public/index.html` when it doesn't, so a
+ * The server (`server.js`) serves `src/client/web/dist/index.html` at `/` when
+ * it exists, falling back to `src/client/web/index.html` when it doesn't, so a
  * skipped build degrades gracefully — the page still boots, just with
  * empty placeholders where the UI icons would be.
  *
@@ -22,11 +22,11 @@
 
 const fs = require("fs");
 const path = require("path");
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 
 const _ROOT = path.join(__dirname, "..");
-const _SRC = path.join(_ROOT, "public", "index.html");
-const _DIST_DIR = path.join(_ROOT, "public", "dist");
+const _SRC = path.join(_ROOT, "src", "client", "web", "index.html");
+const _DIST_DIR = path.join(_ROOT, "src", "client", "web", "dist");
 const _OUT = path.join(_DIST_DIR, "index.html");
 
 /*- Pre-compiled regex table for the fixed set of placeholder attrs
@@ -65,7 +65,7 @@ function _stripAttrs(attrs, names) {
  *  referenced file is missing — better to break the build than to
  *  silently ship a page with a broken icon reference. */
 function _readIcon(rel) {
-  const abs = path.join(_ROOT, "public", rel);
+  const abs = path.join(_ROOT, "src", "client", "web", rel);
   if (!fs.existsSync(abs)) {
     throw new Error("inline-svgs: referenced icon file not found: " + rel);
   }

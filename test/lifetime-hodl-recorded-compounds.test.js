@@ -3,7 +3,7 @@
 /**
  * @file test/lifetime-hodl-recorded-compounds.test.js
  * @description The Lifetime scan's tally counts no compound this install
- *   made as money put in (`computeLifetimeHodl`, src/lifetime-hodl.js).
+ *   made as money put in (`computeLifetimeHodl`, src/lib/lifetime-hodl.js).
  *
  *   An addition of liquidity after an NFT's mint is a compound while the
  *   additions so far stay within the NFT's fees, and otherwise money put
@@ -20,7 +20,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { computeLifetimeHodl } = require("../src/lifetime-hodl");
+const { computeLifetimeHodl } = require("../src/lib/lifetime-hodl");
 const { ilEvent, colEvent } = require("./helpers/lifetime-hodl-fixtures");
 
 /** A position of two 8-decimal coins. */

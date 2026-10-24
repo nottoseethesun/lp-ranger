@@ -1,7 +1,7 @@
 /**
  * @file test/compound-success-fees.test.js
  * @description A successful compound, through the bot's compound step
- *   (`executeCompound`, src/bot-cycle-compound.js), counts only the fees
+ *   (`executeCompound`, src/lib/bot-cycle-compound.js), counts only the fees
  *   its deposit put back: in the running Fees Compounded total and in its
  *   Telegram message, which names apart the coins the wallet already held
  *   that the deposit took in.
@@ -46,7 +46,7 @@ const SWEPT = Object.freeze({
 
 const notified = [];
 
-/** Whether `mod` is the file `name` in src/. */
+/** Whether `mod` is the file `name` in src/lib/. */
 const from = (mod, name) => path.basename(mod.filename || "") === name;
 
 const _origRequire = Module.prototype.require;
@@ -61,7 +61,7 @@ Module.prototype.require = function (id) {
   }
   return _origRequire.apply(this, arguments);
 };
-const { executeCompound } = require("../src/bot-cycle-compound");
+const { executeCompound } = require("../src/lib/bot-cycle-compound");
 Module.prototype.require = _origRequire;
 
 describe("a compound whose deposit swept a deposit in", () => {

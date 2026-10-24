@@ -1,0 +1,409 @@
+/**
+ * @file dashboard-unmanaged.js
+ * @description One-shot detail fetch for unmanaged LP positions.
+ *   When the user views an unmanaged position, this module fetches live
+ *   pool state, token prices, composition, and value from the server
+ *   and populates the dashboard KPIs using shared rendering functions.
+ */
+
+import { log } from "./dashboard-log.js";
+import { g, fetchWithCsrf } from "./dashboard-helpers.js";
+import { getLastStatus } from "./dashboard-data.js";
+import { resetKpis } from "./dashboard-data-kpi.js";
+import { pollNow } from "./dashboard-data-poll.js";
+import { _apply, _applyLifetime } from "./dashboard-unmanaged-apply.js";
+import { enterClosedPosView } from "./dashboard-closed-pos.js";
+import { isWalletUnlocked } from "./dashboard-wallet.js";
+import { LT_BD_IDS } from "./dashboard-data-kpi-breakdown.js";
+import {
+  posStore,
+  updatePosStripUI,
+  isPositionManaged,
+} from "./dashboard-positions-store.js";
+import { renderPosBrowser } from "./dashboard-positions-browser.js";
+import { markPositionDataFresh } from "./dashboard-stale-data.js";
+
+/*- Compare a queued/in-flight fetch's tokenId against the currently-
+ *  active posStore entry.  Used to drop stale results that would paint
+ *  one position's $$ on top of another position's labels (the
+ *  "tokenId correct, pool name stale" mixed-state render bug). */
+export function _activeMatches(tokenId) {
+  const a = posStore.getActive();
+  return !!a && String(a.tokenId) === String(tokenId);
+}
+
+const _ALL_KPIS = [
+  "kpiValue",
+  "pnlFees",
+  "pnlPrice",
+  "kpiPnl",
+  "curProfit",
+  "curIL",
+  "pnlRealized",
+  "kpiNet",
+  "ltProfit",
+  "netIL",
+  ...LT_BD_IDS,
+  "kpiPosDuration",
+  "ltCurrentValue",
+];
+
+/** Build the request body for position detail endpoints. */
+function _detailBody(pos) {
+  return {
+    tokenId: pos.tokenId,
+    token0: pos.token0,
+    token1: pos.token1,
+    fee: pos.fee,
+    tickLower: pos.tickLower,
+    tickUpper: pos.tickUpper,
+    liquidity: String(pos.liquidity || 0),
+    walletAddress: pos.walletAddress,
+    contractAddress: pos.contractAddress,
+  };
+}
+
+let _lastFetchedId = null,
+  _fetchGen = 0;
+
+/*- Position recorded when fetchUnmanagedDetails was called before the
+ *  wallet was unlocked.  flushPendingUnmanagedFetch() drains it on
+ *  unlock so the one-shot fetch fires for the position the user is
+ *  actually looking at — not whatever posStore.getActive() happens to
+ *  return at unlock time (which is racy on cold loads). */
+let _pendingPos = null;
+
+/** Reset the dedup guard so the next fetchUnmanagedDetails call will re-fetch. */
+export function resetLastFetchedId() {
+  _lastFetchedId = null;
+}
+
+/**
+ * Whether the pending unmanaged fetch should be dropped because the bot
+ * owns this position.
+ *
+ * A position is never both managed and unmanaged — but on a cold load
+ * the browser is asked before it can answer. `isPositionManaged()` reads
+ * a Set filled from `/api/status`, and the bot starts its positions on a
+ * stagger, so the naive check says "not managed" for the first minute
+ * and the dashboard scans a chain the bot is about to scan itself. That
+ * cost two full passes over every NFT in the rebalance chain on every
+ * startup.
+ *
+ * `hasPolled` is what makes the check trustworthy, and it is not
+ * belt-and-braces. The managed Set is also restored from localStorage
+ * for instant badge render, so before any poll lands it may be a
+ * carry-over from a previous session — the server may have retired the
+ * position while the page was closed. Until a real response arrives we
+ * do not trust it, and the fetch proceeds exactly as it always has.
+ *
+ * Once a poll HAS landed the answer is authoritative, because the
+ * server's `managedPositions` is the union of live bot loops and
+ * positions whose saved status is `running` but have not started yet
+ * (`src/lib/handle-api-status.js`). So intent is known from the very first
+ * payload, well before the bot loop exists.
+ *
+ * Pure so the decision can be driven directly by a test rather than
+ * re-expressed in one.
+ * @param {{isManaged: boolean, hasPolled: boolean}} state
+ * @returns {boolean}  True to skip the fetch.
+ */
+export function shouldSkipUnmanagedFetch({ isManaged, hasPolled }) {
+  return hasPolled === true && isManaged === true;
+}
+
+/**
+ * Fire any pending unmanaged-details fetch that was deferred because the
+ * wallet was still locked when the activation path tried to fetch.  Called
+ * from the wallet unlock paths (auto-unlock, manual submit, import).  No-op
+ * when nothing is pending.
+ */
+export function flushPendingUnmanagedFetch() {
+  const pos = _pendingPos;
+  _pendingPos = null;
+  if (!pos) return;
+  /*- Drop the pending if the bot owns this position.  The prime at init
+   *  deliberately does not check — no poll has landed that early — so
+   *  this is where the question gets asked, by which time /api/status
+   *  has answered it.  See `shouldSkipUnmanagedFetch`. */
+  if (
+    shouldSkipUnmanagedFetch({
+      isManaged: isPositionManaged(pos.tokenId),
+      hasPolled: getLastStatus() !== null,
+    })
+  ) {
+    log.info(
+      "%c[lp-ranger] [unmanaged] FLUSH-SKIP managed #%s",
+      "color:#fa0;background:#310;padding:1px 4px;border-radius:2px",
+      pos?.tokenId,
+    );
+    return;
+  }
+  /*- Drop the pending if the active position changed since this was
+   *  queued (e.g. URL routing activated a different NFT after the
+   *  initial bestAutoSelect).  Firing the stale fetch would write the
+   *  old position's $$ into the new position's already-painted view —
+   *  the "tokenId correct, pool name stale" mixed-state bug. */
+  if (!_activeMatches(pos.tokenId)) {
+    const a = posStore.getActive();
+    log.info(
+      "%c[lp-ranger] [unmanaged] FLUSH-DROP stale-pending #%s active=#%s",
+      "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+      pos?.tokenId,
+      a?.tokenId,
+    );
+    return;
+  }
+  /*- Reset the dedup guard so a same-tokenId fetch from earlier (e.g. a
+   *  stale completed request) doesn't entry-skip this one. */
+  _lastFetchedId = null;
+  log.info(
+    "%c[lp-ranger] [unmanaged] FLUSH-PENDING #%s",
+    "color:#0f0;background:#031;padding:1px 4px;border-radius:2px",
+    pos?.tokenId,
+  );
+  fetchUnmanagedDetails(pos);
+}
+
+/**
+ * Check if the server response indicates a fully drained (closed) position.
+ * Both token amounts and USD value must be zero.
+ * @param {object} d  Phase-1 API response.
+ * @returns {boolean}
+ */
+function _isResponseDrained(d) {
+  return (
+    d.amounts &&
+    d.amounts.amount0 === 0 &&
+    d.amounts.amount1 === 0 &&
+    d.value === 0
+  );
+}
+
+/**
+ * Run phase-1 (fast) detail fetch.  If the server reveals the position was
+ * fully drained, updates posStore and switches to the closed-pos history view.
+ * @param {object} pos   posStore entry.
+ * @param {object} body  Request body (mutated: feesUsd added on success).
+ * @returns {Promise<boolean|null>}  True if switched to closed-pos view;
+ *   null when the server gave no answer.
+ */
+async function _phase1(pos, body) {
+  const _t0 = Date.now();
+  log.info(
+    "%c[lp-ranger] [unmanaged] phase1 START #%s liquidity=%s",
+    "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+    pos?.tokenId,
+    body?.liquidity,
+  );
+  let answered = false;
+  try {
+    const r = await fetchWithCsrf("/api/position/details", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    answered = true;
+    if (!_activeMatches(pos.tokenId)) {
+      const a = posStore.getActive();
+      log.info(
+        "%c[lp-ranger] [unmanaged] phase1 DROP-STALE #%s active=#%s (%dms) — active changed during fetch",
+        "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+        pos?.tokenId,
+        a?.tokenId,
+        Date.now() - _t0,
+      );
+      _freeGuard(pos);
+      return false;
+    }
+    if (!d.ok) {
+      log.warn(
+        "[lp-ranger] [unmanaged] phase1 FAIL #%s details error: %s (%dms)",
+        pos?.tokenId,
+        d.error,
+        Date.now() - _t0,
+      );
+      // An error is an answer: the figures stay dashes, but are not stale.
+      markPositionDataFresh(pos);
+      return false;
+    }
+    if (_isResponseDrained(d)) {
+      log.info(
+        "%c[lp-ranger] [unmanaged] phase1 DRAINED #%s → closed view (%dms)",
+        "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+        pos?.tokenId,
+        Date.now() - _t0,
+      );
+      pos.liquidity = "0";
+      enterClosedPosView(pos);
+      /*- Same closed-state flip refresh as syncActivePosition + the
+       *  _backgroundRefresh loop in dashboard-positions.js: an
+       *  externally-drained unmanaged NFT that the user just navigated
+       *  to must trim the header "N Open Positions" count and repaint
+       *  the LP Position Browser row style on this fetch, not on the
+       *  next unrelated poll. */
+      updatePosStripUI();
+      renderPosBrowser();
+      return true;
+    }
+    _apply(d, pos);
+    markPositionDataFresh(pos);
+    body.feesUsd = d.feesUsd;
+    log.info(
+      "%c[lp-ranger] [unmanaged] phase1 DONE #%s value=%s feesUsd=%s (%dms)",
+      "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+      pos?.tokenId,
+      d.value,
+      d.feesUsd,
+      Date.now() - _t0,
+    );
+  } catch (e) {
+    log.warn(
+      "[lp-ranger] [unmanaged] phase1 EXCEPTION #%s %s (%dms)",
+      pos?.tokenId,
+      e.message,
+      Date.now() - _t0,
+    );
+    /*-
+     *  With no answer the position can be asked about again. An answer
+     *  that failed to show still counts as one, so a fault in the page
+     *  does not ask the server again on every poll.
+     */
+    if (!answered) {
+      _freeGuard(pos);
+      return null;
+    }
+    markPositionDataFresh(pos);
+  }
+  return false;
+}
+
+/**
+ * Free the dedup guard after a request whose answer was not shown, none
+ * having come or the position having left the screen first, so the
+ * position can be asked about again: by the next status answer while its
+ * figures are stale (dashboard-data.js), or when it is put back on screen.
+ * @param {object} pos  The position the request was about.
+ */
+function _freeGuard(pos) {
+  if (_lastFetchedId === String(pos?.tokenId)) _lastFetchedId = null;
+}
+
+/** Trigger an immediate poll so the badge updates from server state.
+ *  The server writes rebalanceScanComplete when the lifetime scan
+ *  finishes (same path for managed and unmanaged) — no client flag. */
+function _markSynced() {
+  pollNow();
+}
+
+/*- Phase 2: slow — lifetime P&L (event scan + epoch reconstruction).
+ *
+ *  Deliberately unbounded, matching what the bot does for a managed
+ *  position: no deadline, finish or fail. A cold rebuild of a long
+ *  rebalance chain runs for hours — every request paced through one
+ *  global queue — and a deadline short enough to be useful is also
+ *  short enough to kill a healthy run and discard a result the server
+ *  went on to compute anyway.
+ *
+ *  Nothing is lost by waiting: the server writes each stage to the
+ *  epoch and lifetime caches as it goes, so the answer survives even if
+ *  this page never sees it. */
+async function _phase2(body, gen) {
+  try {
+    const r2 = await fetchWithCsrf("/api/position/lifetime", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (gen === _fetchGen) {
+      const d2 = await r2.json();
+      /*- Same active-position guard as phase1: if the user navigated to a
+       *  different NFT during the lifetime fetch, drop the result rather
+       *  than overwrite the new view's KPIs with this position's data. */
+      if (d2.ok && _activeMatches(body?.tokenId)) _applyLifetime(d2);
+    }
+  } catch (e) {
+    log.warn("[lp-ranger] [unmanaged] phase 2 failed:", e.message);
+  }
+  // Always clear Syncing badge — even on timeout or gen mismatch
+  _markSynced();
+}
+
+/** Check entry guards; return reason string if blocked, null if OK to proceed. */
+function _entryGuardReason(pos) {
+  if (!pos?.tokenId || !pos?.token0 || !pos?.token1 || !pos?.fee)
+    return "missing-fields";
+  if (!isWalletUnlocked()) return "wallet-locked";
+  if (String(pos.tokenId) === _lastFetchedId) return "lastFetchedId-match";
+  return null;
+}
+
+/**
+ * Ask for an unmanaged position's details when they are owed: no request
+ * about it is out or answered, and the wallet is unlocked. The status
+ * poll calls this on each answer while the position's figures are stale,
+ * so it checks quietly, rather than log a skip every poll.
+ * @param {object} pos  posStore entry.
+ */
+export function askDetailsIfOwed(pos) {
+  if (_entryGuardReason(pos) === null) fetchUnmanagedDetails(pos);
+}
+
+/** Fetch and display details for an unmanaged position (two-phase). */
+export async function fetchUnmanagedDetails(pos) {
+  const _tid = pos?.tokenId;
+  const _skip = _entryGuardReason(pos);
+  if (_skip) {
+    log.info(
+      "%c[lp-ranger] [unmanaged] ENTRY-SKIP #%s %s",
+      "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+      _tid,
+      _skip,
+    );
+    /*- When skipped because the wallet hasn't unlocked yet, record the
+     *  position so flushPendingUnmanagedFetch() can fire the fetch as
+     *  soon as unlock completes.  Requires the structural fields (the
+     *  "missing-fields" skip can't be recovered by retry). */
+    if (_skip === "wallet-locked" && pos?.tokenId && pos?.token0) {
+      _pendingPos = pos;
+    }
+    return;
+  }
+  const tid = String(pos.tokenId);
+  _lastFetchedId = tid;
+  const gen = ++_fetchGen;
+  log.info(
+    "%c[lp-ranger] [unmanaged] ENTRY #%s gen=%d → starting phase1+phase2",
+    "color:#f80;background:#310;padding:1px 4px;border-radius:2px",
+    _tid,
+    gen,
+  );
+  resetKpis(_ALL_KPIS);
+  const sub = g("kpiPnlPct");
+  if (sub) sub.textContent = "";
+  const badge = g("syncBadge");
+  if (badge) {
+    badge.textContent = "Syncing\u2026";
+    badge.classList.remove("done");
+    badge.style.background = "";
+  }
+  const body = _detailBody(pos);
+  // Phase 1: fast — pool state, value, composition, current P&L.
+  // If the position turns out to be closed (fully drained), phase 1
+  // switches to the closed-pos history view and skips phase 2.
+  const closedView = await _phase1(pos, body);
+  /*-
+   *  No answer: phase 2 would fare no better, and its closing poll would
+   *  ask for the details again at once, in a loop as fast as the server
+   *  refuses. The next scheduled status answer asks again instead
+   *  (dashboard-data.js), every `dashboardPollIntervalMs`.
+   */
+  if (closedView === null) return;
+  if (closedView) {
+    if (gen === _fetchGen) _markSynced();
+    return;
+  }
+  if (gen !== _fetchGen) return;
+  await _phase2(body, gen);
+}

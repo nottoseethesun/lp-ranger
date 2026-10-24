@@ -1,6 +1,6 @@
 /**
  * @file test/build-status-positions.test.js
- * @description Tests for src/server-positions.js `buildStatusPositions`.
+ * @description Tests for src/lib/server-positions.js `buildStatusPositions`.
  *
  * The post-auto-retire "stuck Syncing badge" bug fix lives here: a
  * position that was managed, attempted a re-open, failed, then
@@ -17,8 +17,8 @@ const assert = require("assert");
 const {
   buildStatusPositions,
   getAllPositionBotStates,
-} = require("../src/server-positions");
-const { buildRebalanceOpts } = require("../src/bot-cycle-opts");
+} = require("../src/lib/server-positions");
+const { buildRebalanceOpts } = require("../src/lib/bot-cycle-opts");
 
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
 const CONTRACT = "0xCC05BF51E2B8f0A457E8F15FD5E8e25F34f8b279";

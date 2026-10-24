@@ -28,9 +28,9 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const config = require("../src/config");
-const logModule = require("../src/log");
-const { _waitOrSpeedUp } = require("../src/tx-speedup");
+const config = require("../src/lib/config");
+const logModule = require("../src/lib/log");
+const { _waitOrSpeedUp } = require("../src/lib/tx-speedup");
 
 const WALLET = "0x" + "11".repeat(20);
 

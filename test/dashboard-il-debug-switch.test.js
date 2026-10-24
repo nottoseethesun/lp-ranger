@@ -13,7 +13,7 @@
  *   since an unmanaged position's details are not asked for again.
  *
  *   Driven through the page's own switch (`activateByTokenId`) on its
- *   markup from public/index.html, with the server's answers scripted.
+ *   markup from src/client/web/index.html, with the server's answers scripted.
  */
 
 require("global-jsdom/register");
@@ -77,9 +77,9 @@ before(async () => {
   await learnActiveChain("pulsechain", "PulseChain");
   await learnUiSettings();
   document.body.innerHTML = indexHtmlDocument().body.innerHTML;
-  store = await import("../public/dashboard-positions-store.js");
-  positions = await import("../public/dashboard-positions.js");
-  ilDebug = await import("../public/dashboard-il-debug.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
+  positions = await import("../src/client/web/dashboard-positions.js");
+  ilDebug = await import("../src/client/web/dashboard-il-debug.js");
   store.posStore.add(FIRST);
   store.posStore.add(SECOND);
 });

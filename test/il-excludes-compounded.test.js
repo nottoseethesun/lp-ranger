@@ -14,7 +14,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { _computeIL } = require("../src/bot-pnl-il");
+const { _computeIL } = require("../src/lib/bot-pnl-il");
 
 /*-
  *  Every number here is distinct, deliberately.

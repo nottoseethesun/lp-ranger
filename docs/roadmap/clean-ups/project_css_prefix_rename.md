@@ -29,7 +29,7 @@ would remove the class of problem rather than guarding it.
 ## Fix when prioritized
 
 Pick a letter-first prefix (`lpr-`, `pm-`, …) and sweep: all selectors
-in `public/*.css`, every `class="…"` in the served HTML, and every JS
+in `src/client/web/*.css`, every `class="…"` in the served HTML, and every JS
 reference (`classList.*`, `querySelector`, `matches`,
 `getElementsByClassName`, template strings). It is mechanical but wide,
 and it loses the brand echo of the original name &mdash; which is why it

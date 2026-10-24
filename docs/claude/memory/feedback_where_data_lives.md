@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-19T18:49:58.167Z
+  modified: 2026-10-24T04:55:01.237Z
 ---
 
 Each kind of data has one home, chosen by what losing it costs:
@@ -15,9 +15,9 @@ Each kind of data has one home, chosen by what losing it costs:
 - **What the bot worked out or logged about a position** (HODL
   baseline, compound history and coins, gas per NFT, lifetime deposit,
   residuals, last compound time): `app-data/position-records.json`
-  (src/position-records.js, `RECORD_POSITION_KEYS`).
+  (src/lib/position-records.js, `RECORD_POSITION_KEYS`).
 - **What was read from the blockchain or a price service and can be read
-  again:** `app-data/scan-cache/` (src/scan-cache-dir.js). Rebuilding
+  again:** `app-data/scan-cache/` (src/lib/scan-cache-dir.js). Rebuilding
   costs about an hour per position, so it is not disposable.
 - **`tmp/`:** only what is truly disposable: the PID file, scratch
   output, a migration's safety copy.

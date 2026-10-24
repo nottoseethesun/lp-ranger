@@ -1,6 +1,6 @@
 /**
  * @file test/server-can-reopen.test.js
- * @description Unit tests for `src/server-can-reopen.js` — the
+ * @description Unit tests for `src/lib/server-can-reopen.js` — the
  *   `POST /api/position/can-reopen` handler used by the dashboard's
  *   closed-position Manage flow to verify the wallet holds enough of
  *   at least one pair token to seed a re-open rebalance.
@@ -21,14 +21,14 @@ const assert = require("assert");
 const {
   createCanReopenHandler,
   _setRetryDelayForTests,
-} = require("../src/server-can-reopen");
+} = require("../src/lib/server-can-reopen");
 
 /*- Shrink the inter-retry delay to zero so the exhaustion test
  *  (4 attempts) completes in milliseconds rather than ~10 seconds. */
 _setRetryDelayForTests(0);
-const config = require("../src/config");
-const logModule = require("../src/log");
-const sendTx = require("../src/send-transaction");
+const config = require("../src/lib/config");
+const logModule = require("../src/lib/log");
+const sendTx = require("../src/lib/send-transaction");
 const { condemn } = require("./helpers/send-tx-stubs");
 const { format } = require("node:util");
 
@@ -49,7 +49,7 @@ const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
  *  way. */
 beforeEach(() => {
   sendTx._resetForTests();
-  require("../src/rpc-out-of-service")._resetForTests();
+  require("../src/lib/rpc-out-of-service")._resetForTests();
   /*- The real endpoint list, so the retry budget spans as many endpoints
    *  here as it does in production.  No network is reached: the stub
    *  constructor returns a bare object and every case injects both
@@ -65,7 +65,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   sendTx._resetForTests();
-  require("../src/rpc-out-of-service")._resetForTests();
+  require("../src/lib/rpc-out-of-service")._resetForTests();
 });
 
 function makeRes() {

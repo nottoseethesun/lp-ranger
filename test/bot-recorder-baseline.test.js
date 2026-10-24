@@ -1,7 +1,7 @@
 /**
  * @file test/bot-recorder-baseline.test.js
  * @description The HODL baseline a rebalance starts
- *   (`updateHodlBaseline`, src/bot-recorder-baseline.js): its mint gas,
+ *   (`updateHodlBaseline`, src/lib/bot-recorder-baseline.js): its mint gas,
  *   and the decimals it reads the minted amounts with.
  */
 
@@ -9,8 +9,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { updateHodlBaseline } = require("../src/bot-recorder-baseline");
-const { log } = require("../src/log");
+const { updateHodlBaseline } = require("../src/lib/bot-recorder-baseline");
+const { log } = require("../src/lib/log");
 
 const MINTED = {
   amount0Minted: 1000n,

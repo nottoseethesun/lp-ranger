@@ -18,7 +18,7 @@ describe("formatCompoundEntry", () => {
   let formatCompoundEntry;
 
   before(async () => {
-    const mod = await import("../public/dashboard-compound-log.js");
+    const mod = await import("../src/client/web/dashboard-compound-log.js");
     formatCompoundEntry = mod.formatCompoundEntry;
   });
 
@@ -175,7 +175,7 @@ describe("formatCompoundHistoryEntry", () => {
   let formatCompoundHistoryEntry;
 
   before(async () => {
-    const mod = await import("../public/dashboard-compound-log.js");
+    const mod = await import("../src/client/web/dashboard-compound-log.js");
     formatCompoundHistoryEntry = mod.formatCompoundHistoryEntry;
   });
 

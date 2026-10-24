@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-03T17:20:15.290Z
+  modified: 2026-10-24T04:57:19.939Z
 ---
 
 `test/receipt-wait-failover.test.js` → `bounds every receipt re-ask
@@ -26,12 +26,12 @@ parallelism reproduces it.
 
 The case drives the real speed-up pipeline, whose phases are bounded by
 wall-clock deadlines from `TX_SPEEDUP_SEC` and an `AbortSignal`
-(`src/tx-speedup.js`, `_phase`), which is why contention shows it.
+(`src/lib/tx-speedup.js`, `_phase`), which is why contention shows it.
 
 **FIXED 2026-10-02, and it was not a timing problem.** Making it
 reproducible — twenty copies of the file at once, with the phase
 shortened — turned it from "flaky under load" into two real faults in
-`src/tx-speedup.js`:
+`src/lib/tx-speedup.js`:
 
 1. **An abandoned racer's rejection went unhandled.** `Promise.race`
    abandons its losers without stopping them, and an abandoned receipt

@@ -15,12 +15,12 @@ const {
   _fetchGeckoTerminalOhlcv,
   _fetchGeckoOhlcvAtTimeframe,
   _cache,
-} = require("../src/price-fetcher");
-const { getPriceCacheTtlMs } = require("../src/price-fetcher-gate");
-const { _fetchDexScreener } = require("../src/price-sources-current");
+} = require("../src/lib/price-fetcher");
+const { getPriceCacheTtlMs } = require("../src/lib/price-fetcher-gate");
+const { _fetchDexScreener } = require("../src/lib/price-sources-current");
 const {
   _resetForTest: _resetGeckoRateLimit,
-} = require("../src/gecko-rate-limit");
+} = require("../src/lib/gecko-rate-limit");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

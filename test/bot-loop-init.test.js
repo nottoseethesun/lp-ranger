@@ -16,7 +16,7 @@ const path = require("path");
 /*-
  *  Token symbols resolved here are fixtures. They go to a file of this
  *  test's own, not the operator's cache, which nothing expires. Set
- *  before anything loads src/token-symbol-cache.js, which reads it once.
+ *  before anything loads src/lib/token-symbol-cache.js, which reads it once.
  */
 const SYMBOL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "bot-loop-init-"));
 process.env.TOKEN_SYMBOL_CACHE_PATH = path.join(
@@ -43,15 +43,15 @@ describe("bot-loop _initPnlTracker", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-loop")];
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
-    ({ _initPnlTracker } = require("../src/bot-loop"));
+    delete require.cache[require.resolve("../src/lib/bot-loop")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
+    ({ _initPnlTracker } = require("../src/lib/bot-loop"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/bot-loop")];
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
+    delete require.cache[require.resolve("../src/lib/bot-loop")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
   });
 
   it("creates tracker and opens epoch when no cache", () => {
@@ -195,15 +195,15 @@ describe("bot-loop _tryInitPnlTracker", () => {
       }
       return _origRequire2.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-loop")];
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
-    ({ _tryInitPnlTracker } = require("../src/bot-loop"));
+    delete require.cache[require.resolve("../src/lib/bot-loop")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
+    ({ _tryInitPnlTracker } = require("../src/lib/bot-loop"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire2;
-    delete require.cache[require.resolve("../src/bot-loop")];
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
+    delete require.cache[require.resolve("../src/lib/bot-loop")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
   });
 
   it("returns null when prices are 0", async () => {
@@ -267,7 +267,7 @@ describe("bot-loop _tryInitPnlTracker", () => {
      *  the gate. Asserting a tracker comes back therefore asserts the
      *  call was made inside `withFreshPricesAllowed`.
      */
-    const gate = require("../src/price-fetcher-gate");
+    const gate = require("../src/lib/price-fetcher-gate");
     _mockPoolState = {
       price: 3,
       tick: 0,
@@ -343,9 +343,9 @@ describe("bot-loop _tryInitPnlTracker", () => {
       }
       return _origRequire2.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-loop")];
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
-    const { _tryInitPnlTracker: fn } = require("../src/bot-loop");
+    delete require.cache[require.resolve("../src/lib/bot-loop")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
+    const { _tryInitPnlTracker: fn } = require("../src/lib/bot-loop");
     const result = await fn(
       {},
       {},
@@ -387,15 +387,15 @@ describe("bot-loop _detectPosition", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-loop")];
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
-    ({ _detectPosition } = require("../src/bot-loop"));
+    delete require.cache[require.resolve("../src/lib/bot-loop")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
+    ({ _detectPosition } = require("../src/lib/bot-loop"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/bot-loop")];
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
+    delete require.cache[require.resolve("../src/lib/bot-loop")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
   });
 
   it("throws when no NFT positions found", async () => {
@@ -431,13 +431,13 @@ describe("bot-loop _detectPosition", () => {
       }
       return _orig.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
-    const { _detectPosition: dp } = require("../src/bot-loop-detect");
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
+    const { _detectPosition: dp } = require("../src/lib/bot-loop-detect");
     const p = await dp({}, "0xW", "42");
     assert.strictEqual(String(p.tokenId), "42");
     assert.strictEqual(calls, 3, "should retry until success");
     Module.prototype.require = _orig;
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
   });
 
   it("engages RPC failover between attempts and gives up after 4 tries", async () => {
@@ -462,8 +462,8 @@ describe("bot-loop _detectPosition", () => {
       }
       return _orig.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
-    const { _detectPosition: dp } = require("../src/bot-loop-detect");
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
+    const { _detectPosition: dp } = require("../src/lib/bot-loop-detect");
     let failoverCalls = 0;
     const provPrimary = { _label: "primary" };
     const provFallback = { _label: "fallback" };
@@ -496,7 +496,7 @@ describe("bot-loop _detectPosition", () => {
       "subsequent attempts use the failed-over provider",
     );
     Module.prototype.require = _orig;
-    delete require.cache[require.resolve("../src/bot-loop-detect")];
+    delete require.cache[require.resolve("../src/lib/bot-loop-detect")];
   });
 
   it("throws when no valid fee tiers found", async () => {

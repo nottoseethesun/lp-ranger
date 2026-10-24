@@ -1,13 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
+    "src/telegram-send.js",
     "scripts/**/*.js",
     "util/**/*.js",
     "eslint-security.config.js",
     "eslint-rules/*.js",
     "stylelint-rules/*.js",
-    "public/dashboard-init.js",
-    "public/dashboard-manual-figures.js",
+    "src/client/web/dashboard-init.js",
+    "src/client/web/dashboard-manual-figures.js",
     "test/**/*.test.js"
   ],
   "project": ["**/*.js"]

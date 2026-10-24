@@ -15,7 +15,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const SETTINGS_DIR = makeTestTempFolder("il-guard-message-settings");
 fs.writeFileSync(
@@ -29,7 +29,7 @@ process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { _ilGuardMessage } = require("../src/il-guard");
+const { _ilGuardMessage } = require("../src/lib/il-guard");
 
 describe("the Telegram message", () => {
   it("quotes the retry ceiling and the gas share the bot runs on", () => {

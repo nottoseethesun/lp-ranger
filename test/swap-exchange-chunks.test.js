@@ -4,8 +4,8 @@
  * @file test/swap-exchange-chunks.test.js
  * @description A swap split into chunks reports what its own transactions
  *   sent and received, added up over the chunks that landed
- *   (`exchange`, src/rebalancer-swap.js). A compound counts its fees by it
- *   (src/compounder.js), so a chunk whose exchange is unknown leaves the
+ *   (`exchange`, src/lib/rebalancer-swap.js). A compound counts its fees by it
+ *   (src/lib/compounder.js), so a chunk whose exchange is unknown leaves the
  *   whole swap's unknown rather than reporting part of it as the whole.
  *
  *   The aggregator is stood in for: the full amount's price impact is too
@@ -14,10 +14,10 @@
 
 const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
-const AGG_PATH = require.resolve("../src/rebalancer-aggregator");
-const SWAP_PATH = require.resolve("../src/rebalancer-swap");
+const AGG_PATH = require.resolve("../src/lib/rebalancer-aggregator");
+const SWAP_PATH = require.resolve("../src/lib/rebalancer-swap");
 
 /**
  * Load `swapIfNeeded` with the aggregator replaced by a stand-in.

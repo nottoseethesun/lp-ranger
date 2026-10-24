@@ -2,7 +2,7 @@
 
 /**
  * @file test/price-moved-stop.test.js
- * @description A rebalance the price outran (src/price-moved-stop.js):
+ * @description A rebalance the price outran (src/lib/price-moved-stop.js):
  *   the price left the new range before the mint, with the old position
  *   already emptied. The bot holds the position for the owner at once,
  *   with the advice on the dashboard and by Telegram, the user's ruling
@@ -14,7 +14,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const SETTINGS_DIR = makeTestTempFolder("price-moved-stop-settings");
 fs.writeFileSync(
@@ -28,11 +28,11 @@ const assert = require("node:assert/strict");
 const {
   holdAfterPriceMove,
   priceMovedStopMessage,
-} = require("../src/price-moved-stop");
-const tg = require("../src/telegram-notifications/telegram");
+} = require("../src/lib/price-moved-stop");
+const tg = require("../src/lib/telegram-notifications/telegram");
 const {
   EVENT_DEFAULTS,
-} = require("../src/telegram-notifications/telegram-events");
+} = require("../src/lib/telegram-notifications/telegram-events");
 
 describe("holdAfterPriceMove", () => {
   it("ends the rebalance and holds the position for the owner, with the advice", () => {

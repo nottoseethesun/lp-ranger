@@ -26,9 +26,9 @@ const assert = require("node:assert/strict");
 // ── swapIfNeeded must not fall back on an unsettled nonce ────────────
 
 describe("swapIfNeeded — unsettled nonce blocks the router fallback", () => {
-  const AGG_PATH = require.resolve("../src/rebalancer-aggregator");
-  const ROUTER_PATH = require.resolve("../src/rebalancer-router");
-  const SWAP_PATH = require.resolve("../src/rebalancer-swap");
+  const AGG_PATH = require.resolve("../src/lib/rebalancer-aggregator");
+  const ROUTER_PATH = require.resolve("../src/lib/rebalancer-router");
+  const SWAP_PATH = require.resolve("../src/lib/rebalancer-swap");
 
   /**
    * Load `swapIfNeeded` against a stubbed aggregator and router.
@@ -123,9 +123,9 @@ describe("swapIfNeeded — unsettled nonce blocks the router fallback", () => {
  * provide, so the second case is what keeps it narrow.
  */
 describe("swapIfNeeded — a failed swap send only falls back when safe", () => {
-  const AGG_PATH = require.resolve("../src/rebalancer-aggregator");
-  const ROUTER_PATH = require.resolve("../src/rebalancer-router");
-  const SWAP_PATH = require.resolve("../src/rebalancer-swap");
+  const AGG_PATH = require.resolve("../src/lib/rebalancer-aggregator");
+  const ROUTER_PATH = require.resolve("../src/lib/rebalancer-router");
+  const SWAP_PATH = require.resolve("../src/lib/rebalancer-swap");
 
   const QUOTE = {
     to: "0x" + "9".repeat(40),
@@ -149,7 +149,7 @@ describe("swapIfNeeded — a failed swap send only falls back when safe", () => 
    */
   async function runWithFailedSend(sendErr) {
     /*-
-     *  TEST-ONLY global swap: the quote request (src/aggregator-quote-request.js)
+     *  TEST-ONLY global swap: the quote request (src/lib/aggregator-quote-request.js)
      *  calls the global `fetch` and offers no seam, and the aggregator must
      *  stay real here because its classification is the subject. The
      *  original is captured first and restored pristine in the `finally`

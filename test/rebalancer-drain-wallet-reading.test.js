@@ -2,11 +2,11 @@
 
 /**
  * @file test/rebalancer-drain-wallet-reading.test.js
- * @description The drain (`removeLiquidity`, src/rebalancer-pools.js)
+ * @description The drain (`removeLiquidity`, src/lib/rebalancer-pools.js)
  *   hands back what the wallet held just before it, beside the coins it
  *   collected. It reads that balance anyway, to work out what the drain
  *   collected; a rebalance's Activity Log figures then cap the deposit
- *   they set aside at it (src/rebalance-activity-figures.js), since coins
+ *   they set aside at it (src/lib/rebalance-activity-figures.js), since coins
  *   not in the wallet before the drain cannot be a deposit waiting there.
  *
  *   Kept apart from test/rebalancer.test.js, which is at its line cap.
@@ -14,7 +14,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { removeLiquidity } = require("../src/rebalancer-pools");
+const { removeLiquidity } = require("../src/lib/rebalancer-pools");
 const {
   ADDR,
   ONE_ETH,

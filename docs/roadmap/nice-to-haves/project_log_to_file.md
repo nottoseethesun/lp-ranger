@@ -23,14 +23,14 @@ chunks piecemeal.
   the terminal still shows colour.
 - **The CLI flag.** `--log-file [PATH]` turns it on for one run and
   overrides both the enabled setting and the path. Documented in
-  `src/cli-help.js`, alongside `--delete-pre-existing-log-file`.
+  `src/lib/cli-help.js`, alongside `--delete-pre-existing-log-file`.
 - **The persistent setting.** `enabled` and `path` in
   `app-config/app-defaults-for-user-configurable/logging.json`, default
   off, for a long-lived production tail.
 - **The default path**, `logs/lp-ranger.log`, following the app-managed
   config layout convention and already gitignored.
 
-Implementation lives in `src/log-file.js` and `src/boot-log-file.js`.
+Implementation lives in `src/lib/log-file.js` and `src/lib/boot-log-file.js`.
 
 ## What remains
 

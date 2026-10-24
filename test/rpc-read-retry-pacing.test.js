@@ -4,10 +4,10 @@
  * Every turn of the read-retry loop must be a real request to a real
  * endpoint.
  *
- * `src/rpc-read-retry.js` carries no backoff of its own and says why:
+ * `src/lib/rpc-read-retry.js` carries no backoff of its own and says why:
  * every provider is built by `bot-provider.buildProvider`, which puts
  * each call through the process-wide queue in
- * `src/rpc-request-manager.js`, so attempts are already spaced and the
+ * `src/lib/rpc-request-manager.js`, so attempts are already spaced and the
  * loop cannot spin. That claim holds only while every attempt reaches
  * the wire, because the queue is entered inside the patched `send()`.
  *
@@ -20,7 +20,7 @@
  *
  * Two things followed. The loop spun, unpaced, because a cached answer
  * never reaches `send()`. And every turn reported another failure to
- * `src/rpc-out-of-service.js`, so one refusal by one endpoint was
+ * `src/lib/rpc-out-of-service.js`, so one refusal by one endpoint was
  * counted hundreds of times and what decides failover became the loop's
  * iteration count rather than the endpoint's failure rate. Production
  * 2026-09-30 logged 678 numbered retries against one endpoint inside a
@@ -40,10 +40,10 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 
-const rpcQueue = require("../src/rpc-request-manager");
-const sendTx = require("../src/send-transaction");
-const outOfService = require("../src/rpc-out-of-service");
-const logModule = require("../src/log");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const sendTx = require("../src/lib/send-transaction");
+const outOfService = require("../src/lib/rpc-out-of-service");
+const logModule = require("../src/lib/log");
 
 /** PulseChain, matching chains.json, so no provider disputes the network. */
 const CHAIN_ID_HEX = "0x171";

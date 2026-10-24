@@ -18,12 +18,15 @@ const {
   createReloadPositionHandler,
   _resetBotState,
   _checkInProgress,
-} = require("../src/server-reload-position");
-const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/bot-config-keys");
-const { markStopping, _resetAppPhaseForTests } = require("../src/app-phase");
-const epochCache = require("../src/epoch-cache");
-const config = require("../src/config");
-const { eventCachePath } = require("../src/cache-store");
+} = require("../src/lib/server-reload-position");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/lib/bot-config-keys");
+const {
+  markStopping,
+  _resetAppPhaseForTests,
+} = require("../src/lib/app-phase");
+const epochCache = require("../src/lib/epoch-cache");
+const config = require("../src/lib/config");
+const { eventCachePath } = require("../src/lib/cache-store");
 
 /*- Every test that hits `loadConfig`/`saveConfig` (bot-config-v2) needs
  *  the config file to live in a tmp dir so real user state is never
@@ -135,7 +138,7 @@ describe("POST /api/position/reload — in-progress guard", () => {
 
   it("returns 409 server-stopping once the server holds a stop", async () => {
     /*-
-     *  The held stop waits for the scans running (src/stop-when-all-clear.js):
+     *  The held stop waits for the scans running (src/lib/stop-when-all-clear.js):
      *  a Reload's scan started then would be cut off, or hold the stop.
      */
     const key = _mockKey();
@@ -156,7 +159,7 @@ describe("POST /api/position/reload — in-progress guard", () => {
    *  A coin move counts from the poll's first gate, before the Guard, the
    *  gas check and the wait for the rebalance lock, after which the move
    *  raises rebalanceInProgress or compoundInProgress; and while a
-   *  Rebalance Now or Compound Now waits to be made (src/scan-state.js).
+   *  Rebalance Now or Compound Now waits to be made (src/lib/scan-state.js).
    */
   const COIN_MOVE_WORDS =
     "A coin move (rebalance or compound) for this position has already started. Try again once it's complete.";

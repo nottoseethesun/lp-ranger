@@ -12,7 +12,7 @@
 "use strict";
 
 const { attach } = require("./_debug-attach");
-const { serverPort } = require("../src/server-address");
+const { serverPort } = require("../src/lib/server-address");
 
 attach({
   entry: "server",

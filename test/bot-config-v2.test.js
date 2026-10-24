@@ -9,8 +9,8 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const { parseCompositeKey } = require("../src/composite-key");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { parseCompositeKey } = require("../src/lib/composite-key");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const {
   compositeKey,
   loadConfig,
@@ -22,8 +22,8 @@ const {
   migratePositionKey,
   managedKeys,
   readConfigValue,
-} = require("../src/bot-config-v2");
-const { GLOBAL_KEYS, POSITION_KEYS } = require("../src/bot-config-keys");
+} = require("../src/lib/bot-config-v2");
+const { GLOBAL_KEYS, POSITION_KEYS } = require("../src/lib/bot-config-keys");
 
 /** Create a temp directory for each test, removed when the process exits. */
 function tmpDir() {
@@ -172,7 +172,7 @@ describe("bot-config-v2", () => {
       assert.equal(reloaded.positions[key].rebalanceRangeWidthPct, 7.5);
       /*- Explicit null-check idiom per CLAUDE-BEST-PRACTICES §"Type
        *  Checks": a client that clears the override sends `null` and the
-       *  null-sweep in src/server-routes.js POST /api/config deletes the
+       *  null-sweep in src/lib/server-routes.js POST /api/config deletes the
        *  key from disk.  This test proves the round-trip preserves the
        *  set case; the delete-on-null case is exercised end-to-end in
        *  the server-routes tests. */

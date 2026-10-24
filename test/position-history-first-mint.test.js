@@ -90,8 +90,8 @@ function load() {
     return orig.apply(this, arguments);
   };
   try {
-    delete require.cache[require.resolve("../src/position-history")];
-    const mod = orig.call(module, "../src/position-history");
+    delete require.cache[require.resolve("../src/lib/position-history")];
+    const mod = orig.call(module, "../src/lib/position-history");
     return { mod, counts };
   } finally {
     Module.prototype.require = orig;
@@ -106,7 +106,7 @@ describe("oldest NFT takes its mint from the events array", () => {
   });
 
   afterEach(() => {
-    delete require.cache[require.resolve("../src/position-history")];
+    delete require.cache[require.resolve("../src/lib/position-history")];
   });
 
   it("dates the chain-first NFT from chainFirst*, and still fetches its transaction", async () => {

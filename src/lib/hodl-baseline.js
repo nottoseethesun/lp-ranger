@@ -1,0 +1,525 @@
+/**
+ * @file hodl-baseline.js
+ * @module hodlBaseline
+ * @description
+ * Initializes the HODL baseline for impermanent loss calculation.
+ * Looks up historical token prices from GeckoTerminal at the position's
+ * first mint timestamp to compute an accurate IL benchmark.
+ */
+
+"use strict";
+
+const { log } = require("./log");
+const { receiptGasWei } = require("./receipt-gas");
+const config = require("./config");
+const { scanChunked } = require("./get-logs-chunked");
+const { PM_ABI } = require("./pm-abi");
+const { topicForTokenId } = require("./nft-token-topic");
+const { fetchHistoricalPriceGecko } = require("./price-fetcher");
+const { getPoolState } = require("./rebalancer-pools");
+const { getPoolCreationBlockCached } = require("./pool-creation-block");
+
+/**
+ * Compute token amounts for a V3 position at a given tick.
+ * Duplicated from bot-loop to avoid circular dependency.
+ * @param {bigint|number} liquidity  Position liquidity.
+ * @param {number} currentTick       Current pool tick.
+ * @param {number} tickLower         Lower tick bound.
+ * @param {number} tickUpper         Upper tick bound.
+ * @param {number} decimals0         Token0 decimals.
+ * @param {number} decimals1         Token1 decimals.
+ * @returns {{amount0: number, amount1: number}} Human-readable token amounts.
+ */
+function _positionAmounts(
+  liquidity,
+  currentTick,
+  tickLower,
+  tickUpper,
+  decimals0,
+  decimals1,
+) {
+  // eslint-disable-next-line 9mm/no-number-from-bigint -- Safe: approximate float math for sqrtPrice
+  const liq = Number(liquidity);
+  const sqrtP = Math.pow(1.0001, currentTick / 2);
+  const sqrtPl = Math.pow(1.0001, tickLower / 2);
+  const sqrtPu = Math.pow(1.0001, tickUpper / 2);
+  let a0 = 0;
+  let a1 = 0;
+  if (currentTick < tickLower) {
+    a0 = liq * (1 / sqrtPl - 1 / sqrtPu);
+  } else if (currentTick >= tickUpper) {
+    a1 = liq * (sqrtPu - sqrtPl);
+  } else {
+    a0 = liq * (1 / sqrtP - 1 / sqrtPu);
+    a1 = liq * (sqrtP - sqrtPl);
+  }
+  return {
+    amount0: a0 / Math.pow(10, decimals0),
+    amount1: a1 / Math.pow(10, decimals1),
+  };
+}
+
+/**
+ * Compute USD value of a V3 position given token prices.
+ * Duplicated from bot-loop to avoid circular dependency.
+ * @param {object} position  V3 position with liquidity + tick range.
+ * @param {object} poolState Pool state with tick + decimals.
+ * @param {number} price0    Token0 USD price.
+ * @param {number} price1    Token1 USD price.
+ * @returns {number} USD value.
+ */
+function _positionValueUsd(position, poolState, price0, price1) {
+  const amounts = _positionAmounts(
+    position.liquidity || 0,
+    poolState.tick,
+    position.tickLower,
+    position.tickUpper,
+    poolState.decimals0,
+    poolState.decimals1,
+  );
+  return amounts.amount0 * price0 + amounts.amount1 * price1;
+}
+
+/**
+ * Find this position's deposit in a mint receipt's logs.
+ *
+ * A mint receipt carries logs from several contracts, and only the
+ * Position Manager's `IncreaseLiquidity` for this token id states what
+ * was deposited. Decoding a log that belongs to someone else throws, so
+ * the attempt is guarded per log and a failure means "not this one".
+ *
+ * **Nothing that touches the network belongs inside that guard.** It
+ * cannot tell a foreign log from a read that failed, so a network error
+ * raised in here would be read as "keep looking" and the search would
+ * end up reporting no deposit at all.
+ *
+ * @param {object} iface      Position Manager interface, for decoding.
+ * @param {object} receipt    The mint's receipt.
+ * @param {string|number|bigint} tokenId
+ * @returns {{amount0: bigint, amount1: bigint}|null} The deposited raw
+ *   amounts, or null when this receipt holds no deposit for this token.
+ */
+function _findDeposit(iface, receipt, tokenId) {
+  for (const entry of receipt.logs) {
+    if (entry.address.toLowerCase() !== config.POSITION_MANAGER.toLowerCase())
+      continue;
+    try {
+      const p = iface.parseLog({ topics: entry.topics, data: entry.data });
+      if (
+        p.name === "IncreaseLiquidity" &&
+        BigInt(p.args.tokenId) === BigInt(tokenId)
+      )
+        return { amount0: p.args.amount0, amount1: p.args.amount1 };
+    } catch {
+      /* a log from another contract — keep looking */
+    }
+  }
+  return null;
+}
+
+/**
+ * What a position was opened with, read from its mint transaction.
+ *
+ * Three reads have to succeed: the mint's receipt, the deposit inside
+ * it, and the two tokens' decimals. Each can fail on its own, and the
+ * caller needs one thing from all of them — whether the answer is
+ * trustworthy — so every failure returns `null` and `null` means only
+ * "unknown".
+ *
+ * **Zero is reserved for an amount the chain actually stated.** A
+ * position opened with nothing is not a state that exists, so a zero
+ * standing in for a failed read is a lie the rest of the app cannot
+ * detect: it is what IL/G measures against and what the Impermanent
+ * Loss Guard compares a rebalance to, and both read it as fact.
+ *
+ * @param {object} provider   Ethers provider.
+ * @param {object} ethersLib  Ethers library.
+ * @param {object} iface      PM interface for event parsing.
+ * @param {object} position   V3 position (tokenId, token0, token1, fee).
+ * @param {string} txHash     Mint transaction hash.
+ * @returns {Promise<{hodlAmount0: number, hodlAmount1: number,
+ *   mintGasWei: string}|null>} The deposited amounts and the mint's gas,
+ *   or null when any part of the read did not come back.
+ */
+async function _readMintedAmounts(
+  provider,
+  ethersLib,
+  iface,
+  position,
+  txHash,
+) {
+  let receipt;
+  try {
+    receipt = await provider.getTransactionReceipt(txHash);
+  } catch (err) {
+    log.warn("[bot] HODL baseline: mint receipt unreadable: %s", err.message);
+    return null;
+  }
+  /*- Null is an answer, not an error: the endpoint does not have this
+   *  transaction, which it will also say for one that is merely not
+   *  mined yet and for one whose block falls outside its transaction
+   *  index. None of those is "opened with nothing". */
+  if (receipt === null || receipt === undefined) {
+    log.warn(
+      "[bot] HODL baseline: endpoint has no receipt for mint TX %s",
+      txHash,
+    );
+    return null;
+  }
+  const deposit = _findDeposit(iface, receipt, position.tokenId);
+  if (deposit === null) {
+    log.warn(
+      "[bot] HODL baseline: mint TX %s carries no deposit for NFT #%s",
+      txHash,
+      String(position.tokenId),
+    );
+    return null;
+  }
+  /*- Deliberately after the search and outside its guard. The deposit
+   *  is stated in each token's smallest unit, so turning it into real
+   *  amounts needs the token decimals, and those come from the chain —
+   *  a bounded read that gives up after trying every endpoint. Raised
+   *  here, its failure is a failure; raised inside the search, it was
+   *  indistinguishable from a foreign log. */
+  let ps;
+  try {
+    ps = await getPoolState(ethersLib, {
+      factoryAddress: config.FACTORY,
+      token0: position.token0,
+      token1: position.token1,
+      fee: position.fee,
+    });
+  } catch (err) {
+    log.warn(
+      "[bot] HODL baseline: token decimals unavailable: %s",
+      err.message,
+    );
+    return null;
+  }
+  return {
+    hodlAmount0: Number(deposit.amount0) / 10 ** ps.decimals0,
+    hodlAmount1: Number(deposit.amount1) / 10 ** ps.decimals1,
+    mintGasWei: String(receiptGasWei(receipt)),
+  };
+}
+
+/**
+ * Find the NFT mint Transfer(from=0x0) event and its block timestamp.
+ * @param {object} provider     ethers.js provider.
+ * @param {object} ethersLib    ethers library.
+ * @param {object} iface        PM Interface.
+ * @param {string|number} tokenId
+ * @param {number} [fromBlock=0]  Lower bound for the log scan (use the pool
+ *   creation block to avoid replaying chain history back to genesis).
+ */
+async function _findMintEvent(
+  provider,
+  ethersLib,
+  iface,
+  tokenId,
+  fromBlock = 0,
+) {
+  const tokenIdHex = topicForTokenId(tokenId);
+  const zeroAddr = ethersLib.zeroPadValue
+    ? ethersLib.zeroPadValue("0x" + "0".repeat(40), 32)
+    : "0x" + "0".repeat(64);
+  /*- Chunked: `fromBlock` is the pool's creation block, so the span is
+   *  the pool's entire lifetime.
+   *
+   *  A token is minted once, so the first chunk returning anything
+   *  holds the whole answer and `onChunk` ends the walk there. Without
+   *  it the scan runs on to the chain head carrying an event it already
+   *  has — the same reasoning `src/lib/event-scanner-mint-lookup.js`
+   *  applies to the same lookup.
+   *
+   *  Walked newest-first, which is what makes that early exit worth
+   *  having. The id asked about is the position's CURRENT NFT, and a
+   *  managed position mints a new one on every rebalance, so the answer
+   *  sits near the chain head while `fromBlock` sits at the pool's
+   *  creation. Oldest-first reaches it last, paying for the pool's
+   *  whole history to find one recent event.
+   *
+   *  Direction cannot change the answer. ERC-721 mints a given id
+   *  exactly once, so one matching log exists in the range and both
+   *  ends of the walk reach the same one. Compare
+   *  `src/lib/position-history-mint.js`, which looks up the chain's OLDEST
+   *  NFT and so keeps the default oldest-first for the same reason. */
+  const logs = await scanChunked({
+    provider,
+    fromBlock,
+    toBlock: "latest",
+    direction: "desc",
+    label: `hodl-baseline mint #${tokenId}`,
+    query: (from, to) =>
+      provider.getLogs({
+        address: config.POSITION_MANAGER,
+        fromBlock: from,
+        toBlock: to,
+        topics: [
+          iface.getEvent("Transfer").topicHash,
+          zeroAddr,
+          null,
+          tokenIdHex,
+        ],
+      }),
+    onChunk: (found) => found.length > 0,
+  });
+  if (!logs.length) {
+    log.info("[bot] No mint logs found for tokenId", tokenId);
+    return {};
+  }
+  const block = await provider.getBlock(logs[0].blockNumber);
+  if (!block) {
+    log.info("[bot] Block not found for mint log");
+    return {};
+  }
+  return { mintTimestamp: block.timestamp, mintLog: logs[0] };
+}
+
+/** Patch an existing baseline with missing mint timestamp. */
+function _patchMintTimestamp(botState, updateBotState, mintTimestamp) {
+  /*- Canonical storage shape is Unix seconds (number).  ISO strings were
+      written here historically and remain in older saved records;
+      consumers normalize on read.  Don't reintroduce ISO writes. */
+  const iso = new Date(mintTimestamp * 1000).toISOString();
+  botState.hodlBaseline.mintDate = iso.slice(0, 10);
+  botState.hodlBaseline.mintTimestamp = mintTimestamp;
+  updateBotState({ hodlBaseline: botState.hodlBaseline });
+  log.info(`[bot] Patched mint timestamp on existing baseline: ${iso}`);
+}
+
+/**
+ * Look up historical token prices from GeckoTerminal and set the HODL baseline.
+ * Queries the NFT mint Transfer event to find the position creation timestamp,
+ * then fetches OHLCV candle data from GeckoTerminal at that timestamp.
+ *
+ * @param {object} provider   Ethers provider.
+ * @param {object} ethersLib  Ethers library (for Contract).
+ * @param {object} position   Active V3 position.
+ * @param {object} botState   Shared bot state.
+ * @param {Function} updateBotState  State update callback.
+ */
+/** Assemble and publish the HODL baseline from minted amounts and historical prices. */
+function _publishBaseline(d, botState, updateBotState) {
+  const entryValue =
+    d.price0 > 0 || d.price1 > 0
+      ? d.hodlAmount0 * d.price0 + d.hodlAmount1 * d.price1
+      : 0;
+  if (entryValue <= 0 && (d.hodlAmount0 > 0 || d.hodlAmount1 > 0))
+    log.warn(
+      "[bot] GeckoTerminal prices unavailable — entry value auto-detection deferred",
+    );
+  const baseline = {
+    entryValue,
+    token0UsdPrice: d.price0,
+    token1UsdPrice: d.price1,
+    hodlAmount0: d.hodlAmount0,
+    hodlAmount1: d.hodlAmount1,
+    mintDate: d.mintDate,
+    /*- Unix seconds (number) — the canonical shape.  See
+        src/client/web/dashboard-date-utils.js#toMintTsSeconds for read-side
+        normalization that still tolerates legacy ISO strings. */
+    mintTimestamp: d.mintTimestamp,
+    mintGasWei: d.mintGasWei || "0",
+  };
+  botState.hodlBaseline = baseline;
+  updateBotState({
+    hodlBaseline: baseline,
+    hodlBaselineNew: entryValue > 0,
+    hodlBaselineFallback:
+      entryValue <= 0 && (d.hodlAmount0 > 0 || d.hodlAmount1 > 0),
+  });
+  log.info(
+    `[bot] HODL baseline set: $${entryValue.toFixed(2)} on ${d.mintDate} (amounts: ${d.hodlAmount0.toFixed(4)} / ${d.hodlAmount1.toFixed(4)})`,
+  );
+}
+
+async function initHodlBaseline(
+  provider,
+  ethersLib,
+  position,
+  botState,
+  updateBotState,
+) {
+  const needsMintTs =
+    botState.hodlBaseline &&
+    (!botState.hodlBaseline.mintDate || !botState.hodlBaseline.mintTimestamp);
+  // Retry on restart if historical price fetch previously failed (entryValue=0
+  // despite real amounts). Lets the popover's "restart to retry" be honest.
+  const needsPrice =
+    botState.hodlBaseline &&
+    !(botState.hodlBaseline.entryValue > 0) &&
+    (botState.hodlBaseline.hodlAmount0 > 0 ||
+      botState.hodlBaseline.hodlAmount1 > 0);
+  if (botState.hodlBaseline && !needsMintTs && !needsPrice) return;
+  try {
+    // Find pool address via Factory
+    const factoryAbi = [
+      "function getPool(address,address,uint24) view returns (address)",
+    ];
+    const factory = new ethersLib.Contract(
+      config.FACTORY,
+      factoryAbi,
+      provider,
+    );
+    const poolAddress = await factory.getPool(
+      position.token0,
+      position.token1,
+      position.fee,
+    );
+    if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return;
+    const poolCreationBlock = await getPoolCreationBlockCached({
+      provider,
+      factoryAddress: config.FACTORY,
+      poolAddress,
+    });
+    const iface = new ethersLib.Interface(PM_ABI);
+    const { mintTimestamp, mintLog } = await _findMintEvent(
+      provider,
+      ethersLib,
+      iface,
+      position.tokenId,
+      poolCreationBlock,
+    );
+    if (!mintTimestamp) return;
+    if (needsMintTs) {
+      _patchMintTimestamp(botState, updateBotState, mintTimestamp);
+      return;
+    }
+    const minted = await _readMintedAmounts(
+      provider,
+      ethersLib,
+      iface,
+      position,
+      mintLog.transactionHash,
+    );
+    /*- Nothing is published on an unreadable mint. Whatever is already
+     *  saved stands, which matters most on the price-retry path above:
+     *  it re-runs this whole read for the sake of the dollar value, so
+     *  without this a failure here would overwrite amounts that were
+     *  already correct. With no baseline saved yet, publishing nothing
+     *  leaves the next start to try again. */
+    if (minted === null) {
+      log.warn(
+        "[bot] HODL baseline for NFT #%s deferred — mint read incomplete;" +
+          " keeping whatever is saved and retrying on the next start",
+        String(position.tokenId),
+      );
+      return;
+    }
+    const { hodlAmount0, hodlAmount1, mintGasWei } = minted;
+    // Fetch historical prices for entry value auto-detection (initial deposit)
+    const { price0, price1 } = await fetchHistoricalPriceGecko(
+      poolAddress,
+      mintTimestamp,
+      {
+        token0Address: position.token0,
+        token1Address: position.token1,
+        blockNumber: mintLog.blockNumber,
+      },
+    );
+    const mintDate = new Date(mintTimestamp * 1000).toISOString().slice(0, 10);
+    _publishBaseline(
+      {
+        hodlAmount0,
+        hodlAmount1,
+        price0,
+        price1,
+        mintDate,
+        mintTimestamp,
+        mintGasWei,
+      },
+      botState,
+      updateBotState,
+    );
+  } catch (err) {
+    log.warn("[bot] HODL baseline init error:", err.message);
+  }
+}
+
+/**
+ * Compute position baseline (entry amounts, entry value, mint date) from chain data.
+ * Standalone version of initHodlBaseline — no bot state needed.
+ * @returns {Promise<{entryValue, hodlAmount0, hodlAmount1, mintDate,
+ *   mintTimestamp, mintGasWei, price0, price1}|null>}
+ */
+async function getPositionBaseline(provider, ethersLib, position) {
+  try {
+    const factoryAbi = [
+      "function getPool(address,address,uint24) view returns (address)",
+    ];
+    const factory = new ethersLib.Contract(
+      config.FACTORY,
+      factoryAbi,
+      provider,
+    );
+    const poolAddress = await factory.getPool(
+      position.token0,
+      position.token1,
+      position.fee,
+    );
+    if (!poolAddress || poolAddress === ethersLib.ZeroAddress) return null;
+    const poolCreationBlock = await getPoolCreationBlockCached({
+      provider,
+      factoryAddress: config.FACTORY,
+      poolAddress,
+    });
+    const iface = new ethersLib.Interface(PM_ABI);
+    const { mintTimestamp, mintLog } = await _findMintEvent(
+      provider,
+      ethersLib,
+      iface,
+      position.tokenId,
+      poolCreationBlock,
+    );
+    if (!mintTimestamp || !mintLog) return null;
+    const minted = await _readMintedAmounts(
+      provider,
+      ethersLib,
+      iface,
+      position,
+      mintLog.transactionHash,
+    );
+    /*- This function's whole return is a baseline, so an unreadable mint
+     *  makes it null rather than a baseline of zeros. The caller already
+     *  handles a null — it is what a position with no resolvable mint
+     *  returns above. */
+    if (minted === null) return null;
+    const { hodlAmount0, hodlAmount1, mintGasWei } = minted;
+    const { price0, price1 } = await fetchHistoricalPriceGecko(
+      poolAddress,
+      mintTimestamp,
+      {
+        token0Address: position.token0,
+        token1Address: position.token1,
+        blockNumber: mintLog.blockNumber,
+      },
+    );
+    const entryValue =
+      price0 > 0 || price1 > 0
+        ? hodlAmount0 * price0 + hodlAmount1 * price1
+        : 0;
+    return {
+      entryValue,
+      hodlAmount0,
+      hodlAmount1,
+      mintDate: new Date(mintTimestamp * 1000).toISOString().slice(0, 10),
+      mintTimestamp,
+      mintGasWei: mintGasWei || "0",
+      price0,
+      price1,
+    };
+  } catch {
+    return null;
+  }
+}
+
+module.exports = {
+  initHodlBaseline,
+  getPositionBaseline,
+  _positionValueUsd,
+  /*- The baseline's shape and its update channel live here, so the
+   *  Re-scan Prices re-value in bot-hodl-scan.js publishes through this
+   *  rather than assembling a second copy of the object. */
+  _publishBaseline,
+};

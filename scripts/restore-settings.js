@@ -7,7 +7,7 @@
 
 "use strict";
 
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const fs = require("fs");
 const path = require("path");
 

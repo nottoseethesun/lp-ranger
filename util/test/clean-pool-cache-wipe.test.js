@@ -30,7 +30,7 @@ const path = require("node:path");
 const { captureConsole, captureExit } = require("./_capture");
 
 const cpc = require("../cache/clean-pool-cache");
-const { scanCacheDir } = require("../../src/scan-cache-dir");
+const { scanCacheDir } = require("../../src/lib/scan-cache-dir");
 const {
   POOL,
   FACTORY,
@@ -363,7 +363,7 @@ test("_resolveTokensOrExit — aborts BEFORE touching any surface", async () => 
 test("_mainPaths — defaults to the real locations", () => {
   /*-
    *  The scan-cache folder, which under `node --test` is this process's
-   *  own (src/scan-cache-dir.js).
+   *  own (src/lib/scan-cache-dir.js).
    */
   const p = cpc._mainPaths();
   const dir = scanCacheDir();

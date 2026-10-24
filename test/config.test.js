@@ -1,11 +1,11 @@
 /**
  * @file test/config.test.js
- * @description Unit tests for src/config.js.
+ * @description Unit tests for src/lib/config.js.
  *
  * Because config.js reads process.env at require-time, we test
  * assertLiveModeReady() by manipulating the exported object. How each
  * `.env` variable is read is covered by test/settings-check.test.js
- * (src/env-settings.js), and the Bot Settings `.env` can set by
+ * (src/lib/env-settings.js), and the Bot Settings `.env` can set by
  * test/config-env-ranges.test.js.
  *
  * Run with: npm test
@@ -16,8 +16,8 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 
-const config = require("../src/config");
-const walletManager = require("../src/wallet-manager");
+const config = require("../src/lib/config");
+const walletManager = require("../src/lib/wallet-manager");
 
 // ── Default values ────────────────────────────────────────────────────────────
 
@@ -208,7 +208,7 @@ describe("cli-help", () => {
       out += s;
     };
     try {
-      require("../src/cli-help")("server");
+      require("../src/lib/cli-help")("server");
       assert.ok(out.includes("Dashboard"));
     } finally {
       console.log = orig;
@@ -221,7 +221,7 @@ describe("cli-help", () => {
       out += s;
     };
     try {
-      require("../src/cli-help")("bot");
+      require("../src/lib/cli-help")("bot");
       assert.ok(out.includes("Headless"));
     } finally {
       console.log = orig;

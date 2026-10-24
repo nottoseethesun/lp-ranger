@@ -2,7 +2,7 @@
 
 /**
  * @file test/config-bounds.test.js
- * @description Tests for `src/config-bounds.js`, which decides whether a
+ * @description Tests for `src/lib/config-bounds.js`, which decides whether a
  *   value an operator typed into the dashboard may be saved.
  *
  *   This is the only place that decision is made. The browser used to
@@ -22,13 +22,13 @@ const {
   checkConfigValues,
   settingSchemas,
   BOUNDS,
-} = require("../src/config-bounds");
+} = require("../src/lib/config-bounds");
 const {
   GLOBAL_KEYS,
   POSITION_KEYS,
   SETTING_POSITION_KEYS,
-} = require("../src/bot-config-keys");
-const { SETTING_BOUNDS } = require("../src/setting-bounds");
+} = require("../src/lib/bot-config-keys");
+const { SETTING_BOUNDS } = require("../src/lib/setting-bounds");
 
 // What the route hands in: a value it has already resolved.
 const CTX = {

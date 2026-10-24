@@ -15,7 +15,7 @@ const {
   validateEntry,
   MAX_POSITIONS,
   DEFAULT_PAGE_SIZE,
-} = require("../src/position-store");
+} = require("../src/lib/position-store");
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

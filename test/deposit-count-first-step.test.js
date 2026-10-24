@@ -2,10 +2,10 @@
  * @file test/deposit-count-first-step.test.js
  * @description The deposit count is the first step of every rebalance
  *   and compound, so the move's records hold the owner's deposits as
- *   money put in (src/deposit-count.js).
+ *   money put in (src/lib/deposit-count.js).
  *
  *   It is the only count a due rebalance makes. The Impermanent Loss
- *   Guard counts no coin in the wallet (src/bot-pnl-il.js), so it counts
+ *   Guard counts no coin in the wallet (src/lib/bot-pnl-il.js), so it counts
  *   no deposit before it measures.
  *
  *   The count, the gates, the rebalance and the compound are stand-ins
@@ -23,7 +23,7 @@ require("./helpers/price-stand-ins");
 
 let order = [];
 
-/** Whether `mod` is the file `name` in src/. */
+/** Whether `mod` is the file `name` in src/lib/. */
 const from = (mod, name) => path.basename(mod.filename || "") === name;
 
 const _origRequire = Module.prototype.require;
@@ -60,8 +60,8 @@ Module.prototype.require = function (id) {
     };
   return _origRequire.apply(this, arguments);
 };
-const { _executeAndRecord, _runRangeAndExec } = require("../src/bot-cycle");
-const { executeCompound } = require("../src/bot-cycle-compound");
+const { _executeAndRecord, _runRangeAndExec } = require("../src/lib/bot-cycle");
+const { executeCompound } = require("../src/lib/bot-cycle-compound");
 Module.prototype.require = _origRequire;
 
 /** Deps for an out-of-range position whose operator asked for a rebalance. */

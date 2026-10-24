@@ -19,7 +19,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const SETTINGS_DIR = makeTestTempFolder("compounder-swap-settings");
 fs.writeFileSync(
@@ -36,29 +36,29 @@ const assert = require("node:assert/strict");
  *  so `compounder-swap` — required last — binds to them. Each stand-in
  *  forwards to a per-test function in `stub`.
  */
-const realSwap = require("../src/rebalancer-swap");
-const realGates = require("../src/swap-gates");
-const realPrices = require("../src/price-fetcher");
+const realSwap = require("../src/lib/rebalancer-swap");
+const realGates = require("../src/lib/swap-gates");
+const realPrices = require("../src/lib/price-fetcher");
 
 const stub = {};
 function replace(id, exports) {
   require.cache[require.resolve(id)].exports = exports;
 }
-replace("../src/rebalancer-swap", {
+replace("../src/lib/rebalancer-swap", {
   ...realSwap,
   swapIfNeeded: (...a) => stub.swap(...a),
 });
-replace("../src/swap-gates", {
+replace("../src/lib/swap-gates", {
   ...realGates,
   estimateSwapGasUsd: (...a) => stub.gasUsd(...a),
   shouldSkipSwap: (...a) => stub.gate(...a),
 });
-replace("../src/price-fetcher", {
+replace("../src/lib/price-fetcher", {
   ...realPrices,
   fetchTokenPriceUsd: (...a) => stub.price(...a),
 });
 
-const { swapForCompound } = require("../src/compounder-swap");
+const { swapForCompound } = require("../src/lib/compounder-swap");
 
 const T0 = "0xA1077a294dDE1B09bB078844df40758a5D0f9a27";
 const T1 = "0x7b39712EF45F7dcED2bBDF11F3D5046bA61dA719";

@@ -17,9 +17,9 @@ require("global-jsdom/register");
 const { describe, it, beforeEach, before } = require("node:test");
 const assert = require("assert");
 
-const holder = require("../src/api-key-holder");
-const { GLOBAL_KEYS } = require("../src/bot-config-keys");
-const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+const holder = require("../src/lib/api-key-holder");
+const { GLOBAL_KEYS } = require("../src/lib/bot-config-keys");
+const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
 describe("api-key-holder — enabled is separate from present", () => {
   beforeEach(() => {
@@ -140,10 +140,10 @@ describe("the dialog control itself", () => {
   let mod;
 
   before(async () => {
-    mod = await import("../public/dashboard-moralis-key.js");
+    mod = await import("../src/client/web/dashboard-moralis-key.js");
   });
 
-  /** The dialog fragment, matching public/index.html. */
+  /** The dialog fragment, matching src/client/web/index.html. */
   function renderDialog() {
     document.body.innerHTML = `
       <div class="9mm-pos-mgr-moralis-use-row" id="moralisEnabledRow">

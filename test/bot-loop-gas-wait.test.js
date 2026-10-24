@@ -19,7 +19,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const { nextCheckDelayMs } = require("../src/bot-loop-scheduler");
+const { nextCheckDelayMs } = require("../src/lib/bot-loop-scheduler");
 
 /*-
  *  Off every shipped value (300 000, 3 600 000 and 2 000), so a delay
@@ -69,7 +69,7 @@ describe("nextCheckDelayMs", () => {
 
 describe("the bot loop's next wait", () => {
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "src", "bot-loop.js"),
+    path.join(__dirname, "..", "src", "lib", "bot-loop.js"),
     "utf8",
   );
 

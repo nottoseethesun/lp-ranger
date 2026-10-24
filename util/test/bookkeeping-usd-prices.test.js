@@ -14,7 +14,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("path");
 
-const { scanCachePath } = require("../../src/scan-cache-dir");
+const { scanCachePath } = require("../../src/lib/scan-cache-dir");
 const {
   CACHE_DIR,
   PRICE_ADVICE,

@@ -3,12 +3,12 @@ name: Record rebalances made outside LP Ranger without a reload
 description: Nice-to-have — a rebalance made outside LP Ranger (by hand, or by another install) stays unrecorded until Reload Current Position; LP Ranger's own are recorded as they happen
 type: project
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
-modified: 2026-10-20T20:17:19.030Z
+modified: 2026-10-24T04:55:01.312Z
 ---
 ## Plain language
 
 Every rebalance LP Ranger makes is recorded the moment it finishes
-(`appendToPoolCache`, `src/pool-scanner.js`). A rebalance made outside
+(`appendToPoolCache`, `src/lib/pool-scanner.js`). A rebalance made outside
 LP Ranger, by hand on the 9mm site or by another install, after LP
 Ranger has scanned the pool, is not: routine scans read only blocks
 after the event cache's `lastBlock`, and cannot pair the new mint with

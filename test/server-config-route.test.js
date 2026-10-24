@@ -1,7 +1,7 @@
 /**
  * @file test/server-config-route.test.js
  * @description Unit tests for `POST /api/config`, built by
- * src/server-config-route.js and served by src/server-routes.js.
+ * src/lib/server-config-route.js and served by src/lib/server-routes.js.
  *
  * Split out of test/server-routes.test.js at the 500-line cap when the
  * route grew a value check. The route is the one place a setting an
@@ -15,8 +15,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { createRouteHandlers } = require("../src/server-routes");
-const { checkIlGuard } = require("../src/il-guard");
+const { createRouteHandlers } = require("../src/lib/server-routes");
+const { checkIlGuard } = require("../src/lib/il-guard");
 const { ilSnapshot } = require("./helpers/il-snapshot");
 
 /** Build a minimal deps object with stubs for createRouteHandlers. */

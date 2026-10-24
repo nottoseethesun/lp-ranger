@@ -7,7 +7,7 @@
  *   the copy only under names that exist.
  *
  *   The circle-i dialogs and the User Manual both quote these figures, and
- *   both take them from `src/help-figures.js`. A figure the copy typed in
+ *   both take them from `src/lib/help-figures.js`. A figure the copy typed in
  *   instead goes stale the day the setting changes, and the help then
  *   states a figure the app does not use. A figure named wrongly must
  *   stop the build, rather than reach a reader as a raw token.
@@ -35,7 +35,7 @@ const {
   duration,
   shortDuration,
   count,
-} = require("../src/help-figures");
+} = require("../src/lib/help-figures");
 
 const { shippedFigures } = require("../scripts/build-manual-content");
 
@@ -376,7 +376,7 @@ describe("the module", () => {
      *  Node-only would break that build, not a test.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "help-figures.js"),
+      path.join(__dirname, "..", "src", "lib", "help-figures.js"),
       "utf8",
     );
     assert.deepEqual(src.match(/\brequire\s*\(/g) || [], []);

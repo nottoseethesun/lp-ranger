@@ -4,7 +4,7 @@
  * @file test/bot-recorder-lifetime-held-results.test.js
  * @description A Lifetime scan that does not count the deposits again
  *   keeps the Lifetime results the bot holds (`_scanLifetimePoolData`,
- *   src/bot-recorder-lifetime.js).
+ *   src/lib/bot-recorder-lifetime.js).
  *
  *   A Re-scan Prices scan, for one, reads the saved results when it
  *   starts and does not count again. A deposit count during that scan,
@@ -49,7 +49,7 @@ describe("a Lifetime scan that does not count the deposits again", () => {
   beforeEach(() => {
     resetState();
     installMocks();
-    lifetime = require("../src/bot-recorder-lifetime");
+    lifetime = require("../src/lib/bot-recorder-lifetime");
   });
 
   afterEach(restoreMocks);

@@ -3,6 +3,7 @@ name: ESM migration (replace CommonJS require with import)
 description: Nice-to-have / future. Project is 100% CJS today; migrating to ESM is a deliberate big-bang change.
 type: project
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
+modified: 2026-10-24T05:03:57.510Z
 ---
 Move the codebase from CommonJS (`require` / `module.exports`) to ESM (`import` / `export`).
 
@@ -10,7 +11,7 @@ Move the codebase from CommonJS (`require` / `module.exports`) to ESM (`import` 
 
 **How to apply:** Treat as a dedicated branch — DO NOT mix with feature work. Rough plan:
 - Add `"type": "module"` to package.json (or rename source files to `.mjs`); decide policy.
-- Convert every `require()` → `import` and every `module.exports` → `export` across `src/`, `test/`, `scripts/`, `server.js`, `bot.js`, `eslint-rules/`.
+- Convert every `require()` → `import` and every `module.exports` → `export` across `src/`, `test/`, `scripts/`, `eslint-rules/`.
 - Add `.js` extensions to all relative imports (ESM requires them).
 - Replace `__dirname`/`__filename`/`require.resolve` with `import.meta.url` equivalents.
 - Replace the `Module.prototype.require` test stub-injection pattern (used in e.g. `test/position-history-scan-bound.test.js`, `test/position-detector.test.js` via `global.ethers`) with proper DI parameters or a dedicated mock loader. ESM modules can't be patched the same way.

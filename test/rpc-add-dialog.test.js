@@ -11,7 +11,7 @@
  *   - Save closes the dialog on success and leaves it open on failure,
  *     so a rejected URL is still there to correct.
  *
- * Tested over the shipped `public/index.html` and the real module, not
+ * Tested over the shipped `src/client/web/index.html` and the real module, not
  * a copy of either.
  */
 
@@ -99,7 +99,14 @@ describe("the Network section's markup", () => {
      *  reason.  Asserted against the source because the wiring is a
      *  table entry, not a computed value. */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "public", "dashboard-events-manage.js"),
+      path.join(
+        __dirname,
+        "..",
+        "src",
+        "client",
+        "web",
+        "dashboard-events-manage.js",
+      ),
       "utf8",
     );
     assert.match(src, /id:\s*"rpcAddModal"/);
@@ -118,7 +125,7 @@ describe("the Network section's markup", () => {
 });
 
 /*- Whether an endpoint is usable is no longer decided in the browser.
- *  `src/config-bounds.js` checks it with `validator.isURL` and answers
+ *  `src/lib/config-bounds.js` checks it with `validator.isURL` and answers
  *  400 naming the entry it refused, and the dialog puts that sentence in
  *  its own error line. The rules are covered by
  *  test/config-bounds.test.js § "checkConfigValues — RPC endpoints". */

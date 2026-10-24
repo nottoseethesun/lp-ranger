@@ -11,7 +11,7 @@ const {
   _currentPnl,
   _applyPriceOverrides,
   _baselineSummary,
-} = require("../src/position-details-quick");
+} = require("../src/lib/position-details-quick");
 
 // ── _currentPnl ─────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ describe("_currentPnl", () => {
      *
      *  So the figure is withheld and the dashboard shows a dash, which
      *  is what the managed path has always done: the same guard in
-     *  `_ilFor` (src/bot-pnl-il.js) is now the one both tiers use.
+     *  `_ilFor` (src/lib/bot-pnl-il.js) is now the one both tiers use.
      */
     const baseline = { hodlAmount0: 0, hodlAmount1: 0 };
     const r = _currentPnl(baseline, 200, 200, 10, 1, 1);

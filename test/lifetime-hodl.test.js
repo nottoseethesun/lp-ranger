@@ -6,7 +6,7 @@ const {
   computeLifetimeHodl,
   _buildChainOrder,
   _freshDeposits,
-} = require("../src/lifetime-hodl");
+} = require("../src/lib/lifetime-hodl");
 
 /*- The event shapes, the chain fixture and the provider/ethers stubs are
  *  shared with the other lifetime-HODL test files; a copy per file drifted
@@ -245,7 +245,7 @@ describe("lifetime-hodl", () => {
        *  Log figures set aside only the wallet's coins that went into its
        *  mint, so the tag is what tells them apart here, where the
        *  rebalance's mint took in none and the owner later added
-       *  liquidity to the new NFT (src/rebalance-activity-figures.js).
+       *  liquidity to the new NFT (src/lib/rebalance-activity-figures.js).
        */
       const events = new Map();
       events.set("50", {
@@ -428,7 +428,7 @@ describe("lifetime-hodl", () => {
 
   describe("_lifetimeAmounts in bot-pnl-il", () => {
     it("prefers lifetimeHodlAmounts over closedEpochs[0]", () => {
-      const { _lifetimeAmounts } = require("../src/bot-pnl-il");
+      const { _lifetimeAmounts } = require("../src/lib/bot-pnl-il");
       const deps = {
         _botState: {
           lifetimeHodlAmounts: { amount0: 100, amount1: 50 },
@@ -442,7 +442,7 @@ describe("lifetime-hodl", () => {
     });
 
     it("falls back to closedEpochs[0] when no lifetimeHodlAmounts", () => {
-      const { _lifetimeAmounts } = require("../src/bot-pnl-il");
+      const { _lifetimeAmounts } = require("../src/lib/bot-pnl-il");
       const deps = {
         _botState: { hodlBaseline: { hodlAmount0: 5, hodlAmount1: 3 } },
       };
@@ -453,7 +453,7 @@ describe("lifetime-hodl", () => {
     });
 
     it("uses scan amounts even when baseline is larger", () => {
-      const { _lifetimeAmounts } = require("../src/bot-pnl-il");
+      const { _lifetimeAmounts } = require("../src/lib/bot-pnl-il");
       const deps = {
         _botState: {
           lifetimeHodlAmounts: { amount0: 50, amount1: 30 },
@@ -466,23 +466,23 @@ describe("lifetime-hodl", () => {
     });
 
     it("_ilFor returns undefined when amounts are zero", () => {
-      const { _ilFor } = require("../src/bot-pnl-il");
+      const { _ilFor } = require("../src/lib/bot-pnl-il");
       assert.strictEqual(_ilFor(100, 0, 0, 1, 1), undefined);
     });
 
     it("_ilFor computes HODL IL", () => {
-      const { _ilFor } = require("../src/bot-pnl-il");
+      const { _ilFor } = require("../src/lib/bot-pnl-il");
       assert.strictEqual(_ilFor(100, 50, 50, 1, 1), 0);
     });
 
     it("_maxAmount picks larger value", () => {
-      const { _maxAmount } = require("../src/bot-pnl-updater");
+      const { _maxAmount } = require("../src/lib/bot-pnl-updater");
       assert.strictEqual(_maxAmount(10, 5), 10);
       assert.strictEqual(_maxAmount(3, 7), 7);
     });
 
     it("returns zeros when no data available", () => {
-      const { _lifetimeAmounts } = require("../src/bot-pnl-il");
+      const { _lifetimeAmounts } = require("../src/lib/bot-pnl-il");
       const { a0, a1 } = _lifetimeAmounts(
         { _botState: {} },
         { closedEpochs: [] },

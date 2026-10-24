@@ -320,7 +320,7 @@
             "description": "Config saved. An answer to a request that named a position names it too: positionKey is the key the request named, and livePositionKey the key the values were saved under when a rebalance had moved it, so a dashboard that has moved to another position since it asked can keep the answer off its screen."
           },
           "400": {
-            "description": "Missing or invalid positionKey for position-specific keys, or a dashboard-settable value outside its range. The route takes settings only: the bot's own records (hodlBaseline, residuals, compoundHistory and the rest) are not saved through it. The two refusals are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Ranges are declared in src/config-bounds.js; null clears a setting rather than being checked. Names the position as the 200 does."
+            "description": "Missing or invalid positionKey for position-specific keys, or a dashboard-settable value outside its range. The route takes settings only: the bot's own records (hodlBaseline, residuals, compoundHistory and the rest) are not saved through it. The two refusals are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Ranges are declared in src/lib/config-bounds.js; null clears a setting rather than being checked. Names the position as the 200 does."
           }
         }
       }
@@ -1171,7 +1171,7 @@
                     },
                     "logo": {
                       "type": "string",
-                      "description": "File name under public/ of the chain's logo, shown in the dashboard header."
+                      "description": "File name under src/client/web/ of the chain's logo, shown in the dashboard header."
                     },
                     "tokenListUrl": {
                       "type": "string",

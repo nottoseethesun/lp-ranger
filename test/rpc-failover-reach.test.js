@@ -4,7 +4,7 @@
  * A failover has to move every read, not only the reads that ask where
  * to go.
  *
- * Endpoint selection lives in `src/send-transaction.js`, and one path
+ * Endpoint selection lives in `src/lib/send-transaction.js`, and one path
  * consults it properly: the managed read proxy, which resolves the
  * selected provider on every property access and retries a
  * failover-eligible error on the next endpoint. Two other kinds of
@@ -41,18 +41,18 @@ const assert = require("node:assert/strict");
 
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const sendTx = require("../src/send-transaction");
-const rpcQueue = require("../src/rpc-request-manager");
-const config = require("../src/config");
+const sendTx = require("../src/lib/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const config = require("../src/lib/config");
 const {
   getPoolState,
   _setRetryDelayForTests,
-} = require("../src/rebalancer-pools");
+} = require("../src/lib/rebalancer-pools");
 const {
   createCanReopenHandler,
   _setRetryDelayForTests: _setCanReopenRetryDelay,
-} = require("../src/server-can-reopen");
-const { FailoverNonceManager } = require("../src/nonce-manager-wrapper");
+} = require("../src/lib/server-can-reopen");
+const { FailoverNonceManager } = require("../src/lib/nonce-manager-wrapper");
 const { condemn } = require("./helpers/send-tx-stubs");
 
 const URLS = ["http://one.test", "http://two.test", "http://three.test"];

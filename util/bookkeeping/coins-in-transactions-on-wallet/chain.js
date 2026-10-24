@@ -9,7 +9,7 @@
  * requests to, so a report run while the app runs does not crowd the
  * endpoints they share. That figure and the span of a log search,
  * `getLogsChunkSize`, come from the app's resolver for
- * bot-config-defaults.json (src/bot-config-defaults.js), so an operator's
+ * bot-config-defaults.json (src/lib/bot-config-defaults.js), so an operator's
  * own value applies here as in the app. A receipt or a block is read
  * once, however often it is asked for.
  *
@@ -36,11 +36,13 @@ const { ethers } = require("ethers");
 require("../blockchain");
 const { sleep } = require("../../diagnostic/_helpers");
 const { EVENTS, sameAddress } = require("../coins-in-transaction");
-const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
+const {
+  readBotConfigDefaults,
+} = require("../../../src/lib/bot-config-defaults");
 const {
   drainBefore,
   collectBeforeDeposit,
-} = require("../../../src/nft-move-rules");
+} = require("../../../src/lib/nft-move-rules");
 
 /** bot-config-defaults.json as LP Ranger resolves it, overrides applied. */
 const BOT_DEFAULTS = readBotConfigDefaults();
@@ -163,7 +165,7 @@ async function nftLogsBefore(provider, search) {
 }
 
 /**
- * A log as the shared move rules (src/nft-move-rules.js) read an event:
+ * A log as the shared move rules (src/lib/nft-move-rules.js) read an event:
  * its block, its transaction, and its place in the block when the
  * endpoint gave one.
  * @param {object} log  A log as the provider returns it.
@@ -176,7 +178,7 @@ function asMoveEvent(log) {
 }
 
 /**
- * The block of a rebalance's drain, by the rule in src/nft-move-rules.js
+ * The block of a rebalance's drain, by the rule in src/lib/nft-move-rules.js
  * (`drainBefore`): the latest `DecreaseLiquidity` of the replaced NFT at
  * or before the mint. Searched back to the block that NFT was minted in
  * when the event cache knows it, else across the spans a month of blocks
@@ -204,7 +206,7 @@ async function drainBlockBefore(provider, search) {
 }
 
 /**
- * The block of a compound's collect, by the rule in src/nft-move-rules.js
+ * The block of a compound's collect, by the rule in src/lib/nft-move-rules.js
  * (`collectBeforeDeposit`): the latest `Collect` of the NFT within one
  * span of blocks before its deposit, provided no other deposit into the
  * NFT came after it. Without one, the deposit was coins the owner added

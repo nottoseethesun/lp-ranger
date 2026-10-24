@@ -16,7 +16,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { captureConsole } = require("./_capture");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 const {
   buildProgram,
   readOptions,

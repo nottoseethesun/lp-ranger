@@ -13,7 +13,7 @@
  * trace in anything the run records.
  *
  * Both functions are exported and driven directly rather than through a
- * require-cache reload, because `src/runtime-flags.js` resolves the chain
+ * require-cache reload, because `src/lib/runtime-flags.js` resolves the chain
  * at module load: a test going through `process.env` would be asserting
  * on the one module instance the whole test run shares.
  */
@@ -23,9 +23,9 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const runtimeFlags = require("../src/runtime-flags");
+const runtimeFlags = require("../src/lib/runtime-flags");
 const { resolveChainName, selectChain } = runtimeFlags;
-const { loadMergedDefaults } = require("../src/load-merged-defaults");
+const { loadMergedDefaults } = require("../src/lib/load-merged-defaults");
 
 const CHAINS = loadMergedDefaults("chains.json");
 const APP_RUNTIME = loadMergedDefaults("app-runtime.json");

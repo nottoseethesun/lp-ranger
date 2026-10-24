@@ -1,0 +1,880 @@
+/**
+ * @file src/server.js
+ * @description
+ * HTTP server and main entry point for LP Ranger, an EVM v3 Position Manager.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * DISCLAIMER — USE AT YOUR OWN RISK
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS, COPYRIGHT HOLDERS, OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM,
+ * DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
+ * OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE
+ * USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * By using this software you acknowledge that:
+ *   - You are solely responsible for any financial losses, including loss of
+ *     cryptocurrency or digital assets, resulting from use of this software.
+ *   - Blockchain transactions are irreversible.  The authors cannot recover
+ *     lost funds.
+ *   - This software has not been formally audited and may contain bugs or
+ *     vulnerabilities that could result in partial or total loss of funds.
+ *   - You assume full responsibility for evaluating all risks, including
+ *     smart-contract risk, impermanent loss, slippage, MEV attacks, oracle
+ *     failures, and network congestion.
+ *
+ * DO NOT USE THIS SOFTWARE WITH FUNDS YOU CANNOT AFFORD TO LOSE.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * The canonical engineering reference — environment variables, the
+ * `app-config/` layout, development tools, the check-report pipeline,
+ * debugging, and devdependencies — lives in docs/engineering.md.  The
+ * sections below describe only the HTTP surface that server.js itself
+ * implements.
+ *
+ *     ▸ docs/engineering.md     Canonical reference for configuration,
+ *                               runtime state, and tooling.
+ *     ▸ docs/architecture.md    High-level system architecture overview.
+ *     ▸ docs/openapi.json       OpenAPI 3.0 spec for the routes below.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ROUTES
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ *   GET  /                          → src/client/web/index.html (dashboard)
+ *   GET  /public/*                  → static files from src/client/web/
+ *   GET  /health                    → 200 OK (load-balancers / pm2)
+ *
+ *   Status & Config
+ *   GET  /api/status                → { global, positions: { [key]: {...} } }
+ *   POST /api/config                → Update runtime config (throttle, slippage, etc.)
+ *
+ *   Wallet
+ *   GET  /api/wallet/status         → Wallet address, lock state
+ *   POST /api/wallet                → Import wallet (seed or private key)
+ *   POST /api/wallet/unlock         → Decrypt wallet with password
+ *   POST /api/wallet/reveal         → Return plaintext private key (requires password)
+ *   DELETE /api/wallet              → Delete wallet file from disk
+ *
+ *   Positions
+ *   POST /api/positions/scan        → Scan wallet for up to 300 LP positions
+ *   POST /api/positions/refresh     → Re-read on-chain liquidity for scanned positions
+ *   GET  /api/positions/managed     → List all managed positions with status
+ *   POST /api/position/manage       → Start managing a position (tokenId)
+ *   DELETE /api/position/manage     → Stop managing a position (composite key)
+ *   POST /api/position/details      → Quick details: pool state, value, fees (Phase 1)
+ *   POST /api/position/lifetime     → Lifetime P&L: event scan + epochs (Phase 2, slow)
+ *   POST /api/position/scan-cancel  → Abort in-flight scan and reset sync flag (user escape hatch)
+ *   POST /api/position/reload       → Wipe on-chain-derived state + re-scan from scratch (catastrophic-failure escape hatch)
+ *   POST /api/position/rescan-prices → Re-value a managed position at fresh prices (bad-price escape hatch)
+ *   GET  /api/position/:tokenId/history → Closed position historical P&L
+ *
+ *   UI
+ *   GET  /api/ui-defaults           → Dashboard settings the server sends (shipped + override)
+ *   GET  /api/lp-providers          → LP-provider metadata keyed by <factory>_<positionManager>
+ *   GET  /api/bot-config-defaults   → Bot Settings defaults in force (shipped, override, .env)
+ *   GET  /api/help-figures          → Figures the help quotes, as this install runs
+ *   GET  /api/setting-labels        → Human-readable labels for config keys (Activity Log formatter)
+ *
+ *   Actions
+ *   POST /api/rebalance             → Force-rebalance a position (positionKey)
+ *   POST /api/compound              → Force-compound fees on a position (positionKey)
+ *   POST /api/stop-when-all-clear   → Stop the server once nothing is under way (npm run gentle-stop)
+ *
+ *   Full OpenAPI 3.0 spec: docs/openapi.json
+ *   Interactive docs:      npm run api-doc → http://localhost:5556
+ *
+ * @example
+ * // .env
+ * PORT=5555
+ * HOST=127.0.0.1
+ *
+ * // start dashboard:
+ * node src/server.js          // → http://localhost:5555
+ *
+ * // start bot (requires PRIVATE_KEY):
+ * node src/bot.js
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ROAD MAP
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * See README.md § Road Map for planned features.
+ */
+
+"use strict";
+
+const cliHelp = require("./lib/cli-help");
+
+/*- `--help` answers and leaves, ahead of every other line in this file.
+ *  It starts no server, so it must not open the operator's log file and
+ *  must not announce a start — and the help text it prints names
+ *  `npm run build-and-start`, so a start banner above it read as though
+ *  the server it describes was already up. */
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  cliHelp("server");
+  process.exit(0);
+}
+
+/*- Boot wiring for the --log-file CLI flag + logging.json static
+ *  tunable.  MUST run before any log output so the file captures the
+ *  startup banner.  No-op when neither source opts in.  See
+ *  src/lib/boot-log-file.js + src/lib/log-file.js. */
+require("./lib/boot-log-file").bootLogFile();
+
+/*-
+ *  Every setting is checked before any is read: the JSON settings files
+ *  with the operator's copies, `.env` and bot-config.json. A wrong one
+ *  stops the server here, each named, rather than leaving it to run on a
+ *  value nobody chose. See src/lib/settings-check.js.
+ */
+require("./lib/settings-check").refuseToStartOnBadSettings();
+
+const { log } = require("./lib/log");
+const { resetErrorLog } = require("./lib/error-log");
+const { writePidFile } = require("./lib/server-pid");
+const { readShutdownTimings } = require("./lib/shutdown-timing");
+const { markStopping } = require("./lib/app-phase");
+// First statement of a real run — `--help` has already exited above, so
+// nothing logs before this and it always tops the log.  Black on light gray (inverse of
+// bot.js), rocket emoji before and after "Started."  ANSI: 30=black fg,
+// 47=lt-gray bg, 0=reset.
+log.info(
+  "\x1b[30;47m[lp-ranger server] \uD83D\uDE80 Started. \uD83D\uDE80\x1b[0m",
+);
+
+const { emojiId } = require("./lib/logger");
+
+const installServerErrorGuard = require("./lib/server-error-guard");
+
+const _headless = process.argv.includes("--headless");
+
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+
+const config = require("./lib/config");
+const { handleCors } = require("./lib/server-cors");
+const { handleCsrf } = require("./lib/server-csrf");
+const walletManager = require("./lib/wallet-manager");
+const { getPositionHistory } = require("./lib/position-history");
+const { createRebalanceLock } = require("./lib/rebalance-lock");
+const { createPositionManager } = require("./lib/position-manager");
+const botRecorder = require("./lib/bot-recorder");
+const { loadConfig, managedKeys } = require("./lib/bot-config-v2");
+const { parseCompositeKey } = require("./lib/composite-key");
+const { migrateAppConfig } = require("./lib/migrate-app-config");
+const { buildGasStatusPayload } = require("./lib/gas-monitor");
+const { actualGasCostUsd } = require("./lib/bot-pnl-updater");
+const { userConfigurableRoutes } = require("./lib/user-configurable-routes");
+const { createPauseInfra } = require("./lib/server-pause");
+const { readPriceCacheSettings } = require("./lib/price-fetcher-gate");
+const { createUnlockHandler } = require("./lib/server-unlock");
+const { logVersionBanner } = require("./lib/build-info");
+const sendTx = require("./lib/send-transaction");
+
+/*-
+ * First log: version/commit banner for support triage. Logged before
+ * any other startup work so it is always at the top of the server log.
+ */
+logVersionBanner("[server]");
+
+// ── app-config migration ─────────────────────────────
+// One-time move of legacy root-level config files into app-config/.
+// Idempotent: a no-op after the first successful run. See
+// src/lib/migrate-app-config.js and the app-config/ section of this file.
+migrateAppConfig();
+
+// ── RPC provider singleton ─────────────────────────────
+// Initialise the send-transaction module's primary + fallback providers
+// before any route handler can run.  Server-side reads (server-scan,
+// server-routes, position-details, etc.) consult sendTx.getManagedReadProvider()
+// to follow the same active-RPC selection as TX submission, so a sustained
+// primary outage fails over uniformly across reads and writes.  Uses the
+// env-var-aware RPC_URLS so operators can override the chain-default
+// endpoints via .env.
+sendTx.init({ urls: config.RPC_URLS });
+
+// ── Position manager (module-level) ─────────────────
+
+const _rebalanceLock = createRebalanceLock();
+const _positionMgr = createPositionManager({
+  rebalanceLock: _rebalanceLock,
+});
+
+/*- Seed today's per-pool daily rebalance counts from the on-disk
+ *  rebalance log so a restart mid-day does not silently reset the
+ *  daily cap (which would otherwise allow MAX_REBALANCES_PER_DAY ×
+ *  restart-count rebalances against the intended cap). */
+const _seeded = _positionMgr.seedPoolDailyCounts(botRecorder.readLog());
+if (_seeded > 0)
+  log.info("[server] Seeded %d pool rebalance(s) for today's cap", _seeded);
+
+// ── MIME type map ────────────────────────────────────
+
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".mp3": "audio/mpeg",
+};
+
+// ── Bot config persistence (v2) ─────────────────────
+
+/** Bot config loaded from disk. */
+const _diskConfig = loadConfig();
+
+/*-
+ *  The price library's three cache lifetimes, read once as the server
+ *  starts (src/lib/price-fetcher-gate.js).
+ */
+readPriceCacheSettings();
+
+const _managedAtStartup = managedKeys(_diskConfig);
+if (_managedAtStartup.length > 0)
+  log.info(
+    "[server] Loaded bot config (%d managed positions)",
+    _managedAtStartup.length,
+  );
+/*- One line per saved position, written for whoever is reading the log
+ *  rather than for whoever wrote it.
+ *
+ *  Identified by NFT id, which is what the dashboard shows and what an
+ *  operator recognises.  The composite key's other three parts are the
+ *  chain, the wallet and the position manager, identical on every line
+ *  of a given install — printing the key's last ten characters led with
+ *  the tail of a contract address, so every line opened with the same
+ *  meaningless `7f2-`.
+ *
+ *  Three states have to be told apart, and only two of them are a
+ *  status: `running` and `stopped` are positions the bot has been given,
+ *  while a slot with no status was never managed at all.  Saving a
+ *  setting from the dashboard creates that position's slot whether or
+ *  not the bot ever ran it, so such a slot is settings waiting for a
+ *  position that may yet be managed.  It used to print as "MISSING",
+ *  which reads as something absent that ought to be present. */
+for (const [k, v] of Object.entries(_diskConfig.positions || {})) {
+  const parsed = parseCompositeKey(k);
+  /*- A key that does not parse is reported as what it is rather than
+   *  dressed up as an NFT id, since calling it one would hide the real
+   *  problem: a slot nothing in the app could have written. */
+  const label = parsed ? `NFT #${parsed.tokenId}` : `unparsable key ${k}`;
+  log.info(
+    "[server] Config position %s: %s — saved settings: %s",
+    label,
+    v.status || "never managed",
+    Object.keys(v).join(","),
+  );
+}
+
+// ── Static file helper ──────────────────────────────
+
+/**
+ * Resolve a URL path to a file under `src/client/web/`,
+ * read it, and write it to `res`.
+ * Returns false if the file does not exist
+ * (caller should 404).
+ * @param {string}              urlPath
+ * @param {http.ServerResponse} res
+ * @returns {boolean}
+ *   true if the file was found and served
+ */
+function serveStatic(urlPath, res) {
+  // Normalise: strip query string, percent-decode (so filenames with
+  // spaces resolve), collapse '..' via path.resolve below.
+  let clean;
+  try {
+    clean = decodeURIComponent(urlPath.split("?")[0]);
+  } catch (_) {
+    res.writeHead(400, { "Content-Type": "text/plain" });
+    res.end("400 Bad Request");
+    return true;
+  }
+  /*- Prefer the build-inlined `src/client/web/dist/index.html` at the
+   *  root path (see scripts/inline-svgs.js) when it exists, so shipped
+   *  pages get inline SVG icons instead of empty placeholders.  Falls
+   *  back to `src/client/web/index.html` when the build hasn't run yet —
+   *  the page still boots, only the ui-* icons render as empty spans. */
+  const publicDir = path.resolve(__dirname, "client", "web");
+  let relative;
+  if (clean === "/") {
+    const distIndex = path.resolve(publicDir, "dist", "index.html");
+    relative = fs.existsSync(distIndex) ? "dist/index.html" : "index.html";
+  } else {
+    relative = clean.replace(/^\/public\//, "").replace(/^\//, "");
+  }
+  const filePath = path.resolve(publicDir, relative);
+
+  // Security: reject paths that escape public dir
+  if (!filePath.startsWith(publicDir)) {
+    res.writeHead(403, {
+      "Content-Type": "text/plain",
+    });
+    res.end("403 Forbidden");
+    return true;
+  }
+
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return false;
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+  const mimeType = MIME[ext] || "application/octet-stream";
+
+  try {
+    const data = fs.readFileSync(filePath);
+    // HTML: no-cache so index.html (with cache-bust query) is always fresh.
+    // JS/CSS/fonts: immutable-style caching (cache-bust query handles updates).
+    const isHtml = ext === ".html";
+    const headers = {
+      "Content-Type": mimeType,
+      "Content-Length": data.length,
+      "Cache-Control": isHtml
+        ? "no-cache, no-store, must-revalidate"
+        : "public, max-age=31536000, immutable",
+    };
+    if (isHtml) {
+      headers["Pragma"] = "no-cache";
+      headers["Expires"] = "0";
+    }
+    res.writeHead(200, headers);
+    res.end(data);
+  } catch (_) {
+    res.writeHead(500, {
+      "Content-Type": "text/plain",
+    });
+    res.end("500 Internal Server Error");
+  }
+  return true;
+}
+
+// ── JSON API helpers ────────────────────────────────
+
+/**
+ * Write a JSON response.
+ * @param {http.ServerResponse} res
+ * @param {number}              status
+ * @param {object}              body
+ */
+function jsonResponse(res, status, body) {
+  const payload = JSON.stringify(body, null, 2);
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(payload),
+  });
+  res.end(payload);
+}
+
+/**
+ * Read and parse the request body as JSON.
+ * @param {http.IncomingMessage} req
+ * @returns {Promise<object>}
+ */
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString()));
+      } catch (_) {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+// ── Mutable private key ref ─────────────────────────
+
+/**
+ * Resolved private key — set once during bot start,
+ * shared across all loops.  Passed by reference so
+ * route handlers in server-routes.js can read/write.
+ * @type {{ current: string|null }}
+ */
+const _privateKeyRef = { current: null };
+
+// ── Route handlers (delegated to server-routes) ─────
+
+const {
+  getAllPositionBotStates,
+  createPerPositionBotState,
+  attachMultiPosDeps,
+  buildStatusPositions,
+  updatePositionState,
+  createPositionRoutes,
+} = require("./lib/server-positions");
+
+const { createRouteHandlers } = require("./lib/server-routes");
+const { getLpProviderDisplayName } = require("./lib/lp-providers");
+const { createApiStatusHandler } = require("./lib/handle-api-status");
+const { createPositionStateRoutes } = require("./lib/position-state-routes");
+const { primaryRouteLabel } = require("./lib/rebalancer-swap");
+const { moralisEnabledIn } = require("./lib/server-moralis");
+const { positionTag } = require("./lib/position-answer-tag");
+const { isAscanRunningOnThisPosition } = require("./lib/scan-state");
+const { scanRunningRefusal } = require("./lib/scan-refusal");
+
+/**
+ * The answer refusing a Rebalance Now or Compound Now while a scan is
+ * running on its position (src/lib/scan-state.js). `scanInProgress` lets the
+ * dashboard wait for the scan in a dialog, then offer the move again.
+ * @param {string} move  "rebalance" or "compound".
+ * @param {string} action  The button: "Rebalance Now" or "Compound Now".
+ * @param {string} positionKey  The position the request named.
+ * @returns {object}
+ */
+function _scanRunningAnswer(move, action, positionKey) {
+  return {
+    ok: false,
+    scanInProgress: true,
+    error: scanRunningRefusal(move, `${action} waits until the read finishes`),
+    ...positionTag(positionKey),
+  };
+}
+const { askPassword: _askPassword } = require("./lib/ask-password");
+const {
+  notifyShutdown: _notifyShutdown,
+} = require("./lib/telegram-notifications/server-shutdown");
+
+const _routeHandlers = createRouteHandlers({
+  diskConfig: _diskConfig,
+  positionMgr: _positionMgr,
+  privateKeyRef: _privateKeyRef,
+  walletManager,
+  jsonResponse,
+  readJsonBody,
+  getAllPositionBotStates,
+  createPerPositionBotState,
+  attachMultiPosDeps,
+  updatePositionState,
+  askPassword: _headless ? _askPassword : null,
+  notifyShutdown: _notifyShutdown,
+});
+
+// ── Idle-driven price-lookup pause ──────────────────
+// Server-side tracker + the two pause/unpause endpoints.  See
+// docs/architecture.md "Idle-Driven Price-Lookup Pause".
+
+const _pauseInfra = createPauseInfra({ jsonResponse, readJsonBody });
+
+// ── Multi-position management routes ────────────────
+
+const _positionRoutes = createPositionRoutes({
+  diskConfig: _diskConfig,
+  positionMgr: _positionMgr,
+  walletManager,
+  getPrivateKey: () => _privateKeyRef.current,
+  jsonResponse,
+  readJsonBody,
+});
+
+// ── Route table ─────────────────────────────────────
+
+const _routes = {
+  "GET /health": (_, res) =>
+    jsonResponse(res, 200, {
+      ok: true,
+      port: config.PORT,
+      ts: Date.now(),
+    }),
+  "GET /api/status": createApiStatusHandler({
+    config,
+    diskConfig: _diskConfig,
+    positionMgr: _positionMgr,
+    walletManager,
+    routeHandlers: _routeHandlers,
+    buildStatusPositions,
+    buildGasStatusPayload,
+    actualGasCostUsd,
+    getLpProviderDisplayName,
+    managedKeys,
+    primaryRouteLabel,
+    moralisEnabledIn,
+    jsonResponse,
+  }),
+  "GET /api/wallet/status": (_, res) =>
+    jsonResponse(res, 200, {
+      ...walletManager.getStatus(),
+      locked: walletManager.hasWallet() && !_privateKeyRef.current,
+    }),
+  "POST /api/wallet/unlock": createUnlockHandler({
+    walletManager,
+    privateKeyRef: _privateKeyRef,
+    decryptApiKeys: (pw) => _routeHandlers._decryptApiKeys(pw),
+    startManagedPositions: () => _routeHandlers._autoStartManagedPositions(),
+    jsonResponse,
+    readJsonBody,
+  }),
+  "DELETE /api/wallet": (_, res) => {
+    log.warn(
+      "[server] DELETE /api/wallet received" + " — clearing wallet file",
+    );
+    walletManager.clearWallet();
+    jsonResponse(res, 200, { ok: true });
+  },
+  "POST /api/config": _routeHandlers._handleApiConfig,
+  "POST /api/api-keys": _routeHandlers._handleApiKeySave,
+  "GET /api/api-keys/status": _routeHandlers._handleApiKeyStatus,
+  ...userConfigurableRoutes(jsonResponse),
+  "POST /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramConfig,
+  "GET /api/telegram/config": _routeHandlers._tgHandlers.handleTelegramStatus,
+  "POST /api/telegram/test": _routeHandlers._tgHandlers.handleTelegramTest,
+  "POST /api/wallet": _routeHandlers._handleWalletImport,
+  "POST /api/wallet/reveal": _routeHandlers._handleWalletReveal,
+  "POST /api/positions/scan": _routeHandlers._handlePositionsScan,
+  "POST /api/positions/refresh": _routeHandlers._handlePositionsRefresh,
+  "POST /api/rebalance": async (req, res) => {
+    let body = {};
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      /* empty body OK */
+    }
+    if (!body.positionKey) {
+      jsonResponse(res, 400, {
+        ok: false,
+        error: "Missing positionKey",
+      });
+      return;
+    }
+    const state = getAllPositionBotStates().get(body.positionKey);
+    if (!state || !state.running) {
+      jsonResponse(res, 409, {
+        ok: false,
+        error: "Position not running or syncing",
+        ...positionTag(body.positionKey),
+      });
+      return;
+    }
+    /*- No Rebalance Now while a scan is running on the position: the
+     *  scan's end would clear the rescan request the rebalance makes, and
+     *  leave its deposits and Activity Log figures out until the next
+     *  start (src/lib/scan-state.js). */
+    if (isAscanRunningOnThisPosition(state)) {
+      jsonResponse(
+        res,
+        409,
+        _scanRunningAnswer("rebalance", "Rebalance Now", body.positionKey),
+      );
+      return;
+    }
+    const tokenId = body.positionKey.split("-").pop();
+    /*- The client no longer sends `customRangeWidthPct` in the body.
+     *  Range-width override is persistent per-position config
+     *  (`rebalanceRangeWidthPct` POSITION_KEY) read by the bot loop via
+     *  `deps._getConfig` in src/lib/bot-cycle-opts.js.  Client sets it via
+     *  the Range Width row in Bot Settings → POST /api/config. */
+    log.info(
+      "[server] Manual rebalance for %s %s",
+      body.positionKey,
+      emojiId(tokenId),
+    );
+    // Asked for: no scan starts until it is made (src/lib/scan-state.js).
+    state.forceRebalance = true;
+    state.rebalanceInProgress = true;
+    state.rebalancePaused = false;
+    state.rebalanceError = null;
+    /*- Wake the poll loop so the flag gets picked up on the next
+     *  tick instead of waiting for the timer-driven poll (up to
+     *  CHECK_INTERVAL_SEC ≈ 5 min at default).  See bot-loop.js
+     *  `botState._kickPoll` for the shape. */
+    state._kickPoll?.();
+    jsonResponse(res, 200, {
+      ok: true,
+      message: "Rebalance requested",
+      ...positionTag(body.positionKey),
+    });
+  },
+  "POST /api/compound": async (req, res) => {
+    let body = {};
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      /* empty body OK */
+    }
+    if (!body.positionKey) {
+      jsonResponse(res, 400, {
+        ok: false,
+        error: "Missing positionKey",
+      });
+      return;
+    }
+    const state = getAllPositionBotStates().get(body.positionKey);
+    if (!state || !state.running) {
+      jsonResponse(res, 409, {
+        ok: false,
+        error: "Position not running or syncing",
+      });
+      return;
+    }
+    /*- No Compound Now while a scan is running on the position: the scan
+     *  rebuilds the compound list and its totals from a chain read begun
+     *  before the compound, so Fees Compounded would leave it out until
+     *  the next rebuild (src/lib/scan-state.js). */
+    if (isAscanRunningOnThisPosition(state)) {
+      jsonResponse(
+        res,
+        409,
+        _scanRunningAnswer("compound", "Compound Now", body.positionKey),
+      );
+      return;
+    }
+    const tokenId = body.positionKey.split("-").pop();
+    log.info(
+      "[server] Manual compound for %s %s",
+      body.positionKey,
+      emojiId(tokenId),
+    );
+    // Asked for: no scan starts until it is made (src/lib/scan-state.js).
+    state.forceCompound = true;
+    /*- Same reasoning as POST /api/rebalance — kick the poll so the
+     *  manual Compound Now doesn't wait for the next scheduled poll. */
+    state._kickPoll?.();
+    jsonResponse(res, 200, {
+      ok: true,
+      message: "Compound requested",
+    });
+  },
+  "POST /api/position/details": _routeHandlers._handlePositionDetails,
+  "POST /api/position/lifetime": _routeHandlers._handlePositionLifetime,
+  "POST /api/position/scan-cancel": _routeHandlers._handlePositionScanCancel,
+  "POST /api/position/reload": _routeHandlers._handlePositionReload,
+  "POST /api/position/rescan-prices": _routeHandlers._handleRescanPrices,
+  "POST /api/stop-when-all-clear": (req, res) =>
+    _routeHandlers._handleStopWhenAllClear(req, res, server),
+
+  // ── Multi-position management ─────────────────
+  ..._positionRoutes,
+  ...createPositionStateRoutes({
+    positionMgr: _positionMgr,
+    diskConfig: _diskConfig,
+    managedKeys,
+    jsonResponse,
+  }),
+
+  // ── Idle-driven price-lookup pause endpoints ──
+  ..._pauseInfra.routes,
+};
+
+// ── Request router ──────────────────────────────────
+
+/**
+ * Main request handler.
+ * @param {http.IncomingMessage} req
+ * @param {http.ServerResponse}  res
+ */
+async function handleRequest(req, res) {
+  const { method, url } = req;
+
+  if (handleCors(req, res, _serverPort, jsonResponse)) return;
+  if (handleCsrf(req, res, jsonResponse)) return;
+
+  /*- Reset the server-side idle countdown on every /api/* request.
+   *  Excludes /health (load-balancer probe).  Does NOT clear an
+   *  existing pause flag — unpausing is always explicit (browser
+   *  endpoint or move scope). */
+  if (url.startsWith("/api/")) _pauseInfra.markActivity();
+
+  // A route is named by its path; a handler reads its query string from req.url.
+  const routeKey = method + " " + url.split("?")[0];
+  const handler = _routes[routeKey];
+  if (handler) {
+    try {
+      await handler(req, res);
+    } catch (err) {
+      const code = err.message === "Wrong password" ? 403 : 400;
+      jsonResponse(res, code, {
+        ok: false,
+        error: err.message,
+      });
+    }
+    return;
+  }
+
+  // ── Dynamic GET routes ────────────────────────
+  if (
+    method === "GET" &&
+    url.startsWith("/api/position/") &&
+    url.endsWith("/history")
+  ) {
+    const tokenId = url.slice("/api/position/".length, -"/history".length);
+    // Find position state matching this tokenId
+    let posState = null;
+    for (const [, s] of getAllPositionBotStates()) {
+      if (s.activePosition && String(s.activePosition.tokenId) === tokenId) {
+        posState = s;
+        break;
+      }
+    }
+    jsonResponse(
+      res,
+      200,
+      await getPositionHistory(tokenId, {
+        rebalanceEvents: posState?.rebalanceEvents,
+        activePosition: posState?.activePosition,
+      }),
+    );
+    return;
+  }
+
+  if (method === "GET") {
+    _serveStaticOrSpa(url, res);
+    return;
+  }
+
+  // ── Catch-all ─────────────────────────────────
+  res.writeHead(405, {
+    "Content-Type": "text/plain",
+  });
+  res.end("405 Method Not Allowed");
+}
+
+/**
+ * SPA catch-all for GET requests: serve the requested file from src/client/web/, or
+ * fall back to index.html for extensionless paths (client-side routing), or
+ * 404 for paths with file extensions that don't match a real file.
+ * @param {string} url
+ * @param {http.ServerResponse} res
+ */
+function _serveStaticOrSpa(url, res) {
+  if (serveStatic(url, res)) return;
+  const cleanPath = url.split("?")[0];
+  if (!path.extname(cleanPath)) {
+    serveStatic("/", res);
+    return;
+  }
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("404 Not Found");
+}
+
+// ── Server lifecycle ────────────────────────────────
+
+/** Actual listening port — updated in start() for test overrides. */
+let _serverPort = config.PORT;
+
+const server = http.createServer(handleRequest);
+// Lifetime P&L scans can take 5+ minutes for old pools (555 paced chunks).
+/*- `requestTimeout` is deliberately left at Node's own default.
+ *
+ *  It bounds how long a client may take to SEND a request — a
+ *  slow-client guard against holding a connection open a byte at a
+ *  time — and does NOT bound how long a handler may take to answer.
+ *  Verified: a 3-second handler under a 1-second requestTimeout still
+ *  returns its response intact.
+ *
+ *  It was previously raised to two hours "so lifetime P&L scans don't
+ *  get cut off", which it cannot do. Raising it only weakened the
+ *  guard. A scan that runs for hours is unaffected either way, so
+ *  there is nothing here to tune. */
+
+/**
+ * Start the server on the configured port and host.
+ * Logs the dashboard URL to stdout on success.
+ * @param {number} [portOverride]
+ *   Optional one-time port override (for tests).
+ * @returns {Promise<http.Server>}
+ */
+function start(portOverride) {
+  const port = portOverride !== undefined ? portOverride : config.PORT;
+  _serverPort = port;
+  const host = config.HOST;
+
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      const loopback = host === "0.0.0.0" || host === "127.0.0.1";
+      const addr = `http://${loopback ? "localhost" : host}:${port}`;
+      log.info(
+        `[server] Blockchain:  ${config.CHAIN.displayName}` +
+          ` (chainId ${config.CHAIN.chainId})`,
+      );
+      log.info(`[server] NFT Factory:` + ` ${config.POSITION_MANAGER}`);
+      log.info(
+        "[server] Wallet:     " +
+          ` ${walletManager.getAddress() || "(not loaded)"}`,
+      );
+      log.info(`[server] Dashboard:   ${addr}`);
+      log.info(`[server] API:         ${addr}/api/status`);
+      log.info(
+        "[server] Port:       " + ` ${port}  (change with PORT= in .env)`,
+      );
+      log.info(`[server] Health:      ${addr}/health`);
+      resolve(server);
+    });
+  });
+}
+
+/**
+ * Stop the server gracefully.
+ * @returns {Promise<void>}
+ */
+function stop() {
+  return new Promise((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+  });
+}
+
+// ── Entry point ─────────────────────────────────────
+
+// Only start automatically when run directly
+// (`node src/server.js`).
+// When required as a module (e.g. in tests), the
+// caller controls lifecycle.
+if (require.main === module) {
+  installServerErrorGuard();
+  // Read before anything starts, so an unusable value stops startup.
+  const { exitTimeoutMs } = readShutdownTimings();
+  /*- Fresh start: delete the previous run's error.log so no stale entry
+   *  lingers (current problems are re-logged by the scans). See src/lib/error-log.js. */
+  resetErrorLog();
+  start()
+    .then(() => {
+      /*-
+       *  Server is up: record the PID so `npm stop` (scripts/stop.js) can send
+       *  SIGTERM for the same clean shutdown as Ctrl+C. The file is removed
+       *  when this process exits, however it exits (src/lib/server-pid.js).
+       *
+       *  Both come before the wallet key is resolved, not after it.
+       *  Resolving it can wait on a terminal prompt, and then starts the
+       *  managed positions one at a time, the first already running while
+       *  the rest wait their turn. Until the handlers are in place, either
+       *  signal ends the process on the spot, positions mid-start.
+       */
+      writePidFile();
+      const shutdown = () => {
+        markStopping();
+        log.info("\n[server] Shutting down\u2026");
+        _notifyShutdown();
+        _pauseInfra.stop();
+        _positionMgr.stopAll().catch(() => {});
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(0), exitTimeoutMs);
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    })
+    .then(() => _routeHandlers._tryResolveKey())
+    .catch((err) => {
+      log.error("[server] Failed to start:", err.message);
+      process.exit(1);
+    });
+}
+
+module.exports = {
+  start,
+  stop,
+  handleRequest,
+  _diskConfig,
+  _positionMgr,
+};

@@ -1,0 +1,530 @@
+/**
+ * @file rebalancer-execute.js
+ * @description Internal helpers for executeRebalance: wallet balances,
+ *   swap adjustment, ownership verification, liquidity removal, range
+ *   computation, and result building. Split from rebalancer.js for
+ *   line-count compliance.
+ */
+
+"use strict";
+
+const { log } = require("./log");
+const config = require("./config");
+const rangeMath = require("./range-math");
+const { PM_ABI } = require("./pm-abi");
+const { logCtx } = require("./logger");
+const pools = require("./rebalancer-pools");
+const { swapIfNeeded } = require("./rebalancer-swap");
+const { resolveSlippagePct } = require("./slippage-resolver");
+const { fetchTokenPriceUsd } = require("./price-fetcher");
+const { coinsFromUnits } = require("./coin-value");
+const {
+  estimateSwapGasUsd,
+  shouldSkipSwap,
+  gasFeePctToRatio,
+} = require("./swap-gates");
+
+const { ERC20_ABI, _MIN_SWAP_THRESHOLD, getPoolState, removeLiquidity } = pools;
+
+/**
+ * Read wallet balances for both position tokens (recovery mode).
+ * Used when on-chain liquidity is 0 (prior partial failure).
+ */
+async function _walletBalances(ethersLib, provider, token0, token1, owner) {
+  const t0 = new ethersLib.Contract(token0, ERC20_ABI, provider);
+  const t1 = new ethersLib.Contract(token1, ERC20_ABI, provider);
+  const [bal0, bal1] = await Promise.all([
+    t0.balanceOf(owner),
+    t1.balanceOf(owner),
+  ]);
+  if (bal0 === 0n && bal1 === 0n)
+    throw new Error("Position drained and wallet has 0 balance of both tokens");
+  /*-
+   *  Nothing is drained here, so the wallet before the drain is this same
+   *  reading, returned as `removeLiquidity` returns its own.
+   */
+  return {
+    amount0: bal0,
+    amount1: bal1,
+    txHash: null,
+    walletBefore: { amount0: bal0, amount1: bal1 },
+  };
+}
+
+/**
+ * Apply the dust + gas swap-gates to the initial Rebalance swap.
+ * Dust runs first (cheaper / more reliable to detect than gas).  When
+ * either gate trips we skip the swap and proceed straight to mint —
+ * the corrective-swap loop (Step 6d) will mop up any imbalance later
+ * if it's worth doing.  Returns null when the gate passes.
+ */
+async function _gateInitialSwap(signer, p, ps, desired, is0to1, gasFeePct) {
+  const provider = signer.provider;
+  const tokenInAddr = is0to1 ? p.token0 : p.token1;
+  const decIn = is0to1 ? ps.decimals0 : ps.decimals1;
+  const priceInUsd = await fetchTokenPriceUsd(tokenInAddr);
+  const swapUsd = (Number(desired.swapAmount) / 10 ** decIn) * priceInUsd;
+  const gasUsd = await estimateSwapGasUsd(provider);
+  const maxRatio = gasFeePctToRatio(gasFeePct);
+  const gate = await shouldSkipSwap({ swapUsd, gasUsd, maxRatio });
+  log.info(
+    "[rebalance] Step 6 gate: swap=$%s gas=$%s ratio=%s max=%s%% — %s",
+    swapUsd.toFixed(4),
+    gasUsd.toFixed(4),
+    gate.gasRatio.toFixed(4),
+    (gate.maxRatio * 100).toFixed(2),
+    gate.skip ? `SKIP (${gate.reason})` : "PROCEED",
+  );
+  if (gate.skip) {
+    return {
+      txHash: null,
+      extra0: 0n,
+      extra1: 0n,
+      gasCostWei: 0n,
+      gateSkipped: gate.reason,
+    };
+  }
+  return null;
+}
+
+/** Perform swap if needed and return adjusted amounts + gas. */
+async function _swapAndAdjust(signer, ethersLib, ctx) {
+  const {
+    desired,
+    position: p,
+    poolState: ps,
+    swapRouterAddress,
+    signerAddress,
+    symbol0,
+    symbol1,
+    approvalMultiple,
+    gasFeePct,
+  } = ctx;
+  if (!desired.needsSwap || desired.swapAmount < _MIN_SWAP_THRESHOLD)
+    return { txHash: null, extra0: 0n, extra1: 0n, gasCostWei: 0n };
+  const is0to1 = desired.swapDirection === "token0to1";
+  const gated = await _gateInitialSwap(
+    signer,
+    p,
+    ps,
+    desired,
+    is0to1,
+    gasFeePct,
+  );
+  if (gated) return gated;
+  /*-
+   *  Destination-token slippage: `slippagePctToken<destination>` when
+   *  the position has one, otherwise the default.  See
+   *  src/lib/slippage-resolver.js.
+   */
+  const effectiveSlippage = resolveSlippagePct(ctx, is0to1);
+  const result = await swapIfNeeded(signer, ethersLib, {
+    swapRouterAddress,
+    fee: p.fee,
+    amountIn: desired.swapAmount,
+    tokenIn: is0to1 ? p.token0 : p.token1,
+    tokenOut: is0to1 ? p.token1 : p.token0,
+    slippagePct: effectiveSlippage,
+    currentPrice: ps.price,
+    decimalsIn: is0to1 ? ps.decimals0 : ps.decimals1,
+    decimalsOut: is0to1 ? ps.decimals1 : ps.decimals0,
+    isToken0To1: is0to1,
+    recipient: signerAddress,
+    symbolIn: is0to1 ? symbol0 : symbol1,
+    symbolOut: is0to1 ? symbol1 : symbol0,
+    approvalMultiple,
+    /*- 6-field log context per feedback-log-full-context.  Built here
+     *  once and threaded down to every swap entry-point logger so a
+     *  single line is self-describing under concurrent multi-position
+     *  operation. */
+    logCtx: logCtx({
+      chain: config.CHAIN_NAME,
+      wallet: signerAddress,
+      factory: config.POSITION_MANAGER,
+      tokenId: p.tokenId,
+      symbol0,
+      symbol1,
+    }),
+  });
+  return {
+    txHash: result.txHash,
+    gasCostWei: result.gasCostWei,
+    extra0: is0to1 ? 0n : result.amountOut,
+    extra1: is0to1 ? result.amountOut : 0n,
+    /*- Forward swapSources from the swap path (aggregator stamps it in
+     *  rebalancer-aggregator.js, V3 router fallback stamps it in
+     *  rebalancer-router.js).  _buildRebalanceResult reads
+     *  `swapped.swapSources` to populate the rebalance-event
+     *  ROUTED VIA column; without this, every aggregator-routed
+     *  rebalance gets logged as "(no swap)". */
+    ...(result.swapSources ? { swapSources: result.swapSources } : {}),
+  };
+}
+
+/** Verify wallet owns the NFT. Throws on failure. */
+async function _verifyOwnership(ethersLib, provider, pmAddr, tokenId, signer) {
+  log.info("[rebalance] Step 2: ownerOf NFT #%s…", tokenId);
+  const c = new ethersLib.Contract(
+    pmAddr,
+    ["function ownerOf(uint256 tokenId) view returns (address)"],
+    provider,
+  );
+  let owner;
+  try {
+    owner = await c.ownerOf(tokenId);
+  } catch (e) {
+    throw new Error(
+      `Cannot verify ownership of NFT #${tokenId}: ${e.message}`,
+      { cause: e },
+    );
+  }
+  if (owner.toLowerCase() !== signer.toLowerCase())
+    throw new Error(
+      `Wallet ${signer} does not own NFT #${tokenId} (owner: ${owner})`,
+    );
+  log.info("[rebalance] Step 2 done: owner=%s signer=%s", owner, signer);
+}
+
+/** Remove liquidity or use wallet balances if already drained. */
+async function _removeLiquidityStep(signer, ethersLib, provider, opts) {
+  const { positionManagerAddress, position, signerAddress } = opts;
+  log.info("[rebalance] Step 3: reading on-chain liquidity…");
+  const pmRead = new ethersLib.Contract(
+    positionManagerAddress,
+    PM_ABI,
+    provider,
+  );
+  const onChainLiquidity = (await pmRead.positions(position.tokenId)).liquidity;
+  log.info(
+    "[rebalance] Step 3 done: onChainLiquidity=%s",
+    String(onChainLiquidity),
+  );
+  let removed;
+  if (onChainLiquidity > 0n) {
+    log.info("[rebalance] Step 3a: removeLiquidity…");
+    removed = await removeLiquidity(signer, ethersLib, {
+      positionManagerAddress,
+      tokenId: position.tokenId,
+      liquidity: onChainLiquidity,
+      recipient: signerAddress,
+      token0: position.token0,
+      token1: position.token1,
+    });
+  } else {
+    log.info("[rebalance] Step 3a: 0 liquidity — using wallet balances");
+    removed = await _walletBalances(
+      ethersLib,
+      provider,
+      position.token0,
+      position.token1,
+      signerAddress,
+    );
+  }
+  log.info(
+    "[rebalance] Step 3a done: amount0=%s amount1=%s",
+    String(removed.amount0),
+    String(removed.amount1),
+  );
+  return removed;
+}
+
+/**
+ * Sum gas costs from multiple rebalance step results. A step that sent
+ * nothing carries no figure: liquidity read from the wallet when there
+ * was none to remove, or no corrective swap at all.
+ */
+function _sumGas(...steps) {
+  return steps.reduce((sum, s) => sum + (s.gasCostWei ?? 0n), 0n);
+}
+
+/**
+ * Post-swap range adjustment (Step 6b).
+ *
+ * Problem: the range is computed in Step 4 using the pre-swap pool tick.
+ * But the swap itself can have significant price impact — especially on
+ * low-liquidity pools where swapping half the collected tokens moves the
+ * tick by hundreds of ticks.  If the tick moves past the range boundary,
+ * the Position Manager only accepts one token on mint, leaving the other
+ * as an unused wallet residual.
+ *
+ * Fix: re-read the pool tick after the swap completes.  If it moved
+ * outside the computed range, shift the range to contain the new tick
+ * (same algorithm as the tick containment guard in range-math.js).
+ * Width is preserved so the position geometry stays consistent.
+ *
+ * A second check (Step 6c) runs right before mint to catch the case
+ * where the price keeps moving even after this adjustment.
+ *
+ * When an offset is active (≠ 50), the tick may intentionally be
+ * outside the range.  Skip the adjustment to preserve offset intent.
+ */
+async function _adjustRangeAfterSwap(
+  ethersLib,
+  position,
+  factoryAddress,
+  poolState,
+  newRange,
+  offset,
+) {
+  if (offset !== undefined && offset !== 50) return;
+  const ps = await getPoolState(ethersLib, {
+    factoryAddress,
+    token0: position.token0,
+    token1: position.token1,
+    fee: position.fee,
+  });
+  if (ps.tick >= newRange.lowerTick && ps.tick < newRange.upperTick) return;
+  const spacing = ps.tickSpacing;
+  const width = newRange.upperTick - newRange.lowerTick;
+  if (ps.tick < newRange.lowerTick) {
+    newRange.lowerTick = Math.floor(ps.tick / spacing) * spacing;
+    newRange.upperTick = newRange.lowerTick + width;
+  } else {
+    newRange.upperTick = (Math.floor(ps.tick / spacing) + 1) * spacing;
+    newRange.lowerTick = newRange.upperTick - width;
+  }
+  log.info(
+    "[rebalance] Step 6b: swap moved tick %d → %d, shifted range to [%d, %d]",
+    poolState.tick,
+    ps.tick,
+    newRange.lowerTick,
+    newRange.upperTick,
+  );
+}
+
+/** Compute new tick range.  Precedence:
+ *    1. `fullRange === true` → `rangeMath.fullRange()` (mints at
+ *       MIN_TICK / MAX_TICK).  Driven by the dashboard's "Full-Range"
+ *       checkbox, and a separate flag rather than a `crw === 100`
+ *       sentinel: 100 is also a legal Price Range Extension.
+ *    2. `crw` truthy → `rangeMath.computeNewRange(crw/2, ...)` — the
+ *       user-specified Price Range Extension (% of current price).
+ *    3. Otherwise → `rangeMath.preserveRange(...)` — keep the position's
+ *       existing tick spread and re-centre it on the current tick.  This
+ *       is what the app documents as "preserve the current Range Width."
+ */
+function _computeRange(ps, pos, crw, offset, fullRange) {
+  /*-
+   *  No literal fallback per feedback_one_literal_per_shipped_default:
+   *  when `offset` is undefined here, range-math's own
+   *  `_DEFAULTS.offsetToken0Pct` (bot-config-defaults.json, with the
+   *  operator's override) takes over inside the called helpers.
+   */
+  const opts = offset !== undefined ? { offsetToken0Pct: offset } : {};
+  const mode = fullRange
+    ? "full-range"
+    : crw
+      ? "custom-width"
+      : "preserve-range";
+  log.info(
+    "[offset-trace] _computeRange mode=%s offsetToken0Pct=%s tokenId=%s",
+    mode,
+    opts.offsetToken0Pct ?? "(default)",
+    String(pos.tokenId),
+  );
+  if (fullRange) {
+    return rangeMath.fullRange(ps.tickSpacing, ps.decimals0, ps.decimals1);
+  }
+  return crw
+    ? rangeMath.computeNewRange(
+        ps.price,
+        crw / 2,
+        ps.tickSpacing,
+        ps.decimals0,
+        ps.decimals1,
+        {
+          currentTick: ps.tick,
+          ...opts,
+        },
+      )
+    : rangeMath.preserveRange(
+        ps.tick,
+        pos.tickLower,
+        pos.tickUpper,
+        ps.tickSpacing,
+        ps.decimals0,
+        ps.decimals1,
+        opts,
+      );
+}
+
+/**
+ * Merge primary-swap and corrective-swap source strings into one display
+ * label.  When every entry is identical (e.g. all "Watergun Aggregator"),
+ * we collapse to a single copy — otherwise "Watergun Aggregator +3
+ * corrective" would misread as a different route from the primary.
+ * Examples:
+ *   primary="Watergun Aggregator", corrective=["Watergun Aggregator"×3] → "Watergun Aggregator"
+ *   primary="Watergun Aggregator", corrective=["9mm V3 Router"]         → "Watergun Aggregator +1 corrective"
+ *   primary=null, corrective=["A","B"]                          → "A,B (corrective)"
+ *   primary=null, corrective=[]                                 → undefined
+ */
+function _mergeSwapSources(primary, corrective) {
+  const cArr = Array.isArray(corrective) ? corrective.filter(Boolean) : [];
+  if (!primary && cArr.length === 0) return undefined;
+  if (!primary) {
+    const unique = Array.from(new Set(cArr));
+    if (unique.length === 1) return unique[0];
+    return cArr.join(",") + " (corrective)";
+  }
+  if (cArr.length === 0) return primary;
+  if (cArr.every((s) => s === primary)) return primary;
+  return primary + " +" + cArr.length + " corrective";
+}
+
+/**
+ * The wallet's balance of both coins at three moments of a rebalance, in
+ * whole coins: before the drain, after it, and just before the mint.
+ *
+ * The rebalance reads all three as it goes, because the mint uses the
+ * wallet's whole balance. Kept on the result, they become the Activity
+ * Log entry's figures: the two around the swaps are what the rebalance
+ * had before its swaps and after them, and the one before the drain caps
+ * the deposit set aside from them (src/lib/rebalance-activity-figures.js).
+ *
+ * @param {object} removed  The removal step's result, with `walletBefore`.
+ * @param {object} [readings]  `afterDrain` and `beforeMint`, each a pair
+ *   of amounts in each token's smallest unit.
+ * @param {object} poolState  For each token's decimals.
+ * @returns {{beforeDrain: object|null, afterDrain: object|null,
+ *   beforeMint: object|null}}  Each a coin pair, or null when missing.
+ */
+function _walletReadings(removed, readings, poolState) {
+  const coins = (r) =>
+    r === undefined || r === null
+      ? null
+      : coinsFromUnits(
+          r.amount0,
+          r.amount1,
+          poolState.decimals0,
+          poolState.decimals1,
+        );
+  return {
+    beforeDrain: coins(removed.walletBefore),
+    afterDrain: coins(readings?.afterDrain),
+    beforeMint: coins(readings?.beforeMint),
+  };
+}
+
+/**
+ * Build success result for executeRebalance.
+ *
+ * @param {object} [scope]  Full-qualification namespace for the log entry.
+ *   `chain` (blockchain name, e.g. "pulsechain"), `contract` (NFT position
+ *   manager / nft-provider contract address, e.g. the 9mm v3 PM), and
+ *   `wallet` (signer address).  Mirrors the cache-scoping convention
+ *   (blockchain-contract-wallet-token0-token1-fee) so `_poolDailyCounts`
+ *   and log-reconstruction never collide across chains/contracts/wallets.
+ * @param {object} [readings]  The wallet's balances after the drain and
+ *   before the mint (see `_walletReadings`).
+ */
+function _buildRebalanceResult(
+  txHashes,
+  removed,
+  swapped,
+  mintResult,
+  position,
+  newRange,
+  poolState,
+  crw,
+  corrective,
+  scope,
+  readings,
+) {
+  const ePct = crw
+    ? ((newRange.upperPrice - newRange.lowerPrice) / poolState.price) * 100
+    : undefined;
+  const mergedSources = _mergeSwapSources(
+    swapped.swapSources,
+    corrective?.swapSources,
+  );
+  return {
+    success: true,
+    txHashes,
+    totalGasCostWei: _sumGas(removed, swapped, mintResult, corrective || {}),
+    mintGasCostWei: mintResult.gasCostWei,
+    oldTokenId: position.tokenId,
+    newTokenId: mintResult.tokenId,
+    blockNumber: mintResult.blockNumber,
+    oldTickLower: position.tickLower,
+    oldTickUpper: position.tickUpper,
+    newTickLower: newRange.lowerTick,
+    newTickUpper: newRange.upperTick,
+    currentPrice: poolState.price,
+    poolAddress: poolState.poolAddress,
+    chain: scope?.chain,
+    contract: scope?.contract,
+    wallet: scope?.wallet,
+    token0: position.token0,
+    token1: position.token1,
+    fee: position.fee,
+    decimals0: poolState.decimals0,
+    decimals1: poolState.decimals1,
+    amount0Collected: removed.amount0,
+    amount1Collected: removed.amount1,
+    liquidity: mintResult.liquidity,
+    amount0Minted: mintResult.amount0,
+    amount1Minted: mintResult.amount1,
+    walletReadings: _walletReadings(removed, readings, poolState),
+    ...(crw
+      ? { requestedRangePct: crw, effectiveRangePct: Number(ePct.toFixed(2)) }
+      : {}),
+    ...(mergedSources ? { swapSources: mergedSources } : {}),
+    ...(corrective?.aboveThresholdAfterCap
+      ? {
+          residualWarning: {
+            iterations: corrective.iterations,
+            imbalanceUsd: corrective.finalImbalanceUsd,
+            thresholdUsd: corrective.thresholdUsd,
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * Step 6c pre-mint volatility check.  Returns a failure result if the
+ * tick moved outside the range after the swap, or null to continue.
+ * Skipped when offset ≠ 50 (one-sided positions are intentional).
+ */
+async function _preMintTickCheck(
+  ethersLib,
+  position,
+  factoryAddress,
+  newRange,
+  offset,
+) {
+  if (offset !== 50) return null;
+  const ps = await getPoolState(ethersLib, {
+    factoryAddress,
+    token0: position.token0,
+    token1: position.token1,
+    fee: position.fee,
+  });
+  if (ps.tick >= newRange.lowerTick && ps.tick < newRange.upperTick)
+    return null;
+  log.warn(
+    "[rebalance] Step 6c: tick %d still outside [%d, %d] after adjustment — price too volatile",
+    ps.tick,
+    newRange.lowerTick,
+    newRange.upperTick,
+  );
+  return {
+    success: false,
+    priceVolatile: true,
+    error: "Price moved during rebalance — backing off",
+  };
+}
+
+module.exports = {
+  _walletBalances,
+  _swapAndAdjust,
+  _verifyOwnership,
+  _removeLiquidityStep,
+  _sumGas,
+  _adjustRangeAfterSwap,
+  _computeRange,
+  _buildRebalanceResult,
+  _preMintTickCheck,
+  _mergeSwapSources,
+};

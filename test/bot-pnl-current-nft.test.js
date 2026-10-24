@@ -52,11 +52,11 @@ function _installMocks() {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/bot-pnl-current-nft")];
+  delete require.cache[require.resolve("../src/lib/bot-pnl-current-nft")];
 }
 function _restoreMocks() {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/bot-pnl-current-nft")];
+  delete require.cache[require.resolve("../src/lib/bot-pnl-current-nft")];
 }
 
 describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
@@ -64,7 +64,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
   beforeEach(() => {
     _detectCalls = [];
     _installMocks();
-    ({ applyCurrentNftFigures } = require("../src/bot-pnl-current-nft"));
+    ({ applyCurrentNftFigures } = require("../src/lib/bot-pnl-current-nft"));
   });
   afterEach(_restoreMocks);
 
@@ -357,7 +357,7 @@ describe("applyCurrentNftFigures — where the NFT's history read starts", () =>
   beforeEach(() => {
     _detectCalls = [];
     _installMocks();
-    ({ applyCurrentNftFigures } = require("../src/bot-pnl-current-nft"));
+    ({ applyCurrentNftFigures } = require("../src/lib/bot-pnl-current-nft"));
   });
   afterEach(_restoreMocks);
 

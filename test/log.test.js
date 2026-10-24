@@ -1,6 +1,6 @@
 /**
  * @file test/log.test.js
- * @description Tests for the opt-in timestamped logger in `src/log.js`.
+ * @description Tests for the opt-in timestamped logger in `src/lib/log.js`.
  *
  * Covers:
  *   - bracketed-prefix injection point (`[tag] msg` → `[tag] [ts] msg`)
@@ -12,7 +12,7 @@
  *   - `log.info` / `log.warn` / `log.error` route to the right
  *     `console.*` method
  *   - `console.log` / `warn` / `error` themselves are NOT modified —
- *     importing `src/log.js` must not patch globals
+ *     importing `src/lib/log.js` must not patch globals
  *   - `utcTimestamp()` names the zone it formats in
  */
 
@@ -27,13 +27,13 @@ const {
   _withTimestamp,
   _colorize,
   _setSinkForTests,
-} = require("../src/log");
+} = require("../src/lib/log");
 /*- From the owning module, not re-exported through the logger. */
 const {
   UTC_LABEL,
   UTC_TIMESTAMP_PATTERN,
   utcTimestamp,
-} = require("../src/utc-timestamp");
+} = require("../src/lib/utc-timestamp");
 
 /*- The format is described by reference, not restated.  A pattern
  *  copied into each assertion is a second definition of the timestamp
@@ -134,17 +134,17 @@ test("utcTimestamp names the zone it formats in", () => {
   assert.match(utcTimestamp(), new RegExp(`^${UTC_TIMESTAMP_PATTERN}$`));
 });
 
-/*- Importing `src/log.js` must NOT modify `console` globals.  The whole
+/*- Importing `src/lib/log.js` must NOT modify `console` globals.  The whole
  *  point of the opt-in wrapper is that other libraries / tests / app
  *  code that call `console.log` see the unmodified built-in. */
-test("require('../src/log') does NOT modify console globals", () => {
+test("require('../src/lib/log') does NOT modify console globals", () => {
   const origLog = console.log;
   const origWarn = console.warn;
   const origErr = console.error;
   /*- Re-require fresh: clear cache so a prior import in this test file
    *  doesn't mask a hypothetical install-on-require side effect. */
-  delete require.cache[require.resolve("../src/log")];
-  require("../src/log");
+  delete require.cache[require.resolve("../src/lib/log")];
+  require("../src/lib/log");
   assert.equal(console.log, origLog, "console.log was modified");
   assert.equal(console.warn, origWarn, "console.warn was modified");
   assert.equal(console.error, origErr, "console.error was modified");
@@ -292,15 +292,15 @@ test("_colorize paints the lifetime auto-rescan in the soil palette", () => {
 
 test("the auto-rescan colour is tied to the wording the log uses", () => {
   /*- The highlight matches on a substring, so rewording the log line in
-   *  src/bot-loop.js silently drops the colour with every gate still
+   *  src/lib/bot-loop.js silently drops the colour with every gate still
    *  green. This pins the two together — and the same phrase is what
    *  the burn-in procedure greps for.
    *
    *  Asserted against the real format string rather than a copy of it,
    *  so a reword fails here instead of being mirrored into the test. */
-  const src = readFileSync(require.resolve("../src/bot-loop.js"), "utf8");
+  const src = readFileSync(require.resolve("../src/lib/bot-loop.js"), "utf8");
   assert.ok(
     src.includes("Auto-rescanning lifetime"),
-    "src/bot-loop.js no longer logs the phrase the colour keys on",
+    "src/lib/bot-loop.js no longer logs the phrase the colour keys on",
   );
 });

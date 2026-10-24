@@ -3,7 +3,7 @@
  * @file util/cache/clean-pool-cache.js
  * @description
  * Wipe every cached entry for a single pool from the scan-cache folder
- * (`app-data/scan-cache/`, src/scan-cache-dir.js), so the next bot
+ * (`app-data/scan-cache/`, src/lib/scan-cache-dir.js), so the next bot
  * run re-resolves that pool from scratch.  Used to verify cold-cache
  * paths (e.g. the pool-creation-block resolver fix in commit `c57339f`)
  * and to recover from suspected cache corruption for one pool.
@@ -25,10 +25,10 @@
 const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
-const config = require("../../src/config");
-const { chainCacheTag } = require("../../src/cache-store");
+const config = require("../../src/lib/config");
+const { chainCacheTag } = require("../../src/lib/cache-store");
 const { HELP_TEXT } = require("./clean-pool-cache-help");
-const { scanCacheDir } = require("../../src/scan-cache-dir");
+const { scanCacheDir } = require("../../src/lib/scan-cache-dir");
 
 const CACHE_DIR = scanCacheDir();
 const POOL_CREATION_CACHE = path.join(
@@ -259,7 +259,7 @@ async function resolvePoolTokens(pool, ethersLib = ethers, cfg = config) {
 
 /**
  * Abbreviate a pool's scope the way liquidityPairScopeKey() in
- * src/cache-store.js does, so that filename and key matches stay
+ * src/lib/cache-store.js does, so that filename and key matches stay
  * byte-identical to what the writers produce; the chain's segment is its
  * cache tag, asked of the same `chainCacheTag` the writers ask. Match
  * dimensions intentionally: chain, nft-factory, token0, token1, fee —
@@ -570,7 +570,7 @@ async function main(argv = process.argv, opts = {}) {
 
   /**
    * Both caches below key a pool's entry by the chain first and the pool
-   * last (`cacheKey` in src/cache-store.js), so only this chain's entries
+   * last (`cacheKey` in src/lib/cache-store.js), so only this chain's entries
    * for this pool match: the same address on another chain is another
    * pool, and its entries are left alone. The chain is matched up to the
    * address that follows it, because a chain's name can contain a dash:

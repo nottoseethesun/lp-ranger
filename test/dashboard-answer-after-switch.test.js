@@ -63,13 +63,14 @@ let posStore;
 
 before(async () => {
   await learnActiveChain("pulsechain", "PulseChain");
-  answerPos = await import("../public/dashboard-answer-position.js");
-  configSave = await import("../public/dashboard-config-save.js");
-  manage = await import("../public/dashboard-events-manage.js");
-  confirm = await import("../public/dashboard-rebalance-confirm.js");
-  priceOverride = await import("../public/dashboard-price-override.js");
-  deposit = await import("../public/dashboard-data-deposit.js");
-  ({ posStore } = await import("../public/dashboard-positions-store.js"));
+  answerPos = await import("../src/client/web/dashboard-answer-position.js");
+  configSave = await import("../src/client/web/dashboard-config-save.js");
+  manage = await import("../src/client/web/dashboard-events-manage.js");
+  confirm = await import("../src/client/web/dashboard-rebalance-confirm.js");
+  priceOverride = await import("../src/client/web/dashboard-price-override.js");
+  deposit = await import("../src/client/web/dashboard-data-deposit.js");
+  ({ posStore } =
+    await import("../src/client/web/dashboard-positions-store.js"));
   posStore.add(A);
   posStore.add(B);
 });

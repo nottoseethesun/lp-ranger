@@ -26,7 +26,7 @@ const {
   applyKpis,
   applyRangeBar,
   applyPositionType,
-} = require("../src/ui-state");
+} = require("../src/lib/ui-state");
 
 // ── formatPnl ─────────────────────────────────────────────────────────────────
 

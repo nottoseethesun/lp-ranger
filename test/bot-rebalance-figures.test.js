@@ -3,14 +3,14 @@
 /**
  * @file test/bot-rebalance-figures.test.js
  * @description The end of a scan pass (`finishPassRebalanceFigures`,
- *   src/bot-rebalance-figures.js): the Rebalance events still waiting for
+ *   src/lib/bot-rebalance-figures.js): the Rebalance events still waiting for
  *   their Activity Log figures are finished from what the pass and
  *   app-data/ already hold, and written back to the pool's event cache,
  *   the bot's own list of events and the next status answer.
  *
  *   The epoch cache, the event cache, the price lookup and the balance
  *   reads are stood in for; the figures are worked out by the real code
- *   (src/rebalance-activity-figures.js). The fixture rebalance is the one
+ *   (src/lib/rebalance-activity-figures.js). The fixture rebalance is the one
  *   test/rebalance-activity-figures.test.js describes: the wallet held
  *   100 and 50 before the drain at block 900, 1,100 and 50 after it, and
  *   600 and 545 just before the mint at block 1,000.
@@ -19,7 +19,7 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
-const config = require("../src/config");
+const config = require("../src/lib/config");
 
 const TOKEN0 = "0x" + "a0".repeat(20);
 const TOKEN1 = "0x" + "b1".repeat(20);
@@ -79,8 +79,10 @@ Module.prototype.require = function (id) {
     };
   return _origRequire.apply(this, arguments);
 };
-delete require.cache[require.resolve("../src/bot-rebalance-figures")];
-const { finishPassRebalanceFigures } = require("../src/bot-rebalance-figures");
+delete require.cache[require.resolve("../src/lib/bot-rebalance-figures")];
+const {
+  finishPassRebalanceFigures,
+} = require("../src/lib/bot-rebalance-figures");
 Module.prototype.require = _origRequire;
 
 const POSITION = Object.freeze({

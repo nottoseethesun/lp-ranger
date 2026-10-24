@@ -26,7 +26,9 @@ const path = require("node:path");
 const MANUAL = path.join(
   __dirname,
   "..",
-  "public",
+  "src",
+  "client",
+  "web",
   "help-and-user-manual.html",
 );
 

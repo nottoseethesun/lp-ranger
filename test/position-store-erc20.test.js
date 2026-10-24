@@ -7,7 +7,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createPositionStore } = require("../src/position-store");
+const { createPositionStore } = require("../src/lib/position-store");
 
 const ERC = {
   positionType: "erc20",

@@ -8,7 +8,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { _poll } = require("./_bot-loop-helpers");
-const { updateHodlBaseline } = require("../src/bot-recorder-baseline");
+const { updateHodlBaseline } = require("../src/lib/bot-recorder-baseline");
 
 describe("pollCycle compound gates", () => {
   it("does not trigger compound when autoCompound disabled and no force", async () => {
@@ -53,7 +53,7 @@ describe("pollCycle compound gates", () => {
 
   it("does not trigger auto-compound when _scanRunning is true", async () => {
     /*- Reload / initial-scan gate for auto-compound: while a scan runs
-     *  (src/scan-state.js), the position's on-chain-derived state is
+     *  (src/lib/scan-state.js), the position's on-chain-derived state is
      *  being rebuilt.  An auto-compound fired mid-scan would race the
      *  reconstruction.  Manual (forced) compound still bypasses this
      *  gate. */
@@ -117,7 +117,7 @@ describe("atomic config write", () => {
   const path = require("path");
 
   it("saveConfig writes valid JSON via temp+rename", () => {
-    const { saveConfig, loadConfig } = require("../src/bot-config-v2");
+    const { saveConfig, loadConfig } = require("../src/lib/bot-config-v2");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "atomic-test-"));
     const cfg = {
       global: { gasFeePct: 2 },
@@ -134,7 +134,7 @@ describe("atomic config write", () => {
   });
 
   it("loadConfig returns empty on missing file", () => {
-    const { loadConfig } = require("../src/bot-config-v2");
+    const { loadConfig } = require("../src/lib/bot-config-v2");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "empty-test-"));
     const loaded = loadConfig(dir);
     assert.deepEqual(loaded.global, {});
@@ -143,7 +143,7 @@ describe("atomic config write", () => {
   });
 
   it("loadConfig returns empty on corrupt JSON", () => {
-    const { loadConfig } = require("../src/bot-config-v2");
+    const { loadConfig } = require("../src/lib/bot-config-v2");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "corrupt-test-"));
     fs.writeFileSync(path.join(dir, "bot-config.json"), "not json", "utf8");
     const loaded = loadConfig(dir);
@@ -153,7 +153,7 @@ describe("atomic config write", () => {
   });
 
   it("strips legacy version and managedPositions fields", () => {
-    const { saveConfig, loadConfig } = require("../src/bot-config-v2");
+    const { saveConfig, loadConfig } = require("../src/lib/bot-config-v2");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "strip-test-"));
     /*- A real setting makes this a legitimately-running entry (not the
      *  bare {status:"running"} phantom signature that the load-time
@@ -177,7 +177,7 @@ describe("atomic config write", () => {
 
 describe("pnl-tracker residuals in dailyPnl", () => {
   it("dailyPnl includes the inOut field", () => {
-    const { createPnlTracker } = require("../src/pnl-tracker");
+    const { createPnlTracker } = require("../src/lib/pnl-tracker");
     const tracker = createPnlTracker({ initialDeposit: 100 });
     tracker.openEpoch({
       entryValue: 100,
@@ -193,7 +193,7 @@ describe("pnl-tracker residuals in dailyPnl", () => {
   });
 
   it("missingPrice flag propagates to dailyPnl", () => {
-    const { createPnlTracker } = require("../src/pnl-tracker");
+    const { createPnlTracker } = require("../src/lib/pnl-tracker");
     const tracker = createPnlTracker({ initialDeposit: 100 });
     tracker.restore({
       closedEpochs: [
@@ -223,17 +223,17 @@ describe("pnl-tracker residuals in dailyPnl", () => {
 
 describe("compound config defaults", () => {
   it("COMPOUND_MIN_FEE_USD defaults to 1", () => {
-    const config = require("../src/config");
+    const config = require("../src/lib/config");
     assert.equal(config.COMPOUND_MIN_FEE_USD, 1);
   });
 
   it("COMPOUND_DEFAULT_THRESHOLD_USD defaults to 5", () => {
-    const config = require("../src/config");
+    const config = require("../src/lib/config");
     assert.equal(config.COMPOUND_DEFAULT_THRESHOLD_USD, 5);
   });
 
   it("threshold must be >= min fee", () => {
-    const config = require("../src/config");
+    const config = require("../src/lib/config");
     assert.ok(
       config.COMPOUND_DEFAULT_THRESHOLD_USD >= config.COMPOUND_MIN_FEE_USD,
     );
@@ -242,7 +242,7 @@ describe("compound config defaults", () => {
 
 describe("compound P&L integration", () => {
   it("overridePnlWithRealValues sets totalCompoundedUsd on snapshot", () => {
-    const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
+    const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
     const snap = {
       closedEpochs: [],
       liveEpoch: { entryValue: 200, fees: 10 },
@@ -267,7 +267,7 @@ describe("compound P&L integration", () => {
   });
 
   it("totalCompoundedUsd is set on snapshot", () => {
-    const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
+    const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
     const snap = {
       closedEpochs: [],
       liveEpoch: { entryValue: 100, fees: 5 },
@@ -290,7 +290,9 @@ describe("compound P&L integration", () => {
   });
 
   it("createPerPositionBotState restores compound state", () => {
-    const { createPerPositionBotState } = require("../src/server-positions");
+    const {
+      createPerPositionBotState,
+    } = require("../src/lib/server-positions");
     const saved = {
       compoundedAmount0: 25,
       compoundHistory: [{ trigger: "auto" }, { trigger: "manual" }],
@@ -307,14 +309,14 @@ describe("compound P&L integration", () => {
 
 describe("bot-recorder helpers", () => {
   it("_bigIntReplacer converts BigInt to string", () => {
-    const { _bigIntReplacer } = require("../src/bot-recorder");
+    const { _bigIntReplacer } = require("../src/lib/bot-recorder");
     assert.equal(_bigIntReplacer("k", 42n), "42");
     assert.equal(_bigIntReplacer("k", 42), 42);
     assert.equal(_bigIntReplacer("k", "hello"), "hello");
   });
 
   it("_activePosSummary returns serialisable summary", () => {
-    const { _activePosSummary } = require("../src/bot-recorder");
+    const { _activePosSummary } = require("../src/lib/bot-recorder");
     const s = _activePosSummary({
       tokenId: 123n,
       token0: "0xA",
@@ -330,7 +332,7 @@ describe("bot-recorder helpers", () => {
   });
 
   it("_activePosSummary handles missing liquidity", () => {
-    const { _activePosSummary } = require("../src/bot-recorder");
+    const { _activePosSummary } = require("../src/lib/bot-recorder");
     const s = _activePosSummary({ tokenId: "1", token0: "A", token1: "B" });
     assert.equal(s.liquidity, "0");
   });
@@ -356,14 +358,14 @@ describe("bot-recorder helpers", () => {
   });
 
   it("_recordResidual skips without tracker", () => {
-    const { _recordResidual } = require("../src/bot-recorder");
+    const { _recordResidual } = require("../src/lib/bot-recorder");
     // Should not throw
     _recordResidual({}, { poolAddress: "0x1" });
     _recordResidual({ _residualTracker: null }, {});
   });
 
   it("_notifyRebalance updates bot state", () => {
-    const { _notifyRebalance } = require("../src/bot-recorder");
+    const { _notifyRebalance } = require("../src/lib/bot-recorder");
     const state = {};
     const deps = {
       _rebalanceCount: 0,
@@ -385,14 +387,14 @@ describe("bot-recorder helpers", () => {
   });
 
   it("appendLog creates and appends to log file", () => {
-    const { appendLog } = require("../src/bot-recorder");
+    const { appendLog } = require("../src/lib/bot-recorder");
     const fs = require("fs");
     const os = require("os");
     const path = require("path");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "log-test-"));
     const logFile = path.join(dir, "test-rebalance-log.json");
     // Temporarily override config.LOG_FILE
-    const config = require("../src/config");
+    const config = require("../src/lib/config");
     const origLogFile = config.LOG_FILE;
     config.LOG_FILE = logFile;
     try {
@@ -412,7 +414,7 @@ describe("bot-recorder helpers", () => {
 
 describe("_recordResidual with tracker", () => {
   it("records residual delta and persists", () => {
-    const { _recordResidual } = require("../src/bot-recorder");
+    const { _recordResidual } = require("../src/lib/bot-recorder");
     const state = {};
     const tracker = {
       addDelta: (pool, d0, d1) => {
@@ -445,7 +447,7 @@ describe("addManagedPosition logging", () => {
     const {
       addManagedPosition,
       removeManagedPosition,
-    } = require("../src/bot-config-v2");
+    } = require("../src/lib/bot-config-v2");
     const cfg = { global: {}, positions: { k: { status: "stopped" } } };
     addManagedPosition(cfg, "k");
     assert.equal(cfg.positions.k.status, "running");
@@ -460,8 +462,8 @@ describe("_persistPositionConfig status guard", () => {
     const os = require("os");
     const path = require("path");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cycle-guard-"));
-    const { updatePositionState } = require("../src/server-positions");
-    const { getOrCreatePositionConfig } = require("../src/bot-config-v2");
+    const { updatePositionState } = require("../src/lib/server-positions");
+    const { getOrCreatePositionConfig } = require("../src/lib/bot-config-v2");
     const cfg = { global: {}, positions: {} };
     /*- Seed the entry via the explicit lazy-create form (the non-lazy
      *  `getPositionConfig` returns null and won't create one).  Simulates
@@ -485,7 +487,7 @@ describe("_persistPositionConfig status guard", () => {
 
 describe("saveConfig status warning", () => {
   it("saveConfig warns when position has no status", () => {
-    const { saveConfig, loadConfig } = require("../src/bot-config-v2");
+    const { saveConfig, loadConfig } = require("../src/lib/bot-config-v2");
     const _fs = require("fs");
     const _os = require("os");
     const _path = require("path");

@@ -1,6 +1,6 @@
 /**
  * @file test/build-info.test.js
- * @description Unit tests for src/build-info.js — the server-side version
+ * @description Unit tests for src/lib/build-info.js — the server-side version
  * banner helper. Covers the _displayVersion priority rules and the baked
  * JSON sidecar path that release tarballs depend on.
  */
@@ -11,9 +11,9 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { _setSinkForTests } = require("../src/log");
+const { _setSinkForTests } = require("../src/lib/log");
 
-const BAKED_PATH = path.join(__dirname, "..", "src", "build-info.json");
+const BAKED_PATH = path.join(__dirname, "..", "src", "lib", "build-info.json");
 
 /*- Strip ANSI CSI escapes for assertions — `logVersionBanner` routes
  *  through `log.info` which now applies tag-prefix coloring on top of
@@ -42,8 +42,8 @@ function _withBaked(payload, fn) {
       fs.writeFileSync(BAKED_PATH, JSON.stringify(payload));
     }
     /*- Clear Node's require-cache so getBuildInfo re-reads fresh. */
-    delete require.cache[require.resolve("../src/build-info")];
-    const mod = require("../src/build-info");
+    delete require.cache[require.resolve("../src/lib/build-info")];
+    const mod = require("../src/lib/build-info");
     fn(mod);
   } finally {
     if (prior === null) {
@@ -55,16 +55,16 @@ function _withBaked(payload, fn) {
     } else {
       fs.writeFileSync(BAKED_PATH, prior);
     }
-    delete require.cache[require.resolve("../src/build-info")];
+    delete require.cache[require.resolve("../src/lib/build-info")];
   }
 }
 
-describe("src/build-info.js", () => {
+describe("src/lib/build-info.js", () => {
   describe("_displayVersion", () => {
     const {
       _displayVersion,
       DEV_VERSION_SENTINEL,
-    } = require("../src/build-info");
+    } = require("../src/lib/build-info");
 
     it("prefers git tag over everything else", () => {
       assert.strictEqual(
@@ -104,7 +104,7 @@ describe("src/build-info.js", () => {
   });
 
   describe("getBuildInfo with baked sidecar", () => {
-    it("reads src/build-info.json when present", () => {
+    it("reads src/lib/build-info.json when present", () => {
       _withBaked(
         {
           version: "0.0.0-dev",
@@ -168,7 +168,7 @@ describe("src/build-info.js", () => {
           assert.ok(joined.includes("version=%s"));
           assert.ok(captured[0].includes("0.4.8"));
           assert.ok(captured[0].includes("b686ad7"));
-          /*- Prefix sits at args[0] (the colorize step in src/log.js
+          /*- Prefix sits at args[0] (the colorize step in src/lib/log.js
            *  needs to detect "[server]" via startsWith to apply the
            *  standard color).  After stripping ANSI + the timestamp
            *  prefix, args[0] starts with "[server] ". */

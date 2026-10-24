@@ -9,7 +9,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { applyPriceOverrides } = require("../src/price-overrides");
+const { applyPriceOverrides } = require("../src/lib/price-overrides");
 
 /** A position's saved settings, read by key as the bot reads them. */
 const settings = (saved) => (key) => saved[key];

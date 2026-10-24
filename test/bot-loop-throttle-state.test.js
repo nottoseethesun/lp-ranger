@@ -1,7 +1,7 @@
 /**
  * @file test/bot-loop-throttle-state.test.js
  * @description Tests for the `throttleState` emissions from
- * `pollCycle` (src/bot-cycle.js via src/bot-loop.js).  Split from
+ * `pollCycle` (src/lib/bot-cycle.js via src/lib/bot-loop.js).  Split from
  * test/bot-loop-pnl.test.js when that file hit the 500-line cap.
  *
  * Emission contract: a fresh `throttleState` snapshot is emitted on
@@ -21,7 +21,7 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const { _poll } = require("./_bot-loop-helpers");
-const { _resetForTest } = require("../src/gecko-rate-limit");
+const { _resetForTest } = require("../src/lib/gecko-rate-limit");
 
 let _originalFetch;
 beforeEach(() => {

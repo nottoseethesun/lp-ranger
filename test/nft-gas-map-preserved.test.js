@@ -42,7 +42,7 @@ describe("the per-NFT gas map survives an NFT it cannot price", () => {
   beforeEach(() => {
     resetState();
     installMocks();
-    ({ _scanLifetimePoolData } = require("../src/bot-recorder-lifetime"));
+    ({ _scanLifetimePoolData } = require("../src/lib/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);

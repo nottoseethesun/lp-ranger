@@ -7,7 +7,7 @@
  *   without any coin in the wallet, against holding the coins the NFT was
  *   minted with, at today's prices. That is the
  *   Current panel's IL/G for the NFT, so each snapshot here is built by
- *   `_computeIL` (src/bot-pnl-il.js), the code that works out the
+ *   `_computeIL` (src/lib/bot-pnl-il.js), the code that works out the
  *   panel's figure, and the Guard is then asked about it, as a poll does.
  *
  *   Holding is valued at today's prices, not at the minted coins' worth
@@ -20,8 +20,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { checkIlGuard } = require("../src/il-guard");
-const { _computeIL } = require("../src/bot-pnl-il");
+const { checkIlGuard } = require("../src/lib/il-guard");
+const { _computeIL } = require("../src/lib/bot-pnl-il");
 
 const TOKEN_ID = "164418";
 

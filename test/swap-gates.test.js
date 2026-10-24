@@ -1,6 +1,6 @@
 /**
  * @file test/swap-gates.test.js
- * @description Unit tests for src/swap-gates.js — the dust-then-gas
+ * @description Unit tests for src/lib/swap-gates.js — the dust-then-gas
  * gate decision used by every swap call site.
  *
  * Tests are written threshold-agnostically: rather than asserting the
@@ -24,7 +24,7 @@ const {
   gasFeePctToRatio,
   shouldSkipSwap,
   estimateSwapGasUsd,
-} = require("../src/swap-gates");
+} = require("../src/lib/swap-gates");
 
 // The gas limit each case holds a swap to: 1% of its value.
 const LIMIT = 0.01;

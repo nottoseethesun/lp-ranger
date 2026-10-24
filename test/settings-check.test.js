@@ -4,7 +4,7 @@
  * @file test/settings-check.test.js
  * @description The settings check finds every problem with an install's
  *   settings at once: its copies of the JSON settings files, `.env`, and
- *   bot-config.json (src/settings-check.js). The server and the bot refuse
+ *   bot-config.json (src/lib/settings-check.js). The server and the bot refuse
  *   to start on any, and the
  *   `validate-config-values-with-any-user-overrides` diagnostic lists
  *   them.
@@ -24,15 +24,15 @@ const path = require("path");
 const {
   settingsProblems,
   refuseToStartOnBadSettings,
-} = require("../src/settings-check");
-const { readEnv } = require("../src/env-settings");
-const { checkConfigValues } = require("../src/config-bounds");
+} = require("../src/lib/settings-check");
+const { readEnv } = require("../src/lib/env-settings");
+const { checkConfigValues } = require("../src/lib/config-bounds");
 const {
   GLOBAL_KEYS,
   SETTING_POSITION_KEYS,
-} = require("../src/bot-config-keys");
-const { SETTING_BOUNDS } = require("../src/setting-bounds");
-const { boundText } = require("../src/range-check");
+} = require("../src/lib/bot-config-keys");
+const { SETTING_BOUNDS } = require("../src/lib/setting-bounds");
+const { boundText } = require("../src/lib/range-check");
 
 const dirs = [];
 after(() => {
@@ -433,7 +433,7 @@ describe("bot-config.json", () => {
   it("refuses each value a save refuses, setting by setting", () => {
     /*-
      *  One schema for each setting serves both checks
-     *  (src/config-bounds.js), so a value the Save button refuses is one
+     *  (src/lib/config-bounds.js), so a value the Save button refuses is one
      *  startup refuses, and the file takes every key a save writes. Text
      *  where a setting wants a number, a list, a date or on or off is
      *  refused by both.

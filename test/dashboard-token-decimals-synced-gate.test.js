@@ -33,8 +33,8 @@ const assert = require("node:assert/strict");
 let mod, store;
 
 before(async () => {
-  mod = await import("../public/dashboard-token-decimals.js");
-  store = await import("../public/dashboard-positions-store.js");
+  mod = await import("../src/client/web/dashboard-token-decimals.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
 });
 
 /** The two token blocks, as Pool Details renders them. */
@@ -241,7 +241,7 @@ describe("poll wiring", () => {
     const fs = require("node:fs");
     const path = require("node:path");
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "public", "dashboard-data.js"),
+      path.join(__dirname, "..", "src", "client", "web", "dashboard-data.js"),
       "utf8",
     );
     assert.match(src, /refreshDecimalsOverrideOnPoll\(\);/);
@@ -259,7 +259,10 @@ describe("LP Browser: the Stats pill shares the controls row", () => {
   const fs = require("node:fs");
   const path = require("node:path");
   const html = () =>
-    fs.readFileSync(path.join(__dirname, "..", "public", "index.html"), "utf8");
+    fs.readFileSync(
+      path.join(__dirname, "..", "src", "client", "web", "index.html"),
+      "utf8",
+    );
 
   it("the New Window toggle uses the short label", () => {
     assert.match(html(), /<span>New Window<\/span>/);
@@ -354,7 +357,10 @@ describe("Re-scan Prices: the tool header", () => {
   const fs = require("node:fs");
   const path = require("node:path");
   const read = (f) =>
-    fs.readFileSync(path.join(__dirname, "..", "public", f), "utf8");
+    fs.readFileSync(
+      path.join(__dirname, "..", "src", "client", "web", f),
+      "utf8",
+    );
 
   it("the wrench and the title share one header row", () => {
     /*- Stacked, the icon sat above the title. They are siblings in a

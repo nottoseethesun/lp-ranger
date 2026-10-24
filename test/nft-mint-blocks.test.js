@@ -28,7 +28,7 @@ const {
   nftScanFrom,
   nftScanFromBlock,
   chainScanFloor,
-} = require("../src/nft-mint-blocks");
+} = require("../src/lib/nft-mint-blocks");
 
 /** A rebalance chain: #100 → #200 → #300. */
 const CHAIN = [
@@ -208,7 +208,7 @@ describe("the module offers no upper bound", () => {
    *  skipped, and one that compounded mid-life returns the compound's
    *  Collect, which is then read as its exit value. */
   it("exports no retirement-block or scan-to helper", () => {
-    const mod = require("../src/nft-mint-blocks");
+    const mod = require("../src/lib/nft-mint-blocks");
     assert.equal(mod.retirementBlocksByTokenId, undefined);
     assert.equal(mod.nftScanTo, undefined);
     assert.equal(mod.nftScanWindow, undefined);
@@ -236,5 +236,5 @@ describe("nftScanFromBlock", () => {
  *  read is made: test/bot-recorder-scan-helpers.test.js (the managed
  *  lifetime scan) and test/position-history-scan-chain.test.js (epoch
  *  reconstruction). The unmanaged details path makes no chain read —
- *  see the file header of src/position-details.js.
+ *  see the file header of src/lib/position-details.js.
  */

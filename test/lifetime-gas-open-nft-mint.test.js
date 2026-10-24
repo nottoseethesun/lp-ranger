@@ -23,8 +23,8 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { overridePnlWithRealValues } = require("../src/bot-pnl-updater");
-const { _resetForTest } = require("../src/gecko-rate-limit");
+const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
+const { _resetForTest } = require("../src/lib/gecko-rate-limit");
 
 const POS = { liquidity: 1000n, tickLower: -600, tickUpper: 600 };
 const POOL = { tick: 0, decimals0: 18, decimals1: 18 };

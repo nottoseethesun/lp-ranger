@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-data-kpi-breakdown.test.js
  * @description Tests for `updateNetBreakdown` in
- *   `public/dashboard-data-kpi-breakdown.js`.  The module writes the
+ *   `src/client/web/dashboard-data-kpi-breakdown.js`.  The module writes the
  *   six Lifetime Net P&L breakdown rows (Fees Compounded, Gas, Price
  *   Change, Wallet Residual, Initial Residual, Realized Gains) with
  *   sign-appropriate colour coding.  Uses jsdom to provide real
@@ -34,7 +34,7 @@ const ROW_IDS = [
 ];
 
 before(async () => {
-  mod = await import("../public/dashboard-data-kpi-breakdown.js");
+  mod = await import("../src/client/web/dashboard-data-kpi-breakdown.js");
 });
 
 beforeEach(() => {

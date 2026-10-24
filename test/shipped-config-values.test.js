@@ -13,8 +13,8 @@
  *   default outside its range now stops startup.
  *
  *   So every file is checked here against its JSON Schema, in
- *   src/settings-file-rules.js: the schemas the server and the bot hold an
- *   install's own values to at startup (src/settings-check.js). A schema
+ *   src/lib/settings-file-rules.js: the schemas the server and the bot hold an
+ *   install's own values to at startup (src/lib/settings-check.js). A schema
  *   names every key its file takes, and requires each, so a value added
  *   to a shipped file fails here until its schema names it, and a key a
  *   schema names that the file no longer holds fails as missing. A file
@@ -24,7 +24,7 @@
  *
  *   Only what ships is read, so this test passes or fails alike on every
  *   machine. The override directory is pointed at an empty one of this
- *   file's own before anything under `src/` loads, because the loader
+ *   file's own before anything under `src/lib/` loads, because the loader
  *   reads it at load, and a developer's own overrides are not what an
  *   install receives.
  */
@@ -39,13 +39,13 @@ const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "shipped-values-"));
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const { loadShippedDefaults } = require("../src/load-merged-defaults");
+const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
 const {
   SETTINGS_FILE_SCHEMAS,
   NOT_SETTINGS_FILES,
   settingsFileProblems,
   agreementProblems,
-} = require("../src/settings-file-rules");
+} = require("../src/lib/settings-file-rules");
 
 const DIR = path.join(
   __dirname,
@@ -77,7 +77,7 @@ describe("every value the app ships as a default", () => {
       assert.ok(
         Object.hasOwn(SETTINGS_FILE_SCHEMAS, f) ||
           Object.hasOwn(NOT_SETTINGS_FILES, f),
-        `${f} is new: give it a schema in src/settings-file-rules.js, ` +
+        `${f} is new: give it a schema in src/lib/settings-file-rules.js, ` +
           "or name it in NOT_SETTINGS_FILES",
       );
     for (const f of [
