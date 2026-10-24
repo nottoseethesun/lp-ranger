@@ -18,8 +18,33 @@ const {
   dlEvent,
   mockProvider,
   mockEthers,
+  additionReceipt,
   twoNftFixture,
 } = require("./helpers/lifetime-hodl-fixtures");
+
+/**
+ * What the tally reads through to judge an addition to an NFT after its
+ * mint: a provider serving the receipt of the addition at block 5000
+ * (transaction `0x1388`), which another wallet paid for, and the wallet
+ * and the pool's coins it is judged against.
+ */
+function readsAdditionAt5000() {
+  return {
+    provider: mockProvider({
+      receipts: {
+        "0x1388": additionReceipt([
+          { token: "0xToken0", from: "0xOtherWallet" },
+          { token: "0xToken1", from: "0xOtherWallet" },
+        ]),
+      },
+    }),
+    ethersLib: mockEthers(),
+    walletAddress: "0xWallet",
+  };
+}
+
+/** The coins the reader above judges against. */
+const COINS = { token0: "0xToken0", token1: "0xToken1" };
 
 describe("lifetime-hodl", () => {
   describe("_buildChainOrder", () => {
@@ -57,7 +82,7 @@ describe("lifetime-hodl", () => {
       assert.strictEqual(r.amount1, 2000);
     });
 
-    it("single NFT + external deposit", async () => {
+    it("single NFT + an addition another wallet paid for", async () => {
       const events = new Map();
       events.set("100", {
         ilEvents: [
@@ -69,7 +94,8 @@ describe("lifetime-hodl", () => {
       });
       const r = await computeLifetimeHodl(events, {
         rebalanceEvents: [],
-        position: pos8,
+        position: { ...pos8, ...COINS },
+        ...readsAdditionAt5000(),
       });
       assert.strictEqual(r.amount0, 1500);
       assert.strictEqual(r.amount1, 2800);
@@ -127,7 +153,10 @@ describe("lifetime-hodl", () => {
         blockNumber: 50,
         transactionHash: "0xdep1",
       };
-      const prov = mockProvider({ logs: [depositLog] });
+      const prov = mockProvider({
+        logs: [depositLog],
+        txs: { "0xdep1": { from: "0xExternal" } },
+      });
       const { events, rebalanceEvents } = twoNftFixture(
         1000_00000000,
         2000_00000000,
@@ -159,7 +188,10 @@ describe("lifetime-hodl", () => {
         blockNumber: 205,
         transactionHash: "0xdeposit1",
       };
-      const prov = mockProvider({ logs: [depositLog] });
+      const prov = mockProvider({
+        logs: [depositLog],
+        txs: { "0xdeposit1": { from: "0xExternal" } },
+      });
       const { events, rebalanceEvents } = twoNftFixture(
         1000_00000000,
         2000_00000000,
@@ -216,7 +248,7 @@ describe("lifetime-hodl", () => {
       assert.strictEqual(r.amount1, 2000);
     });
 
-    it("external deposit on second NFT via IL", async () => {
+    it("an addition another wallet paid for, on the second NFT", async () => {
       const events = new Map();
       events.set("50", {
         ilEvents: [ilEvent(1000_00000000, 2000_00000000, 10)],
@@ -233,7 +265,8 @@ describe("lifetime-hodl", () => {
       });
       const r = await computeLifetimeHodl(events, {
         rebalanceEvents: [{ oldTokenId: "50", newTokenId: "100" }],
-        position: pos8,
+        position: { ...pos8, ...COINS },
+        ...readsAdditionAt5000(),
       });
       assert.strictEqual(r.amount0, 1500);
       assert.strictEqual(r.amount1, 2300);
@@ -241,11 +274,11 @@ describe("lifetime-hodl", () => {
 
     it("tags each deposit: the wallet's coins at a mint, or added to an NFT", async () => {
       /*-
-       *  Both are counted at the NFT's mint block. A rebalance's Activity
-       *  Log figures set aside only the wallet's coins that went into its
-       *  mint, so the tag is what tells them apart here, where the
-       *  rebalance's mint took in none and the owner later added
-       *  liquidity to the new NFT (src/lib/rebalance-activity-figures.js).
+       *  A rebalance's Activity Log figures set aside only the wallet's
+       *  coins that went into its mint, so the tag tells them apart from
+       *  an addition another wallet paid for, here to the new NFT after a
+       *  rebalance whose mint took in none. The addition is at its own
+       *  block, naming its transaction (src/lib/rebalance-activity-figures.js).
        */
       const events = new Map();
       events.set("50", {
@@ -263,7 +296,8 @@ describe("lifetime-hodl", () => {
       });
       const r = await computeLifetimeHodl(events, {
         rebalanceEvents: [{ oldTokenId: "50", newTokenId: "100" }],
-        position: pos8,
+        position: { ...pos8, ...COINS },
+        ...readsAdditionAt5000(),
       });
       assert.deepStrictEqual(r.deposits, [
         {
@@ -275,64 +309,11 @@ describe("lifetime-hodl", () => {
         {
           raw0: "50000000000",
           raw1: "30000000000",
-          block: 210,
+          block: 5000,
           kind: "external",
+          txHash: "0x1388",
         },
       ]);
-    });
-
-    it("compound events excluded from accumulation", async () => {
-      const events = new Map();
-      events.set("100", {
-        ilEvents: [
-          ilEvent(1000_00000000, 2000_00000000, 10),
-          ilEvent(50_00000000, 30_00000000, 500),
-        ],
-        collectEvents: [colEvent(100_00000000, 80_00000000, 400)],
-        dlEvents: [],
-      });
-      const r = await computeLifetimeHodl(events, {
-        rebalanceEvents: [],
-        position: pos8,
-      });
-      assert.strictEqual(r.amount0, 1000);
-      assert.strictEqual(r.amount1, 2000);
-    });
-
-    it("IL exceeding fee cap treated as external deposit", async () => {
-      const events = new Map();
-      events.set("100", {
-        ilEvents: [
-          ilEvent(1000_00000000, 2000_00000000, 10),
-          ilEvent(500_00000000, 300_00000000, 500),
-        ],
-        collectEvents: [colEvent(10_00000000, 5_00000000, 400)],
-        dlEvents: [],
-      });
-      const r = await computeLifetimeHodl(events, {
-        rebalanceEvents: [],
-        position: pos8,
-      });
-      assert.strictEqual(r.amount0, 1500);
-      assert.strictEqual(r.amount1, 2300);
-    });
-
-    it("fee cap subtracts DL amounts from Collect amounts", async () => {
-      const events = new Map();
-      events.set("100", {
-        ilEvents: [
-          ilEvent(1000_00000000, 2000_00000000, 10),
-          ilEvent(500_00000000, 300_00000000, 500),
-        ],
-        collectEvents: [colEvent(1500_00000000, 2500_00000000, 100_000)],
-        dlEvents: [dlEvent(1000, 100_000, 1490_00000000, 2490_00000000)],
-      });
-      const r = await computeLifetimeHodl(events, {
-        rebalanceEvents: [],
-        position: pos8,
-      });
-      assert.strictEqual(r.amount0, 1500);
-      assert.strictEqual(r.amount1, 2300);
     });
 
     it("does not duplicate deposits from cached entries", async () => {
@@ -396,7 +377,10 @@ describe("lifetime-hodl", () => {
         blockNumber: 105,
         transactionHash: "0xdep1",
       };
-      const prov = mockProvider({ logs: [depositLog] });
+      const prov = mockProvider({
+        logs: [depositLog],
+        txs: { "0xdep1": { from: "0xExt" } },
+      });
       const { f0, f1 } = await _freshDeposits(
         prov,
         e,

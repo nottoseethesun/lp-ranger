@@ -1285,7 +1285,15 @@ after the last one counted up to the chain's head, one entry per
 transaction (`depositsInWindow`, `src/lib/wallet-deposits.js`, which the
 Lifetime scan uses too). A swap, a collect or drain, and the position
 manager's and pool's own transfers are left out; a wrap of the native
-coin is credited once. A count starts after the latest of three blocks:
+coin is credited once. So is every transaction the wallet sent itself,
+read from each possible deposit's sender (`_sentByOthers`): every
+rebalance and compound the bot makes, for any position, is one, while a
+deposit is sent to the wallet by someone else. Without it, another
+managed pool's drain, fee collection or swap, paying in a coin this pool
+shares, counted as this pool's deposit, since none of this pool's coins
+went out. A wrap counts though the wallet sends it: the native coins it
+wrapped were never counted. A sender that cannot be read fails the
+count. A count starts after the latest of three blocks:
 the last block a move's count read (`countedThrough`), the newest mint
 the Lifetime results cover (`lastBlock`), and the current NFT's mint,
 before which deposits went into that mint. It waits while the Lifetime
@@ -1319,8 +1327,21 @@ it and the first poll counts again.
 
 **Each deposit counts once.** When the Lifetime scan later reads the
 window that ends at the next mint, it leaves out the transactions the
-count recorded (`countedTx` in `computeLifetimeHodl`). Its own entry at
-the mint then holds only what arrived after the count's last read. A
+count recorded (`countedTx` in `computeLifetimeHodl`), and enters each
+of the rest as the count would have: on its own, at its own block and
+naming its transaction (`_freshDeposits`, `src/lib/lifetime-hodl.js`).
+So Total Lifetime Deposit prices every deposit at its own block, and a
+scan that builds the list again from the chain, as Reload Current
+Position does, enters the same deposits the count recorded, at the same
+blocks. Reload asks for their prices again, past the cache. With a
+Moralis API key a past block's price comes back the same; without one
+GeckoTerminal answers with the closing price of the deposit's UTC day,
+so a deposit first priced during its own day can come back a little
+different (see the README's Nice to Have's). A list an earlier version
+saved holds each window it read as one entry at the mint's block,
+naming no transaction; the scan keeps such an entry until the list is
+built again, which the upgrade from 0.9.10 has the first start do (see
+**Additions the Lifetime scan counts**, below). A
 Lifetime scan that ran while a move's count was saved keeps that count
 when it writes its results (`withLaterCounts`, used by
 `computeAndCacheHodl`), which it
@@ -1344,17 +1365,69 @@ cannot write the old results back over the rebuild.
 
 - The Lifetime IL/G and Total Lifetime Deposit already hold the moves'
   counts, so they add only the overlay's entries after the newest mint
-  covered (`pollDeposits`).
-- A rebalance's Activity Log figure sets aside the counted deposits from
-  the old NFT's mint up to the new one, with the Lifetime scan's own
-  entry at the mint (`cachedDepositFor`,
-  `src/lib/rebalance-activity-figures.js`).
+  covered (`pollDeposits`). A deposit of a coin another running position
+  holds counts in them only where its coins went (below).
+- A rebalance's Activity Log figure sets aside the deposits entered from
+  the old NFT's mint up to the new one, the count's and the Lifetime
+  scan's alike, with the entry an earlier version summed at the mint
+  (`cachedDepositFor`, `src/lib/rebalance-activity-figures.js`); for a
+  coin another running position holds, what the replay below shows the
+  rebalance took (`depositTakenAt`).
 - The Current IL/G and the Guard add no counted deposit: they count no
   coin in the wallet. A deposit that a compound takes into the NFT
   counts there from the compound's record, with the NFT's minted coins
   (`walletCoinsPutIn`), the same in the bot and in the unmanaged details
   view, which reads the compound list the bot saved
   (`savedWalletCoinsPutIn`, `src/lib/position-details-compound.js`).
+
+**A coin two positions hold.** Each position counts the deposits of its
+own two coins, so a deposit of a coin two running managed positions
+hold is in both lists. Counted in full by each, it would be money put in
+twice for coins that arrived once. So each such deposit counts where its
+coins went (`src/lib/deposit-attribution.js`, the user's design,
+2026-10-24):
+
+- **while the coins wait in the wallet**, each position holding the
+  coin counts the share of them the Wallet Residual (Pool) credits it:
+  its own holding of the coin over all the running managed positions'
+  holdings of it (`fraction0`, `fraction1` from `walletResiduals`). What
+  it counts as put in then matches the coins it is credited with, so the
+  deposit moves none of its Lifetime figures. The share moves from poll
+  to poll as prices move the holdings, and Total Lifetime Deposit with
+  it;
+- **a rebalance takes them all**, since it mints with the wallet's whole
+  balance: from its mint on, the position it minted for counts every
+  deposit of its two coins still waiting, and the others none of it;
+- **a compound takes part**: of the wallet's coins its deposit took in
+  beyond its fees, the deposits' part is in proportion to their share of
+  the wallet's balance of the coin before the collect, which the
+  compound now records (`amount0WalletBefore`, `amount1WalletBefore`,
+  with the deposit's `blockNumber`). That part counts for the
+  compounding position, and only the rest still waits. A compound
+  recorded without the reading takes deposit coins first; one with no
+  block recorded, or without its fees told apart, takes nothing.
+
+Nothing is saved for it. Every poll, `depositAttribution`
+(`src/lib/deposit-attribution-inputs.js`) replays each of the position's
+two coins, in block order, over what the running positions of the wallet
+hold (`_walletDepositStates`, attached by `attachMultiPosDeps` in
+`src/lib/server-positions.js`): their deposit lists with what polls have
+found since, their rebalance events, each at its new NFT's mint block,
+and their compound lists. A deposit and a move in the same block are
+taken in that order, as the Lifetime scan's windows end at a mint. It
+answers how much the position's lifetime holding and Total Lifetime
+Deposit change when the deposits it lists are replaced by its part of
+every deposit of its coins (`lifetimeDepositFigure`, and `_computeIL` in
+`src/lib/bot-pnl-il.js`). A deposit of a coin no other running position
+holds comes out as before. A deposit brings one of its pool's coins,
+never both: a transaction in which both come in is a drain or a fee
+collection (`_isDeposit`, `src/lib/wallet-deposits.js`), and a wrap brings
+only the wrapped coin. So a deposit's dollar figure (`usd`) is that one
+coin's, and is divided as its coins are, with no further field kept.
+Only the running positions take part, as only they share the Wallet
+Residual: coins a stopped position's NFT took, or that left the wallet by
+another route, such as a hand-minted position or a withdrawal, still
+count as waiting.
 
 **A compound that sweeps a deposit in.** A compound whose ratio swap
 fires offers its deposit the wallet's whole balance
@@ -1379,11 +1452,45 @@ rebuilt compound list, and the unmanaged view. A compound with no such
 record counts its whole deposit. The rest of the deposit, the wallet's
 coins it took in, counts with the NFT's minted coins in the Current IL/G
 and the Guard (`walletCoinsPutIn`), since the position's value now holds
-them. The Lifetime scan counts no compound
-this install made as money put in (`_classifySubsequentILs`,
-`src/lib/lifetime-hodl.js`): its deposit took only the wallet's coins, each
-counted where it reached the wallet, or the residuals Lifetime Net P&L
-counts on their own.
+them.
+
+**Additions the Lifetime scan counts.** An addition of liquidity to a
+position NFT after its mint is money put in only when another wallet
+paid for it (`_additionsPutIn`, `src/lib/lifetime-hodl.js`). One the
+wallet paid for took coins already counted: a deposit counted when it
+reached the wallet, or the position's own leftovers and fees, which
+Lifetime Net P&L counts as the Wallet Residual and the Initial Wallet
+Residual. The addition's receipt decides: a transfer of either of the
+pool's coins out of the wallet in its transaction means the wallet
+paid. LP Ranger's own compounds pay from the wallet, so the scan skips
+the receipt for one its compound list records as Auto or Manual. That
+mark is not needed for the answer: Reload Current Position on a release
+before this one emptied the compound list, and the rebuilt entries
+carry no mark. An addition another wallet paid for counts all of it,
+as a deposit entry of its own, at its own block and naming its
+transaction (`kind: "external"`). An addition whose receipt cannot be
+read stops the scan, which is tried again, rather than being counted on
+a guess. The scan works the additions out again each time it recounts
+the deposits, keeping only the price each one was given.
+
+A list 0.9.10 saved can hold what this release would not build, in two
+ways. It summed the deposits each rebalance's mint took in into one
+entry at the mint's block, priced at the mint's day, which leaves the
+total of those deposits the list keeps beside it larger than its
+entries naming a transaction add up to; among them can be another
+managed pool's moves, when the two pools share a coin. And it judged an
+addition by the NFT's fees, so it can hold additions the wallet paid
+for, filed at an NFT's mint block with nothing to mark them; such a
+list adds up to more than its first mint plus that total. The upgrade
+from 0.9.10 takes each list holding either out, with the saved Total
+Lifetime Deposit of each position in that pool, whose positions the
+pool's saved rebalance history names
+(`util/migration/from-0.9.10/drop-old-deposit-lists.js`). A list holding
+only its first mint stays, since this release would build the same one.
+The first start then builds each list taken out again by this
+release's rules and prices it. The saved total has to go too, since a
+start that builds a list from nothing prices it only when no total is
+saved.
 
 **Fees the deposit could not take.** A deposit takes only what fits the
 range, so without the swap, or with one coin short after it, some fees
@@ -1429,10 +1536,6 @@ readings alone to decide.
   full, as the Lifetime scan counts it in each pool's window after a
   rebalance, while the wallet credit splits the coin between the pools
   by their shares.
-- An addition of liquidity this install did not make, a compound from
-  before LP Ranger managed the position or liquidity added through
-  another app, is money put in when it exceeds the NFT's fees, all of
-  it, including any coins that were already in the wallet.
 - Fees a compound leaves in the wallet, the ones its deposit could not
   fit, are not in Fees Compounded. The Lifetime IL/G counts them on the
   position's side, as the wallet's coins and, once a rebalance mints
@@ -1530,16 +1633,24 @@ the mint, with the operator's price overrides applied
 (`applyPriceOverrides`, `src/lib/price-overrides.js`).
 
 **The deposit** is the one the Lifetime accounting already counts for
-the rebalance's mint, in the epoch cache's `lifetimeHodlAmounts.deposits`,
-in two parts. The [deposit count](#deposit-count) records deposits as
-they arrive, each at its own block and naming its transaction, and the
-rebalance took in those recorded after the old NFT's mint and up to the
-new NFT's. The Lifetime scan records the rest, whatever arrived after
-the count's last read, as one entry at the mint block tagged
-`kind: "fresh"` (`src/lib/lifetime-hodl.js`). The tag tells the wallet's
-coins that went into the mint apart from liquidity added to the NFT
-later (`external`), and an entry counted before the tag existed counts
-as fresh when it is the first for its block. The deposit is capped, coin by coin, at
+the rebalance's mint, in the epoch cache's `lifetimeHodlAmounts.deposits`:
+the entries tagged `kind: "fresh"` after the old NFT's mint and up to
+the new NFT's, each at its own block and naming its transaction. The
+[deposit count](#deposit-count) records them as they arrive, and the
+Lifetime scan enters the rest, whatever arrived after the count's last
+read, the same way (`src/lib/lifetime-hodl.js`). The tag tells the
+wallet's coins that went into the mint apart from an addition another
+wallet paid for (`external`), which names its transaction but never
+passed through the wallet, so it is no deposit waiting there. A list an
+earlier version saved holds the scan's part as one entry at the mint's
+block, naming no transaction, and an entry counted before the tag
+existed counts as fresh when it is the first for its block. For a coin
+another running position holds, the deposits a rebalance took are what
+the replay of the running positions' deposits and moves shows still
+waiting at its mint, whichever position listed them (`depositTakenAt`;
+see [Deposit Count](#deposit-count), "A coin two positions hold"): one
+may have gone into the other position's NFT first. The deposit is
+capped, coin by coin, at
 `beforeDrain`: a deposit a compound has since swept into the position
 is no longer in the wallet; it came out with the old NFT's coins and
 belongs to the rebalance.
@@ -2661,8 +2772,9 @@ which keeps each old file in `tmp/` before changing it, and
 `env-file.js` for `.env`, which keeps each changed line as a comment and
 makes no copy, since the file holds the private key. Node built-ins
 only, like the copy. Its tests are in `util/test/migration.test.js`,
-`util/test/migration-099-settings.test.js` and
-`util/test/migration-from-0.9.10.test.js`.
+`util/test/migration-099-settings.test.js`,
+`util/test/migration-from-0.9.10.test.js` and
+`util/test/migration-from-0.9.10-deposit-lists.test.js`.
 
 #### Cache Utilities
 

@@ -616,6 +616,7 @@ async function startBotLoop(opts) {
         _rebalanceEvents: rebalanceEvents,
         _residualTracker: residualTracker,
         _getTokenPositionAmounts: botState._getTokenPositionAmounts || null,
+        _walletDepositStates: botState._walletDepositStates,
         _getConfig: gc,
         _poolKey: botState._poolKey || null,
         _recordPoolRebalance: botState._recordPoolRebalance || null,

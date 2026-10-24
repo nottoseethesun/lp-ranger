@@ -55,8 +55,9 @@ async function computeAndCacheHodl(
   }).catch(() => ({}));
   /*-
    *  The compound list as saved now, rebuilt earlier in this pass when a
-   *  rebuild ran: it names the compounds this install made, which are
-   *  never money put in (src/lib/lifetime-hodl.js).
+   *  rebuild ran: it names the compounds LP Ranger made, which paid from
+   *  the wallet, so the tally need not read their receipts
+   *  (src/lib/lifetime-hodl.js).
    */
   const compoundHistory =
     typeof opts.savedCompoundHistory === "function"

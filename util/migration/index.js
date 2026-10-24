@@ -36,6 +36,7 @@ const {
 const {
   dropOldGentleStopInterval,
 } = require("./from-0.9.10/drop-old-gentle-stop-interval");
+const { dropOldDepositLists } = require("./from-0.9.10/drop-old-deposit-lists");
 
 /** The steps, in the order the releases made their changes. */
 const STEPS = Object.freeze([
@@ -66,6 +67,11 @@ const STEPS = Object.freeze([
     title:
       "A gentle-stop interval longer than this release allows comes out of app-runtime.json",
     run: dropOldGentleStopInterval,
+  },
+  {
+    title:
+      "A deposit list that priced each rebalance's deposits at that rebalance's day, or counted coins the wallet paid with as money put in a second time, comes out, with the Total Lifetime Deposit priced from it, for the first start to build and price again",
+    run: dropOldDepositLists,
   },
 ]);
 

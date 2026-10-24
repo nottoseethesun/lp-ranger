@@ -17,6 +17,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  isAdditionEntry,
   isCountedEntry,
   countedCoinsAfter,
   pollDeposits,
@@ -54,6 +55,30 @@ describe("the deposit count's records", () => {
     assert.equal(isCountedEntry(LIFETIME.deposits[1]), true);
     assert.equal(isCountedEntry(LIFETIME.deposits[0]), false);
     assert.equal(isCountedEntry(null), false);
+  });
+
+  it("are not the additions another wallet paid for, though those name their transaction too", () => {
+    /*- Such an addition went straight into a position NFT, never through
+     *  the wallet, so no figure that sets aside the wallet's deposits may
+     *  take it for one. */
+    const addition = {
+      raw0: "700",
+      raw1: "700",
+      block: 260,
+      kind: "external",
+      txHash: "0xadd",
+    };
+    assert.equal(isAdditionEntry(addition), true);
+    assert.equal(isCountedEntry(addition), false);
+    assert.equal(isAdditionEntry(LIFETIME.deposits[1]), false);
+    const withAddition = {
+      ...LIFETIME,
+      deposits: [...LIFETIME.deposits, addition],
+    };
+    assert.deepEqual(countedCoinsAfter(withAddition, null, 200, 2, 2), {
+      amount0: 2,
+      amount1: 3,
+    });
   });
 
   it("add, after a block, the moves' counts and the polls' since", () => {

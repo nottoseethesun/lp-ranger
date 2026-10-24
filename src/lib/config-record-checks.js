@@ -167,6 +167,14 @@ const RECORD_CHECKS = Object.freeze({
         /*- The fees the deposit could not take, left in the wallet. */
         amount0FeesLeft: _digits,
         amount1FeesLeft: _digits,
+        /*-
+         *  The deposit's block, and the wallet's two coins before the
+         *  collect, for the deposits to the wallet the compound took
+         *  (src/lib/deposit-attribution.js).
+         */
+        blockNumber: _of(KINDS.count),
+        amount0WalletBefore: _digits,
+        amount1WalletBefore: _digits,
         usdValue: _usd,
         price0: _orNull(_usd),
         price1: _orNull(_usd),

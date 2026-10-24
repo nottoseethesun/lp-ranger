@@ -23,6 +23,14 @@
  * from the wrapped coin's `Deposit` event instead, as explained above
  * `_scanWrapDeposits`.
  *
+ * And a transaction the wallet sent itself is no deposit, whatever came
+ * in (`_sentByOthers`). Every rebalance and compound the bot makes, for
+ * any position, is a transaction the wallet sends, while a deposit is
+ * sent to the wallet by someone else. So another managed pool's drain,
+ * fee collection or swap, which brings in a coin this pool shares, does
+ * not count as this pool's deposit. A wrap counts though the wallet sends
+ * it, since the native coins it wrapped were never counted.
+ *
  * Every read is chunked to the endpoints' block-range cap
  * (src/lib/get-logs-chunked.js), and a failed read fails the whole answer:
  * "no transfers" read off a refused query would be counted as "no
@@ -262,38 +270,38 @@ function _wrappedIndex(token0, token1, wrappedNativeAddress) {
 }
 
 /**
- * Sort the window's transactions into deposits, one entry each.
+ * Sort the window's transactions into wraps and possible deposits, one
+ * entry each.
  *
  * A wrap is credited at what it wrapped, to the wrapped coin, and
  * nothing else in that transaction is counted: a wrap inside a swap
  * would otherwise be counted twice, once from the event and once from
- * the transfer. Every other transaction is a deposit by `_isDeposit`,
- * counted at what came into the wallet. One that brought nothing in
- * makes no entry.
+ * the transfer. Every other transaction is a possible deposit by
+ * `_isDeposit`, at what came into the wallet, which `_sentByOthers` then
+ * holds to who sent it. One that brought nothing in makes no entry.
  *
  * @param {Map} byTx  From `_groupByTx`.
  * @param {Map} wraps  From `_scanWrapDeposits`, empty when the pool
  *   holds no wrapped native coin.
  * @param {0|1|null} wrappedIdx  From `_wrappedIndex`.
- * @returns {Array<{txHash: string, block: number, raw0: bigint,
- *   raw1: bigint}>}  In block order.
+ * @returns {{wrapped: object[], candidates: object[]}}  Entries
+ *   `{txHash, block, raw0, raw1}`.
  */
 function _classify(byTx, wraps, wrappedIdx) {
   const allTx = new Set([...byTx.keys(), ...wraps.keys()]);
-  const entries = [];
+  const wrapped = [];
+  const candidates = [];
   let skipped = 0;
-  let wrapCount = 0;
   for (const txHash of allTx) {
     const wrap = wraps.get(txHash);
     if (wrap !== undefined && wrap.wad > 0n && wrappedIdx !== null) {
-      wrapCount++;
       log.info(
         "[hodl]   WRAP TX %s: wrapped[%d]=%s",
         txHash.slice(0, 10),
         wrappedIdx,
         String(wrap.wad),
       );
-      entries.push({
+      wrapped.push({
         txHash,
         block: wrap.block,
         raw0: wrappedIdx === 0 ? wrap.wad : 0n,
@@ -310,23 +318,58 @@ function _classify(byTx, wraps, wrappedIdx) {
     const { raw0, raw1, fromAddrs } = _sumGroupInbound(group);
     if (raw0 === 0n && raw1 === 0n) continue;
     log.info(
-      "[hodl]   deposit TX %s: t0=%s t1=%s from=[%s]",
+      "[hodl]   possible deposit TX %s: t0=%s t1=%s from=[%s]",
       txHash.slice(0, 10),
       String(raw0),
       String(raw1),
       fromAddrs.join(","),
     );
-    entries.push({ txHash, block: group.block, raw0, raw1 });
+    candidates.push({ txHash, block: group.block, raw0, raw1 });
   }
   if (allTx.size > 0)
     log.info(
-      "[hodl]   window: %d TXs, %d skipped (swap/drain), %d wrap, %d deposit",
+      "[hodl]   window: %d TXs, %d skipped (swap/drain), %d wrap, %d to check for their sender",
       allTx.size,
       skipped,
-      wrapCount,
-      allTx.size - skipped - wrapCount,
+      wrapped.length,
+      candidates.length,
     );
-  return entries.sort((a, b) => a.block - b.block);
+  return { wrapped, candidates };
+}
+
+/**
+ * The possible deposits someone other than the wallet sent: the
+ * deposits. A transaction the wallet sent is a move of the bot's, for
+ * this pool or another, or the owner's own from the wallet, and brings
+ * in no money from outside.
+ *
+ * One read per possible deposit, of its transaction's sender. A sender
+ * that cannot be read fails the whole answer, as a refused read of the
+ * transfers does.
+ *
+ * @param {object[]} candidates  From `_classify`.
+ * @param {object} o  `depositsInWindow`'s options: `provider`, `wallet`.
+ * @returns {Promise<object[]>}
+ */
+async function _sentByOthers(candidates, o) {
+  const wallet = o.wallet.toLowerCase();
+  const out = [];
+  for (const e of candidates) {
+    const tx = await o.provider.getTransaction(e.txHash);
+    if (tx === null || tx === undefined || typeof tx.from !== "string")
+      throw new Error(
+        `no sender came back for transaction ${e.txHash}, so whether it brought the wallet a deposit is not known`,
+      );
+    if (tx.from.toLowerCase() === wallet) {
+      log.info(
+        "[hodl]   TX %s: the wallet sent it itself, so it is no deposit",
+        e.txHash.slice(0, 10),
+      );
+      continue;
+    }
+    out.push(e);
+  }
+  return out;
 }
 
 /**
@@ -334,7 +377,8 @@ function _classify(byTx, wraps, wrappedIdx) {
  * one entry per transaction, in block order.
  *
  * @param {object} o
- * @param {object} o.provider  ethers provider with `getLogs`.
+ * @param {object} o.provider  ethers provider with `getLogs`, and
+ *   `getTransaction` for each possible deposit's sender.
  * @param {object} o.ethersLib  ethers, for `id` and `zeroPadValue`.
  * @param {string} o.token0  The pool's token0.
  * @param {string} o.token1  The pool's token1.
@@ -403,7 +447,13 @@ async function depositsInWindow(o) {
         o.wrappedNativeAddress,
       );
   }
-  return _classify(_groupByTx(kept0, kept1), wraps, wrappedIdx);
+  const { wrapped, candidates } = _classify(
+    _groupByTx(kept0, kept1),
+    wraps,
+    wrappedIdx,
+  );
+  const sentByOthers = await _sentByOthers(candidates, o);
+  return [...wrapped, ...sentByOthers].sort((a, b) => a.block - b.block);
 }
 
 module.exports = { depositsInWindow };

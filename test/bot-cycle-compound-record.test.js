@@ -314,6 +314,25 @@ describe("recordCompound", () => {
     assert.strictEqual("amount0FeesLeft" in none, false);
   });
 
+  it("keeps the deposit's block and the wallet's coins before the collect on the compound's record", async () => {
+    /*- A deposit to the wallet still waiting there is taken by the
+     *  compound in proportion to its share of that balance
+     *  (src/lib/deposit-attribution.js). */
+    const read = {
+      ...swept,
+      depositBlock: 1234,
+      amount0WalletBefore: "500",
+      amount1WalletBefore: "0",
+    };
+    const entry = (await recordAgainstTotal(read)).compoundHistory[0];
+    assert.strictEqual(entry.blockNumber, 1234);
+    assert.strictEqual(entry.amount0WalletBefore, "500");
+    assert.strictEqual(entry.amount1WalletBefore, "0");
+    const none = (await recordAgainstTotal(swept)).compoundHistory[0];
+    assert.strictEqual("blockNumber" in none, false);
+    assert.strictEqual("amount0WalletBefore" in none, false);
+  });
+
   it("adds and records the whole deposit for a result without the readings", async () => {
     const old = { ...swept };
     delete old.amount0Compounded;

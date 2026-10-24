@@ -101,7 +101,7 @@ function arrival(token, amount, block, tx) {
  * `whileReading` runs at the first read, standing in for whatever else
  * the bot does while a count waits on the chain.
  */
-function chain(head, logs, whileReading = () => {}) {
+function chain(head, logs, whileReading = () => {}, senders = {}) {
   const inner = mockProvider({ logs });
   let first = true;
   provider = {
@@ -112,6 +112,10 @@ function chain(head, logs, whileReading = () => {}) {
       windows.push(f.fromBlock);
       return inner.getLogs(f);
     },
+    /*- An arrival is sent by its sender, 0xFriend, unless `senders`
+     *  names another for its transaction. */
+    getTransaction: (hash) =>
+      Promise.resolve({ hash, from: senders[hash] ?? "0xFriend" }),
   };
 }
 
@@ -171,6 +175,42 @@ beforeEach(() => {
   onLookup = () => {};
   writes.lifetime = [];
   writes.fresh = [];
+});
+
+describe("another managed pool's moves", () => {
+  it("record nothing, since the wallet sent them, while a deposit beside them still counts", async () => {
+    /*- As it would have reached the user's #164743: a pool holding
+     *  token1 too drains and swaps, paying token1 into the wallet in
+     *  transactions the wallet sent. Only the arrival someone else sent
+     *  is a deposit. */
+    const fromOtherPool = (amount, block, tx) => ({
+      ...arrival(T1, amount, block, tx),
+      topics: [
+        TRANSFER_TOPIC0,
+        E.zeroPadValue("0xOtherPool", 32),
+        E.zeroPadValue(WALLET, 32),
+      ],
+    });
+    chain(
+      500,
+      [
+        fromOtherPool(900, 300, "0xotherDrain"),
+        fromOtherPool(400, 350, "0xotherSwap"),
+        arrival(T0, 500, 400, "0xa"),
+      ],
+      () => {},
+      { "0xotherDrain": WALLET, "0xotherSwap": WALLET },
+    );
+    const d = deps();
+    await countDeposits(d, "move");
+    const lt = d._botState.lifetimeHodlAmounts;
+    assert.deepEqual(
+      lt.deposits.slice(1).map((e) => e.txHash),
+      ["0xa"],
+    );
+    assert.equal(lt.amount1, 20, "no token1 is put in");
+    assert.equal(lt.amount0, 15, "the five of token0 are");
+  });
 });
 
 describe("a move's count", () => {

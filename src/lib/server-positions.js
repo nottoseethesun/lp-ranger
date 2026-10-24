@@ -43,6 +43,7 @@ const {
 } = require("./bot-config-v2");
 const { parseCompositeKey } = require("./composite-key");
 const { RECORD_POSITION_KEYS } = require("./bot-config-keys");
+const { walletStates } = require("./deposit-attribution-inputs");
 
 /** Per-position bot state (in-memory, keyed by composite key). */
 const _positionBotStates = new Map();
@@ -256,6 +257,10 @@ function attachMultiPosDeps(botState, positionMgr) {
    * @param {string} tokenAddress  ERC-20 address to look up.
    * @returns {number} Total human-readable amount across all positions.
    */
+  /*- The running positions of this wallet, whose deposits of a coin they
+   *  share count where the coins went (src/lib/deposit-attribution.js). */
+  botState._walletDepositStates = () =>
+    walletStates(_positionBotStates, botState);
   botState._getTokenPositionAmounts = (tokenAddress) => {
     const ta = tokenAddress.toLowerCase();
     let total = 0;

@@ -74,6 +74,11 @@ const AS_WRITTEN = {
       // The fees the deposit could not take, left in the wallet.
       amount0FeesLeft: "100",
       amount1FeesLeft: "0",
+      /*- The deposit's block and the wallet's coins before the collect
+       *  (src/lib/deposit-attribution.js). */
+      blockNumber: 27900000,
+      amount0WalletBefore: "5000",
+      amount1WalletBefore: "0",
       // The Activity Log figures (src/lib/compound-activity-figures.js).
       feesCollected: { amount0: 0.5, amount1: 0.25 },
       historical: { percentGainForPosition: 0.01 },
@@ -186,6 +191,16 @@ describe("a record of the wrong kind", () => {
       "compoundHistory",
       [{ ...compound, amount0FeesLeft: "-1" }],
       /compoundHistory\[0\]\.amount0FeesLeft must be a whole number/,
+    );
+    refused(
+      "compoundHistory",
+      [{ ...compound, blockNumber: "27900000" }],
+      /compoundHistory\[0\]\.blockNumber must be a whole number of at least 1/,
+    );
+    refused(
+      "compoundHistory",
+      [{ ...compound, amount1WalletBefore: 5 }],
+      /compoundHistory\[0\]\.amount1WalletBefore must be a whole number/,
     );
     refused("compoundedAmount0", "100", /must be a number of coins/);
     refused("compoundedAmount1", -1, /must be a number of coins/);

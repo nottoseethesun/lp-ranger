@@ -224,6 +224,21 @@ describe("a compound's fees, apart from the wallet's other coins", () => {
     assert.deepEqual(result.feesCompounded, { amount0: 6, amount1: 14 });
   });
 
+  it("reports the deposit's block and the wallet's coins before the collect", async () => {
+    /*- A deposit to the wallet still waiting there is taken by this
+     *  compound in proportion to its share of that balance
+     *  (src/lib/deposit-attribution.js). */
+    swapRan = true;
+    const result = await compound(
+      executeCompound,
+      { a: [100n * A, 110n * A, 106n * A], b: [100n * B, 110n * B, 114n * B] },
+      { a: 106n * A, b: 114n * B },
+    );
+    assert.equal(result.depositBlock, 1);
+    assert.equal(result.amount0WalletBefore, String(100n * A));
+    assert.equal(result.amount1WalletBefore, String(100n * B));
+  });
+
   it("counts every coin of a deposit that offered only the fees", async () => {
     /*-
      *  No swap: the deposit is offered the 10 + 10 the collect brought

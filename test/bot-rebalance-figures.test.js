@@ -228,6 +228,52 @@ describe("finishPassRebalanceFigures", () => {
     assert.deepEqual(calls.prices, []);
   });
 
+  it("sets aside only what the running positions show this rebalance took", async () => {
+    /*-
+     *  This position lists a deposit of 80 of token0 at block 950, but
+     *  another position holding the same coin rebalanced at block 960
+     *  and took it into its own NFT (src/lib/deposit-attribution.js), so
+     *  none of it was in the wallet at this mint.
+     */
+    const listed = {
+      raw0: "80",
+      raw1: "0",
+      block: 950,
+      kind: "fresh",
+      txHash: "0xdep",
+    };
+    lifetimeHodl = { deposits: [listed], lastBlock: MINT, poolAddress: "0xP" };
+    const other = {
+      running: true,
+      walletAddress: WALLET,
+      activePosition: { token0: "0x" + "c2".repeat(20), token1: TOKEN0 },
+      lifetimeHodlAmounts: {
+        deposits: [{ ...listed, raw0: "0", raw1: "80" }],
+        lastBlock: 960,
+      },
+      rebalanceEvents: [{ blockNumber: 960 }],
+    };
+    const me = {
+      _getConfig: () => undefined,
+      walletAddress: WALLET,
+      activePosition: { token0: TOKEN0, token1: TOKEN1 },
+      lifetimeHodlAmounts: lifetimeHodl,
+    };
+    me._walletDepositStates = () => [me, other];
+    const seen = passOpts([live()], { botState: me });
+    await finishPassRebalanceFigures(seen);
+    assert.deepEqual(seen.events[0].beforeRebalance, READINGS.afterDrain);
+    // Without the other position in view, the 80 it lists is set aside.
+    const alone = passOpts([live()], {
+      botState: { ...me, _walletDepositStates: undefined },
+    });
+    await finishPassRebalanceFigures(alone);
+    assert.deepEqual(alone.events[0].beforeRebalance, {
+      amount0: 1020,
+      amount1: 50,
+    });
+  });
+
   it("leaves events due when the pass read no chain, or no deposits", async () => {
     // The shared read failed, so the drain cannot be found.
     const failed = { read: async () => Promise.reject(new Error("429")) };

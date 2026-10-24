@@ -278,6 +278,20 @@ function _historyEntry(deps, result, gasCostUsd) {
     entry.amount0FeesLeft = result.amount0FeesLeft;
     entry.amount1FeesLeft = result.amount1FeesLeft;
   }
+  /*-
+   *  The deposit's block, and the wallet's two coins before the collect:
+   *  the deposits to the wallet this compound took are worked out from
+   *  them (src/lib/deposit-attribution.js).
+   */
+  if (Number.isInteger(result.depositBlock))
+    entry.blockNumber = result.depositBlock;
+  if (
+    result.amount0WalletBefore !== undefined &&
+    result.amount1WalletBefore !== undefined
+  ) {
+    entry.amount0WalletBefore = result.amount0WalletBefore;
+    entry.amount1WalletBefore = result.amount1WalletBefore;
+  }
   return entry;
 }
 

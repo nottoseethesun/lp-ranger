@@ -33,15 +33,39 @@ const { mintBlocksByTokenId } = require("./nft-mint-blocks");
 const { isPlainObject } = require("./plain-object");
 
 /**
- * Whether a deposit entry is one the deposit count recorded. Only the
- * count's entries name their transaction; the Lifetime scan's own sit at
- * a mint block and sum a whole window.
+ * Whether a deposit entry is an addition of liquidity another wallet
+ * paid for: money put in that went straight into a position NFT, never
+ * through the wallet. The Lifetime scan enters each at its own block,
+ * naming its transaction (src/lib/lifetime-hodl.js).
+ *
+ * @param {*} d  A deposit entry.
+ * @returns {boolean}
+ */
+function isAdditionEntry(d) {
+  return isPlainObject(d) && d.kind === "external";
+}
+
+/**
+ * Whether a deposit entry is one deposit to the wallet, naming its
+ * transaction: one the deposit count recorded as it arrived, or one the
+ * Lifetime scan entered for a deposit a mint took in
+ * (src/lib/lifetime-hodl.js). The two are alike, so a scan that builds the
+ * list again from the chain enters what the count recorded. Not an
+ * addition another wallet paid for (`isAdditionEntry`), which names its
+ * transaction too but never passed through the wallet; nor the first
+ * mint's entry, nor a window an earlier version summed into one entry at
+ * its mint's block, which name none.
  *
  * @param {*} d  A deposit entry.
  * @returns {boolean}
  */
 function isCountedEntry(d) {
-  return isPlainObject(d) && typeof d.txHash === "string" && d.txHash !== "";
+  return (
+    isPlainObject(d) &&
+    typeof d.txHash === "string" &&
+    d.txHash !== "" &&
+    !isAdditionEntry(d)
+  );
 }
 
 /**
@@ -64,8 +88,10 @@ function _overlayEntries(overlay) {
 }
 
 /**
- * The coins the deposit count has found after a block: the moves'
- * counts in the Lifetime results, and what polls have found since.
+ * The coins deposited to the wallet after a block, one entry per
+ * transaction (`isCountedEntry`): those the Lifetime results hold, the
+ * moves' counts and the Lifetime scan's own, and what polls have found
+ * since.
  *
  * @param {object|null|undefined} lifetimeHodl  The pool's
  *   `lifetimeHodlAmounts`.
@@ -259,6 +285,7 @@ function withDepositsAdded(hodl, entries, d0, d1) {
 }
 
 module.exports = {
+  isAdditionEntry,
   isCountedEntry,
   countedCoinsAfter,
   pollDeposits,

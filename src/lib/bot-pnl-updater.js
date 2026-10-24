@@ -20,7 +20,7 @@ const { applyPriceOverrides } = require("./price-overrides");
 const { coinsToUsd, nftCoinsToUsd } = require("./coin-value");
 const { hasCompoundedTotal } = require("./bot-config-keys");
 const { _computeIL } = require("./bot-pnl-il");
-const { pollDeposits } = require("./counted-deposits");
+const _attribution = require("./deposit-attribution-inputs");
 const { PM_ABI } = require("./pm-abi");
 const {
   maybeNotifyBalanced,
@@ -227,6 +227,9 @@ async function addPoolShare(
  * @returns {{ usd: number, amount0: number, amount1: number,
  *   wallet?: {raw0: bigint, raw1: bigint} }}
  *   amount0/amount1 are human-readable floats (this position's share).
+ *   `fraction0`/`fraction1` are that share of each coin's balance, which
+ *   a deposit still waiting in the wallet is divided by too
+ *   (src/lib/deposit-attribution.js).
  *   `wallet` is the whole wallet's two coins as read, in their smallest
  *   units, which the deposit count's rise check compares with the last
  *   poll's (src/lib/deposit-count.js).
@@ -274,8 +277,10 @@ async function walletResiduals(
     const gta = deps._getTokenPositionAmounts;
     const total0 = gta ? gta(position.token0) : pa.amount0;
     const total1 = gta ? gta(position.token1) : pa.amount1;
-    const share0 = total0 > 0 ? (pa.amount0 / total0) * wf0 : wf0;
-    const share1 = total1 > 0 ? (pa.amount1 / total1) * wf1 : wf1;
+    const fraction0 = total0 > 0 ? pa.amount0 / total0 : 1;
+    const fraction1 = total1 > 0 ? pa.amount1 / total1 : 1;
+    const share0 = fraction0 * wf0;
+    const share1 = fraction1 * wf1;
     const usd0 = share0 * price0;
     const usd1 = share1 * price1;
     return {
@@ -284,6 +289,8 @@ async function walletResiduals(
       usd1,
       amount0: share0,
       amount1: share1,
+      fraction0,
+      fraction1,
       wallet: { raw0: BigInt(wb0), raw1: BigInt(wb1) },
     };
   } catch (_) {
@@ -424,6 +431,11 @@ async function overridePnlWithRealValues(
     decimals0: poolState.decimals0,
     decimals1: poolState.decimals1,
   };
+  /*-
+   *  Each deposit of a coin another running position also holds counts
+   *  where its coins went (src/lib/deposit-attribution.js).
+   */
+  const shared = _attribution.depositAttribution(deps, residuals, decimals);
   _computeIL(
     snap,
     deps,
@@ -432,21 +444,12 @@ async function overridePnlWithRealValues(
     price1,
     position?.tokenId,
     decimals,
+    shared,
   );
-  if (deps._botState?.totalLifetimeDepositUsd > 0) {
-    /*-
-     *  With what polls have counted since the last move's count, which
-     *  the saved total does not hold yet (src/lib/counted-deposits.js).
-     */
-    const polled = pollDeposits(
-      deps._botState.lifetimeHodlAmounts,
-      deps._botState._depositOverlay,
-      decimals.decimals0,
-      decimals.decimals1,
-    );
-    snap.totalLifetimeDeposit =
-      deps._botState.totalLifetimeDepositUsd + polled.usd;
-    snap.depositUsedFallback = deps._botState.depositUsedFallback || false;
+  const deposit = _attribution.lifetimeDepositFigure(deps, decimals, shared);
+  if (deposit !== null) {
+    snap.totalLifetimeDeposit = deposit.total;
+    snap.depositUsedFallback = deposit.usedFallback;
   }
 }
 

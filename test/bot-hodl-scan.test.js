@@ -183,8 +183,9 @@ describe("computeAndCacheHodl — poolAddress ordering", () => {
 
 describe("computeAndCacheHodl — the compounds this install made", () => {
   /*-
-   *  The tally takes no compound this install made as money put in
-   *  (src/lib/lifetime-hodl.js), so it is handed the compound list as saved
+   *  The tally reads no receipt for a compound LP Ranger recorded, which
+   *  paid from the wallet (src/lib/lifetime-hodl.js), so it is handed the
+   *  compound list as saved
    *  when it runs: after this pass's rebuild of it, which keeps every
    *  compound the bot recorded.
    */

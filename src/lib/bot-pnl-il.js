@@ -75,9 +75,14 @@ function _first(vals) {
  * @param {object} snap  P&L snapshot, for its first closed period.
  * @param {{decimals0: number, decimals1: number}} [decimals]  The pool's
  *   token decimals; without them the polls' deposits are not added.
+ * @param {{amount0: number, amount1: number}} [shared]  The coins to add
+ *   once each deposit of a coin another running position holds counts
+ *   where its coins went (`depositAttribution`,
+ *   src/lib/deposit-attribution-inputs.js); negative where the position
+ *   lists more than its part.
  * @returns {{a0: number, a1: number}}
  */
-function _lifetimeAmounts(deps, snap, decimals) {
+function _lifetimeAmounts(deps, snap, decimals, shared) {
   const ltHodl = deps._botState?.lifetimeHodlAmounts;
   const bl = deps._botState?.hodlBaseline;
   const first = Array.isArray(snap.closedEpochs) ? snap.closedEpochs[0] : null;
@@ -95,7 +100,11 @@ function _lifetimeAmounts(deps, snap, decimals) {
       )
     : { amount0: 0, amount1: 0 };
   const sum = plusDeposits(held, polled);
-  return { a0: sum.amount0, a1: sum.amount1 };
+  const add = (v, d) => (typeof v === "number" ? v + (d ?? 0) : v);
+  return {
+    a0: add(sum.amount0, shared?.amount0),
+    a1: add(sum.amount1, shared?.amount1),
+  };
 }
 
 /**
@@ -233,10 +242,22 @@ function ilFigures({
  * @param {{decimals0: number, decimals1: number}} [decimals]  The pool's
  *   token decimals, for the coins the deposit count found and those the
  *   current NFT's compounds took from the wallet.
+ * @param {{amount0: number, amount1: number}} [shared]  The change to the
+ *   lifetime holding once each deposit of a coin another running position
+ *   holds counts where its coins went (`_lifetimeAmounts`).
  */
-function _computeIL(snap, deps, realValue, price0, price1, tokenId, decimals) {
+function _computeIL(
+  snap,
+  deps,
+  realValue,
+  price0,
+  price1,
+  tokenId,
+  decimals,
+  shared,
+) {
   const bl = deps._botState?.hodlBaseline;
-  const { a0, a1 } = _lifetimeAmounts(deps, snap, decimals);
+  const { a0, a1 } = _lifetimeAmounts(deps, snap, decimals, shared);
   const putIn = _coinsPutInSinceMint(deps, tokenId, decimals);
   const figures = ilFigures({
     lpValue: realValue,

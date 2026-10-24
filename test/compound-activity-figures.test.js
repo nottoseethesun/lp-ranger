@@ -297,6 +297,30 @@ describe("compoundHistoryFrom", () => {
     assert.equal(got[0].amount1FeesLeft, "0");
   });
 
+  it("keeps the deposit's block from the chain, and the wallet's coins before the collect the bot read", async () => {
+    /*-
+     *  Both say which deposits to the wallet the compound took
+     *  (src/lib/deposit-attribution.js); only the bot's record knows the
+     *  wallet's coins before the collect.
+     */
+    const onChain = { ...COMPOUND, blockNumber: 4321 };
+    const saved = [
+      {
+        ...COMPOUND,
+        trigger: "auto",
+        amount0Compounded: "2",
+        amount1Compounded: "4",
+        amount0WalletBefore: "500",
+        amount1WalletBefore: "0",
+      },
+    ];
+    const o = opts({ savedCompoundHistory: () => saved });
+    const got = await compoundHistoryFrom([onChain], events(), o);
+    assert.equal(got[0].blockNumber, 4321);
+    assert.equal(got[0].amount0WalletBefore, "500");
+    assert.equal(got[0].amount1WalletBefore, "0");
+  });
+
   it("writes a live entry's $usd at the rebuild's prices, without the compound's own", async () => {
     /*-
      *  The Activity Log marks an amount "(historical $usd)" while its

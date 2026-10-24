@@ -179,6 +179,7 @@ async function _depositApproved(signer, ethersLib, opts, approvalGasWei) {
     amount0Deposited,
     amount1Deposited,
     txHash: receipt.hash,
+    blockNumber: receipt.blockNumber,
     gasCostWei,
   };
 }
@@ -351,6 +352,20 @@ function _feeCoinsAfterSwap(collected, swap) {
 }
 
 /**
+ * The wallet's two coins before a compound's collect, as its record keeps
+ * them: digits of each coin's smallest unit, or nothing when not read.
+ *
+ * @param {{raw0: bigint, raw1: bigint}|undefined} walletBefore
+ * @returns {{amount0WalletBefore?: string, amount1WalletBefore?: string}}
+ */
+function _walletBeforeFields(walletBefore) {
+  const r0 = walletBefore?.raw0;
+  const r1 = walletBefore?.raw1;
+  if (typeof r0 !== "bigint" || typeof r1 !== "bigint") return {};
+  return { amount0WalletBefore: String(r0), amount1WalletBefore: String(r1) };
+}
+
+/**
  * What a completed compound reports: the transactions it sent, the coins
  * it put back into the position and their dollar value at this moment,
  * the fees among those coins, and the gas of every transaction it sent.
@@ -422,6 +437,14 @@ function _compoundedResult(opts, collected, swap, deposited, beforeDeposit) {
     depositedAmount0,
     depositedAmount1,
     ...compounded,
+    /*-
+     *  Where in the chain the deposit landed, and the wallet's two coins
+     *  before the collect: a deposit to the wallet still waiting there
+     *  is taken by this compound in proportion to its share of that
+     *  balance (src/lib/deposit-attribution.js).
+     */
+    depositBlock: deposited.blockNumber,
+    ..._walletBeforeFields(collected.walletBefore),
     liquidity: String(deposited.liquidity),
     usdValue,
     collectedUsd,

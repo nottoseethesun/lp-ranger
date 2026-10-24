@@ -19,7 +19,10 @@
  * back:
  *
  * - the deposits, from the epoch cache's `lifetimeHodlAmounts` for the
- *   pool, which the Lifetime scan has just written;
+ *   pool, which the Lifetime scan has just written, and, for a coin
+ *   another running position holds too, what the running positions'
+ *   deposits and moves show this rebalance took (`depositTakenAt`,
+ *   src/lib/deposit-attribution-inputs.js);
  * - this install's own records of its rebalances, from the rebalance log
  *   (`readLog`, handed in by the caller that owns it);
  * - the NFT events the pass read for its Lifetime scan (the pass's shared
@@ -42,6 +45,7 @@ const _epochCache = require("./epoch-cache");
 const { updateCachedEvents } = require("./pool-scanner");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { readBalanceAt } = require("./liquidity-pair-details");
+const { depositTakenAt } = require("./deposit-attribution-inputs");
 const { scanLogCtx } = require("./bot-recorder-lifetime");
 const {
   finishRebalanceFigures,
@@ -123,6 +127,11 @@ function _context(o, lifetimeHodl, label) {
         blockNumber: ev.blockNumber,
       }),
     getConfig: o.botState?._getConfig,
+    depositTakenAt: (block) =>
+      depositTakenAt(o.botState, o.events, block, {
+        decimals0: position.decimals0,
+        decimals1: position.decimals1,
+      }),
     onReadFailure: (ev, err) =>
       log.warn(
         "[bot] %s NFT #%s → #%s %s: could not read the wallet around this rebalance, so its Activity Log figures stay unknown: %s",

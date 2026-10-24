@@ -177,10 +177,11 @@ describe("cachedDepositFor", () => {
 
   /*-
    *  The deposit count records deposits as they arrive, each at its own
-   *  block and naming its transaction, and the Lifetime scan then counts
-   *  only what arrived after the count's last read. The rebalance's
-   *  deposit is both: the count's entries after the old NFT's mint, up
-   *  to the new one, and the scan's own at the mint.
+   *  block and naming its transaction, and the Lifetime scan then enters
+   *  what arrived after the count's last read the same way. The
+   *  rebalance's deposit is every such entry after the old NFT's mint, up
+   *  to the new one; in a list an earlier version saved, the scan's part
+   *  is one entry at the mint instead.
    */
   const counted = (raw0, block, tx) => ({
     raw0: String(raw0),
@@ -200,6 +201,21 @@ describe("cachedDepositFor", () => {
     ];
     assert.deepEqual(cachedDepositFor(hodl(deposits), MINT, 0, 0, 500), {
       amount0: 55,
+      amount1: 0,
+    });
+  });
+
+  it("takes every deposit between the two mints, the scan's entries as the count's", () => {
+    /*- The list the Lifetime scan writes holds no entry at the mint: each
+     *  deposit it found has an entry of its own, as the count's do. */
+    const deposits = [
+      counted(7, 400, "0xbefore"),
+      counted(30, 600, "0xcount"),
+      counted(12, 700, "0xscan"),
+      counted(90, MINT + 10, "0xafter"),
+    ];
+    assert.deepEqual(cachedDepositFor(hodl(deposits), MINT, 0, 0, 500), {
+      amount0: 42,
       amount1: 0,
     });
   });

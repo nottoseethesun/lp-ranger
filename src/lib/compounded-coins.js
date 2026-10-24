@@ -36,8 +36,9 @@
  * Every figure that counts compounds reads them through `compoundedUnits`
  * or `compoundedCoins`: the record's fees when it has them, else the whole
  * deposit, as for a compound made before the readings were kept or not by
- * this install. The Lifetime scan counts no compound this install made as
- * money put in (`recordedCompounds`, src/lib/lifetime-hodl.js).
+ * this install. The Lifetime scan counts no addition the wallet paid for as
+ * money put in, and reads no receipt for the compounds `recordedCompounds`
+ * names, which LP Ranger made from the wallet (src/lib/lifetime-hodl.js).
  *
  * The rest of such a deposit, the wallet's coins it took in beyond its
  * fees, went into the NFT after its mint (`walletCoinsPutIn`). The

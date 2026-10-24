@@ -34,10 +34,17 @@
  * counts deposits: for each mint, the coins that came into the wallet
  * from outside since the mint before it, kept in the epoch cache as
  * `lifetimeHodlAmounts.deposits` (src/lib/lifetime-hodl.js). A rebalance's
- * are the deposits recorded after the old NFT's mint and up to the new
- * NFT's: the deposit count's entries, each at its own block
- * (src/lib/deposit-count.js), and the one the Lifetime scan tags `fresh` at
- * the mint block for whatever arrived after the count's last read. They
+ * are the deposits entered after the old NFT's mint and up to the new
+ * NFT's, each at its own block and naming its transaction: the deposit
+ * count's, recorded as they arrived (src/lib/deposit-count.js), and the
+ * Lifetime scan's, for whatever arrived after the count's last read. A
+ * deposit of a coin another managed position also holds counts for the
+ * rebalance only as far as it was still waiting in the wallet at the
+ * mint, whichever position listed it: one may have gone into the other
+ * position's NFT first (src/lib/deposit-attribution.js). A
+ * list an earlier version saved holds the scan's part instead as one
+ * entry at the mint's block, tagged `fresh`, or untagged from before
+ * entries carried a kind. They
  * are capped, coin by coin, at what the wallet held before the drain,
  * because a deposit a compound has since swept into the position is no
  * longer in the wallet; it came out with the old NFT's coins and belongs
@@ -163,19 +170,27 @@ function activityFieldsOf(result) {
 
 /**
  * The deposit the Lifetime accounting counted for a mint, in whole coins,
- * or null when that accounting has not reached the mint yet: the deposit
- * count's entries after the old NFT's mint, up to this one, and the
- * Lifetime scan's own entry at this mint.
+ * or null when that accounting has not reached the mint yet: the entries
+ * naming their transaction after the old NFT's mint, up to this one, the
+ * deposit count's and the Lifetime scan's alike, and, in a list an
+ * earlier version saved, the entry it summed at this mint's block.
  *
  * @param {object|null|undefined} lifetimeHodl  The epoch cache's
  *   `lifetimeHodlAmounts`: `deposits` (each `{raw0, raw1, block, kind}`,
- *   with `txHash` when the deposit count recorded it) and `lastBlock`,
- *   the latest mint its deposits cover.
+ *   with `txHash` for a deposit entered on its own, and for an addition
+ *   another wallet paid for, which never reached the wallet and is left
+ *   out here) and `lastBlock`, the latest mint its deposits cover.
  * @param {number} mintBlock  The rebalance's mint block.
  * @param {number} decimals0  Token0's decimals.
  * @param {number} decimals1  Token1's decimals.
- * @param {number} [priorMintBlock]  The old NFT's mint block. The count's
+ * @param {number} [priorMintBlock]  The old NFT's mint block. The
  *   entries before it were swept into an earlier mint.
+ * @param {{amount0: number, amount1: number}|null} [taken]  The deposits
+ *   this rebalance took, as the running positions' deposits and moves
+ *   show them (`depositTakenAt`, src/lib/deposit-attribution-inputs.js),
+ *   in place of the entries this position lists between the two mints: a
+ *   deposit of a coin another position holds may have gone into that
+ *   position's NFT first, or been listed only by it.
  * @returns {{amount0: number, amount1: number}|null}  Zero coins when the
  *   mint took in no deposit.
  */
@@ -185,6 +200,7 @@ function cachedDepositFor(
   decimals0,
   decimals1,
   priorMintBlock = 0,
+  taken = null,
 ) {
   if (!isPlainObject(lifetimeHodl)) return null;
   const covered = lifetimeHodl.lastBlock;
@@ -194,9 +210,10 @@ function cachedDepositFor(
     (d) => isPlainObject(d) && !isCountedEntry(d) && d.block === mintBlock,
   );
   /*-
-   *  A deposit counted before entries carried a kind has none. The first
-   *  one counted for a block is the mint's own, since the deposits added
-   *  to an NFT later are counted after it.
+   *  Only a list an earlier version saved holds such an entry. One
+   *  counted before entries carried a kind has none; the first one
+   *  counted for a block is the mint's own, since the deposits added to
+   *  an NFT later are counted after it.
    */
   const fresh =
     atMint.find((d) => d.kind === "fresh") ??
@@ -206,14 +223,16 @@ function cachedDepositFor(
     fresh === undefined
       ? zero
       : (coinsFromUnits(fresh.raw0, fresh.raw1, decimals0, decimals1) ?? zero);
-  const counted = countedCoinsAfter(
-    lifetimeHodl,
-    null,
-    priorMintBlock,
-    decimals0,
-    decimals1,
-    mintBlock,
-  );
+  const counted = isCoinPair(taken)
+    ? taken
+    : countedCoinsAfter(
+        lifetimeHodl,
+        null,
+        priorMintBlock,
+        decimals0,
+        decimals1,
+        mintBlock,
+      );
   return {
     amount0: lump.amount0 + counted.amount0,
     amount1: lump.amount1 + counted.amount1,
@@ -413,6 +432,16 @@ function _priorMintOf(ev, chainEvents) {
 }
 
 /**
+ * The deposits a rebalance took, as the caller's view of the running
+ * positions shows them, or null when it has none (`cachedDepositFor`).
+ */
+function _depositTaken(ctx, ev) {
+  return typeof ctx.depositTakenAt === "function"
+    ? ctx.depositTakenAt(ev.blockNumber)
+    : null;
+}
+
+/**
  * A stored Historical figure, or null when what is stored is a dash: a
  * price was missing when it was worked out, so it is worked out again.
  */
@@ -435,6 +464,7 @@ async function _finishOne(ev, ctx) {
     ctx.decimals0,
     ctx.decimals1,
     _priorMintOf(ev, ctx.chainEvents),
+    _depositTaken(ctx, ev),
   );
   if (deposit === null) return null;
   const logged = ctx.logged.get(String(ev.newTokenId));
@@ -480,6 +510,10 @@ async function _finishOne(ev, ctx) {
  *   ctx.historicalPrices  The two coins' prices at an event's mint.
  * @param {Function} [ctx.getConfig]  The position's settings, for the
  *   price overrides.
+ * @param {(block: number) => ({amount0: number, amount1: number}|null)}
+ *   [ctx.depositTakenAt]  The deposits the rebalance minting at a block
+ *   took, where the running positions' deposits show them
+ *   (`cachedDepositFor`).
  * @param {Function} [ctx.onReadFailure]  Told of each failed reading.
  * @param {Function} [ctx.onFinishFailure]  Told of each event a failure
  *   left due, such as a price lookup that threw.

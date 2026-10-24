@@ -321,9 +321,12 @@ function _amountOf(compound, earlier, pricesKnown) {
  * The fees a compound's deposit put back, and those it left in the
  * wallet, as the bot's record of it names them, for a rebuilt entry to
  * keep: the chain shows only the whole deposit (src/lib/compounded-coins.js).
+ * With them, the wallet's two coins before the collect, as the bot read
+ * them.
  * @param {object|undefined} saved  The bot's record of the compound.
  * @returns {{amount0Compounded?: string, amount1Compounded?: string,
- *   amount0FeesLeft?: string, amount1FeesLeft?: string}}
+ *   amount0FeesLeft?: string, amount1FeesLeft?: string,
+ *   amount0WalletBefore?: string, amount1WalletBefore?: string}}
  */
 function _feesKept(saved) {
   if (saved?.amount0Compounded === undefined) return {};
@@ -338,6 +341,15 @@ function _feesKept(saved) {
   ) {
     kept.amount0FeesLeft = saved.amount0FeesLeft;
     kept.amount1FeesLeft = saved.amount1FeesLeft;
+  }
+  /*- The wallet's two coins before the collect, which the chain cannot
+   *  give back (src/lib/deposit-attribution.js). */
+  if (
+    saved.amount0WalletBefore !== undefined &&
+    saved.amount1WalletBefore !== undefined
+  ) {
+    kept.amount0WalletBefore = saved.amount0WalletBefore;
+    kept.amount1WalletBefore = saved.amount1WalletBefore;
   }
   return kept;
 }
@@ -362,6 +374,9 @@ function _entryOf(compound, saved, chainFigures, amount) {
     timestamp: compound.timestamp || null,
     txHash: compound.txHash || null,
     tokenId: compound.tokenId,
+    ...(Number.isInteger(compound.blockNumber)
+      ? { blockNumber: compound.blockNumber }
+      : {}),
     amount0Deposited: compound.amount0Deposited,
     amount1Deposited: compound.amount1Deposited,
     ..._feesKept(saved),
