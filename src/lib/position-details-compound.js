@@ -12,6 +12,9 @@
  *   - `savedFeesLeftUsd`: the fees the NFT's compounds collected and
  *     left in the wallet, from the same list, which the Current panel
  *     counts among the NFT's fees.
+ *   - `savedDepositAdded`: what Initial Deposit for This LP adds to the
+ *     NFT's minted coins for the wallet's coins its compounds took in,
+ *     from the same list (src/lib/current-lp-deposit.js).
  *
  *   Nothing here walks the rebalance chain. An unmanaged position shows
  *   no Lifetime panel, so the chain-wide classification that produced its
@@ -34,6 +37,8 @@ const {
   walletCoinsPutIn,
   feesLeftInWallet,
 } = require("./compounded-coins");
+const { compoundPricesFor } = require("./compound-activity-figures");
+const { addedByCompounds } = require("./current-lp-deposit");
 const {
   mintBlocksByTokenId,
   scanFloorFor,
@@ -200,9 +205,43 @@ function savedFeesLeftUsd(diskConfig, posKey, tokenId, ps, price0, price1) {
   return coinsToUsd(left, price0, price1);
 }
 
+/**
+ * What Initial Deposit for This LP adds to the NFT's minted coins: the
+ * wallet's coins its compounds took in beyond their fees, from the
+ * compound list the bot saved while it managed the position, each at its
+ * compound's prices (src/lib/current-lp-deposit.js). The figure the bot
+ * shows for the same NFT (src/lib/bot-pnl-current-nft.js); none for a
+ * position the bot never managed.
+ *
+ * @param {object} diskConfig  Loaded bot config.
+ * @param {string} posKey      Composite key for the position.
+ * @param {object} position    The position: `tokenId`, `token0`, `token1`.
+ * @param {{decimals0: number, decimals1: number, poolAddress: string}} ps
+ *   The pool's state.
+ * @param {{price0: number, price1: number}} today  This answer's prices.
+ * @returns {Promise<{usd: number, fallback: boolean}>}
+ */
+function savedDepositAdded(diskConfig, posKey, position, ps, today) {
+  const pos = getPositionConfig(diskConfig, posKey);
+  const pricesAt = compoundPricesFor(
+    position,
+    null,
+    { poolAddress: ps.poolAddress },
+    false,
+  );
+  return addedByCompounds(
+    pos?.compoundHistory,
+    position.tokenId,
+    ps,
+    pricesAt,
+    today,
+  );
+}
+
 module.exports = {
   _detectCurrentNftValues,
   savedNftCompoundedUsd,
   savedWalletCoinsPutIn,
   savedFeesLeftUsd,
+  savedDepositAdded,
 };

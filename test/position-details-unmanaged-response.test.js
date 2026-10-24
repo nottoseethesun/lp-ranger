@@ -125,6 +125,8 @@ function load(cachedEpochs) {
       savedWalletCoinsPutIn: () => ({ amount0: 3, amount1: 4 }),
       // The fees they left in the wallet, from the same list.
       savedFeesLeftUsd: () => 2.25,
+      // What Initial Deposit for This LP adds for those wallet coins.
+      savedDepositAdded: async () => ({ usd: 6.5, fallback: true }),
     },
     "./resolve-position-symbols": { resolvePositionSymbols: async () => {} },
     "./bot-pnl-initial-residual": {
@@ -188,6 +190,12 @@ describe("the unmanaged details response", () => {
       2.25,
       "the fees the NFT's compounds left in the wallet, as the bot reports them",
     );
+    assert.equal(
+      r.pnlSnapshot.currentDepositAddedUsd,
+      6.5,
+      "what Initial Deposit for This LP adds, as the bot reports it",
+    );
+    assert.equal(r.pnlSnapshot.currentDepositAddedFallback, true);
   });
 
   it("returns the rebalance events the table renders", async () => {

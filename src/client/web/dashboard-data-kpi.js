@@ -48,6 +48,7 @@ const _ltBreakdown = {
 const _curBreakdown = {
   fees: 0,
   compounded: 0,
+  feesLeft: 0,
   gas: 0,
   priceChange: 0,
   residual: 0,
@@ -230,7 +231,7 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   setKpiValue("pnlCompounded", curCompounded > 0 ? curCompounded : null);
   /*- The fees this NFT's compounds collected and could not put back,
    *  waiting in the wallet: in neither row above, nor in the IL/G, so
-   *  Profit adds them here. */
+   *  Profit adds them here, and Net P&L below. */
   const curLeft = d.pnlSnapshot.currentFeesLeftUsd || 0;
   setKpiValue("pnlFeesLeft", curLeft > 0 ? curLeft : null);
   /*-
@@ -253,12 +254,14 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   Object.assign(_curBreakdown, {
     fees: curFees,
     compounded: curCompounded,
+    feesLeft: curLeft,
     gas: curGas,
     priceChange: curPc,
     realized: curRealized,
     /*- No subtraction: `curFees` is unclaimed only, and the compounded
-     *  part is already inside `currentValue`, which `curPc` measures. */
-    total: curPc + curFees + curRealized,
+     *  part is already inside `currentValue`, which `curPc` measures. The
+     *  fees left in the wallet are outside it (`_resolveKpiTotals`). */
+    total: curPc + curFees + curRealized + curLeft,
     currentValue: cv,
     deposit,
   });
@@ -306,12 +309,19 @@ export function _resolveLifetimeDeposit(d) {
 export function _resolveCurDeposit(d) {
   const saved = loadCurDeposit();
   if (saved > 0) return saved;
+  return d._hasPositionData ? _detectedCurDeposit(d) : 0;
+}
+/**
+ * Initial Deposit for This LP as the bot detects it: the coins the NFT
+ * was minted with, at its mint's prices (at the prices when the bot
+ * started, where those are missing), and the wallet's coins its
+ * compounds took in beyond their fees, each at its compound's prices
+ * (`currentDepositAddedUsd`, src/lib/current-lp-deposit.js).
+ */
+function _detectedCurDeposit(d) {
   const bl = d.hodlBaseline?.entryValue || 0;
-  return d._hasPositionData
-    ? bl > 0
-      ? bl
-      : d.pnlSnapshot?.liveEpoch?.entryValue || 0
-    : 0;
+  const minted = bl > 0 ? bl : d.pnlSnapshot?.liveEpoch?.entryValue || 0;
+  return minted > 0 ? minted + (d.pnlSnapshot?.currentDepositAddedUsd || 0) : 0;
 }
 export function _priceChangePnl(d, deposit) {
   if (!d.pnlSnapshot || deposit <= 0) return 0;
@@ -350,11 +360,17 @@ export function _resolveKpiTotals(d) {
    *  from the initial mint does not inflate profit. Frozen valuation
    *  preserves credit for any subsequent appreciation of those tokens. */
   const ltInitialResidual = d.pnlSnapshot?.initialResidualUsd || 0;
+  /*- The fees this NFT's compounds left in the wallet: earned, and not
+   *  inside `currentValue` until a later compound sweeps them in, when
+   *  the deposit counts them among the coins it took (`curDep`), so they
+   *  count once either way. */
+  const curLeft = d.pnlSnapshot?.currentFeesLeftUsd || 0;
   return {
     /*- Unclaimed fees only. Compounded ones are already inside
      *  `currentValue`, which `curPc` measures, so adding them here would
      *  count them twice — see `_currentUnclaimedFees`. */
-    curTotal: curPc + _currentUnclaimedFees(d, curCompounded) + curRealized,
+    curTotal:
+      curPc + _currentUnclaimedFees(d, curCompounded) + curRealized + curLeft,
     /*-
      *  Lifetime, the same way: every fee the chain has collected,
      *  compounded or re-minted at a rebalance, is already inside
@@ -498,13 +514,13 @@ export function _updateKpis(d) {
       d.pnlSnapshot?.depositUsedFallback,
     );
   }
-  // Historical price fetch succeeded if hodlBaseline.entryValue > 0;
-  // otherwise we fall back to liveEpoch.entryValue (current price at bot start).
-  const histOk = d.hodlBaseline?.entryValue > 0;
-  refreshCurDepositDisplay(
-    d.hodlBaseline?.entryValue || d.pnlSnapshot?.liveEpoch?.entryValue || 0,
-    !histOk,
-  );
+  /*- Historical prices found if hodlBaseline.entryValue > 0, else the
+   *  minted coins are at the prices when the bot started; and a compound
+   *  whose own prices are missing is valued at today's. */
+  const histOk =
+    d.hodlBaseline?.entryValue > 0 &&
+    d.pnlSnapshot?.currentDepositAddedFallback !== true;
+  refreshCurDepositDisplay(_detectedCurDeposit(d), !histOk);
 }
 /** A Profit card with no figure: a dash, coloured as neither gain nor loss. */
 function _dashProfitKpi(el) {

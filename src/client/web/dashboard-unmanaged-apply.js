@@ -171,7 +171,10 @@ export function _applyCurrentKpis(d) {
   // is consistent with the managed-view flow (which uses _updatePnlHeader
   // / _updateCurIL). Without these, the spans remain empty and the row
   // visually collapses to value + info icon only.
-  const curDep = d.baselineEntryValue || d.entryValue || 0;
+  /*- The deposit `netPnl` was worked out against: a figure the operator
+   *  typed, else the minted coins with what the NFT's compounds took in
+   *  from the wallet (src/lib/current-lp-deposit.js). */
+  const curDep = d.entryValue || d.baselineEntryValue || 0;
   _setPctSpan("kpiPnlPctVal", d.netPnl ?? 0, curDep);
   _setAprSpan("kpiPnlApr", d.netPnl ?? 0, curDep, d.mintDate || null);
   _setPctSpan("curILPct", d.il ?? 0, curDep);

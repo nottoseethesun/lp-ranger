@@ -23,6 +23,8 @@ const { ilFigures } = require("./bot-pnl-il");
 const {
   savedNftCompoundedUsd,
   savedWalletCoinsPutIn,
+  savedFeesLeftUsd,
+  savedDepositAdded,
 } = require("./position-details-compound");
 const { plusDeposits } = require("./counted-deposits");
 const {
@@ -174,6 +176,7 @@ function _currentPnl(
   residuals,
   compoundedUsd,
   putIn,
+  feesLeftUsd = 0,
 ) {
   const rUsd = residuals?.usd || 0;
   const pgl = entryValue > 0 ? value - entryValue : null;
@@ -203,7 +206,10 @@ function _currentPnl(
     value,
     priceGainLoss: pgl,
     il,
-    netPnl: entryValue > 0 ? (pgl || 0) + feesUsd : null,
+    /*- With the fees this NFT's compounds left in the wallet, earned but
+     *  outside Current Value, as the dashboard counts them for a managed
+     *  position (`_resolveKpiTotals`, src/client/web/dashboard-data-kpi.js). */
+    netPnl: entryValue > 0 ? (pgl || 0) + feesUsd + feesLeftUsd : null,
     residualValueUsd: rUsd,
     residualUsd0: residuals?.usd0 || 0,
     residualUsd1: residuals?.usd1 || 0,
@@ -332,7 +338,7 @@ async function _resolveEntryValue(
     baseline?.entryValue,
     entryValue,
   );
-  return { baseline, entryValue };
+  return { baseline, entryValue, typedIn: deposit > 0 };
 }
 
 /** Summarize baseline for client consumption. */
@@ -391,13 +397,26 @@ async function computeQuickDetails(
     poolShare0Pct,
     poolShare1Pct,
   } = await _fetchPoolData(provider, ethersLib, body, privateKey, saved);
-  const { baseline, entryValue } = await _resolveEntryValue(
+  const resolved = await _resolveEntryValue(
     provider,
     ethersLib,
     position,
     posKey,
     diskConfig,
   );
+  const { baseline } = resolved;
+  /*- Initial Deposit for This LP: a figure the operator typed in, else the
+   *  minted coins with the wallet's coins the NFT's compounds took in
+   *  beyond their fees, each at its compound's prices, as the dashboard
+   *  counts it for a managed position (src/lib/current-lp-deposit.js). */
+  const added = await savedDepositAdded(diskConfig, posKey, position, ps, {
+    price0,
+    price1,
+  });
+  const entryValue =
+    resolved.typedIn || resolved.entryValue <= 0
+      ? resolved.entryValue
+      : resolved.entryValue + added.usd;
   const residuals = await _walletResiduals(
     provider,
     ethersLib,
@@ -406,6 +425,14 @@ async function computeQuickDetails(
     price0,
     price1,
     body.walletAddress || "",
+  );
+  const feesLeftUsd = savedFeesLeftUsd(
+    diskConfig,
+    posKey,
+    position.tokenId,
+    ps,
+    price0,
+    price1,
   );
   const cur = _currentPnl(
     baseline,
@@ -417,6 +444,7 @@ async function computeQuickDetails(
     residuals,
     savedNftCompoundedUsd(diskConfig, posKey, position.tokenId, price0, price1),
     savedWalletCoinsPutIn(diskConfig, posKey, position.tokenId, ps),
+    feesLeftUsd,
   );
   const poolState = {
     tick: ps.tick,

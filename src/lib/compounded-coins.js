@@ -268,13 +268,34 @@ function _beyondFees(deposited, fees) {
 }
 
 /**
- * The wallet's coins the compounds of one NFT took in beyond their fees,
- * in whole coins: a deposit the owner made, coins a rebalance left, fees
- * an earlier compound left behind. They went into the NFT after its mint.
+ * The wallet's coins one compound took in beyond its fees, in whole
+ * coins: a deposit the owner made, coins a rebalance left, fees an earlier
+ * compound left behind. Null when its record does not tell its fees apart
+ * from the rest of its deposit: such a compound counts its whole deposit
+ * as Fees Compounded (`compoundedUnits`), so it took nothing here.
  *
- * Only a compound that told its fees apart names them; any other counts
- * its whole deposit as Fees Compounded (`compoundedUnits`), so it took
- * nothing here.
+ * @param {object} compound  One entry of the position's compound list.
+ * @param {number} d0  Token0's decimals.
+ * @param {number} d1  Token1's decimals.
+ * @returns {{amount0: number, amount1: number}|null}
+ */
+function walletCoinsOf(compound, d0, d1) {
+  const fee0 = _units(compound.amount0Compounded);
+  const fee1 = _units(compound.amount1Compounded);
+  const dep0 = _units(compound.amount0Deposited);
+  const dep1 = _units(compound.amount1Deposited);
+  if (fee0 === null || fee1 === null || dep0 === null || dep1 === null)
+    return null;
+  return {
+    amount0: Number(_beyondFees(dep0, fee0)) / 10 ** d0,
+    amount1: Number(_beyondFees(dep1, fee1)) / 10 ** d1,
+  };
+}
+
+/**
+ * The wallet's coins the compounds of one NFT took in beyond their fees,
+ * in whole coins (`walletCoinsOf`, summed). They went into the NFT after
+ * its mint.
  *
  * @param {object[]|undefined} history  The position's compound list.
  * @param {string|number} tokenId  The NFT.
@@ -287,14 +308,10 @@ function walletCoinsPutIn(history, tokenId, d0, d1) {
   let amount1 = 0;
   for (const c of Array.isArray(history) ? history : []) {
     if (!isPlainObject(c) || String(c.tokenId) !== String(tokenId)) continue;
-    const fee0 = _units(c.amount0Compounded);
-    const fee1 = _units(c.amount1Compounded);
-    const dep0 = _units(c.amount0Deposited);
-    const dep1 = _units(c.amount1Deposited);
-    if (fee0 === null || fee1 === null || dep0 === null || dep1 === null)
-      continue;
-    amount0 += Number(_beyondFees(dep0, fee0)) / 10 ** d0;
-    amount1 += Number(_beyondFees(dep1, fee1)) / 10 ** d1;
+    const coins = walletCoinsOf(c, d0, d1);
+    if (coins === null) continue;
+    amount0 += coins.amount0;
+    amount1 += coins.amount1;
   }
   return { amount0, amount1 };
 }
@@ -331,6 +348,7 @@ module.exports = {
   recordedCompounds,
   compoundedUnits,
   compoundedCoins,
+  walletCoinsOf,
   walletCoinsPutIn,
   feesLeftInWallet,
 };

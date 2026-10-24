@@ -128,6 +128,61 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     assert.strictEqual(snap.currentCompoundedUsd, 8, "the coins put back");
   });
 
+  it("publishes what Initial Deposit for This LP adds for the wallet's coins its compounds took in, each at its compound's prices", async () => {
+    /*-
+     *  The first compound deposited 10 of token0 and took 6 of it as its
+     *  fees, so 4 came from the wallet, at the $3 recorded with it. The
+     *  second recorded no prices and none is found here, so its 2 coins
+     *  go in at today's $2, flagged. One that tells no fees apart, and
+     *  another NFT's, add nothing.
+     */
+    const snap = {};
+    const deps = {
+      _botState: {
+        nftGasWeiByTokenId: { 12345: "1000000000000000" },
+        nftCompoundedAmountsByTokenId: { 12345: { amount0: 0, amount1: 0 } },
+        compoundHistory: [
+          {
+            tokenId: "12345",
+            amount0Deposited: "10",
+            amount1Deposited: "0",
+            amount0Compounded: "6",
+            amount1Compounded: "0",
+            price0: 3,
+            price1: 1,
+          },
+          {
+            tokenId: "12345",
+            amount0Deposited: "2",
+            amount1Deposited: "0",
+            amount0Compounded: "0",
+            amount1Compounded: "0",
+          },
+          { tokenId: "12345", amount0Deposited: "50", amount1Deposited: "0" },
+          {
+            tokenId: "999",
+            amount0Deposited: "9",
+            amount1Deposited: "0",
+            amount0Compounded: "0",
+            amount1Compounded: "0",
+            price0: 3,
+            price1: 1,
+          },
+        ],
+      },
+      _lastPrice0: 2,
+      _lastPrice1: 1,
+    };
+    await applyCurrentNftFigures(
+      snap,
+      deps,
+      { tokenId: 12345 },
+      { decimals0: 0, decimals1: 0 },
+    );
+    assert.strictEqual(snap.currentDepositAddedUsd, 12 + 4);
+    assert.strictEqual(snap.currentDepositAddedFallback, true);
+  });
+
   it("derives compounded from compoundHistory when comp cache missing", async () => {
     const snap = {};
     const deps = {

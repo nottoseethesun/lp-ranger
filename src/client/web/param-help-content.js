@@ -1478,13 +1478,19 @@ export function buildParamHelp(f) {
             "back, but the deposit can take only what fits the range at " +
             "today&rsquo;s price. What it cannot take stays in the wallet. " +
             "Those coins are fees this NFT earned, so they count here, and " +
-            "<strong>Profit</strong> adds them. They are not on the " +
+            "<strong>Profit</strong> and <strong>Net Profit and Loss " +
+            "Return</strong> add them. They are not on the " +
             "<strong>Fees Earned</strong> line, since they were collected, " +
             "nor on <strong>Fees Compounded</strong>, since they did not go " +
             "back in.<br><br>" +
-            "The next rebalance mints them into the new NFT along with the " +
-            "rest of the wallet&rsquo;s coins of the pool, and the new " +
-            "NFT&rsquo;s panel starts again from its own mint.",
+            "A later compound whose swap runs can sweep them into this " +
+            "NFT with the rest of the wallet&rsquo;s coins of the pool; " +
+            "<strong>Initial Deposit for This LP</strong> then counts " +
+            "them among the coins it took, so Net Profit and Loss Return " +
+            "still counts them once. The next rebalance mints them into " +
+            "the new NFT along with the rest of the wallet&rsquo;s coins " +
+            "of the pool, and the new NFT&rsquo;s panel starts again from " +
+            "its own mint.",
         },
         {
           heading: "When it reads zero",
@@ -1681,9 +1687,17 @@ export function buildParamHelp(f) {
         {
           heading: "What it does",
           body:
-            "The USD value of the tokens you deposited when creating this " +
-            "specific LP position: the baseline for this position&rsquo;s " +
-            "Net P&amp;L in the Current panel.",
+            "The USD value of the coins put into this specific LP " +
+            "position: the baseline for this position&rsquo;s Net P&amp;L " +
+            "in the Current panel. It counts the coins the position was " +
+            "minted with, at the prices of its mint, and the coins its " +
+            "compounds later took in from the wallet beyond their fees, " +
+            "each at the prices of that compound. A compound whose swap " +
+            "runs deposits the wallet&rsquo;s whole balance of the " +
+            "pool&rsquo;s two coins, so it can take in a deposit you sent " +
+            "to the wallet, or coins a rebalance left there. Those coins " +
+            "were put in, not earned, so they are counted here rather " +
+            "than as gain.",
         },
         {
           heading: "When to edit",
@@ -1691,7 +1705,8 @@ export function buildParamHelp(f) {
             "The bot auto-detects this from on-chain data using historical " +
             "token prices.  Edit manually only if the auto-detected value " +
             "is clearly wrong (e.g. for meme tokens with unreliable price " +
-            "feeds).",
+            "feeds). A value you type replaces the whole figure, the " +
+            "coins later compounds took in included.",
         },
         {
           heading: "Buttons on the edit dialog",
@@ -1705,13 +1720,18 @@ export function buildParamHelp(f) {
         {
           heading: "How it affects P&L",
           body:
-            "Net P&amp;L = Current Position Value + Fees Earned + Realized " +
-            "Gains &minus; Initial Deposit for This LP. " +
+            "Net P&amp;L = Current Position Value + Fees Earned + Fees Left " +
+            "Over + Realized Gains &minus; Initial Deposit for This LP. " +
             "Fees Compounded are not added in: they were reinvested as " +
             "additional liquidity, so they are already inside the Current " +
             "Position Value, and <strong>Fees Earned</strong> counts only " +
             "what is still unclaimed. Counting them again would " +
-            "double-count them. A higher deposit value lowers your " +
+            "double-count them. <strong>Fees Left Over</strong>, which a " +
+            "compound collected and could not put back, wait in the " +
+            "wallet, outside the Current Position Value, so they are " +
+            "added. When a later compound sweeps them into the position, " +
+            "this deposit counts them among the coins it took, so they " +
+            "still count once. A higher deposit value lowers your " +
             "reported profit; a lower value inflates it.",
         },
       ],

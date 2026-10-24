@@ -42,6 +42,7 @@ const {
   savedNftCompoundedUsd,
   savedWalletCoinsPutIn,
   savedFeesLeftUsd,
+  savedDepositAdded,
 } = require("./position-details-compound");
 const { resolvePositionSymbols } = require("./resolve-position-symbols");
 const { applyInitialResidualFromCache } = require("./bot-pnl-initial-residual");
@@ -372,6 +373,16 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
       price0,
       price1,
     );
+  /*- And what Initial Deposit for This LP adds for the wallet's coins the
+   *  NFT's compounds took in, which the bot sets beside it. */
+  if (snap) {
+    const added = await savedDepositAdded(diskConfig, posKey, position, ps, {
+      price0,
+      price1,
+    });
+    snap.currentDepositAddedUsd = added.usd;
+    snap.currentDepositAddedFallback = added.fallback;
+  }
   /*-
    *  Exactly what an unmanaged position displays: the Rebalance Events
    *  table, and the Current panel's Fees Compounded and Gas. Lifetime

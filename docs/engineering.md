@@ -1531,10 +1531,34 @@ The Current panel shows them on its Fees Left Over line, from
 `src/lib/bot-pnl-current-nft.js`, the unmanaged view from the saved list),
 and a managed position's Profit adds them, since they are in neither fee
 line and the Current IL/G counts no coin in the wallet; an unmanaged
-position shows no Profit. Net P&L does not count them, since a later
-compound can sweep them into the position, which Current Value then
-holds. The Lifetime IL/G still counts them as the wallet's coins until a
-rebuild of the compound list counts every fee collected.
+position shows no Profit. The Current panel's Net P&L adds them too,
+for both views, since they are outside Current Value. A later compound
+can sweep them into the position, which Current Value then holds, but
+Initial Deposit for This LP then counts them among the wallet's coins
+that compound took (**The Current panel's deposit**, below), so they
+still count once. The Lifetime IL/G still counts them as the wallet's
+coins until a rebuild of the compound list counts every fee collected.
+
+**The Current panel's deposit.** Initial Deposit for This LP, which the
+Current panel's Net P&L subtracts, is the coins the NFT was minted with,
+at its mint's prices, and the wallet's coins its compounds took in
+beyond their fees, each at that compound's prices
+(`src/lib/current-lp-deposit.js`). A compound whose swap runs deposits
+the wallet's whole balance of the pool's two coins, so it can take in a
+deposit the owner sent or a rebalance's leftovers; those coins were put
+into the NFT after its mint, and left out of the deposit they would read
+as the NFT's gain in Net P&L until the next rebalance. A compound's
+prices are the ones the
+bot recorded with it, else the price cache's at its block, as a rebuild
+of the compound list prices it (`compoundPricesFor`; a rebuild keeps no
+compound's prices), else today's, which flags the deposit as the mint's
+own missing price does. A compound whose record does not tell its fees
+apart adds nothing (`walletCoinsOf`). The bot publishes the addition as
+`currentDepositAddedUsd`, with `currentDepositAddedFallback`
+(`src/lib/bot-pnl-current-nft.js`); the unmanaged view works it out from
+the compound list the bot saved (`savedDepositAdded`), in its first
+step's Net P&L and on its second step's snapshot. A deposit the operator
+types in replaces the whole figure.
 
 **A deposit that lands while the compound runs.** The owner's coins can
 reach the wallet between the two readings, while the collect or the
@@ -1566,7 +1590,7 @@ readings alone to decide.
   them, in the position's value, until Re-scan Prices or Reload Current
   Position rebuilds the compound list, whose total is every fee
   collected. The Current panel shows them on its Fees Left Over line,
-  which its Profit adds.
+  which its Profit and its Net P&L add.
 
 ---
 

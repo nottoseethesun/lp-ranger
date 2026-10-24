@@ -167,13 +167,14 @@ function _buildPnlTable(b, feesLabel, isLifetime) {
     set("gas", "\u2212" + f(b.gas));
   } else {
     /*-
-     *  Current: Net P&L is Price Change + Fees Earned + Realized Gains.
-     *  Fees Compounded and Gas are shown for reference, unsigned, since
-     *  neither enters the total (`_resolveKpiTotals`).
+     *  Current: Net P&L is Price Change + Fees Earned + Fees Left Over +
+     *  Realized Gains. Fees Compounded and Gas are shown for reference,
+     *  unsigned, since neither enters the total (`_resolveKpiTotals`).
      */
     set("feesLabel", feesLabel);
     set("fees", f(b.fees));
     set("compounded", f(b.compounded));
+    set("feesLeft", f(b.feesLeft || 0));
     set("gas", f(b.gas));
   }
   set("priceChange", f(b.priceChange));

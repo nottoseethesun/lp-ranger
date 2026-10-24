@@ -3,9 +3,11 @@
  * @module bot-pnl-current-nft
  * @description
  *   Current-panel per-NFT figures for the Managed dashboard:
- *   "Fees Compounded", the fees its compounds left in the wallet, and
- *   "Gas".  Each must match what the Unmanaged view reports for the same
- *   NFT (see `position-details-compound.js` and `position-details.js`).
+ *   "Fees Compounded", the fees its compounds left in the wallet, what
+ *   Initial Deposit for This LP adds for the wallet's coins its compounds
+ *   took in (src/lib/current-lp-deposit.js), and "Gas".  Each must match
+ *   what the Unmanaged view reports for the same NFT (see
+ *   `position-details-compound.js` and `position-details.js`).
  *
  *   Lives outside `bot-pnl-updater.js` so the heavy `compounder` require
  *   chain (ethers Interface construction at module-load) doesn't get
@@ -28,6 +30,8 @@ const {
   recordedCompounds,
   feesLeftInWallet,
 } = require("./compounded-coins");
+const { compoundPricesFor } = require("./compound-activity-figures");
+const { addedByCompounds } = require("./current-lp-deposit");
 const sendTx = require("./send-transaction");
 const { getPoolCreationBlockCached } = require("./pool-creation-block");
 const {
@@ -204,8 +208,10 @@ function _priced(amounts, deps) {
 }
 
 /**
- * Populate `snap.currentGasUsd` and (when the cache is fresher than the
- * history-derived value) `snap.currentCompoundedUsd` for the Current panel.
+ * Populate `snap.currentFeesLeftUsd`, `snap.currentDepositAddedUsd` with
+ * `snap.currentDepositAddedFallback`, `snap.currentGasUsd` and (when the
+ * cache is fresher than the history-derived value)
+ * `snap.currentCompoundedUsd` for the Current panel.
  * Match Unmanaged's `currentGasUsd` / `current` so both views agree on the
  * same NFT.  Best-effort — never throws; on any failure leaves snap fields
  * untouched so the dashboard's existing `?? liveEpoch.gas` fallback kicks in.
@@ -220,6 +226,24 @@ async function applyCurrentNftFigures(snap, deps, position, poolState) {
    *  not in the position, so the Current IL/G does not. */
   const left = feesLeftInWallet(deps._botState?.compoundHistory, tid, d0, d1);
   snap.currentFeesLeftUsd = _priced(left, deps);
+  /*- What Initial Deposit for This LP adds to the NFT's minted coins: the
+   *  wallet's coins its compounds took in beyond their fees, each at its
+   *  compound's prices (src/lib/current-lp-deposit.js). */
+  const pricesAt = compoundPricesFor(
+    position,
+    deps._botState,
+    { poolAddress: poolState.poolAddress },
+    false,
+  );
+  const added = await addedByCompounds(
+    deps._botState?.compoundHistory,
+    tid,
+    { decimals0: d0, decimals1: d1 },
+    pricesAt,
+    { price0: deps._lastPrice0, price1: deps._lastPrice1 },
+  );
+  snap.currentDepositAddedUsd = added.usd;
+  snap.currentDepositAddedFallback = added.fallback;
   const cachedGas = deps._botState?.nftGasWeiByTokenId?.[tid];
   const cachedComp = deps._botState?.nftCompoundedAmountsByTokenId?.[tid];
   if (cachedGas !== undefined) {

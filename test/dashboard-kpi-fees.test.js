@@ -219,12 +219,17 @@ describe("Current panel composition", () => {
     assert.equal(bd.fees, 0.27, "the dialog shows the same unclaimed figure");
   });
 
-  it("adds the fees a compound left in the wallet to Profit, on their own line", () => {
+  it("adds the fees a compound left in the wallet to Profit and to Net P&L, on their own line", () => {
     /*-
      *  The user, 2026-10-23: "The Compound knows the total of coins so of
      *  course, that should show up in Current." They are in neither fee
-     *  row nor the IL/G, which counts no coin in the wallet.
+     *  row nor the IL/G, which counts no coin in the wallet, and outside
+     *  Current Value, so Net P&L adds them too: once a later compound
+     *  sweeps them in, Initial Deposit for This LP counts them among the
+     *  wallet's coins it took (src/lib/current-lp-deposit.js), so they
+     *  still count once.
      *  Profit = 0.27 + 40.76 + 5.00 - 0.28 + (-1.72) = 44.03
+     *  Net P&L = (3143.94 - 3000) + 0.27 + 0 + 5.00 = 149.21
      */
     const snap = {
       liveEpoch: { fees: 41.03, gas: 0 },
@@ -240,11 +245,8 @@ describe("Current panel composition", () => {
     assert.equal(usd("pnlCompounded"), 40.76, "Fees Compounded unchanged");
     assert.equal(usd("curProfit"), 44.03);
     const bd = kpi.getCurBreakdown();
-    assert.equal(
-      Number(bd.total.toFixed(2)),
-      144.21,
-      "Net P&L does not count them",
-    );
+    assert.equal(Number(bd.total.toFixed(2)), 149.21, "Net P&L counts them");
+    assert.equal(bd.feesLeft, 5, "and the dialog shows them on their row");
   });
 
   it("shows a dash on the line when no compound left any", () => {
@@ -257,6 +259,55 @@ describe("Current panel composition", () => {
       document.getElementById("pnlFeesLeft").textContent.includes("—"),
       true,
     );
+  });
+});
+
+describe("the Current panel's Initial Deposit for This LP", () => {
+  /*-
+   *  The coins the NFT was minted with, $3,000 at its mint, and the
+   *  wallet's coins its compounds took in beyond their fees, $500 at
+   *  their compounds' prices (`currentDepositAddedUsd`,
+   *  src/lib/current-lp-deposit.js). Current Value holds both.
+   */
+  let kpi;
+  before(async () => {
+    kpi = await import("../src/client/web/dashboard-data-kpi.js");
+  });
+
+  const status = (snap, over = {}) => ({
+    _hasPositionData: true,
+    hodlBaseline: { entryValue: 3000 },
+    pnlSnapshot: {
+      currentValue: 3600,
+      currentFeesUsd: 0.5,
+      currentDepositAddedUsd: 500,
+      currentFeesLeftUsd: 5,
+      ...snap,
+    },
+    ...over,
+  });
+
+  it("counts the wallet's coins the NFT's compounds took in, with the coins it was minted with", () => {
+    assert.equal(kpi._resolveCurDeposit(status()), 3500);
+  });
+
+  it("keeps those coins out of Net P&L, and adds the fees left in the wallet", () => {
+    // (3600 - 3500) + 0.50 unclaimed + 0 realized + 5.00 left = 105.50
+    const t = kpi._resolveKpiTotals(status());
+    assert.equal(t.curDep, 3500);
+    assert.equal(Number(t.curTotal.toFixed(2)), 105.5);
+  });
+
+  it("adds them to the minted coins at the prices when the bot started, where the mint's are missing", () => {
+    const d = status(
+      { liveEpoch: { entryValue: 2900 } },
+      { hodlBaseline: null },
+    );
+    assert.equal(kpi._resolveCurDeposit(d), 3400);
+  });
+
+  it("is nothing while neither figure for the minted coins is known", () => {
+    assert.equal(kpi._resolveCurDeposit(status({}, { hodlBaseline: null })), 0);
   });
 });
 
