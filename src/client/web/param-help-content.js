@@ -889,8 +889,8 @@ export function buildParamHelp(f) {
             "in the wallet until the next <strong>rebalance</strong>, " +
             "which always sweeps in every wallet residual for the pool " +
             "when it mints the new position. Coins a compound takes in " +
-            "this way are not fees: <strong>Fees Compounded</strong> " +
-            "counts only the fees the deposit put back.",
+            "this way are not fees, and neither panel&rsquo;s " +
+            "<strong>Fees Compounded</strong> counts them.",
         },
       ],
     },
@@ -1627,21 +1627,24 @@ export function buildParamHelp(f) {
             "What remains is the fees portion, which was re-deposited " +
             "into the new NFT during the rebalance mint.<br><br>" +
             "<strong>Standalone compounds:</strong> for each manual or " +
-            "auto compound action, the fees it re-deposited as liquidity " +
-            "are added to the lifetime total. Coins the wallet already " +
-            "held that its deposit took in, a deposit you made or coins a " +
-            "rebalance left, are not fees and are not added. Both kinds " +
-            "are included in the single number shown.",
+            "auto compound action, every fee it collected is added to the " +
+            "lifetime total: those its deposit put back, and those that " +
+            "did not fit the range and stayed in the wallet. Coins the " +
+            "wallet already held that its deposit took in, a deposit you " +
+            "made or coins a rebalance left, are not fees and are not " +
+            "added. Both kinds are included in the single number shown.",
         },
         {
           heading: "How it\u2019s used in Net P&L",
           body:
-            "Net P&amp;L does not add Fees Compounded: those fees were " +
-            "re-deposited, so they are already inside Current Value, and " +
-            "Total Lifetime Deposit counts only fresh deposits, so Price " +
-            "Change carries them. Adding them again would count them " +
-            "twice. Current Fees, still unclaimed, are not in Current " +
-            "Value, so Net P&amp;L adds them. <strong>Profit</strong> " +
+            "Net P&amp;L does not add Fees Compounded: the fees " +
+            "re-deposited are already inside Current Value, and Total " +
+            "Lifetime Deposit counts only fresh deposits, so Price Change " +
+            "carries them; the fees a compound left in the wallet are in " +
+            "the Wallet Residual, which Net P&amp;L adds. Adding them " +
+            "again would count them twice. Current Fees, still " +
+            "unclaimed, are not in Current Value, so Net P&amp;L adds " +
+            "them. <strong>Profit</strong> " +
             "counts Fees Compounded and Current Fees together as the " +
             "lifetime fee earnings.",
         },

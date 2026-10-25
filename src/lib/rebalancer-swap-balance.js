@@ -20,8 +20,9 @@
  * the swap ran, a deposit the owner made included. So the swap's own
  * exchange is also read from its transaction's receipt: what the wallet
  * sent of the token sold, and what it was paid of the token bought
- * (`exchange`). A compound counts its fees by it, so that a deposit
- * landing during its swap never counts as fees (src/lib/compounder.js).
+ * (`exchange`, through `exchangeInTx`, src/lib/swap-exchange.js). A
+ * compound counts its fees by it, so that a deposit landing during its
+ * swap never counts as fees (src/lib/compounder.js).
  */
 
 "use strict";
@@ -32,6 +33,7 @@ const { spentGasOf, carryingGas } = require("./spent-gas");
 const sendTx = require("./send-transaction");
 const { noteRpcResult } = require("./rpc-out-of-service");
 const { retryRead } = require("./rpc-read-retry");
+const { exchangeInTx } = require("./swap-exchange");
 
 /*-
  *  The budget of the balance read after a swap has landed, shared with
@@ -47,66 +49,6 @@ let _RETRY_DELAY_MS = _BOUNDED_READ.boundedReadRetryDelayMs;
 /** Test-only helper: override the wait before one endpoint is asked again. */
 function _setLandedReadDelayForTests(ms) {
   _RETRY_DELAY_MS = ms;
-}
-
-/** An ERC-20 `Transfer(address,address,uint256)` event's first topic. */
-const _TRANSFER_TOPIC =
-  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-
-/** The address an indexed topic holds, lower-cased. */
-function _topicAddress(topic) {
-  return ("0x" + String(topic).slice(26)).toLowerCase();
-}
-
-/** A receipt log read as an ERC-20 transfer, or null when it is none. */
-function _transferIn(l) {
-  if (l?.topics?.[0] !== _TRANSFER_TOPIC || l.topics.length < 3) return null;
-  if (typeof l.data !== "string" || l.data.length < 66) return null;
-  return {
-    coin: String(l.address).toLowerCase(),
-    from: _topicAddress(l.topics[1]),
-    to: _topicAddress(l.topics[2]),
-    value: BigInt(l.data.slice(0, 66)),
-  };
-}
-
-/** What one transfer moves of a coin into the wallet, out of it negative. */
-function _intoWallet(t, coin, me) {
-  if (t.coin !== coin) return 0n;
-  return (t.to === me ? t.value : 0n) - (t.from === me ? t.value : 0n);
-}
-
-/**
- * What one swap transaction moved between the wallet and the market, read
- * from its own receipt: the token sold the wallet sent, and the token
- * bought it was paid, each net of any of it coming back to where it came
- * from. A deposit the owner made meanwhile is a transaction of its own,
- * so it is in neither.
- *
- * @param {object|null|undefined} receipt  The swap's receipt.
- * @param {string} tokenIn    Address of the token sold.
- * @param {string} tokenOut   Address of the token bought.
- * @param {string} recipient  The wallet.
- * @returns {{sent: bigint, received: bigint}|null}  Null with no receipt
- *   to read.
- */
-function exchangeInTx(receipt, tokenIn, tokenOut, recipient) {
-  if (!Array.isArray(receipt?.logs)) return null;
-  const me = String(recipient).toLowerCase();
-  const sold = String(tokenIn).toLowerCase();
-  const bought = String(tokenOut).toLowerCase();
-  let sent = 0n;
-  let received = 0n;
-  for (const l of receipt.logs) {
-    const t = _transferIn(l);
-    if (t === null) continue;
-    sent -= _intoWallet(t, sold, me);
-    received += _intoWallet(t, bought, me);
-  }
-  return {
-    sent: sent > 0n ? sent : 0n,
-    received: received > 0n ? received : 0n,
-  };
 }
 
 /**
@@ -216,4 +158,4 @@ async function balanceDiff(ethersLib, tokenOut, recipient, prov, fn, tokenIn) {
   return { ...swap, amountOut, exchange };
 }
 
-module.exports = { balanceDiff, exchangeInTx, _setLandedReadDelayForTests };
+module.exports = { balanceDiff, _setLandedReadDelayForTests };

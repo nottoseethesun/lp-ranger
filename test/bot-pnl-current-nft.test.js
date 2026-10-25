@@ -354,6 +354,44 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     assert.strictEqual(snap.currentCompoundedUsd, 21);
   });
 
+  it("counts the fees a rebuild worked out from the chain, as it counts the bot's own record", async () => {
+    /*-
+     *  An entry a rebuild of the compound list wrote, its trigger
+     *  `unknown`, names the fees it read from the chain
+     *  (src/lib/compound-fees-on-chain.js). The scan that fills this NFT's
+     *  coins after a compound must count them too, or every compound
+     *  would put the whole deposit back on the panel.
+     */
+    _detectImpl = async () => ({
+      compounds: [
+        {
+          txHash: "0xab",
+          amount0Deposited: "110000000000000000000",
+          amount1Deposited: "110000000",
+        },
+      ],
+      totalCompoundedUsd: 0,
+      totalGasWei: "0",
+      totalNftGasWei: "1",
+    });
+    const updates = [];
+    const deps = {
+      _botState: { compoundHistory: [{ ...sweptRecord, trigger: "unknown" }] },
+      signer: { getAddress: async () => "0xWALLET" },
+      _lastPrice0: 1,
+      _lastPrice1: 1,
+      updateBotState: (patch) => updates.push(patch),
+    };
+    const position = { tokenId: 12345, token0: "0xA", token1: "0xB" };
+    await applyCurrentNftFigures({}, deps, position, {
+      decimals0: 18,
+      decimals1: 6,
+    });
+    assert.deepStrictEqual(updates[0].nftCompoundedAmountsByTokenId, {
+      12345: { amount0: 10, amount1: 10 },
+    });
+  });
+
   it("triggers a chain scan and persists both caches on full miss", async () => {
     _detectImpl = async () => ({
       /*- RAW deposited amounts, as the classifier returns them, at the

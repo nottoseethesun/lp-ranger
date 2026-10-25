@@ -26,7 +26,10 @@
  * does not tell its fees apart from the rest of its deposit adds nothing.
  * Another wallet's addition is valued at the price Total Lifetime Deposit
  * gave its entry at its block (src/lib/bot-deposit.js), and adds nothing
- * until it is priced, as it adds nothing there.
+ * until it is priced, as it adds nothing there. The compound list holds
+ * such an addition too, as a compound with no collect before it, so it is
+ * counted once, from the deposit list (`paidForByAnotherWallet`,
+ * src/lib/counted-deposits.js).
  *
  * The bot's Current panel figures (src/lib/bot-pnl-current-nft.js) and the
  * unmanaged view (src/lib/position-details-quick.js,
@@ -39,6 +42,10 @@
 const { isPlainObject } = require("./plain-object");
 const { walletCoinsOf } = require("./compounded-coins");
 const { coinsToUsd } = require("./coin-value");
+const {
+  isAdditionEntry,
+  paidForByAnotherWallet,
+} = require("./counted-deposits");
 
 /** Whether a value is a price: a finite number above zero. */
 function _isPrice(v) {
@@ -128,7 +135,7 @@ function addedByOthers(deposits, tokenId) {
   let usd = 0;
   let fallback = false;
   for (const e of Array.isArray(deposits) ? deposits : []) {
-    if (!isPlainObject(e) || e.kind !== "external") continue;
+    if (!isAdditionEntry(e)) continue;
     if (String(e.tokenId) !== String(tokenId)) continue;
     if (_isPrice(e.usd)) usd += e.usd;
     if (e.fallback === true) fallback = true;
@@ -140,7 +147,8 @@ function addedByOthers(deposits, tokenId) {
  * The dollars Initial Deposit for This LP adds to an NFT's minted coins:
  * what its compounds took in from the wallet beyond their fees
  * (`addedByCompounds`), and what other wallets added to it
- * (`addedByOthers`).
+ * (`addedByOthers`). An addition another wallet paid for is in both lists,
+ * and counts from the deposit list alone.
  *
  * @param {{compoundHistory: object[]|undefined,
  *   deposits: object[]|undefined}} lists  The position's compound list and
@@ -152,8 +160,12 @@ function addedByOthers(deposits, tokenId) {
  * @returns {Promise<{usd: number, fallback: boolean}>}
  */
 async function addedSinceMint(lists, tokenId, decimals, pricesAt, today) {
+  const byAnother = paidForByAnotherWallet(lists.deposits);
+  const compounds = Array.isArray(lists.compoundHistory)
+    ? lists.compoundHistory.filter((c) => !byAnother(c))
+    : [];
   const byCompounds = await addedByCompounds(
-    lists.compoundHistory,
+    compounds,
     tokenId,
     decimals,
     pricesAt,

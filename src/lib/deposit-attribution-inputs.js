@@ -33,7 +33,11 @@
  * coin's, and nothing more is kept to divide it.
  */
 
-const { isCountedEntry, pollDeposits } = require("./counted-deposits");
+const {
+  isCountedEntry,
+  paidForByAnotherWallet,
+  pollDeposits,
+} = require("./counted-deposits");
 const { isPlainObject } = require("./plain-object");
 const { attributeCoin, countedFor, takenAt } = require("./deposit-attribution");
 
@@ -90,15 +94,19 @@ function _entriesOf(s) {
 /**
  * A state's compounds that take the wallet's coins: each with its block,
  * the coins its deposit took beyond its fees, and the wallet's two coins
- * before its collect when it read them.
+ * before its collect when it read them. An addition another wallet paid
+ * for is in the compound list too, and takes none of them
+ * (`paidForByAnotherWallet`, src/lib/counted-deposits.js).
  *
  * @param {object} s  A bot state.
  * @returns {object[]}
  */
 function _compoundsOf(s) {
   const out = [];
+  const byAnother = paidForByAnotherWallet(s.lifetimeHodlAmounts?.deposits);
   for (const c of Array.isArray(s.compoundHistory) ? s.compoundHistory : []) {
     if (!isPlainObject(c) || !Number.isInteger(c.blockNumber)) continue;
+    if (byAnother(c)) continue;
     const fee0 = _unitsOrNull(c.amount0Compounded);
     const fee1 = _unitsOrNull(c.amount1Compounded);
     if (fee0 === null || fee1 === null) continue;

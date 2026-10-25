@@ -33,10 +33,13 @@
  * a transaction of its own, so it is in none of them, and counts as the
  * owner's money, never as fees.
  *
- * Every figure that counts compounds reads them through `compoundedUnits`
- * or `compoundedCoins`: the record's fees when it has them, else the whole
- * deposit, as for a compound made before the readings were kept or not by
- * this install. The Lifetime scan counts no addition the wallet paid for as
+ * Every figure that counts an NFT's compounds reads them through
+ * `compoundedUnits` or `compoundedCoins`: the record's fees when it has
+ * them, else the whole deposit, as for a compound made before the readings
+ * were kept or not by this install. The lifetime total of Fees Compounded
+ * takes every fee a compound collected instead, as a rebuild of the
+ * compound list counts them (src/lib/bot-cycle-compound.js). The Lifetime
+ * scan counts no addition the wallet paid for as
  * money put in, and reads no receipt for the compounds `recordedCompounds`
  * names, which LP Ranger made from the wallet (src/lib/lifetime-hodl.js).
  *
@@ -45,7 +48,9 @@
  * Current IL/G and the Impermanent Loss Guard count those coins with the
  * coins the NFT was minted with, so the comparison stays even: the
  * position's value holds them, so the holding it is measured against
- * does too (src/lib/bot-pnl-il.js).
+ * does too (src/lib/bot-pnl-il.js). The list holds the additions other
+ * wallets paid for too, as compounds with no collect before them; all of
+ * such an addition went in beyond fees, so those counts include it.
  *
  * A deposit takes only what fits the range, so some of the fees can stay
  * in the wallet. They are the fee coins the compound's own transactions
@@ -211,6 +216,77 @@ function recordedCompounds(history) {
 }
 
 /**
+ * The entries of a position's compound list that name the fees their
+ * deposits put back, by lower-cased transaction: those the bot recorded
+ * as it made the compound, and those a rebuild of the list worked out
+ * from the chain (src/lib/compound-fees-on-chain.js). What a count of
+ * Fees Compounded reads each compound's fees from (`compoundedCoins`);
+ * `recordedCompounds` names only the compounds this install made.
+ *
+ * @param {object[]|undefined} history  The position's `compoundHistory`.
+ * @returns {Map<string, object>}
+ */
+function feeRecords(history) {
+  const out = new Map();
+  for (const e of Array.isArray(history) ? history : []) {
+    if (!isPlainObject(e) || typeof e.txHash !== "string") continue;
+    if (
+      _units(e.amount0Compounded) !== null &&
+      _units(e.amount1Compounded) !== null
+    )
+      out.set(e.txHash.toLowerCase(), e);
+  }
+  return out;
+}
+
+/**
+ * Whether an NFT holds a compound whose entry in the position's list
+ * names no fees its deposit put back (`feeRecords`), as one made before
+ * 0.9.11 or outside LP Ranger does: a rebuild of the list works them out
+ * from the chain (src/lib/compound-fees-on-chain.js).
+ *
+ * @param {object[]|undefined} history  The position's compound list.
+ * @param {string|number|undefined} tokenId  The NFT.
+ * @returns {boolean}
+ */
+function namesNoFeesOn(history, tokenId) {
+  if (!Array.isArray(history) || tokenId === undefined) return false;
+  const named = feeRecords(history);
+  return history.some(
+    (e) =>
+      isPlainObject(e) &&
+      typeof e.txHash === "string" &&
+      String(e.tokenId) === String(tokenId) &&
+      !named.has(e.txHash.toLowerCase()),
+  );
+}
+
+/**
+ * The coins each NFT compounded, from a position's compound list: each
+ * compound counts the fees its entry names, else its whole deposit
+ * (`compoundedCoins`). A rebuild of the list writes these per-NFT coins,
+ * which the Current panel prices where it shows them
+ * (src/lib/bot-recorder-lifetime.js, src/lib/bot-pnl-current-nft.js).
+ *
+ * @param {object[]} history  The compound list.
+ * @param {number} d0  Token0's decimals.
+ * @param {number} d1  Token1's decimals.
+ * @returns {Object<string, {amount0: number, amount1: number}>}
+ */
+function compoundedCoinsByNft(history, d0, d1) {
+  const byTokenId = {};
+  for (const c of history) {
+    const tid = String(c.tokenId);
+    const held = byTokenId[tid] || { amount0: 0, amount1: 0 };
+    const coins = compoundedCoins([c], undefined, d0, d1);
+    held.amount0 += coins.amount0;
+    held.amount1 += coins.amount1;
+    byTokenId[tid] = held;
+  }
+  return byTokenId;
+}
+
+/**
  * The coins a compound counts as Fees Compounded, in each coin's smallest
  * unit: the fees its record says the deposit put back, else the whole
  * deposit.
@@ -268,11 +344,16 @@ function _beyondFees(deposited, fees) {
 }
 
 /**
- * The wallet's coins one compound took in beyond its fees, in whole
- * coins: a deposit the owner made, coins a rebalance left, fees an earlier
- * compound left behind. Null when its record does not tell its fees apart
- * from the rest of its deposit: such a compound counts its whole deposit
- * as Fees Compounded (`compoundedUnits`), so it took nothing here.
+ * The coins one compound's deposit took in beyond its fees, in whole
+ * coins: the wallet's, such as a deposit the owner made, coins a rebalance
+ * left, or fees an earlier compound left behind; or, for an addition
+ * another wallet paid for, which the list holds as a compound with no
+ * collect before it, all of that addition. The readers that count only
+ * the wallet's coins leave such an addition out (`paidForByAnotherWallet`,
+ * src/lib/counted-deposits.js). Null when its record does not tell its
+ * fees apart from the rest of its deposit: such a compound counts its
+ * whole deposit as Fees Compounded (`compoundedUnits`), so it took
+ * nothing here.
  *
  * @param {object} compound  One entry of the position's compound list.
  * @param {number} d0  Token0's decimals.
@@ -293,9 +374,11 @@ function walletCoinsOf(compound, d0, d1) {
 }
 
 /**
- * The wallet's coins the compounds of one NFT took in beyond their fees,
- * in whole coins (`walletCoinsOf`, summed). They went into the NFT after
- * its mint.
+ * The coins the compounds of one NFT took in beyond their fees, in whole
+ * coins (`walletCoinsOf`, summed), another wallet's additions included.
+ * They went into the NFT after its mint, so the position's value holds
+ * them, and the Current IL/G's holding side counts them
+ * (src/lib/bot-pnl-il.js).
  *
  * @param {object[]|undefined} history  The position's compound list.
  * @param {string|number} tokenId  The NFT.
@@ -346,6 +429,9 @@ module.exports = {
   compoundFeeUnits,
   compoundedFields,
   recordedCompounds,
+  feeRecords,
+  namesNoFeesOn,
+  compoundedCoinsByNft,
   compoundedUnits,
   compoundedCoins,
   walletCoinsOf,

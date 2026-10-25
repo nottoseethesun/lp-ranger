@@ -27,7 +27,7 @@ const { detectCompoundsOnChain } = require("./compounder");
 const { coinsToUsd } = require("./coin-value");
 const {
   compoundedCoins,
-  recordedCompounds,
+  feeRecords,
   feesLeftInWallet,
 } = require("./compounded-coins");
 const { compoundPricesFor } = require("./compound-activity-figures");
@@ -58,14 +58,16 @@ async function _weiToUsd(weiStr) {
 }
 
 /**
- * The compounds the bot recorded for this position, by transaction: each
- * names the fees its deposit put back (src/lib/compounded-coins.js).
+ * The compounds of this position's list that name the fees their deposits
+ * put back, by transaction: those the bot recorded as it made them, and
+ * those a rebuild worked out from the chain (`feeRecords`,
+ * src/lib/compounded-coins.js).
  *
  * @param {object} deps  Bot deps; `_botState` holds the compound list.
  * @returns {Map<string, object>}
  */
 function _recordedOf(deps) {
-  return recordedCompounds(deps._botState?.compoundHistory);
+  return feeRecords(deps._botState?.compoundHistory);
 }
 
 /*-

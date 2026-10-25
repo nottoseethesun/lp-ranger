@@ -1429,7 +1429,11 @@ coins went (`src/lib/deposit-attribution.js`, the user's design,
   with the deposit's `blockNumber`). That part counts for the
   compounding position, and only the rest still waits. A compound
   recorded without the reading takes deposit coins first; one with no
-  block recorded, or without its fees told apart, takes nothing.
+  block recorded, or without its fees told apart, takes nothing. Nor
+  does an addition another wallet paid for, which the compound list
+  holds as a compound with no collect before it, once the pool's
+  deposit list names it (`paidForByAnotherWallet`,
+  `src/lib/counted-deposits.js`).
 
 Nothing is saved for it. Every poll, `depositAttribution`
 (`src/lib/deposit-attribution-inputs.js`) replays each of the position's
@@ -1469,14 +1473,51 @@ its deposit, and, coin by coin, what the deposit took from the wallet's
 earlier balance is the first reading less the wallet after the deposit;
 the rest of the deposit is fees. Its record keeps them
 (`amount0Compounded`, `amount1Compounded`) beside the whole deposit, and
-every reading of compounds counts them: the running total
-(`recordCompound`), the per-NFT coins the bot reads back from the chain
-(`applyCurrentNftFigures`, matched to the record by transaction), the
-rebuilt compound list, and the unmanaged view. A compound with no such
-record counts its whole deposit. The rest of the deposit, the wallet's
-coins it took in, counts with the NFT's minted coins in the Current IL/G
-and the Guard (`walletCoinsPutIn`), since the position's value now holds
-them.
+every reading of an NFT's compounds counts them: the per-NFT coins the
+bot reads back from the chain (`applyCurrentNftFigures`, matched to the
+record by transaction), the rebuilt compound list, and the unmanaged
+view. The lifetime running total (`recordCompound`) takes every fee the
+compound collected instead (`feesCollected`), those it left in the
+wallet included (**Fees the deposit could not take**, below), which is
+what a rebuild of the compound list counts; it never takes the wallet's
+coins the deposit took in. The rest of the deposit,
+the wallet's coins it took in, counts with the NFT's minted coins in the
+Current IL/G and the Guard (`walletCoinsPutIn`), since the position's
+value now holds them.
+
+**A compound with no such record.** A compound LP Ranger made before it
+kept the record, or one made outside LP Ranger, has its fees worked out
+from the chain instead (`src/lib/compound-fees-on-chain.js`), when a
+rebuild of the compound list meets it. Its collect is the `Collect`
+event just before its deposit (`depositAndCollect`, the rule
+`collectBeforeDeposit` in `src/lib/nft-move-rules.js`); its swap is each
+transaction between the collect and the deposit that sent one of the
+pool's coins from the wallet and paid it the other, found by the
+wallet's outgoing transfers in those blocks and read from its receipt
+(`walletSwapsBetween`, with `exchangeInTx` in `src/lib/swap-exchange.js`);
+its deposit is its `IncreaseLiquidity` event. The fee coins after the
+swap are what the collect brought in, less what the swap sold of one
+coin, plus what it bought of the other; of each coin the deposit put
+back its fees first, up to those fee coins, and the rest came from the
+wallet (`feeFieldsOf`, the rule `compoundFeeUnits` applies to the
+bot's readings). A deposit with no collect before it put back no fees.
+The compound list holds every addition to the NFT after its mint outside
+a rebalance (`classifyCompounds`), so an addition another wallet paid
+for is one of these: none of its coins came from the wallet, and the
+readers that count only the wallet's coins leave it out once the pool's
+deposit list names it (**The Current panel's deposit**, below, and the
+sharing of a deposit between positions, above). The Current IL/G's
+holding side counts it, since the position's value holds it.
+The entry keeps the fields (`_feeFields` in
+`src/lib/compound-activity-figures.js`, which keeps the bot's record of
+them first, then an earlier rebuild's), so each compound is read from
+the chain once, and every count reads them as it reads the bot's record
+(`feeRecords`). A swap that cannot be read leaves the fees unknown, so
+the compound counts its whole deposit until a later rebuild reads it.
+A scan pass rebuilds the list while the open NFT holds a compound whose
+fees are not named (`namesNoFeesOn`, `rebuildCompounds` in
+`lifetimeScanPlan`), which an upgrade from 0.9.10 meets at its first
+start for every NFT open then.
 
 **Additions the Lifetime scan counts.** An addition of liquidity to a
 position NFT after its mint is money put in only when another wallet
@@ -1536,8 +1577,12 @@ for both views, since they are outside Current Value. A later compound
 can sweep them into the position, which Current Value then holds, but
 Initial Deposit for This LP then counts them among the wallet's coins
 that compound took (**The Current panel's deposit**, below), so they
-still count once. The Lifetime IL/G still counts them as the wallet's
-coins until a rebuild of the compound list counts every fee collected.
+still count once. The Lifetime panel counts them in Fees Compounded: a
+compound adds every fee it collected to the lifetime total
+(`_feesForLifetimeTotal`, `src/lib/bot-cycle-compound.js`), as a rebuild
+of the compound list counts every fee collected. The Lifetime IL/G takes
+Fees Compounded off the position's side and credits the wallet's coins,
+so the two cancel over these fees, which count as fees, not as gain.
 
 **The Current panel's deposit.** Initial Deposit for This LP, which the
 Current panel's Net P&L subtracts, is the coins the NFT was minted with,
@@ -1559,11 +1604,18 @@ such addition in the pool's deposit list naming its NFT (`kind:
 "external"`, `tokenId`, `_additionsPutIn`), and the Current panel adds
 the current NFT's entries at the prices Total Lifetime Deposit gave them
 (`addedByOthers`); an entry not priced yet adds nothing, as it adds
-nothing there. Such coins never pass through the bot's wallet, so the
-deposit count cannot see them, and the scan works the deposit list out
-again only after a rebalance or a Reload Current Position: until then
-both panels read such an addition as a gain, a limit the user accepted
-and the User Manual's FAQ states (2026-10-24). The bot publishes the
+nothing there. The compound list holds the same addition, and the
+deposit leaves that entry out (`paidForByAnotherWallet`,
+`src/lib/counted-deposits.js`), so the addition counts once. Such coins
+never pass through the bot's wallet, so the deposit count cannot see
+them, and the scan works the deposit list out again only after a
+rebalance or a Reload Current Position: until then the Lifetime panel
+reads such an addition as a gain, a limit the user accepted and the User
+Manual's FAQ states (2026-10-24). So does the Current panel, unless a
+rebuild of the compound list, such as Re-scan Prices asks for, has met
+the addition since: its entry then counts among the coins the NFT's
+compounds took in beyond their fees, at its own block's prices. The bot
+publishes the
 addition as `currentDepositAddedUsd`, with `currentDepositAddedFallback`
 (`addedSinceMint`, `src/lib/bot-pnl-current-nft.js`); the unmanaged view
 works it out from the compound list the bot saved and the pool's deposit
@@ -1584,7 +1636,8 @@ compound's Activity Log figure. And the fees are capped at the fee coins
 as those transactions moved them (`feeCoins`, `compoundFeeUnits`): what
 the collect brought in, less what the swap's own transactions sent of
 the token sold, plus what they received of the token bought, read from
-their receipts (`exchange`, `src/lib/rebalancer-swap-balance.js`). A
+their receipts (`exchange`, `src/lib/rebalancer-swap-balance.js`, through
+`exchangeInTx` in `src/lib/swap-exchange.js`). A
 deposit the swap's whole-balance deposit sweeps in then counts once, as
 the owner's money. A swap whose receipt could not be read leaves the
 readings alone to decide.

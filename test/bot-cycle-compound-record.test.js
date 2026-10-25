@@ -289,7 +289,37 @@ describe("recordCompound", () => {
     return patches.find((p) => p.compoundHistory);
   }
 
-  it("adds only the fees the deposit put back to the running total", async () => {
+  it("adds every fee it collected to the running total, never the deposit its swap swept in", async () => {
+    const patch = await recordAgainstTotal({
+      ...swept,
+      feesCollected: { amount0: 10, amount1: 10 },
+    });
+    assert.strictEqual(patch.compoundedAmount0, 15); // 5 + 10, not 5 + 110
+    assert.strictEqual(patch.compoundedAmount1, 15);
+  });
+
+  it("adds the fees it left in the wallet too, as a rebuild of the compound list counts them", async () => {
+    /*- It collected 12 A and 10 B, and its deposit took only what fit
+     *  the range: 10 and 10. The 2 A left in the wallet are fees all the
+     *  same; left out of the total, the Lifetime IL/G would read them,
+     *  through its credit for the wallet's coins, as gain. */
+    const leftBehind = {
+      ...swept,
+      amount0Deposited: "10",
+      amount1Deposited: "10",
+      depositedAmount0: 10,
+      depositedAmount1: 10,
+      amount0FeesLeft: "2",
+      amount1FeesLeft: "0",
+      feesCollected: { amount0: 12, amount1: 10 },
+      usdValue: 20,
+    };
+    const patch = await recordAgainstTotal(leftBehind);
+    assert.strictEqual(patch.compoundedAmount0, 17); // 5 + 12
+    assert.strictEqual(patch.compoundedAmount1, 15); // 5 + 10
+  });
+
+  it("adds the fees the deposit put back when its collect could not be read", async () => {
     const patch = await recordAgainstTotal(swept);
     assert.strictEqual(patch.compoundedAmount0, 15); // 5 + 10, not 5 + 110
     assert.strictEqual(patch.compoundedAmount1, 15);
@@ -308,8 +338,6 @@ describe("recordCompound", () => {
     const entry = patch.compoundHistory[0];
     assert.strictEqual(entry.amount0FeesLeft, "2");
     assert.strictEqual(entry.amount1FeesLeft, "0");
-    // The running total stays the fees put back.
-    assert.strictEqual(patch.compoundedAmount0, 15);
     const none = (await recordAgainstTotal(swept)).compoundHistory[0];
     assert.strictEqual("amount0FeesLeft" in none, false);
   });

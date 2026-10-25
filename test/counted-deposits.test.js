@@ -18,6 +18,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   isAdditionEntry,
+  paidForByAnotherWallet,
   isCountedEntry,
   countedCoinsAfter,
   pollDeposits,
@@ -117,6 +118,32 @@ describe("the deposit count's records", () => {
       amount1: 0,
       usd: 0,
     });
+  });
+});
+
+describe("an addition another wallet paid for, in the compound list", () => {
+  it("is the compound-list entry whose transaction one of the deposit list's additions names", () => {
+    /*- The compound list holds every addition to the NFT after its mint
+     *  outside a rebalance, the other wallet's among them. */
+    const byAnother = paidForByAnotherWallet([
+      ...LIFETIME.deposits,
+      {
+        raw0: "700",
+        raw1: "700",
+        block: 260,
+        kind: "external",
+        txHash: "0xAdd",
+      },
+      { raw0: "1", raw1: "1", block: 270, kind: "external", txHash: "" },
+    ]);
+    // The same transaction, whatever case each side writes it in.
+    assert.equal(byAnother({ txHash: "0xaDD", amount0Deposited: "700" }), true);
+    // A deposit to the wallet names its transaction too, but is no addition.
+    assert.equal(byAnother({ txHash: "0xa" }), false);
+    assert.equal(byAnother({ txHash: "" }), false);
+    assert.equal(byAnother({}), false);
+    assert.equal(byAnother(null), false);
+    assert.equal(paidForByAnotherWallet(undefined)({ txHash: "0xadd" }), false);
   });
 });
 

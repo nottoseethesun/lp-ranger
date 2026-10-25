@@ -108,10 +108,10 @@ function _lifetimeAmounts(deps, snap, decimals, shared) {
 }
 
 /**
- * The wallet's coins the current NFT's compounds took in beyond their
- * fees, from the position's compound list: coins put into the NFT after
- * its mint, which the Current IL/G measures against with its minted
- * coins.
+ * The coins the current NFT's compounds took in beyond their fees, from
+ * the position's compound list, another wallet's additions included
+ * (`walletCoinsPutIn`): coins put into the NFT after its mint, which the
+ * Current IL/G measures against with its minted coins.
  *
  * @param {object} deps  Bot deps; `_botState` holds the compound list.
  * @param {string|number} tokenId  The current NFT.

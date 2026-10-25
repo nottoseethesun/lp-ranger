@@ -66,14 +66,13 @@ const {
   isPositiveNumber,
   isCoinPair,
 } = require("./coin-value");
-const {
-  collectBeforeDeposit,
-  chainOrder,
-  sameHex,
-  isBefore,
-} = require("./nft-move-rules");
+const { sameHex, isBefore } = require("./nft-move-rules");
 const { isPlainObject } = require("./plain-object");
 const { recordedCompounds } = require("./compounded-coins");
+const {
+  depositAndCollect,
+  feesFromChain,
+} = require("./compound-fees-on-chain");
 const { readBotConfigDefaults } = require("./bot-config-defaults");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { log } = require("./log");
@@ -148,6 +147,11 @@ function compoundFiguresAtCreation(result, position) {
   };
 }
 
+/** The span of log blocks a compound's collect is looked for in: one log search's. */
+function _collectSpan() {
+  return readBotConfigDefaults().getLogsChunkSize;
+}
+
 /**
  * The NFT's liquidity just before a deposit: everything its earlier
  * deposits added, less everything its earlier drains took out. The
@@ -213,18 +217,10 @@ async function compoundFiguresFromChain(compound, nft, opts) {
     feesCollected: null,
     historical: { percentGainForPosition: null },
   };
-  if (!isPlainObject(nft)) return unknown;
-  const own = (nft.ilEvents ?? []).find((e) =>
-    sameHex(e.txHash, compound.txHash),
-  );
-  if (own === undefined) return unknown;
-  const kinds = [
-    ...(nft.collectEvents ?? []).map((e) => ({ ...e, kind: "collect" })),
-    ...(nft.ilEvents ?? []).map((e) => ({ ...e, kind: "deposit" })),
-  ].sort(chainOrder);
   // The collect rule looks back one log search's span of blocks.
-  const span = readBotConfigDefaults().getLogsChunkSize;
-  const collect = collectBeforeDeposit(kinds, own, span);
+  const found = depositAndCollect(compound, nft, _collectSpan());
+  if (found === null) return unknown;
+  const { own, collect } = found;
   const { decimals0: d0, decimals1: d1 } = opts;
   const fees =
     collect === null
@@ -354,15 +350,40 @@ function _feesKept(saved) {
   return kept;
 }
 
+/** Whether an entry names the fees its compound's deposit put back. */
+function _namesFees(entry) {
+  return (
+    entry?.amount0Compounded !== undefined &&
+    entry?.amount1Compounded !== undefined
+  );
+}
+
+/**
+ * The fee fields a rebuilt entry keeps: the bot's record of them, else
+ * those an earlier rebuild worked out from the chain, else those this one
+ * did (src/lib/compound-fees-on-chain.js), else none, so the whole deposit
+ * counts as fees.
+ *
+ * @param {object|undefined} saved  The bot's record of the compound.
+ * @param {object|undefined} earlier  The entry as the list held it.
+ * @param {object|null} derived  From `feesFromChain`, when it was asked.
+ * @returns {object}
+ */
+function _feeFields(saved, earlier, derived) {
+  if (_namesFees(saved)) return _feesKept(saved);
+  if (_namesFees(earlier)) return _feesKept(earlier);
+  return derived ?? {};
+}
+
 /**
  * A compound's entry in the rebuilt list: as the chain shows it, with the
  * trigger the bot recorded when it happened where it did, else trigger
- * `unknown`; the fees its deposit put back, where the bot recorded them;
- * and the figures the bot recorded, where it recorded a figure, else the
- * figures worked out from the chain. `chainFigures` is null only when the
- * bot's record held a figure, so none was worked out.
+ * `unknown`; the fees its deposit put back (`_feeFields`); and the
+ * figures the bot recorded, where it recorded a figure, else the figures
+ * worked out from the chain. `chainFigures` is null only when the bot's
+ * record held a figure, so none was worked out.
  */
-function _entryOf(compound, saved, chainFigures, amount) {
+function _entryOf(compound, saved, chainFigures, amount, fees) {
   const figures =
     _hasFigure(saved) || chainFigures === null
       ? {
@@ -379,7 +400,7 @@ function _entryOf(compound, saved, chainFigures, amount) {
       : {}),
     amount0Deposited: compound.amount0Deposited,
     amount1Deposited: compound.amount1Deposited,
-    ..._feesKept(saved),
+    ...fees,
     ...amount,
     ...figures,
     trigger: saved === undefined ? "unknown" : saved.trigger,
@@ -400,28 +421,39 @@ function _entryOf(compound, saved, chainFigures, amount) {
  * A compound's prices are asked for at its own deposit's block, so two
  * compounds on one day are two lookups, each cached under its block.
  *
+ * A compound whose record and entry name no fees put back has them worked
+ * out from the chain: its collect, its swap and its deposit
+ * (src/lib/compound-fees-on-chain.js). The entry keeps them, so later
+ * rebuilds read them from the list.
+ *
  * @param {object[]} allCompounds  The compounds the rebuild found, each
  *   with its `tokenId` and its `usdValue` at the scan's prices.
  * @param {Map<string, object>} allNftEvents  Each NFT's events.
  * @param {object} opts  `decimals0`, `decimals1`, `compoundPrices`;
  *   `price0` and `price1`, the scan's prices, which each `usdValue` was
  *   worked out at; `savedCompoundHistory`, a getter for the list as saved
- *   at the moment it is asked; and `readStartedAt`, when the rebuild's
- *   chain read began, in milliseconds.
+ *   at the moment it is asked; `readStartedAt`, when the rebuild's chain
+ *   read began, in milliseconds; and `walletSwaps`, the wallet's swaps
+ *   between two blocks (`walletSwapsBetween` with its chain reads bound).
  * @returns {Promise<object[]>}  The list to save.
  */
 async function compoundHistoryFrom(allCompounds, allNftEvents, opts) {
   const recordedBefore = recordedCompounds(_savedList(opts));
+  const earlierBefore = _byTransaction(_savedList(opts));
+  const chainOpts = { span: _collectSpan(), walletSwaps: opts.walletSwaps };
   const worked = [];
   for (const c of allCompounds) {
     const key = _txKey(c);
     const known = key === null ? undefined : recordedBefore.get(key);
+    const nft = allNftEvents.get(String(c.tokenId));
     let figures = null;
-    if (!_hasFigure(known)) {
-      const nft = allNftEvents.get(String(c.tokenId));
+    if (!_hasFigure(known))
       figures = await compoundFiguresFromChain(c, nft, opts);
-    }
-    worked.push({ c, key, figures });
+    /*- The fees its deposit put back, read from the chain once, for a
+     *  compound whose record and entry name none. */
+    const named = _namesFees(known) || _namesFees(earlierBefore.get(key));
+    const fees = named ? null : await feesFromChain(c, nft, chainOpts);
+    worked.push({ c, key, figures, fees });
   }
   const savedNow = _savedList(opts);
   const recorded = recordedCompounds(savedNow);
@@ -429,12 +461,15 @@ async function compoundHistoryFrom(allCompounds, allNftEvents, opts) {
   const pricesKnown =
     isPositiveNumber(opts.price0) && isPositiveNumber(opts.price1);
   const out = [];
-  for (const { c, key, figures } of worked) {
+  for (const { c, key, figures, fees } of worked) {
     const saved = key === null ? undefined : recorded.get(key);
     if (saved !== undefined) recorded.delete(key);
     const earlier = key === null ? undefined : earlierByTx.get(key);
     const chain = figures === null ? null : _chainOrEarlier(figures, earlier);
-    out.push(_entryOf(c, saved, chain, _amountOf(c, earlier, pricesKnown)));
+    const amount = _amountOf(c, earlier, pricesKnown);
+    out.push(
+      _entryOf(c, saved, chain, amount, _feeFields(saved, earlier, fees)),
+    );
   }
   /*-
    *  A compound the bot recorded while this rebuild was reading the chain

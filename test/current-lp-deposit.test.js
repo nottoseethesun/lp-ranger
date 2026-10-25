@@ -140,9 +140,9 @@ describe("addedByCompounds", () => {
   });
 });
 
-describe("addedByOthers", () => {
-  /** An entry the Lifetime scan made for liquidity another wallet added. */
-  const external = (over = {}) => ({
+/** An entry the Lifetime scan made for liquidity another wallet added. */
+function external(over = {}) {
+  return {
     raw0: "5",
     raw1: "5",
     block: 600,
@@ -152,8 +152,10 @@ describe("addedByOthers", () => {
     usd: 40,
     fallback: false,
     ...over,
-  });
+  };
+}
 
+describe("addedByOthers", () => {
   it("adds the NFT's additions by other wallets, at the prices Total Lifetime Deposit gave them", () => {
     const deposits = [
       { raw0: "100", raw1: "0", block: 10, kind: "fresh", usd: 900 },
@@ -201,5 +203,35 @@ describe("addedSinceMint", () => {
       TODAY,
     );
     assert.deepEqual(got, { usd: 12 + 40, fallback: true });
+  });
+
+  it("counts an addition another wallet paid for once, from the deposit list, though the compound list holds it too", async () => {
+    /*- The compound list holds every addition to the NFT after its mint
+     *  outside a rebalance, so the other wallet's is there as a compound
+     *  with no collect before it: a rebuild names no fees for it, and all
+     *  of it, $40 at its own prices, reads as coins put in beyond fees.
+     *  The deposit list names the same transaction, priced at $40. */
+    const got = await addedSinceMint(
+      {
+        compoundHistory: [
+          compound({ price0: 3, price1: 5 }),
+          compound({
+            txHash: "0xE1",
+            amount0Deposited: "5",
+            amount1Deposited: "5",
+            amount0Compounded: "0",
+            amount1Compounded: "0",
+            price0: 3,
+            price1: 5,
+          }),
+        ],
+        deposits: [external()],
+      },
+      "7",
+      DECIMALS,
+      null,
+      TODAY,
+    );
+    assert.deepEqual(got, { usd: 12 + 40, fallback: false });
   });
 });

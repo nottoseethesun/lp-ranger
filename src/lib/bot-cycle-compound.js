@@ -156,8 +156,9 @@ async function checkCompound(deps, poolState, ethersLib, refreshPosition) {
  *
  * @param {number|undefined|null} saved0  Saved token0 compounded coins.
  * @param {number|undefined|null} saved1  Saved token1 compounded coins.
- * @param {number} fee0  Token0 fees this compound re-deposited.
- * @param {number} fee1  Token1 fees this compound re-deposited.
+ * @param {number} fee0  Token0 fees this compound collected
+ *   (`_feesForLifetimeTotal`).
+ * @param {number} fee1  Token1 fees this compound collected.
  * @returns {{compoundedAmount0: number, compoundedAmount1: number}|null}
  */
 function _compoundedTotalFields(saved0, saved1, fee0, fee1) {
@@ -212,6 +213,23 @@ function _feesPutBack(result) {
     amount0: result.depositedAmount0 || 0,
     amount1: result.depositedAmount1 || 0,
   };
+}
+
+/**
+ * The coins a compound adds to the Lifetime Fees Compounded total, in
+ * whole coins: every fee it collected (`feesCollected`), those its deposit
+ * put back and those it left in the wallet, as a rebuild of the compound
+ * list counts every fee collected (`lifetimeFeeAmounts`,
+ * src/lib/compounder.js). The wallet's other coins its deposit took in
+ * were never collected, so they are not added. For a result whose collect
+ * could not be read, the fees it put back (`_feesPutBack`).
+ *
+ * @param {object} result  The compound's result.
+ * @returns {{amount0: number, amount1: number}}
+ */
+function _feesForLifetimeTotal(result) {
+  if (isCoinPair(result.feesCollected)) return result.feesCollected;
+  return _feesPutBack(result);
 }
 
 /**
@@ -304,16 +322,19 @@ async function recordCompound(deps, result) {
   const history = _gc("compoundHistory") || [];
   history.push(_historyEntry(deps, result, gasCostUsd));
   /*-
-   *  The fees it put back, not the wallet's other coins its deposit took
-   *  in: those are no fees, and the running total is what both Lifetime
-   *  Fees Compounded and the Lifetime IL/G read.
+   *  Every fee it collected, not the wallet's other coins its deposit
+   *  took in: those are no fees. The running total is what both Lifetime
+   *  Fees Compounded and the Lifetime IL/G read, and the IL/G credits the
+   *  wallet's coins, so fees left in the wallet and missing from the
+   *  total would read there as gain.
    */
   const fees = _feesPutBack(result);
+  const added = _feesForLifetimeTotal(result);
   const totals = _compoundedTotalFields(
     _gc("compoundedAmount0"),
     _gc("compoundedAmount1"),
-    fees.amount0,
-    fees.amount1,
+    added.amount0,
+    added.amount1,
   );
   /*-
    *  Invalidate the per-NFT Current-panel caches for this tokenId so the
@@ -343,7 +364,7 @@ async function recordCompound(deps, result) {
     tracker.addGas(gasCostUsd, gasNative);
     emit({ pnlEpochs: tracker.serialize() });
   }
-  _logCompound(result, gasCostUsd, totals, fees);
+  _logCompound(result, gasCostUsd, totals, fees, added);
 }
 
 /**
@@ -352,14 +373,23 @@ async function recordCompound(deps, result) {
  * fit the current tick ratio and, when the swap ran, other coins from
  * the wallet: those it held before the collect, and a deposit that
  * reached it while the compound ran. The fees left over stay in the
- * wallet as residual (tracked by residual-tracker.js). Neither they nor
- * the wallet's coins the deposit took in are counted as compounded.
+ * wallet as residual (tracked by residual-tracker.js). The lifetime
+ * compounded total counts them with the fees put back, as every fee
+ * collected, and never the wallet's coins the deposit took in.
  *
  * "lifetime" is this pool's cumulative compounded coins across every
  * NFT in the rebalance chain, reported in coins because coins are what
  * is saved; their dollar value belongs to whichever poll displays it.
+ *
+ * @param {object} result  The compound's result.
+ * @param {number} gasCostUsd  What its gas cost.
+ * @param {{compoundedAmount0: number, compoundedAmount1: number}|null}
+ *   totals  The lifetime total after it, or null when none is saved yet.
+ * @param {{amount0: number, amount1: number}} fees  The fees it put back.
+ * @param {{amount0: number, amount1: number}} added  What it added to the
+ *   lifetime total (`_feesForLifetimeTotal`).
  */
-function _logCompound(result, gasCostUsd, totals, fees) {
+function _logCompound(result, gasCostUsd, totals, fees, added) {
   const collectedUsd = result.collectedUsd ?? result.usdValue;
   const feesUsd = coinsToUsd(fees, result.price0, result.price1);
   const walletUsd = Math.max(0, result.usdValue - feesUsd);
@@ -368,7 +398,7 @@ function _logCompound(result, gasCostUsd, totals, fees) {
   log.info("[bot] Compound source: standalone %s Compound op", trig);
   log.info("[bot]   Method: collect fees + increaseLiquidity on the same NFT");
   log.info(
-    "[bot]   The fees reinvested are added to lifetime compounded total",
+    "[bot]   Every fee collected, those left in the wallet included, is added to the lifetime compounded total",
   );
   log.info(
     "[bot] Compound complete: collected $%s reinvested $%s (fees $%s, other coins from the wallet $%s) residual $%s",
@@ -381,7 +411,7 @@ function _logCompound(result, gasCostUsd, totals, fees) {
   log.info(
     "[bot]   gas $%s | lifetime compounded %s",
     gasCostUsd.toFixed(4),
-    _lifetimeCoinsText(totals, fees.amount0, fees.amount1),
+    _lifetimeCoinsText(totals, added.amount0, added.amount1),
   );
 }
 
@@ -411,8 +441,8 @@ function _compoundMessage(result) {
  * whole rule exists to prevent.
  *
  * @param {{compoundedAmount0: number, compoundedAmount1: number}|null} totals
- * @param {number} fee0  Token0 fees this compound re-deposited.
- * @param {number} fee1  Token1 fees this compound re-deposited.
+ * @param {number} fee0  Token0 fees this compound collected.
+ * @param {number} fee1  Token1 fees this compound collected.
  * @returns {string}
  */
 function _lifetimeCoinsText(totals, fee0, fee1) {

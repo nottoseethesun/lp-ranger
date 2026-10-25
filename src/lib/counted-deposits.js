@@ -46,6 +46,35 @@ function isAdditionEntry(d) {
 }
 
 /**
+ * Whether an entry of a position's compound list is an addition of
+ * liquidity another wallet paid for, by its transaction: one of the
+ * deposit list's additions (`isAdditionEntry`).
+ *
+ * The compound list holds every addition to a position NFT after its mint
+ * outside a rebalance (`classifyCompounds`, src/lib/compounder.js), such an
+ * addition among them, and a rebuild of the list names no fees for it,
+ * since no collect came before it (src/lib/compound-fees-on-chain.js). None
+ * of its coins came from the wallet. So Initial Deposit for This LP counts
+ * it once, from the deposit list (src/lib/current-lp-deposit.js), and the
+ * sharing of deposits between positions takes none of the wallet's coins
+ * for it (src/lib/deposit-attribution-inputs.js).
+ *
+ * @param {object[]|undefined} deposits  The pool's deposit list
+ *   (`lifetimeHodlAmounts.deposits`).
+ * @returns {(entry: *) => boolean}  Asks of one compound-list entry.
+ */
+function paidForByAnotherWallet(deposits) {
+  const txs = new Set();
+  for (const d of Array.isArray(deposits) ? deposits : [])
+    if (isAdditionEntry(d) && typeof d.txHash === "string" && d.txHash !== "")
+      txs.add(d.txHash.toLowerCase());
+  return (entry) =>
+    isPlainObject(entry) &&
+    typeof entry.txHash === "string" &&
+    txs.has(entry.txHash.toLowerCase());
+}
+
+/**
  * Whether a deposit entry is one deposit to the wallet, naming its
  * transaction: one the deposit count recorded as it arrived, or one the
  * Lifetime scan entered for a deposit a mint took in
@@ -286,6 +315,7 @@ function withDepositsAdded(hodl, entries, d0, d1) {
 
 module.exports = {
   isAdditionEntry,
+  paidForByAnotherWallet,
   isCountedEntry,
   countedCoinsAfter,
   pollDeposits,

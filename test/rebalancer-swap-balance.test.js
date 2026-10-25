@@ -20,9 +20,9 @@ const assert = require("node:assert/strict");
 const sendTx = require("../src/lib/send-transaction");
 const {
   balanceDiff,
-  exchangeInTx,
   _setLandedReadDelayForTests,
 } = require("../src/lib/rebalancer-swap-balance");
+const { exchangeInTx } = require("../src/lib/swap-exchange");
 const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
 const { swapViaRouter } = require("../src/lib/rebalancer-router");
 const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");

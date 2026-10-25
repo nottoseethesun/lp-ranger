@@ -33,7 +33,7 @@ const { poolCreationFloor } = require("./pool-creation-block");
 const { nftCoinsToUsd, coinsToUsd } = require("./coin-value");
 const {
   compoundedCoins,
-  recordedCompounds,
+  feeRecords,
   walletCoinsPutIn,
   feesLeftInWallet,
 } = require("./compounded-coins");
@@ -76,7 +76,8 @@ async function _currentValuesFromScan(r, recorded, prices, ps) {
  * pool's creation block it was scanning years of blocks for an NFT that
  * is usually days old. `savedCompounds` is the position's compound list
  * on disk, which names the fees of each compound the bot made while it
- * managed the position.
+ * managed the position, and of each a rebuild of the list worked out from
+ * the chain (`feeRecords`, src/lib/compounded-coins.js).
  */
 async function _detectCurrentNftValues(
   position,
@@ -117,7 +118,7 @@ async function _detectCurrentNftValues(
       fromBlock,
     };
     const r = await _detect(String(position.tokenId), opts);
-    const recorded = recordedCompounds(savedCompounds);
+    const recorded = feeRecords(savedCompounds);
     return await _currentValuesFromScan(r, recorded, prices, ps);
   } catch (e) {
     log.warn(

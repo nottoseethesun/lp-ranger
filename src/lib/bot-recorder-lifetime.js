@@ -62,7 +62,8 @@ const {
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const { isTokenDecimals } = require("./pool-state-validate");
 const { hasCompoundedTotal } = require("./bot-config-keys");
-const { compoundedCoins } = require("./compounded-coins");
+const { compoundedCoinsByNft, namesNoFeesOn } = require("./compounded-coins");
+const { walletSwapsFor } = require("./compound-fees-on-chain");
 
 /**
  * Add the chain's historical compound gas to the P&L tracker.
@@ -163,31 +164,6 @@ function _requireValidDecimals(opts) {
       `(decimals0=${opts.decimals0} decimals1=${opts.decimals1}); every ` +
       `compounded amount would be mis-scaled, so nothing is saved`,
   );
-}
-
-/**
- * The coins each NFT compounded, from the events just classified.
- *
- * The Current panel shows this per-NFT figure in dollars, and
- * `bot-pnl-current-nft.js` otherwise fills it by scanning that one NFT
- * again. Writing the amounts here spares that scan, and leaves the
- * pricing to whoever displays it. Each compound counts the fees its
- * record says it put back (src/lib/compounded-coins.js).
- *
- * `d0`/`d1` are guaranteed valid by `_requireValidDecimals`, so there
- * is no fallback exponent to fall back to.
- */
-function _compoundedAmountsByTokenId(history, d0, d1) {
-  const byTokenId = {};
-  for (const c of history) {
-    const tid = String(c.tokenId);
-    const held = byTokenId[tid] || { amount0: 0, amount1: 0 };
-    const coins = compoundedCoins([c], undefined, d0, d1);
-    held.amount0 += coins.amount0;
-    held.amount1 += coins.amount1;
-    byTokenId[tid] = held;
-  }
-  return byTokenId;
 }
 
 /**
@@ -314,7 +290,11 @@ async function _classifyAllCompounds(
    *  zero would otherwise read as "nothing to save".
    */
   if (totalAmount0 > 0 || totalAmount1 > 0) {
-    const nftCompoundedAmountsByTokenId = _compoundedAmountsByTokenId(
+    /*- The coins each NFT compounded, which the Current panel prices
+     *  where it shows them; writing them here spares
+     *  `bot-pnl-current-nft.js` a scan of that NFT. The decimals are valid
+     *  (`_requireValidDecimals`), so no exponent needs a fallback. */
+    const nftCompoundedAmountsByTokenId = compoundedCoinsByNft(
       history,
       opts.decimals0,
       opts.decimals1,
@@ -618,13 +598,21 @@ function _lifetimeResumeBuffer(botState, fullRescan) {
  * @param {Array} [rebalanceEvents]  The chain, which records that mint.
  * @returns {{needed: boolean, fullRescan: boolean, revalue: boolean,
  *   depositsBehind: boolean, recountDeposits: boolean,
- *   cachedHodl: object|null, hasCompoundData: boolean,
- *   hasDepositData: boolean}}
+ *   rebuildCompounds: boolean, cachedHodl: object|null,
+ *   hasCompoundData: boolean, hasDepositData: boolean}}
  */
 function lifetimeScanPlan(botState, epochKey, position, rebalanceEvents) {
   const fullRescan = botState?._needsFullRescan === true;
   const revalue = botState?._needsPriceRevalue === true;
   const reclassify = botState?._needsCompoundReclassify === true;
+  /*- The open NFT holds a compound whose entry names no fees put back,
+   *  as one made before 0.9.11 or outside LP Ranger does: a rebuild of
+   *  the compound list works them out from the chain and keeps them on
+   *  the entry (src/lib/compound-fees-on-chain.js), so this asks once. */
+  const feesUnnamed = namesNoFeesOn(
+    botState?.compoundHistory,
+    position?.tokenId,
+  );
   const disk = _resolveDiskState(botState, epochKey);
   const depositsBehind = _depositsBehind(
     disk.cachedHodl,
@@ -667,6 +655,11 @@ function lifetimeScanPlan(botState, epochKey, position, rebalanceEvents) {
   const recountDeposits = fullRescan || depositsBehind;
   const needed =
     recountDeposits || revalue || reclassify || !lifetimeFiguresSaved(disk);
+  /*- Whether this pass writes the compound list again: no compounded
+   *  total is saved, Re-scan Prices or a compound asked for it, or the
+   *  open NFT holds a compound whose fees are not named yet. */
+  const rebuildCompounds =
+    !disk.hasCompoundData || revalue || reclassify || feesUnnamed;
   return {
     ...disk,
     fullRescan,
@@ -674,7 +667,8 @@ function lifetimeScanPlan(botState, epochKey, position, rebalanceEvents) {
     reclassify,
     depositsBehind,
     recountDeposits,
-    needed,
+    rebuildCompounds,
+    needed: needed || feesUnnamed,
   };
 }
 
@@ -866,8 +860,8 @@ async function _scanLifetimePoolData(
     reclassify,
     depositsBehind,
     recountDeposits,
+    rebuildCompounds,
     cachedHodl,
-    hasCompoundData,
     hasDepositData,
   } = plan;
   if (chainFound !== true) {
@@ -984,9 +978,10 @@ async function _scanLifetimePoolData(
         cachedHodl,
         revalue,
       ),
+      walletSwaps: walletSwapsFor(position, walletAddress),
     };
     const ids = chainRead.ids;
-    if (!hasCompoundData || revalue || reclassify)
+    if (rebuildCompounds)
       await _classifyAllCompounds(
         ids,
         allNftEvents,

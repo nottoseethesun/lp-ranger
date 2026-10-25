@@ -225,6 +225,50 @@ describe("depositAttribution", () => {
     near(got.usd, 0, "the dollars too");
   });
 
+  it("takes none of a waiting deposit for an addition another wallet paid for, which the compound list holds too", () => {
+    /*- The compound list holds every addition to the NFT after its mint,
+     *  so the other wallet's is there as a compound with no collect before
+     *  it: a rebuild names no fees for it, and all of it reads as coins
+     *  taken in beyond fees. The deposit list's addition names its
+     *  transaction, so the replay takes none of the wallet's coins for it,
+     *  and the deposit still waits, counted at the credit's share. */
+    const self = selfState({
+      lifetimeHodlAmounts: {
+        deposits: [
+          { raw0: "5000", raw1: "0", block: 10 },
+          entry(0),
+          {
+            raw0: "400",
+            raw1: "0",
+            block: 170,
+            kind: "external",
+            txHash: "0xadd",
+            tokenId: "1",
+          },
+        ],
+        lastBlock: 50,
+      },
+      compoundHistory: [
+        {
+          blockNumber: 170,
+          txHash: "0xADD",
+          tokenId: "1",
+          amount0Deposited: "400",
+          amount1Deposited: "0",
+          amount0Compounded: "0",
+          amount1Compounded: "0",
+        },
+      ],
+    });
+    const got = depositAttribution(
+      depsFor(self, otherState()),
+      { fraction0: 0.6, fraction1: 1 },
+      DECIMALS,
+    );
+    near(got.amount0, -4, "10 coins listed, 6 counted, none taken");
+    near(got.usd, -200, "$500 listed, $300 counted");
+  });
+
   it("counts none of what waits when the credit could not be read", () => {
     const got = depositAttribution(
       depsFor(selfState(), otherState()),

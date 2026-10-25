@@ -87,6 +87,34 @@ describe("lifetimeScanPlan", () => {
     }
   });
 
+  it("asks for a read and a rebuild of the compound list while the open NFT holds a compound whose fees are not named", () => {
+    const botState = arrange({
+      fullRescan: false,
+      compound: true,
+      hodl: true,
+      deposit: true,
+    });
+    const compound = { txHash: "0xc1", tokenId: "300" };
+    botState.compoundHistory = [compound];
+    const unnamed = lifetime.lifetimeScanPlan(
+      botState,
+      "epoch-key",
+      position(),
+      [],
+    );
+    assert.equal(unnamed.needed, true);
+    assert.equal(unnamed.rebuildCompounds, true);
+    Object.assign(compound, { amount0Compounded: "5", amount1Compounded: "0" });
+    const named = lifetime.lifetimeScanPlan(
+      botState,
+      "epoch-key",
+      position(),
+      [],
+    );
+    assert.equal(named.needed, false);
+    assert.equal(named.rebuildCompounds, false);
+  });
+
   it("agrees with the scan: no read when it says none is needed", async () => {
     for (const s of everyState()) {
       state.scanCount = 0;

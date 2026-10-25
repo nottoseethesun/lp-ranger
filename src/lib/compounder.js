@@ -408,10 +408,11 @@ function _compoundedResult(opts, collected, swap, deposited, beforeDeposit) {
   );
   const collectedUsd = coinsToUsd(feesCollected, opts.price0, opts.price1);
   /*-
-   *  The fees among the coins the deposit put back: what the caller adds
-   *  to the saved running totals and keeps on the compound's record. The
-   *  rest came from the wallet's earlier balance, or reached the wallet
-   *  while the compound ran (src/lib/compounded-coins.js).
+   *  The fees among the coins the deposit put back: what the caller keeps
+   *  on the compound's record. The rest came from the wallet's earlier
+   *  balance, or reached the wallet while the compound ran
+   *  (src/lib/compounded-coins.js). The lifetime running total takes
+   *  `feesCollected` above instead (src/lib/bot-cycle-compound.js).
    */
   const compounded = compoundedFields(
     collected.walletBefore,
