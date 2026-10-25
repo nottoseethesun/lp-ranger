@@ -39,6 +39,7 @@ const { createRescanPricesHandler } = require("./server-rescan-prices");
 const { createAutoStartManagedPositions } = require("./server-auto-start");
 const { markStopping, refusalToStart } = require("./app-phase");
 const { createStopWhenAllClear } = require("./stop-when-all-clear");
+const { readShutdownTimings } = require("./shutdown-timing");
 const { createConfigRouteHandler } = require("./server-config-route");
 const {
   computeQuickDetails: _defaultComputeQuickDetails,
@@ -201,11 +202,14 @@ function createRouteHandlers(deps) {
    * request on, the app is stopping for good (src/lib/app-phase.js), so no
    * position starts and no rebalance, compound or Reload begins; the
    * server exits once each position's move and scan under way has
-   * finished. `npm run gentle-stop` sends it, and repeats it to show what
-   * the stop still waits for: every request answers that, and only the
-   * first changes anything. The positions saved as managed stay saved,
-   * so the next launch starts them again. The shutdown alert goes out
-   * as it does on Ctrl+C.
+   * finished. It exits when its connections have closed, or after the
+   * exit timeout (`shutdown.exitTimeoutMs`), as Ctrl+C does: gentle-stop
+   * keeps its connection open between requests, so the close alone could
+   * wait for good. `npm run gentle-stop` sends it, and repeats it to show
+   * what the stop still waits for: every request answers that, and only
+   * the first changes anything. The positions saved as managed stay
+   * saved, so the next launch starts them again. The shutdown alert goes
+   * out as it does on Ctrl+C.
    */
   function _handleStopWhenAllClear(_req, res, srv) {
     if (_heldStop === null)
@@ -214,7 +218,11 @@ function createRouteHandlers(deps) {
         notifyShutdown,
         stopAll: () => positionMgr.stopAll(),
         getStates: getAllPositionBotStates,
-        exit: () => srv.close(() => process.exit(0)),
+        exit: () => {
+          srv.close(() => process.exit(0));
+          const { exitTimeoutMs } = readShutdownTimings();
+          setTimeout(() => process.exit(0), exitTimeoutMs);
+        },
       });
     const { waitingFor } = _heldStop.request();
     jsonResponse(res, 200, { ok: true, stopping: true, waitingFor });

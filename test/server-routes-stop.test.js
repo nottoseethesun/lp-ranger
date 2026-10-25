@@ -4,15 +4,17 @@
  *   `_handleStopWhenAllClear` (`POST /api/stop-when-all-clear`, which
  *   `npm run gentle-stop` sends): it answers at once, starts the stop in
  *   the background, and closes the server only once every position has
- *   stopped. What the stop waits for, scans included, is
+ *   stopped, exiting within the exit timeout even while a connection
+ *   stays open. What the stop waits for, scans included, is
  *   test/stop-when-all-clear.test.js.
  */
 
 "use strict";
 
-const { describe, it, afterEach } = require("node:test");
+const { describe, it, afterEach, beforeEach, mock } = require("node:test");
 const assert = require("assert");
 const { createRouteHandlers } = require("../src/lib/server-routes");
+const { readShutdownTimings } = require("../src/lib/shutdown-timing");
 const { compositeKey, managedKeys } = require("../src/lib/bot-config-v2");
 const { CHAIN_NAME } = require("../src/lib/config");
 const appPhase = require("../src/lib/app-phase");
@@ -26,7 +28,9 @@ const PM_0X = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
 /*-
  *  The handler answers at once and stops in the background: let the
  *  stop's steps run. The server stand-ins' `close` never calls its
- *  callback, which would end the process.
+ *  callback, which would end the process. The stop's exit timeout runs
+ *  on mock time (`beforeEach`), so it fires only when a test moves the
+ *  clock.
  */
 const settle = async () => {
   for (let i = 0; i < 5; i++)
@@ -34,7 +38,12 @@ const settle = async () => {
 };
 
 describe("_handleStopWhenAllClear", () => {
-  afterEach(() => appPhase._resetAppPhaseForTests());
+  beforeEach(() => mock.timers.enable({ apis: ["setTimeout"] }));
+  afterEach(() => {
+    mock.timers.reset();
+    mock.restoreAll();
+    appPhase._resetAppPhaseForTests();
+  });
 
   it("marks the app stopping before it stops the positions", async () => {
     // So no position starts, and no move begins, while they stop.
@@ -149,5 +158,27 @@ describe("_handleStopWhenAllClear", () => {
     release();
     await settle();
     assert.strictEqual(closed, true);
+  });
+
+  it("exits within the exit timeout while a connection stays open", async () => {
+    /*-
+     *  Closing the server waits for every open connection to close, and
+     *  gentle-stop asks again every two seconds over a connection it
+     *  keeps open, so the close alone can wait without end. The stop
+     *  exits after `shutdown.exitTimeoutMs`, as Ctrl+C does. The stand-in
+     *  `close` never calls back, as with a connection that stays open.
+     */
+    const exits = [];
+    mock.method(process, "exit", (code) => {
+      exits.push(code);
+    });
+    const h = createRouteHandlers(makeDeps());
+    h._handleStopWhenAllClear({}, makeRes(), { close: () => {} });
+    await settle();
+    const { exitTimeoutMs } = readShutdownTimings();
+    mock.timers.tick(exitTimeoutMs - 1);
+    assert.deepStrictEqual(exits, [], "not before the exit timeout");
+    mock.timers.tick(1);
+    assert.deepStrictEqual(exits, [0]);
   });
 });
