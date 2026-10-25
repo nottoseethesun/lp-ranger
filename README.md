@@ -266,6 +266,10 @@ rm -rf lp-ranger-[current-version-number]
 
 **Step Ten** &mdash; Post-update tasks. A few releases need a one-time action once you are running the new version. Compare the version you noted in Step Nine against the list below. If your old version is newer than everything listed here, you are done.
 
+- **Updating from LP Ranger version 0.9.10 or earlier** &mdash; if Step Six's `node ./util/migration` asked you to click **Reload Current Position** on a position, do that once the bot is running. It asks this for a pool whose old deposit list it could not take out, because no saved rebalance history names the position.
+
+  Expect the first start to take a few extra minutes per position, while the "Syncing" badge shows. LP Ranger works out again, from the blockchain, each deposit list the migration took out, and the fees of the older compounds on each position's current NFT.
+
 - **Updating from LP Ranger version 0.9.2.1 or earlier** &mdash; clear the blockchain scan caches. Step Six carries the caches forward so an update normally starts warm, but this release changes how scan results and profit-and-loss periods are stored, and a figure cached by an older version can hold a value the new code no longer produces. Nothing detects that on its own: the old number simply persists and is displayed.
 
   Stop the bot first &mdash; the command refuses to run while a server is up &mdash; then, from your new install directory:
