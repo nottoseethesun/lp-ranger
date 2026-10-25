@@ -13,7 +13,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { _resolveEntryValueCached } = require("../src/lib/position-details");
+const { _resolveEntryValueCached } = require("../src/server/position-details");
 
 describe("_resolveEntryValueCached", () => {
   it("returns deposit when set", () => {

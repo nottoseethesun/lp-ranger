@@ -1,6 +1,6 @@
 /**
  * @file test/server-routes-stop.test.js
- * @description The held stop's route in src/lib/server-routes.js,
+ * @description The held stop's route in src/server/server-routes.js,
  *   `_handleStopWhenAllClear` (`POST /api/stop-when-all-clear`, which
  *   `npm run gentle-stop` sends): it answers at once, starts the stop in
  *   the background, and closes the server only once every position has
@@ -13,7 +13,7 @@
 
 const { describe, it, afterEach, beforeEach, mock } = require("node:test");
 const assert = require("assert");
-const { createRouteHandlers } = require("../src/lib/server-routes");
+const { createRouteHandlers } = require("../src/server/server-routes");
 const { readShutdownTimings } = require("../src/lib/shutdown-timing");
 const { compositeKey, managedKeys } = require("../src/lib/bot-config-v2");
 const { CHAIN_NAME } = require("../src/lib/config");

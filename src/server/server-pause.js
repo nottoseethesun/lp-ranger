@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-pause.js
+ * @file src/server/server-pause.js
  * @module server-pause
  * @description
  * Server-tier wiring for the idle-driven price-lookup pause.  Lives in
@@ -31,7 +31,7 @@ const { createIdleTracker } = require("./server-idle-tracker");
 const {
   pausePriceLookups,
   unpausePriceLookups,
-} = require("./price-fetcher-gate");
+} = require("../lib/price-fetcher-gate");
 
 /** Default thresholds — match docs/architecture.md. */
 const DEFAULT_IDLE_THRESHOLD_MS = 15 * 60_000;

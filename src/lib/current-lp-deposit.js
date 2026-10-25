@@ -32,8 +32,8 @@
  * src/lib/counted-deposits.js).
  *
  * The bot's Current panel figures (src/lib/bot-pnl-current-nft.js) and the
- * unmanaged view (src/lib/position-details-quick.js,
- * src/lib/position-details.js) both ask `addedSinceMint`, so both report
+ * unmanaged view (src/server/position-details-quick.js,
+ * src/server/position-details.js) both ask `addedSinceMint`, so both report
  * the same deposit for the same NFT.
  */
 

@@ -1,6 +1,6 @@
 /**
  * @file test/helpers/route-handler-deps.js
- * @description The stand-in dependencies src/lib/server-routes.js
+ * @description The stand-in dependencies src/server/server-routes.js
  *   `createRouteHandlers` is built over, and a response that records what
  *   a handler answered, for the suites that drive its handlers.
  */

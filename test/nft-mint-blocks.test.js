@@ -236,5 +236,5 @@ describe("nftScanFromBlock", () => {
  *  read is made: test/bot-recorder-scan-helpers.test.js (the managed
  *  lifetime scan) and test/position-history-scan-chain.test.js (epoch
  *  reconstruction). The unmanaged details path makes no chain read —
- *  see the file header of src/lib/position-details.js.
+ *  see the file header of src/server/position-details.js.
  */

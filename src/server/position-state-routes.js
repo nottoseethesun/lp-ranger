@@ -1,5 +1,5 @@
 /**
- * @file src/lib/position-state-routes.js
+ * @file src/server/position-state-routes.js
  * @module position-state-routes
  * @description
  * A yes-or-no question about the positions this server runs, answered
@@ -20,12 +20,12 @@
  * It answers 400 for a key that does not parse as a position's composite
  * key (chain-wallet-contract-tokenId). Whether anything is under way, for
  * a stop, is the held stop's answer (`POST /api/stop-when-all-clear`,
- * src/lib/stop-when-all-clear.js).
+ * src/server/stop-when-all-clear.js).
  */
 
 "use strict";
 
-const { parseCompositeKey } = require("./composite-key");
+const { parseCompositeKey } = require("../lib/composite-key");
 
 /**
  * The positions the server lists as managed: every position its manager

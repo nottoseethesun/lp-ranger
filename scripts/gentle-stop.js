@@ -13,7 +13,7 @@
  *   (`POST /api/stop-when-all-clear`). The server holds that stop: from
  *   the request on it starts nothing new, and it exits once each
  *   rebalance or compound under way, and each scan running, has
- *   finished (src/lib/stop-when-all-clear.js). The server decides when, so
+ *   finished (src/server/stop-when-all-clear.js). The server decides when, so
  *   no check can begin a move between an all-clear and the stop, as one
  *   could while this script asked first and stopped after.
  *

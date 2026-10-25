@@ -3,7 +3,7 @@
 /**
  * @file test/server-unlock.test.js
  * @description Entering the wallet password is idempotent
- *   (src/lib/server-unlock.js).
+ *   (src/server/server-unlock.js).
  *
  *   The first unlock decrypts the key and the api keys and starts the
  *   positions saved as managed. Entering the password again, from another
@@ -15,7 +15,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createUnlockHandler } = require("../src/lib/server-unlock");
+const { createUnlockHandler } = require("../src/server/server-unlock");
 
 const KEY = "0x" + "11".repeat(32);
 

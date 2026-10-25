@@ -590,7 +590,7 @@ function isEpochHistoryComplete(closedEpochs, closedIds) {
  * The request is consumed on the attempt rather than on success, since
  * an empty tracker already guarantees the retry.
  *
- * Set by `_resetBotState` in src/lib/server-reload-position.js.  Deliberately
+ * Set by `_resetBotState` in src/server/server-reload-position.js.  Deliberately
  * NOT `_needsFullRescan`, which every rebalance sets — reusing that
  * would rebuild the whole chain from scratch after each one.
  *

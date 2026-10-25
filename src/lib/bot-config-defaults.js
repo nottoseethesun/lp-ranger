@@ -8,7 +8,7 @@
  * to them for a key that isn't present in `bot-config.json`, and the
  * dashboard shows them as the initial input value when the user hasn't
  * saved an override yet. The dashboard receives them through
- * `src/lib/resolved-settings.js` (`GET /api/bot-config-defaults`), which
+ * `src/server/resolved-settings.js` (`GET /api/bot-config-defaults`), which
  * puts `.env`'s value on top for the settings `.env` can set.
  *
  * Keys match the bot-config-v2 POSITION_KEYS / GLOBAL_KEYS naming so

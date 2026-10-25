@@ -34,7 +34,7 @@ fs.writeFileSync(
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const { createApiStatusHandler } = require("../src/lib/handle-api-status");
+const { createApiStatusHandler } = require("../src/server/handle-api-status");
 const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
 const { moralisEnabledIn } = require("../src/lib/server-moralis");
 const config = require("../src/lib/config");

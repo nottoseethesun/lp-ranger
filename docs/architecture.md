@@ -559,7 +559,7 @@ These set the pause flag, or bypass it:
 | Source | Effect | Notes |
 | --- | --- | --- |
 | `src/server.js` startup | flag = `false` | Browser idle tracker / endpoints take over from there. |
-| Server-side idle tracker | flag = `true` after 15 min of no `/api/*` traffic | Catches the "browser fully closed" case (`src/lib/server-idle-tracker.js`). |
+| Server-side idle tracker | flag = `true` after 15 min of no `/api/*` traffic | Catches the "browser fully closed" case (`src/server/server-idle-tracker.js`). |
 | Browser-side idle (`src/client/web/dashboard-idle.js`) | flag = `true` via `POST /api/pause-price-lookups` after 15 min with no input; flag = `false` via `POST /api/unpause-price-lookups` on the next activity (focus / mouse / keyboard / touch / pointer) | 500 ms throttle on activity events. |
 | Move scope (`withFreshPricesAllowed`) | counter increment > 0 forces fresh fetches inside the move; restores prior flag on completion (success or throw) | Wraps every auto- and manual-triggered rebalance / compound. Purely scoped — no "remember to re-pause." |
 | `src/bot.js` headless startup | flag = `true` (default); opt out with `--start-with-price-lookups-unpaused` | No dashboard, no idle signal — only moves need prices. |

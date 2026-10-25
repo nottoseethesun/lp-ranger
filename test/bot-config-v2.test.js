@@ -172,7 +172,7 @@ describe("bot-config-v2", () => {
       assert.equal(reloaded.positions[key].rebalanceRangeWidthPct, 7.5);
       /*- Explicit null-check idiom per CLAUDE-BEST-PRACTICES §"Type
        *  Checks": a client that clears the override sends `null` and the
-       *  null-sweep in src/lib/server-routes.js POST /api/config deletes the
+       *  null-sweep in src/server/server-routes.js POST /api/config deletes the
        *  key from disk.  This test proves the round-trip preserves the
        *  set case; the delete-on-null case is exercised end-to-end in
        *  the server-routes tests. */

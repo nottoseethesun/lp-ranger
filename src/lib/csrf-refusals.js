@@ -5,7 +5,7 @@
  * @module csrf-refusals
  * @description
  * The reasons the server refuses a request's CSRF token, one for each
- * check the token can fail (`verifyToken`, src/lib/server-csrf.js), sent as
+ * check the token can fail (`verifyToken`, src/server/server-csrf.js), sent as
  * the 403 answer's `error`. Every one of them means the page holds no
  * token this server process accepts, so the dashboard's `fetchWithCsrf`
  * (src/client/web/dashboard-helpers.js) answers any of them the same way: it

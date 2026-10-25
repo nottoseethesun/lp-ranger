@@ -1,5 +1,5 @@
 /**
- * @file src/lib/chart-providers.js
+ * @file src/server/chart-providers.js
  * @module chartProviders
  * @description
  * Backs `GET /api/chart-providers`, which feeds the Chart Links section
@@ -28,8 +28,8 @@
 
 "use strict";
 
-const { loadMergedDefaults } = require("./load-merged-defaults");
-const { CHAIN_NAME } = require("./runtime-flags");
+const { loadMergedDefaults } = require("../lib/load-merged-defaults");
+const { CHAIN_NAME } = require("../lib/runtime-flags");
 
 const CHAINS = loadMergedDefaults("chains.json");
 

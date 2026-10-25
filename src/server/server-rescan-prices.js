@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-rescan-prices.js
+ * @file src/server/server-rescan-prices.js
  * @description
  * Handler for `POST /api/position/rescan-prices` — the narrow
  * counterpart to Reload Current Position.
@@ -54,12 +54,12 @@
 
 "use strict";
 
-const config = require("./config");
-const { log } = require("./log");
-const { logCtx } = require("./logger");
-const { getPositionConfig } = require("./bot-config-v2");
-const { getTokenSymbol } = require("./token-symbol-cache");
-const { readBotConfigDefaults } = require("./bot-config-defaults");
+const config = require("../lib/config");
+const { log } = require("../lib/log");
+const { logCtx } = require("../lib/logger");
+const { getPositionConfig } = require("../lib/bot-config-v2");
+const { getTokenSymbol } = require("../lib/token-symbol-cache");
+const { readBotConfigDefaults } = require("../lib/bot-config-defaults");
 const {
   _validateKey,
   _resolveStateAndPosition,

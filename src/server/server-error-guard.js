@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-error-guard.js
+ * @file src/server/server-error-guard.js
  * @description Global error handlers for transient RPC errors.
  *
  * Ethers can throw from internal timer callbacks (request timeouts) outside
@@ -11,7 +11,7 @@
 
 "use strict";
 
-const { log } = require("./log");
+const { log } = require("../lib/log");
 const _RPC_CODES = new Set(["TIMEOUT", "NETWORK_ERROR", "SERVER_ERROR"]);
 
 /** Install global uncaughtException + unhandledRejection handlers. */

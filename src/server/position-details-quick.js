@@ -7,31 +7,31 @@
 
 "use strict";
 
-const { log } = require("./log");
-const config = require("./config");
-const rangeMath = require("./range-math");
-const { getPoolState } = require("./rebalancer-pools");
+const { log } = require("../lib/log");
+const config = require("../lib/config");
+const rangeMath = require("../lib/range-math");
+const { getPoolState } = require("../lib/rebalancer-pools");
 const {
   positionValueUsd,
   fetchTokenPrices,
   readUnclaimedFees,
   addPoolShare,
-} = require("./bot-pnl-updater");
-const { getPositionBaseline } = require("./hodl-baseline");
-const { applyPriceOverrides } = require("./price-overrides");
-const { ilFigures } = require("./bot-pnl-il");
+} = require("../lib/bot-pnl-updater");
+const { getPositionBaseline } = require("../lib/hodl-baseline");
+const { applyPriceOverrides } = require("../lib/price-overrides");
+const { ilFigures } = require("../lib/bot-pnl-il");
 const {
   savedNftCompoundedUsd,
   savedWalletCoinsPutIn,
   savedFeesLeftUsd,
   savedDepositAdded,
 } = require("./position-details-compound");
-const { plusDeposits } = require("./counted-deposits");
+const { plusDeposits } = require("../lib/counted-deposits");
 const {
   compositeKey,
   getPositionConfig,
   saveConfig,
-} = require("./bot-config-v2");
+} = require("../lib/bot-config-v2");
 
 const _ERC20_BAL_ABI = ["function balanceOf(address) view returns (uint256)"];
 

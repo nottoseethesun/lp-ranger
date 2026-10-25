@@ -70,10 +70,10 @@ const {
   resolvedHelpFigures,
   handleBotConfigDefaults,
   handleHelpFigures,
-} = require("../src/lib/resolved-settings");
+} = require("../src/server/resolved-settings");
 const {
   userConfigurableRoutes,
-} = require("../src/lib/user-configurable-routes");
+} = require("../src/server/user-configurable-routes");
 const mergedLoader = require("../src/lib/load-merged-defaults");
 const defaultsReader = require("../src/lib/bot-config-defaults");
 

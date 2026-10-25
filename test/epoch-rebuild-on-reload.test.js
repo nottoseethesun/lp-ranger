@@ -298,7 +298,7 @@ describe("reconstructEpochs — forced rebuild after a reload", () => {
 });
 
 describe("_resetBotState — what Reload asks for", () => {
-  const { _resetBotState } = require("../src/lib/server-reload-position");
+  const { _resetBotState } = require("../src/server/server-reload-position");
 
   it("requests an epoch rebuild", () => {
     const state = {};

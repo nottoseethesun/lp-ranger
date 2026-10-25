@@ -9,7 +9,7 @@
  *   The Price Override dialog saves to the server (`POST /api/config`,
  *   under the position's key), as it does for a managed position, so the
  *   override holds in any browser and after Clear Local Storage.
- *   `computeQuickDetails` (src/lib/position-details-quick.js) reads it there.
+ *   `computeQuickDetails` (src/server/position-details-quick.js) reads it there.
  *   The pool, its prices and the token reads are stubbed; the override
  *   rule itself (`_applyPriceOverrides`) is tested in
  *   test/position-details-quick.test.js.
@@ -37,7 +37,10 @@ before(() => {
    *  the `after` hook below.
    */
   Module.prototype.require = function (id) {
-    if (id === "./rebalancer-pools")
+    /*- A module in src/server/ names a shared one `../lib/<name>`, one in
+     *  src/lib/ `./<name>`: either way it gets the stand-in. */
+    const name = id.replace(/^\.\.\/lib\//, "./");
+    if (name === "./rebalancer-pools")
       return {
         getPoolState: async () => ({
           tick: 0,
@@ -46,7 +49,7 @@ before(() => {
           decimals1: 18,
         }),
       };
-    if (id === "./bot-pnl-updater")
+    if (name === "./bot-pnl-updater")
       return {
         // Token 0 has no price, so an override is what values it.
         fetchTokenPrices: async () => ({ price0: 0, price1: 2 }),
@@ -56,14 +59,14 @@ before(() => {
       };
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/lib/position-details-quick")];
-  ({ computeQuickDetails } = require("../src/lib/position-details-quick"));
+  delete require.cache[require.resolve("../src/server/position-details-quick")];
+  ({ computeQuickDetails } = require("../src/server/position-details-quick"));
   key = compositeKey(config.CHAIN_NAME, WALLET, PM, TOKEN_ID);
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/lib/position-details-quick")];
+  delete require.cache[require.resolve("../src/server/position-details-quick")];
 });
 
 /** A details request; `extra` adds what an older dashboard sent. */

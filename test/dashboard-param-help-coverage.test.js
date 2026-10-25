@@ -134,7 +134,7 @@ test("each Current fee dialog names the remedy that applies, and where it is", a
   /*-
    *  Fees Earned is the unclaimed coins at this poll's prices, so a bad
    *  price is fixed by the price override; Re-scan Prices re-values only
-   *  stored figures (src/lib/server-rescan-prices.js) and leaves it alone.
+   *  stored figures (src/server/server-rescan-prices.js) and leaves it alone.
    *  Fees Compounded is a count of coins Re-scan Prices takes again.
    */
   const help = await paramHelp();

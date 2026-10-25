@@ -38,7 +38,7 @@ function setupSandbox(present) {
   fs.mkdirSync(path.join(root, "src", "client", "web", "dist"), {
     recursive: true,
   });
-  fs.mkdirSync(path.join(root, "src", "lib"), { recursive: true });
+  fs.mkdirSync(path.join(root, "src", "server"), { recursive: true });
   fs.copyFileSync(
     SCRIPT,
     path.join(root, "scripts", "check-build-artifacts.js"),
@@ -47,7 +47,7 @@ function setupSandbox(present) {
     "src/client/web/dist/bundle.js",
     "src/client/web/build-info.js",
     "src/client/web/disclosure-content.js",
-    "src/lib/build-info.json",
+    "src/server/build-info.json",
   ];
   for (const rel of all) {
     if (present.includes(rel))
@@ -73,7 +73,7 @@ test("exits 0 when all four required artifacts exist", () => {
     "src/client/web/dist/bundle.js",
     "src/client/web/build-info.js",
     "src/client/web/disclosure-content.js",
-    "src/lib/build-info.json",
+    "src/server/build-info.json",
   ]);
   try {
     const r = runGuard(root);
@@ -88,7 +88,7 @@ test("exits 1 with a clear error when bundle.js is missing", () => {
   const root = setupSandbox([
     "src/client/web/build-info.js",
     "src/client/web/disclosure-content.js",
-    "src/lib/build-info.json",
+    "src/server/build-info.json",
   ]);
   try {
     const r = runGuard(root);
@@ -108,7 +108,7 @@ test("lists EVERY missing file, not just the first", () => {
     assert.match(r.stderr, /src\/client\/web\/dist\/bundle\.js/);
     assert.match(r.stderr, /src\/client\/web\/build-info\.js/);
     assert.match(r.stderr, /src\/client\/web\/disclosure-content\.js/);
-    assert.match(r.stderr, /src\/lib\/build-info\.json/);
+    assert.match(r.stderr, /src\/server\/build-info\.json/);
   } finally {
     cleanup(root);
   }

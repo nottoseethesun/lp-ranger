@@ -8,7 +8,7 @@ metadata:
   modified: 2026-10-24T04:54:43.168Z
 ---
 
-`_handleApiConfig` in `src/lib/server-routes.js` uses
+`_handleApiConfig` in `src/server/server-routes.js` uses
 `getOrCreatePositionConfig` (not the non-lazy `getPositionConfig`)
 when applying per-position keys, so a Save for a not-yet-managed
 position creates the slot with the user's values. A later

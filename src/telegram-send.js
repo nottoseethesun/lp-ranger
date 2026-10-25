@@ -10,7 +10,7 @@
  * one the way it did when each had its own `fetch`.
  *
  * It sits beside `src/server.js` and `src/bot.js` because, like them, it
- * is a program of its own: `src/lib/telegram-notifications/server-shutdown.js`
+ * is a program of its own: `src/server/telegram-notifications/server-shutdown.js`
  * starts it, and nothing else does.
  *
  * Usage: node src/telegram-send.js <botToken> <chatId> <escaped> [plain]

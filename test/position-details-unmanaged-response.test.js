@@ -7,7 +7,7 @@
  *
  *   The Current panel's Fees Compounded and Gas reach the dashboard by a
  *   long route: this response's `pnlSnapshot` → `_syncLifetimeState`
- *   (src/lib/server-routes.js) → the position's bot state → the next
+ *   (src/server/server-routes.js) → the position's bot state → the next
  *   `/api/status` poll → `_applyUnmanagedSnapshotOverlay`. Every step
  *   drops the figures when the snapshot is absent, and the last one
  *   leaves the two rows as dashes.
@@ -146,10 +146,13 @@ function load(cachedEpochs) {
   const loadedBefore = new Set(Object.keys(require.cache));
   const origRequire = Module.prototype.require;
   Module.prototype.require = function (id) {
-    if (Object.prototype.hasOwnProperty.call(stubs, id)) return stubs[id];
+    /*- A module in src/server/ names a shared one `../lib/<name>`, one in
+     *  src/lib/ `./<name>`: either way it gets the stand-in. */
+    const name = id.replace(/^\.\.\/lib\//, "./");
+    if (Object.prototype.hasOwnProperty.call(stubs, name)) return stubs[name];
     return origRequire.apply(this, arguments);
   };
-  const file = require.resolve("../src/lib/position-details");
+  const file = require.resolve("../src/server/position-details");
   delete require.cache[file];
   try {
     return {

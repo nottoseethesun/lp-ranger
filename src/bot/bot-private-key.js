@@ -1,5 +1,5 @@
 /**
- * @file src/lib/bot-private-key.js
+ * @file src/bot/bot-private-key.js
  * @module bot-private-key
  * @description
  * Resolve the bot's signing private key from one of three sources:
@@ -14,9 +14,9 @@
 
 "use strict";
 
-const { log } = require("./log");
-const config = require("./config");
-const walletManager = require("./wallet-manager");
+const { log } = require("../lib/log");
+const config = require("../lib/config");
+const walletManager = require("../lib/wallet-manager");
 
 /**
  * @param {object} [opts]

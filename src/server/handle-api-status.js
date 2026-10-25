@@ -1,5 +1,5 @@
 /**
- * @file src/lib/handle-api-status.js
+ * @file src/server/handle-api-status.js
  * @module handle-api-status
  * @description
  * Factory for the `GET /api/status` route handler.  Extracted from
@@ -15,10 +15,10 @@
 "use strict";
 
 const path = require("path");
-const { configuredErrorLogPath } = require("./error-log");
-const { getActiveLogFilePath } = require("./log-file");
+const { configuredErrorLogPath } = require("../lib/error-log");
+const { getActiveLogFilePath } = require("../lib/log-file");
 const { managedPositionList } = require("./position-state-routes");
-const { startUpProgress } = require("./app-phase");
+const { startUpProgress } = require("../lib/app-phase");
 
 /**
  * The file the server is logging to, relative to where it runs, or null

@@ -162,7 +162,7 @@ const RPC_URL = RPC_URLS[0] || "";
  * Replace the live endpoint list, in place, after the operator adds one.
  *
  * Mutates rather than rebinding because `RPC_URLS` is read directly by
- * `src/lib/rpc-endpoints.js`, `src/lib/rebalancer-pools.js` and
+ * `src/server/rpc-endpoints.js`, `src/lib/rebalancer-pools.js` and
  * `src/lib/server-can-reopen.js`, each of which captured the array. A
  * rebind would leave all three walking the endpoints the process
  * started with.

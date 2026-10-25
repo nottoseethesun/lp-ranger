@@ -30,19 +30,25 @@ const {
   RECORD_POSITION_KEYS,
 } = require("../src/lib/bot-config-keys");
 
-const SRC = path.join(__dirname, "..", "src", "lib");
+/*- The app's module folders: the modules the programs share, the
+ *  server's own and the bot's own. */
+const SRC_DIRS = ["lib", "server", "bot"].map((d) =>
+  path.join(__dirname, "..", "src", d),
+);
 
-/** Each module under src/lib/, by file name, as code with comments removed. */
-const MODULES = fs
-  .readdirSync(SRC)
-  .filter((f) => f.endsWith(".js"))
-  .map((f) => [
-    f,
-    fs
-      .readFileSync(path.join(SRC, f), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, ""),
-  ]);
+/** Each module in those folders, by file name, as code with comments removed. */
+const MODULES = SRC_DIRS.flatMap((dir) =>
+  fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".js"))
+    .map((f) => [
+      f,
+      fs
+        .readFileSync(path.join(dir, f), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, ""),
+    ]),
+);
 
 /*-
  *  The modules that own a file under app-config/, each something the

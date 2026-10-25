@@ -23,6 +23,6 @@ back, not only when it loads. The status answer the page asks for
 every few seconds could carry whether the wallet is locked, and the
 page could open the unlock dialog when that turns to locked.
 
-Likely touch points: the status answer (`src/lib/handle-api-status.js`),
+Likely touch points: the status answer (`src/server/handle-api-status.js`),
 the poll's handler (`src/client/web/dashboard-data.js`) and the unlock dialog
 (`src/client/web/dashboard-wallet.js`).

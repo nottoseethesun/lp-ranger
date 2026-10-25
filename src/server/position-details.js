@@ -22,15 +22,18 @@
 
 "use strict";
 
-const { log } = require("./log");
-const config = require("./config");
-const { getPoolState } = require("./rebalancer-pools");
-const { positionValueUsd, fetchTokenPrices } = require("./bot-pnl-updater");
-const { reconstructEpochs } = require("./epoch-reconstructor");
-const { createPnlTracker } = require("./pnl-tracker");
-const { getCachedEpochs, setCachedEpochs } = require("./epoch-cache");
-const { scanPoolHistory } = require("./pool-scanner");
-const { compositeKey } = require("./bot-config-v2");
+const { log } = require("../lib/log");
+const config = require("../lib/config");
+const { getPoolState } = require("../lib/rebalancer-pools");
+const {
+  positionValueUsd,
+  fetchTokenPrices,
+} = require("../lib/bot-pnl-updater");
+const { reconstructEpochs } = require("../lib/epoch-reconstructor");
+const { createPnlTracker } = require("../lib/pnl-tracker");
+const { getCachedEpochs, setCachedEpochs } = require("../lib/epoch-cache");
+const { scanPoolHistory } = require("../lib/pool-scanner");
+const { compositeKey } = require("../lib/bot-config-v2");
 const {
   computeQuickDetails,
   _currentPnl,
@@ -44,8 +47,10 @@ const {
   savedFeesLeftUsd,
   savedDepositAdded,
 } = require("./position-details-compound");
-const { resolvePositionSymbols } = require("./resolve-position-symbols");
-const { applyInitialResidualFromCache } = require("./bot-pnl-initial-residual");
+const { resolvePositionSymbols } = require("../lib/resolve-position-symbols");
+const {
+  applyInitialResidualFromCache,
+} = require("../lib/bot-pnl-initial-residual");
 
 /**
  * Run the pool's event scan and bring the P&L history up to date.

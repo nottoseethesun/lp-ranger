@@ -1,5 +1,5 @@
 /**
- * @file src/lib/user-configurable-routes.js
+ * @file src/server/user-configurable-routes.js
  * @module userConfigurableRoutes
  * @description
  * Bundles the HTTP route handlers that serve JSON payloads from the
@@ -14,16 +14,16 @@
 
 "use strict";
 
-const { handleUiDefaults } = require("./ui-defaults");
-const { handleLpProviders } = require("./lp-providers");
+const { handleUiDefaults } = require("../lib/ui-defaults");
+const { handleLpProviders } = require("../lib/lp-providers");
 const {
   handleBotConfigDefaults,
   handleHelpFigures,
 } = require("./resolved-settings");
 const { handleChartProviders } = require("./chart-providers");
 const { handleRpcEndpoints } = require("./rpc-endpoints");
-const { handleSettingLabels } = require("./setting-labels");
-const config = require("./config");
+const { handleSettingLabels } = require("../lib/setting-labels");
+const config = require("../lib/config");
 
 /**
  * Build the `{ "METHOD /path": handler }` route map for all

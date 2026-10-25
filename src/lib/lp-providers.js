@@ -217,7 +217,7 @@ function isChainSupported(factory, positionManager, chainId) {
  * Done here rather than in `readLpProviders` because the underlying
  * JSON is chain-agnostic — only the HTTP tier knows which chain the
  * server is running, and the bot-side callers of `readLpProviders`
- * have no use for a URL.  Mirrors `src/lib/chart-providers.js`: the
+ * have no use for a URL.  Mirrors `src/server/chart-providers.js`: the
  * server substitutes everything except `{poolId}`, so the browser does
  * one string replace for both link families instead of learning two
  * different composition rules.

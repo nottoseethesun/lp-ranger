@@ -36,7 +36,7 @@ Source (~15 places):
 - `src/lib/bot-cycle.js:392` — `_checkRebalanceGates` reads.
 - `src/lib/bot-cycle-residual.js:54` — reads to skip residual cleanup.
 - `src/lib/price-moved-stop.js` (`holdAfterPriceMove`) — writes.
-- `src/lib/server-routes.js:141-142` — clears on slippage change.
+- `src/server/server-routes.js:141-142` — clears on slippage change.
 - `src/lib/server-positions.js:54, 185` — initializes / clears on key migration.
 - `src/client/web/dashboard-data-status.js:337` — pill label.
 - `src/client/web/dashboard-alerts.js:157, 183, 186` — alert visibility.

@@ -4,7 +4,7 @@
  *   the one place they are written into the page.
  *
  *   The server works the table out (`GET /api/help-figures`, built by
- *   `src/lib/resolved-settings.js` through `src/lib/help-figures.js`) from the
+ *   `src/server/resolved-settings.js` through `src/lib/help-figures.js`) from the
  *   values this install runs on: the shipped settings, the operator's
  *   overrides on top, and `.env` on top of both. So a help dialog states
  *   the figure in force rather than the shipped one. The answer also

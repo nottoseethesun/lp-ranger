@@ -26,7 +26,7 @@ accounting period, and a closed period keeps the dollars it closed at.
 These call sites price gas at today and are **correct**:
 
 - `src/lib/bot-pnl-current-nft.js` `_weiToUsd` — managed Current panel.
-- `src/lib/position-details-compound.js` `_currentValuesFromScan` —
+- `src/server/position-details-compound.js` `_currentValuesFromScan` —
   unmanaged Current panel. Same figure, so the two views agree.
 - `src/lib/bot-pnl-updater.js` `overridePnlWithRealValues` — the Lifetime
   Gas line, re-derived every poll as `totalGasNative × current price`.

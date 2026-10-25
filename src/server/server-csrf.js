@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-csrf.js
+ * @file src/server/server-csrf.js
  * @description
  * CSRF token generation and verification for the LP Ranger HTTP server.
  * Uses the `csrf` package (pillarjs) for cryptographically secure tokens.
@@ -18,13 +18,13 @@
 
 "use strict";
 
-const { log } = require("./log");
+const { log } = require("../lib/log");
 const Tokens = require("csrf");
 const {
   loadMergedDefaults,
   loadShippedDefaults,
-} = require("./load-merged-defaults");
-const { CSRF_REFUSALS } = require("./csrf-refusals");
+} = require("../lib/load-merged-defaults");
+const { CSRF_REFUSALS } = require("../lib/csrf-refusals");
 
 const _tokens = new Tokens();
 

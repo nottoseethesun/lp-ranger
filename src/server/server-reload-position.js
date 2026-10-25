@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-reload-position.js
+ * @file src/server/server-reload-position.js
  * @module server-reload-position
  * @description
  * Handler for `POST /api/position/reload` — the "Reload Current
@@ -24,21 +24,21 @@
 
 "use strict";
 
-const { log } = require("./log");
-const config = require("./config");
-const { saveConfig, getPositionConfig } = require("./bot-config-v2");
-const { parseCompositeKey } = require("./composite-key");
-const { CHAIN_DERIVED_POSITION_KEYS } = require("./bot-config-keys");
-const _epochCache = require("./epoch-cache");
-const { cancelPoolScan, clearPoolCache } = require("./pool-scanner");
-const { resolveLiveKey } = require("./server-key-resolver");
-const { logCtx } = require("./logger");
-const { getTokenSymbol } = require("./token-symbol-cache");
+const { log } = require("../lib/log");
+const config = require("../lib/config");
+const { saveConfig, getPositionConfig } = require("../lib/bot-config-v2");
+const { parseCompositeKey } = require("../lib/composite-key");
+const { CHAIN_DERIVED_POSITION_KEYS } = require("../lib/bot-config-keys");
+const _epochCache = require("../lib/epoch-cache");
+const { cancelPoolScan, clearPoolCache } = require("../lib/pool-scanner");
+const { resolveLiveKey } = require("../lib/server-key-resolver");
+const { logCtx } = require("../lib/logger");
+const { getTokenSymbol } = require("../lib/token-symbol-cache");
 const {
   isAscanRunningOnThisPosition,
   isAcoinMoveUnderWayOnThisPosition,
-} = require("./scan-state");
-const { isStopping } = require("./app-phase");
+} = require("../lib/scan-state");
+const { isStopping } = require("../lib/app-phase");
 
 /*- The words a Reload Current Position or Re-scan Prices is refused with
  *  while a coin move is under way on the position, the user's (2026-10-23). */
@@ -205,7 +205,7 @@ function _checkInProgress(state, copy = {}) {
       : copy.scanExtra;
   if (!state) return null;
   /*- A stop the server holds until nothing is under way
-   *  (src/lib/stop-when-all-clear.js) waits for the scans running; one
+   *  (src/server/stop-when-all-clear.js) waits for the scans running; one
    *  started now would be cut off, or hold the stop for its length. */
   if (isStopping()) {
     return {

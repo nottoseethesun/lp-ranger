@@ -271,7 +271,7 @@ describe("config.setRpcUrls keeps the live list truthful", () => {
    *  the "saved but not in use" failure this whole feature exists to
    *  remove. */
   const config = require("../src/lib/config");
-  const { readRpcEndpoints } = require("../src/lib/rpc-endpoints");
+  const { readRpcEndpoints } = require("../src/server/rpc-endpoints");
 
   it("updates what the endpoints route reports", () => {
     const original = [...config.RPC_URLS];

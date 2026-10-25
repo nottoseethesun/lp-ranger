@@ -1,5 +1,5 @@
 /**
- * @file src/lib/telegram-notifications/server-telegram.js
+ * @file src/server/telegram-notifications/server-telegram.js
  * @module serverTelegram
  * @description
  * API route handlers for Telegram notification configuration.
@@ -15,20 +15,22 @@
 
 "use strict";
 
-const { log } = require("../log");
+const { log } = require("../../lib/log");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
   hasEncryptedKey,
-} = require("../api-key-store");
-const telegram = require("./telegram");
+} = require("../../lib/api-key-store");
+const telegram = require("../../lib/telegram-notifications/telegram");
 const {
   BALANCED_BAND_PCT,
   BALANCED_COOLDOWN_MS,
-} = require("./balanced-notifier");
-const { ALERT_CHOICES } = require("./telegram-events");
-const { AJV } = require("../value-kinds");
-const { problemsFromErrors } = require("../settings-schema-parts");
+} = require("../../lib/telegram-notifications/balanced-notifier");
+const {
+  ALERT_CHOICES,
+} = require("../../lib/telegram-notifications/telegram-events");
+const { AJV } = require("../../lib/value-kinds");
+const { problemsFromErrors } = require("../../lib/settings-schema-parts");
 
 // The rule for a set of alert choices, compiled.
 const _choicesOk = AJV.compile(ALERT_CHOICES);

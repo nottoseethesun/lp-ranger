@@ -59,7 +59,7 @@ const HISTORY = {
 const run = { historyCalls: [], beforeCallback: () => {} };
 
 /**
- * Load `src/lib/position-details.js` with the pool scan and the closed NFTs'
+ * Load `src/server/position-details.js` with the pool scan and the closed NFTs'
  * histories replaced, and every module it pulls in for the first time
  * evicted again afterwards, so no stubbed copy outlives the load.
  */
@@ -98,10 +98,13 @@ function loadSnapshot() {
   const loadedBefore = new Set(Object.keys(require.cache));
   const origRequire = Module.prototype.require;
   Module.prototype.require = function (id) {
-    if (Object.prototype.hasOwnProperty.call(stubs, id)) return stubs[id];
+    /*- A module in src/server/ names a shared one `../lib/<name>`, one in
+     *  src/lib/ `./<name>`: either way it gets the stand-in. */
+    const name = id.replace(/^\.\.\/lib\//, "./");
+    if (Object.prototype.hasOwnProperty.call(stubs, name)) return stubs[name];
     return origRequire.apply(this, arguments);
   };
-  const file = require.resolve("../src/lib/position-details");
+  const file = require.resolve("../src/server/position-details");
   delete require.cache[file];
   try {
     return require(file)._getLifetimeSnapshot;

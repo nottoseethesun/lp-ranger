@@ -1,5 +1,5 @@
 /**
- * @file src/lib/resolved-settings.js
+ * @file src/server/resolved-settings.js
  * @module resolved-settings
  * @description
  * The settings this install runs on, for everything the dashboard shows
@@ -24,13 +24,13 @@
 
 "use strict";
 
-const config = require("./config");
-const { readBotConfigDefaults } = require("./bot-config-defaults");
-const { readUiDefaults } = require("./ui-defaults");
-const { SETTING_BOUNDS } = require("./setting-bounds");
-const { helpFigures } = require("./help-figures");
-const { loadMergedDefaults } = require("./load-merged-defaults");
-const { aggregatorNameInUse } = require("./aggregator-in-use");
+const config = require("../lib/config");
+const { readBotConfigDefaults } = require("../lib/bot-config-defaults");
+const { readUiDefaults } = require("../lib/ui-defaults");
+const { SETTING_BOUNDS } = require("../lib/setting-bounds");
+const { helpFigures } = require("../lib/help-figures");
+const { loadMergedDefaults } = require("../lib/load-merged-defaults");
+const { aggregatorNameInUse } = require("../lib/aggregator-in-use");
 
 /*-
  *  The Bot Settings `.env` can set: each key in bot-config-defaults.json,

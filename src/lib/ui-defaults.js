@@ -10,7 +10,7 @@
  * startup, before it polls (`src/client/web/dashboard-ui-settings.js`). The server
  * reads the same values for what depends on them, its copy of the poll
  * interval (`src/lib/config.js`) and the figures the help quotes
- * (`src/lib/resolved-settings.js`), so the server, the page and the help agree.
+ * (`src/server/resolved-settings.js`), so the server, the page and the help agree.
  *
  * Each setting has one of three rules. An on/off setting must be true or
  * false. A timer setting, one the page turns into a `setTimeout` or

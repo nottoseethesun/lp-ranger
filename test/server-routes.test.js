@@ -1,13 +1,13 @@
 /**
  * @file test/server-routes.test.js
- * @description Unit tests for src/lib/server-routes.js createRouteHandlers.
+ * @description Unit tests for src/server/server-routes.js createRouteHandlers.
  */
 
 "use strict";
 
 const { describe, it, afterEach } = require("node:test");
 const assert = require("assert");
-const { createRouteHandlers } = require("../src/lib/server-routes");
+const { createRouteHandlers } = require("../src/server/server-routes");
 const { compositeKey } = require("../src/lib/bot-config-v2");
 const { CHAIN_NAME } = require("../src/lib/config");
 const appPhase = require("../src/lib/app-phase");

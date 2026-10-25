@@ -327,7 +327,7 @@ Three modes, in order of security recommendation:
    lives on disk as plaintext. Least recommended.
 
 In all three modes the password is cached in `_sessionPassword`
-in `src/lib/server-routes.js` so subsequent API-key operations during
+in `src/server/server-routes.js` so subsequent API-key operations during
 the same session don't re-prompt. The cache is discarded when the
 process exits.
 

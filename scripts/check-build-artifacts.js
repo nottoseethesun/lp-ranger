@@ -15,7 +15,7 @@
  *        (tar.gz)" archive instead of the release ASSET — the source
  *        archive is `git archive` output which strips every gitignored
  *        path, including `src/client/web/dist/`, `src/client/web/build-info.js`,
- *        `src/client/web/disclosure-content.js`, and `src/lib/build-info.json`.
+ *        `src/client/web/disclosure-content.js`, and `src/server/build-info.json`.
  *     2. Operator cloned the repo with `git clone` and skipped
  *        `npm run build` before `npm start`.
  *
@@ -67,8 +67,8 @@ const REQUIRED = [
     role: "disclaimer modal content (extracted from docs/disclosure.md)",
   },
   {
-    rel: "src/lib/build-info.json",
-    role: "server-side version sidecar read by src/lib/build-info.js at boot",
+    rel: "src/server/build-info.json",
+    role: "server-side version sidecar read by src/server/build-info.js at boot",
   },
 ];
 

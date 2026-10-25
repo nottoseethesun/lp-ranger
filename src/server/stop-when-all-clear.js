@@ -1,5 +1,5 @@
 /**
- * @file src/lib/stop-when-all-clear.js
+ * @file src/server/stop-when-all-clear.js
  * @module stop-when-all-clear
  * @description
  * The server's held stop, asked for by `POST /api/stop-when-all-clear`,
@@ -24,8 +24,8 @@
 
 "use strict";
 
-const { log } = require("./log");
-const { isAscanRunningOnThisPosition } = require("./scan-state");
+const { log } = require("../lib/log");
+const { isAscanRunningOnThisPosition } = require("../lib/scan-state");
 
 /** A position as the stop's answer and the log name it. */
 function _label(key, state) {

@@ -33,7 +33,7 @@ const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   createTelegramHandlers,
-} = require("../src/lib/telegram-notifications/server-telegram");
+} = require("../src/server/telegram-notifications/server-telegram");
 const telegram = require("../src/lib/telegram-notifications/telegram");
 const {
   EVENT_DEFAULTS,

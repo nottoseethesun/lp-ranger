@@ -43,8 +43,8 @@ after(() => {
 
 const holder = require("../src/lib/api-key-holder");
 const { moralisEnabledIn } = require("../src/lib/server-moralis");
-const { createRouteHandlers } = require("../src/lib/server-routes");
-const { createApiStatusHandler } = require("../src/lib/handle-api-status");
+const { createRouteHandlers } = require("../src/server/server-routes");
+const { createApiStatusHandler } = require("../src/server/handle-api-status");
 const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
 const config = require("../src/lib/config");
 

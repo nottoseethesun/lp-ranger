@@ -214,8 +214,7 @@ export function _getManagedTokenIds() {
 // ── In-browser position store ────────────────────
 
 /**
- * Lightweight in-browser position store (mirrors
- * src/lib/position-store.js logic). Stores up to
+ * Lightweight in-browser position store. Stores up to
  * MAX_POS entries, deduplicates by
  * (wallet + type + id), supports pagination and
  * active-position selection. Persisted to

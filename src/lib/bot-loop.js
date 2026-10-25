@@ -10,7 +10,7 @@
  *   - `pollCycle(deps)` — single poll iteration
  *   - `appendLog(result)` — write rebalance result to disk log
  *
- * The private-key resolver lives in `./bot-private-key`; callers
+ * The private-key resolver lives in `src/bot/bot-private-key.js`; callers
  * (bot.js, tests) import it directly from there.
  *
  * RPC providers are owned by `src/lib/send-transaction.js` — call
@@ -712,7 +712,7 @@ async function startBotLoop(opts) {
     if (!claimScanStart(botState)) return;
     /*-
      *  The pass is kept while it runs, so the server's held stop can wait
-     *  for it to end (src/lib/stop-when-all-clear.js).
+     *  for it to end (src/server/stop-when-all-clear.js).
      */
     botState._scanDone = _scanPass();
     return botState._scanDone;

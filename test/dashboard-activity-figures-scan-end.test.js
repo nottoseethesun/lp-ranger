@@ -9,7 +9,7 @@
  *   `_onScanFinished`).
  *
  *   Re-scan Prices is the case. It marks the position's lifetime scan
- *   unfinished (src/lib/server-rescan-prices.js), and the scan rebuilds the
+ *   unfinished (src/server/server-rescan-prices.js), and the scan rebuilds the
  *   compound list, working out from the chain the figures of each
  *   compound that had none, and writing each amount at today's prices,
  *   before it marks itself finished. So for a while the status answers

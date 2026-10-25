@@ -27,7 +27,7 @@ const { RECORD_CHECKS } = require("../src/lib/config-record-checks");
 const { positionRecordsProblems } = require("../src/lib/bot-config-checks");
 const { RECORD_POSITION_KEYS } = require("../src/lib/bot-config-keys");
 const { createResidualTracker } = require("../src/lib/residual-tracker");
-const { createRouteHandlers } = require("../src/lib/server-routes");
+const { createRouteHandlers } = require("../src/server/server-routes");
 
 const POOL = "0x" + "ab".repeat(20);
 const KEY =
