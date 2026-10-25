@@ -37,7 +37,39 @@ const topicOf = (name) => EVENTS.getEvent(name).topicHash;
 
 /* ---------- pacing and caching ---------- */
 
-test("pacedProvider spaces requests and reads each receipt and block once", async () => {
+/*-
+ *  The pacing cases run on mock time (`Date` and `setTimeout`), so each
+ *  spacing measured is the pacer's own. On the wall clock, a busy machine
+ *  can pause the test process between the pacer booking a request's turn
+ *  and the stand-in noting it, which shrinks the gap the test sees though
+ *  the pacer kept its full spacing.
+ */
+const SPACING_MS = 25;
+
+/** Let promise callbacks run; `setImmediate` stays real on mock time. */
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+/**
+ * Make one paced request that must wait its turn: it may not reach the
+ * provider before `SPACING_MS` of mock time has passed since the one
+ * before, and reaches it once that much has.
+ * @param {object} t  The test's context, its mock timers enabled.
+ * @param {Array} asked  What the stand-in provider has been asked.
+ * @param {() => Promise} request  Starts the request.
+ * @returns {Promise} The request's answer.
+ */
+async function inTurn(t, asked, request) {
+  const before = asked.length;
+  const answer = request();
+  t.mock.timers.tick(SPACING_MS - 1);
+  await settle();
+  assert.equal(asked.length, before, "a request went out before its turn");
+  t.mock.timers.tick(1);
+  return answer;
+}
+
+test("pacedProvider spaces requests and reads each receipt and block once", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
   const asked = [];
   const inner = {
     async getTransactionReceipt(h) {
@@ -61,31 +93,36 @@ test("pacedProvider spaces requests and reads each receipt and block once", asyn
       return "0x";
     },
   };
-  const paced = pacedProvider(inner, 25);
+  const paced = pacedProvider(inner, SPACING_MS);
   await paced.getTransactionReceipt(hash(1));
   await paced.getTransactionReceipt(hash(1));
+  await inTurn(t, asked, () => paced.getBlock(5));
   await paced.getBlock(5);
-  await paced.getBlock(5);
-  assert.equal(await paced.getTransactionCount(WALLET, 9), 7);
-  await paced.getLogs({ fromBlock: 1 });
-  await paced.call({ to: COIN });
+  assert.equal(
+    await inTurn(t, asked, () => paced.getTransactionCount(WALLET, 9)),
+    7,
+  );
+  await inTurn(t, asked, () => paced.getLogs({ fromBlock: 1 }));
+  await inTurn(t, asked, () => paced.call({ to: COIN }));
   assert.deepEqual(
     asked.map((a) => a[0]),
     ["receipt", "block", "count", "logs", "call"],
   );
   assert.equal(asked[1][3], true);
-  for (let i = 1; i < asked.length; i++)
-    assert.ok(asked[i][2] - asked[i - 1][2] >= 20, `request ${i} waited`);
+  assert.deepEqual(
+    asked.map((a) => a[2] - asked[0][2]),
+    [0, 25, 50, 75, 100],
+  );
 });
 
-test("pacedProvider keeps its spacing after a timer that fires late", async () => {
+test("pacedProvider keeps its spacing after a timer that fires late", async (t) => {
   /*-
-   *  A busy process runs a timer late. The second request's turn is due
-   *  25 ms after the first, but the event loop is held for 30 ms while it
-   *  waits, so it goes out late; the third must still wait its full
-   *  spacing after the second, not only what is left of the slot the
-   *  second was due in.
+   *  A busy process runs a timer late. The second request is due 25 ms
+   *  after the first but goes out at 55; the third must still wait its
+   *  full spacing after the second, until 80, not only what was left of
+   *  the slot the second was due in, which ended at 50.
    */
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
   const sentAt = [];
   const inner = {
     async getTransactionCount() {
@@ -93,16 +130,16 @@ test("pacedProvider keeps its spacing after a timer that fires late", async () =
       return 7;
     },
   };
-  const paced = pacedProvider(inner, 25);
+  const paced = pacedProvider(inner, SPACING_MS);
   await paced.getTransactionCount(WALLET, 1);
-  setTimeout(() => {
-    const until = Date.now() + 30;
-    while (Date.now() < until);
-  }, 5);
-  await paced.getTransactionCount(WALLET, 2);
-  await paced.getTransactionCount(WALLET, 3);
-  const gap = sentAt[2] - sentAt[1];
-  assert.ok(gap >= 20, `the third request followed the second by ${gap} ms`);
+  const second = paced.getTransactionCount(WALLET, 2);
+  t.mock.timers.tick(55);
+  await second;
+  await inTurn(t, sentAt, () => paced.getTransactionCount(WALLET, 3));
+  assert.deepEqual(
+    sentAt.map((at) => at - sentAt[0]),
+    [0, 55, 80],
+  );
 });
 
 /* ---------- searching by NFT ---------- */
