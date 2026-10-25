@@ -113,7 +113,7 @@ in the json config files"): `{{figure:name}}` tokens in
 `shared-help-content.json`, `<span data-figure="name">` in the manual's
 own prose and in `index.html`, and the `f` table `buildParamHelp`
 takes in the dialogs' copy. The figures are the install's own, resolved
-on the server (`src/lib/resolved-settings.js`, `GET /api/help-figures`):
+on the server (`src/server/resolved-settings.js`, `GET /api/help-figures`):
 the user, 2026-10-17, "All help text should just quote whatever is the
 final resolved json value, which means, of course, it should include
 overrides done by the user", and "include .env too". So help wording

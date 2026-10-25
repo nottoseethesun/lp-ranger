@@ -145,7 +145,7 @@ log.info(
  * any other bootstrap work so it is always near the top of the browser
  * console. Mirrors the server.js startup banner.
  *
- * Display-version priority — same rule as src/lib/build-info.js
+ * Display-version priority — same rule as src/server/build-info.js
  * `_displayVersion`:
  *   1. Git tag (authoritative for release tarballs — pkg.json still
  *      reads "0.0.0-dev" inside the tarball, but the tag is baked in).

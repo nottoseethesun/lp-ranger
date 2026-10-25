@@ -230,7 +230,7 @@ relationship with the server.
 
 ### CORS Origin Guard
 
-[`src/lib/server-cors.js`](../src/lib/server-cors.js) sets
+[`src/server/server-cors.js`](../src/server/server-cors.js) sets
 `Access-Control-Allow-Origin: http://localhost:<PORT>` on every
 response and rejects with a 403 any mutating (`POST`, `DELETE`) request
 whose `Origin` header names another host or port. The allowed origin
@@ -243,7 +243,7 @@ accept-localhost and reject-foreign-origin paths.
 
 ### CSRF Tokens
 
-[`src/lib/server-csrf.js`](../src/lib/server-csrf.js) uses the `csrf` package
+[`src/server/server-csrf.js`](../src/server/server-csrf.js) uses the `csrf` package
 (pillarjs) to issue cryptographically random tokens bound to a
 server-generated secret. Every mutating request must carry a valid,
 non-expired token in an `x-csrf-token` header. Tokens are pruned from
@@ -391,7 +391,7 @@ keys), both backed by the cryptographic primitives in
 Telegram, etc.) are encrypted with the **same wallet password** —
 there is no separate "API-keys password" to manage or lose. After
 the unlock, the server keeps the password in `_sessionPassword` in
-[`src/lib/server-routes.js`](../src/lib/server-routes.js), so saving an API key
+[`src/server/server-routes.js`](../src/server/server-routes.js), so saving an API key
 or the Telegram settings later in the same session needs no password.
 It is discarded when the process exits. Revealing the wallet's key
 always asks for the password again.
@@ -610,7 +610,7 @@ unexpected keys (for example, overwriting `status` to mark a
 position as stopped).
 
 LP Ranger prevents this with a strict `allowlist`. The route handler
-in `src/lib/server-config-route.js` walks two hardcoded arrays —
+in `src/server/server-config-route.js` walks two hardcoded arrays —
 `GLOBAL_KEYS` (RPC URLs, gas fee limit, etc.) and
 `SETTING_POSITION_KEYS` (slippage, threshold, timeout, auto-compound
 settings, etc.) defined in `src/lib/bot-config-keys.js` — and copies only
@@ -1054,7 +1054,7 @@ non-strict footguns.
 
 ### Error Guard
 
-[`src/lib/server-error-guard.js`](../src/lib/server-error-guard.js) installs
+[`src/server/server-error-guard.js`](../src/server/server-error-guard.js) installs
 `uncaughtException` and `unhandledRejection` handlers that downgrade
 transient RPC errors (`TIMEOUT`, `NETWORK_ERROR`, `SERVER_ERROR`) to a
 non-fatal warning but still crash the process on any other uncaught
@@ -1069,7 +1069,7 @@ and no rebalance, compound or Reload begins after it
 every scan still running, and exits cleanly so nonces are not left
 hanging. Each position's stop waits for a rebalance or compound under
 way, a position still starting included, so none is cut off
-(`src/lib/stop-when-all-clear.js`). A repeat of the request changes
+(`src/server/stop-when-all-clear.js`). A repeat of the request changes
 nothing. The recommended way is `npm run gentle-stop`, which sends it
 and prints what the server is still finishing.
 `npm stop` sends SIGTERM to the PID in `tmp/lp-ranger.pid`, running

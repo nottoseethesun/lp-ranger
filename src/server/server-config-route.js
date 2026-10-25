@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-config-route.js
+ * @file src/server/server-config-route.js
  * @module serverConfigRoute
  * @description
  * `POST /api/config`: the one place a setting an operator saves from Bot
@@ -19,25 +19,31 @@
  *      one position the key names.
  *   3. Save the file once, and answer with what was applied.
  *
- * Split out of `src/lib/server-routes.js`, which builds this handler and
+ * Split out of `src/server/server-routes.js`, which builds this handler and
  * serves it with the rest of its routes.
  */
 
 "use strict";
 
-const { log } = require("./log");
-const config = require("./config");
-const sendTx = require("./send-transaction");
-const { composeRpcUrls } = require("./rpc-url-list");
-const { setServiceEnabled } = require("./api-key-holder");
-const { moralisEnabledIn } = require("./server-moralis");
-const { getOrCreatePositionConfig, saveConfig } = require("./bot-config-v2");
-const { parseCompositeKey } = require("./composite-key");
-const { GLOBAL_KEYS, SETTING_POSITION_KEYS } = require("./bot-config-keys");
-const { checkConfigValues } = require("./config-bounds");
-const { resolveLiveKey } = require("./server-key-resolver");
-const { clearIlGuardWait } = require("./il-guard");
-const { positionTag } = require("./position-answer-tag");
+const { log } = require("../lib/log");
+const config = require("../lib/config");
+const sendTx = require("../lib/send-transaction");
+const { composeRpcUrls } = require("../lib/rpc-url-list");
+const { setServiceEnabled } = require("../lib/api-key-holder");
+const { moralisEnabledIn } = require("../lib/server-moralis");
+const {
+  getOrCreatePositionConfig,
+  saveConfig,
+} = require("../lib/bot-config-v2");
+const { parseCompositeKey } = require("../lib/composite-key");
+const {
+  GLOBAL_KEYS,
+  SETTING_POSITION_KEYS,
+} = require("../lib/bot-config-keys");
+const { checkConfigValues } = require("../lib/config-bounds");
+const { resolveLiveKey } = require("../lib/server-key-resolver");
+const { clearIlGuardWait } = require("../lib/il-guard");
+const { positionTag } = require("../lib/position-answer-tag");
 
 /**
  * Clear the aborted state of the position a slippage save is for.

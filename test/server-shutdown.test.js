@@ -29,7 +29,7 @@ const path = require("node:path");
 const {
   buildShutdownMessage,
   _SEND_SCRIPT,
-} = require("../src/lib/telegram-notifications/server-shutdown");
+} = require("../src/server/telegram-notifications/server-shutdown");
 const { assertValidMarkdownV2 } = require("./helpers/markdown-v2");
 
 describe("server-shutdown — the message Telegram receives", () => {

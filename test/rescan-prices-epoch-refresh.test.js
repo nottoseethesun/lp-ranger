@@ -24,7 +24,7 @@ const {
   _needsPriceFill,
   _needsExitFromChain,
 } = require("../src/lib/position-history");
-const { requestPriceRevalue } = require("../src/lib/server-rescan-prices");
+const { requestPriceRevalue } = require("../src/server/server-rescan-prices");
 
 /** A period with both ends dated and both ends already priced. */
 function pricedRecord() {

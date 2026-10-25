@@ -257,7 +257,7 @@ async function scanPoolHistory(provider, ethersLib, opts) {
 /**
  * Clear the event cache for a pool, so the next scan reads its whole
  * history from the chain again.  Called only by Reload Current Position
- * (`src/lib/server-reload-position.js`); a rebalance appends its event with
+ * (`src/server/server-reload-position.js`); a rebalance appends its event with
  * `appendToPoolCache` instead.
  * @param {object} position  Must have token0, token1, fee.
  * @param {string} wallet    Wallet address.

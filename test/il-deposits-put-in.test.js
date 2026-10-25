@@ -25,7 +25,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { checkIlGuard } = require("../src/lib/il-guard");
 const { _computeIL } = require("../src/lib/bot-pnl-il");
-const { _currentPnl } = require("../src/lib/position-details-quick");
+const { _currentPnl } = require("../src/server/position-details-quick");
 
 const TOKEN_ID = "100";
 const DECIMALS = { decimals0: 0, decimals1: 0 };

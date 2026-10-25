@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-routes.js
+ * @file src/server/server-routes.js
  * @description
  * Route handler functions extracted from server.js.
  * Exported as `createRouteHandlers(deps)` factory.
@@ -7,22 +7,22 @@
 
 "use strict";
 
-const { log } = require("./log");
+const { log } = require("../lib/log");
 const ethers = require("ethers");
-const config = require("./config");
-const sendTx = require("./send-transaction");
+const config = require("../lib/config");
+const sendTx = require("../lib/send-transaction");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
   hasEncryptedKey,
-} = require("./api-key-store");
-const { setApiKey, setServiceEnabled } = require("./api-key-holder");
+} = require("../lib/api-key-store");
+const { setApiKey, setServiceEnabled } = require("../lib/api-key-holder");
 const {
   moralisEnabledIn,
   pingMoralis,
   validateMoralisKey,
   handleApiKeyStatus,
-} = require("./server-moralis");
+} = require("../lib/server-moralis");
 const {
   createTelegramHandlers,
 } = require("./telegram-notifications/server-telegram");
@@ -30,22 +30,22 @@ const {
   saveConfig,
   compositeKey,
   readConfigValue,
-} = require("./bot-config-v2");
-const { resolveLiveKey } = require("./server-key-resolver");
+} = require("../lib/bot-config-v2");
+const { resolveLiveKey } = require("../lib/server-key-resolver");
 // position-detector used via server-scan.js
-const { createScanHandlers } = require("./server-scan");
+const { createScanHandlers } = require("../lib/server-scan");
 const { createReloadPositionHandler } = require("./server-reload-position");
 const { createRescanPricesHandler } = require("./server-rescan-prices");
-const { createAutoStartManagedPositions } = require("./server-auto-start");
-const { markStopping, refusalToStart } = require("./app-phase");
+const { createAutoStartManagedPositions } = require("../lib/server-auto-start");
+const { markStopping, refusalToStart } = require("../lib/app-phase");
 const { createStopWhenAllClear } = require("./stop-when-all-clear");
-const { readShutdownTimings } = require("./shutdown-timing");
+const { readShutdownTimings } = require("../lib/shutdown-timing");
 const { createConfigRouteHandler } = require("./server-config-route");
 const {
   computeQuickDetails: _defaultComputeQuickDetails,
   computeLifetimeDetails: _defaultComputeLifetimeDetails,
 } = require("./position-details");
-const { emojiId } = require("./logger");
+const { emojiId } = require("../lib/logger");
 
 /**
  * Create route handler functions.
@@ -64,7 +64,7 @@ const { emojiId } = require("./logger");
  * @param {Function} deps.attachMultiPosDeps
  * @param {Function} deps.updatePositionState
  * @param {Function} deps.notifyShutdown  Sends the shutdown alert
- *   (src/lib/telegram-notifications/server-shutdown.js).
+ *   (src/server/telegram-notifications/server-shutdown.js).
  * @returns {object} Handler function map.
  */
 function createRouteHandlers(deps) {
@@ -198,7 +198,7 @@ function createRouteHandlers(deps) {
 
   /**
    * POST /api/stop-when-all-clear: stop the server once nothing it has
-   * under way is left (src/lib/stop-when-all-clear.js). From the first
+   * under way is left (src/server/stop-when-all-clear.js). From the first
    * request on, the app is stopping for good (src/lib/app-phase.js), so no
    * position starts and no rebalance, compound or Reload begins; the
    * server exits once each position's move and scan under way has

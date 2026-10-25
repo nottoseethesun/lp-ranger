@@ -28,15 +28,17 @@
 /**
  * Prettier-style globs for every JS file under lint/format gates.
  * Order matches the ESLint target list in the `lint` npm script. The
- * server side (`src/*.js`, `src/lib/`) and the web client's dashboard
- * modules (`src/client/web/dashboard-*.js`) are named apart: the web
- * client's folder also holds the build's output and generated files,
- * which no gate checks.
+ * server side (`src/*.js`, `src/lib/`, `src/server/`, `src/bot/`) and the
+ * web client's dashboard modules (`src/client/web/dashboard-*.js`) are
+ * named apart: the web client's folder also holds the build's output and
+ * generated files, which no gate checks.
  * @type {string[]}
  */
 const JS_TARGETS = [
   "src/*.js",
   "src/lib/**/*.js",
+  "src/server/**/*.js",
+  "src/bot/**/*.js",
   "test/**/*.js",
   "scripts/**/*.js",
   "util/**/*.js",
@@ -58,7 +60,14 @@ const JS_TARGETS = [
  * reports success on the ones it did read.
  * @type {string[]}
  */
-const SECURITY_TARGETS = ["src/*.js", "src/lib/", "scripts/", "util/"];
+const SECURITY_TARGETS = [
+  "src/*.js",
+  "src/lib/",
+  "src/server/",
+  "src/bot/",
+  "scripts/",
+  "util/",
+];
 
 /**
  * Targets for the secret scanner.  Same scope as SECURITY_TARGETS plus
@@ -70,6 +79,8 @@ const SECURITY_TARGETS = ["src/*.js", "src/lib/", "scripts/", "util/"];
 const SECRET_TARGETS = [
   "src/*.js",
   "src/lib/**/*.js",
+  "src/server/**/*.js",
+  "src/bot/**/*.js",
   "scripts/**/*.js",
   "util/**/*.js",
   ".env*",

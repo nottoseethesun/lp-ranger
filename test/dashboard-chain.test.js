@@ -51,7 +51,7 @@ const assert = require("node:assert/strict");
 
 const {
   userConfigurableRoutes,
-} = require("../src/lib/user-configurable-routes");
+} = require("../src/server/user-configurable-routes");
 const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json");
 
 let chainMod;

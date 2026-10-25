@@ -1069,7 +1069,7 @@ scan** is answered by three layered bounds, resolved in order by
    `lifetimeScanPlan` in `src/lib/bot-recorder-lifetime.js`), so the coins
    that rebalance swept in still reach Total Lifetime Deposit.
    `clearPoolCache()` runs only from the Reload Current Position handler
-   (`src/lib/server-reload-position.js`).
+   (`src/server/server-reload-position.js`).
 
 In short: **we start as far back as the lookback (five years as
 shipped), but never before the pool itself was created, and never before
@@ -1240,7 +1240,7 @@ as
 - **Clearing a file** makes the next scan read the pool's history again
   from the floor too. Reload Current Position, for a managed position,
   empties its pool's file (`clearPoolCache`, called from
-  `src/lib/server-reload-position.js`);
+  `src/server/server-reload-position.js`);
   `node util/cache/clean-pool-cache.js` deletes one pool's files, for
   every wallet ([Cache Utilities](#cache-utilities)); and
   `npm run clear-blockchain-scan-cache` deletes every scan cache.
@@ -1253,7 +1253,7 @@ any caller asking for the same pool and wallet within `poolScanReuseMs`
 
 - **The bot**, for each managed position (`src/lib/bot-recorder.js`), and
   **the dashboard's view of an unmanaged position**
-  (`src/lib/position-details.js`), both through `scanPoolHistory`.
+  (`src/server/position-details.js`), both through `scanPoolHistory`.
 - **The bookkeeping report**
   (`util/bookkeeping/coins-in-transactions-on-wallet`), which reads the
   files directly to list each rebalance
@@ -1402,7 +1402,7 @@ cannot write the old results back over the rebuild.
   counts there from the compound's record, with the NFT's minted coins
   (`walletCoinsPutIn`), the same in the bot and in the unmanaged details
   view, which reads the compound list the bot saved
-  (`savedWalletCoinsPutIn`, `src/lib/position-details-compound.js`).
+  (`savedWalletCoinsPutIn`, `src/server/position-details-compound.js`).
 
 **A coin two positions hold.** Each position counts the deposits of its
 own two coins, so a deposit of a coin two running managed positions
@@ -2048,7 +2048,7 @@ places read a chain, both through `scanChainNftEvents`
 | `scanChainCollectAndDrain` (`src/lib/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, when nothing else in its pass reads the chain |
 
 The unmanaged view's `_detectCurrentNftValues`
-(`src/lib/position-details-compound.js`) is not a chain reader: it scans the
+(`src/server/position-details-compound.js`) is not a chain reader: it scans the
 one NFT being looked at (see [Call sites](#call-sites)).
 
 The filter OR-matches every token id in the chain — `tokenId` is the
@@ -2168,7 +2168,7 @@ chain's mint blocks, so every NFT is floored at its own mint.
 
 Three places read a single NFT, floored at that NFT's own mint:
 `src/lib/bot-pnl-current-nft.js` and `_detectCurrentNftValues` in
-`src/lib/position-details-compound.js` read the current NFT, and
+`src/server/position-details-compound.js` read the current NFT, and
 `src/lib/position-history.js` reads a closed position looked at on its own.
 The last takes its floor from `result.mintBlockNumber`, which
 `supplementFromEvents` fills from the rebalance events before any scan
@@ -2212,7 +2212,7 @@ the page was closed. Suppressing on it would leave a genuinely
 unmanaged position with nothing to populate its KPIs.
 
 After the first response the value is authoritative. The server's
-`managedPositions` (`src/lib/handle-api-status.js`) is the union of live bot
+`managedPositions` (`src/server/handle-api-status.js`) is the union of live bot
 loops **and** positions whose saved status is `running` but whose loop
 has not started yet, so a position the bot is about to pick up already
 reads as managed. This matters because the bot starts positions on a
@@ -2342,7 +2342,7 @@ Whether a chain has one is
 [`src/lib/aggregator-in-use.js`](../src/lib/aggregator-in-use.js)'s answer,
 the same one the swap and the "Route:" badge act on.
 
-[`src/lib/resolved-settings.js`](../src/lib/resolved-settings.js) resolves the
+[`src/server/resolved-settings.js`](../src/server/resolved-settings.js) resolves the
 values on the server in the bot's order: the shipped file, the
 operator's copy in `app-config/user-configurable/`, then `.env` (from
 `src/lib/config.js`) where it can set one. Ranges come from the shipped
@@ -3171,7 +3171,7 @@ timer delay must meet the timer rule (`src/lib/timer-bounds.js`). Any other
 must fall in its range in `setting-bounds.json`. The answer is kept for the life of the
 process, so the server's own copy of the poll interval
 (`src/lib/config.js`, which times "the dashboard has had a chance to poll")
-and the figures the help quotes (`src/lib/resolved-settings.js`) are the
+and the figures the help quotes (`src/server/resolved-settings.js`) are the
 values the page is sent.
 
 **How the page uses them.** At startup the page asks the server for its
@@ -3268,7 +3268,7 @@ exposes, more keys with no input of their own, and nested groups. Where
 a position has no value of its own, the bot reads this file, an
 operator's copy on top, through `readBotConfigDefaults`. The dashboard
 fetches the same defaults from `GET /api/bot-config-defaults`, with
-`.env` on top ([`src/lib/resolved-settings.js`](../src/lib/resolved-settings.js)),
+`.env` on top ([`src/server/resolved-settings.js`](../src/server/resolved-settings.js)),
 so its inputs, Default buttons and help show what the bot runs on. A
 position's own values live in `app-config/user-configurable/bot-config.json`.
 
@@ -3521,9 +3521,10 @@ It is what makes step 8 enforceable rather than aspirational.
 
 Typical workflow when you add, rename, or change an API route:
 
-1. **Make the code change** in the appropriate `src/lib/server-*.js` file
-   and its call-site in `src/server.js`. Add/update the test in
-   `test/server-*.test.js`.
+1. **Make the code change** in the appropriate route module, in
+   `src/server/` (or a `src/lib/server-*.js` file, for one the headless
+   bot loads too), and its call-site in `src/server.js`. Add/update the
+   test in `test/server-*.test.js`.
 2. **Open [`docs/openapi.json`](openapi.json)** and find (or add) the
    entry for the affected path under the top-level `paths` object. The
    file is organised by path first, then HTTP method:
@@ -3696,7 +3697,7 @@ What happens when the process starts, in order:
 The dashboard is served as static files from `src/client/web/` by `serveStatic()`;
 all JSON APIs are dispatched by `handleRequest()` through a route table
 that maps method+path to handlers defined in
-[`src/lib/server-routes.js`](../src/lib/server-routes.js),
+[`src/server/server-routes.js`](../src/server/server-routes.js),
 [`src/lib/server-positions.js`](../src/lib/server-positions.js) and the other
 `src/lib/` route modules. The full route surface is covered by the OpenAPI
 spec (see [API Documentation](#api-documentation) above).
@@ -3768,7 +3769,7 @@ unrelated reason: a malformed request, most often one with no
 `positionKey`, or one whose key names another chain. The dashboard
 raises its dialog and restores the field only for the first. Both
 refusals come before anything in the request is applied
-(`src/lib/server-config-route.js`), so a refused request leaves no trace.
+(`src/server/server-config-route.js`), so a refused request leaves no trace.
 
 **The browser does not decide whether a value is acceptable.**
 `src/lib/config-bounds.js` is the only place that decision is made, for
@@ -4321,7 +4322,7 @@ it can fire again on a fresh failure.
 
 ### `POST /api/position/reload`
 
-**Owner:** `src/lib/server-reload-position.js` &mdash;
+**Owner:** `src/server/server-reload-position.js` &mdash;
 `createReloadPositionHandler(deps)`. Wired into
 `server-routes.js` and registered as
 `"POST /api/position/reload"` in `src/server.js`.

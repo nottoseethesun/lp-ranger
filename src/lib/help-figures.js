@@ -14,7 +14,7 @@
  * runs on and the aggregator its swaps try first: the help names the
  * ones in chains.json, never one it was written for. The server resolves
  * those values, shipped file, operator override and `.env` in that order,
- * in `src/lib/resolved-settings.js`, and the User Manual's build passes the
+ * in `src/server/resolved-settings.js`, and the User Manual's build passes the
  * shipped files alone for the copy GitHub Pages publishes.
  * `helpFigures` takes them as plain objects, numbers and names, and
  * returns one table of named figures, each already worded for a

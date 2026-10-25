@@ -11,7 +11,7 @@ const {
   _currentPnl,
   _applyPriceOverrides,
   _baselineSummary,
-} = require("../src/lib/position-details-quick");
+} = require("../src/server/position-details-quick");
 
 // ── _currentPnl ─────────────────────────────────────────────────────
 

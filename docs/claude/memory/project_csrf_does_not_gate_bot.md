@@ -5,7 +5,7 @@ type: project
 originSessionId: 78d8132a-823f-4938-9a72-c4083d75282a
 modified: 2026-10-24T04:57:19.869Z
 ---
-**Invariant:** The CSRF guard in `src/lib/server-csrf.js` (`if (method !==
+**Invariant:** The CSRF guard in `src/server/server-csrf.js` (`if (method !==
 "GET" && method !== "OPTIONS")`) runs only for inbound HTTP requests
 from the browser. The bot loop, rebalancer, compounder, and
 position-manager all execute as **direct in-process function calls**

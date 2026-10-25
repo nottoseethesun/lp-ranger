@@ -6,7 +6,7 @@
  *   positions saved as managed, one at a time after a launch.
  *
  *   The server reports the start-up's progress in its status answer
- *   (`startingManagedPositions`, src/lib/handle-api-status.js), and while it
+ *   (`startingManagedPositions`, src/server/handle-api-status.js), and while it
  *   does, the badge reads Syncing whatever position is on screen, naming
  *   the progress in its tooltip; the Syncing state is what keeps Manage
  *   and Stop Managing disabled. Once the start-up ends, the badge follows
@@ -25,7 +25,7 @@ const { learnUiSettings } = require("./helpers/ui-settings");
 const { indexHtmlDocument } = require("./helpers/index-html");
 const config = require("../src/lib/config");
 const appPhase = require("../src/lib/app-phase");
-const { createApiStatusHandler } = require("../src/lib/handle-api-status");
+const { createApiStatusHandler } = require("../src/server/handle-api-status");
 const { managedKeys } = require("../src/lib/bot-config-v2");
 const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
 const { moralisEnabledIn } = require("../src/lib/server-moralis");

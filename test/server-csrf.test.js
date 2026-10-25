@@ -1,6 +1,6 @@
 /**
  * @file test/server-csrf.test.js
- * @description Unit tests for the CSRF token module in src/lib/server-csrf.js.
+ * @description Unit tests for the CSRF token module in src/server/server-csrf.js.
  */
 
 "use strict";
@@ -14,7 +14,7 @@ const {
   verifyToken,
   readCsrfTunable,
   handleCsrf,
-} = require("../src/lib/server-csrf");
+} = require("../src/server/server-csrf");
 const { CSRF_REFUSALS } = require("../src/lib/csrf-refusals");
 const { _setSinkForTests } = require("../src/lib/log");
 const { UTC_TIMESTAMP_PATTERN } = require("../src/lib/utc-timestamp");

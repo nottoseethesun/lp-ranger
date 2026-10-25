@@ -100,7 +100,7 @@ export function resetLastFetchedId() {
  * Once a poll HAS landed the answer is authoritative, because the
  * server's `managedPositions` is the union of live bot loops and
  * positions whose saved status is `running` but have not started yet
- * (`src/lib/handle-api-status.js`). So intent is known from the very first
+ * (`src/server/handle-api-status.js`). So intent is known from the very first
  * payload, well before the bot loop exists.
  *
  * Pure so the decision can be driven directly by a test rather than

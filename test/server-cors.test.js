@@ -1,13 +1,13 @@
 /**
  * @file test/server-cors.test.js
- * @description Unit tests for the CORS / cross-origin guard in src/lib/server-cors.js.
+ * @description Unit tests for the CORS / cross-origin guard in src/server/server-cors.js.
  */
 
 "use strict";
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { _isLocalhostOrigin } = require("../src/lib/server-cors");
+const { _isLocalhostOrigin } = require("../src/server/server-cors");
 
 describe("_isLocalhostOrigin", () => {
   it("accepts localhost with matching port", () => {

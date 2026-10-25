@@ -301,7 +301,7 @@ function _clearRetryState(st) {
  * saved, so its next check decides on the new value at once rather than
  * after the wait a rejection under the old value started. A rejection on
  * the new value then begins the wait again at its first rung. Called by
- * `POST /api/config` (src/lib/server-config-route.js), the way a Slippage
+ * `POST /api/config` (src/server/server-config-route.js), the way a Slippage
  * save frees a slippage pause. The block the dashboard shows stays until
  * that check, which lifts it or words it again.
  *

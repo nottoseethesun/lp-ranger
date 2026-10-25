@@ -19,7 +19,7 @@ const assert = require("node:assert/strict");
 const {
   createRescanPricesHandler,
   requestPriceRevalue,
-} = require("../src/lib/server-rescan-prices");
+} = require("../src/server/server-rescan-prices");
 
 // ── what the request does to state ──────────────────────────────────────────
 

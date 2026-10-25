@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-cors.js
+ * @file src/server/server-cors.js
  * @description
  * CORS and cross-origin request guard for the LP Ranger HTTP server.
  *

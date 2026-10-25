@@ -240,7 +240,7 @@ a value saved falls back to.
 
 **A value that is both displayed and acted on resolves through the same
 expression.** The server resolves all three layers for the dashboard
-(`src/lib/resolved-settings.js`): `GET /api/bot-config-defaults` fills the
+(`src/server/resolved-settings.js`): `GET /api/bot-config-defaults` fills the
 Bot Configuration inputs and their Default buttons, and the help quotes
 the same figures, so what you see is what the bot runs on.
 
@@ -271,7 +271,7 @@ each layer live in [`docs/security.md`](security.md).
 | Variable | Default | JSON counterpart | Notes |
 | --- | --- | --- | --- |
 | `PRIVATE_KEY` | *(unset)* | **none, by design** | This setting is for Headless Operation only (running the bot only, and not the web app). Hex signing key, `0x`-prefixed, in plaintext. A dashboard install imports its wallet through the UI and unlocks it in the browser instead. |
-| `WALLET_PASSWORD` | *(unset)* | **none, by design** | This setting is for Headless Operation only (running the bot only, and not the web app). It decrypts the wallet and the stored API keys at startup without prompting, which is what lets an unattended bot sign. The trade-off is a plaintext password in `.env` — see [Wallet password persistence](claude/CLAUDE-SECURITY.md#wallet-password-persistence). Read by [`src/lib/bot-private-key.js`](../src/lib/bot-private-key.js) and [`src/lib/server-routes.js`](../src/lib/server-routes.js), not by `config.js`. A dashboard install is asked for the password in the browser instead, and `node src/server.js --headless` asks in the terminal. |
+| `WALLET_PASSWORD` | *(unset)* | **none, by design** | This setting is for Headless Operation only (running the bot only, and not the web app). It decrypts the wallet and the stored API keys at startup without prompting, which is what lets an unattended bot sign. The trade-off is a plaintext password in `.env` — see [Wallet password persistence](claude/CLAUDE-SECURITY.md#wallet-password-persistence). Read by [`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js) and [`src/server/server-routes.js`](../src/server/server-routes.js), not by `config.js`. A dashboard install is asked for the password in the browser instead, and `node src/server.js --headless` asks in the terminal. |
 
 ### Position Discovery (`.env`)
 

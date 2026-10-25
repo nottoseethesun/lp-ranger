@@ -32,6 +32,6 @@ I/O.
 anything that touches the network, disk, or cache, hoist it to its own
 statement. When it is genuinely a fallback, make the laziness explicit
 with a `null` sentinel and a branch — see `_detectCurrentNftValues` in
-`src/lib/position-details-compound.js` and `_backfill` in
+`src/server/position-details-compound.js` and `_backfill` in
 `src/lib/bot-pnl-current-nft.js`, which both use that shape. Related:
 [[feedback_no_duplication]].

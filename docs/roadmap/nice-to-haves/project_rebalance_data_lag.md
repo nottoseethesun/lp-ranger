@@ -65,7 +65,7 @@ a pool in use never reaches. The 30-minute `lifetimeRescanTimer` retries
 only a lifetime scan that did not finish, and the dashboard's poll
 re-renders what the server holds without scanning.
 
-Reload Current Position (`src/lib/server-reload-position.js`) is the
+Reload Current Position (`src/server/server-reload-position.js`) is the
 recovery: `clearPoolCache` empties the file, and the scan that follows
 reads the pool's history from the floor, where Pass 2 sees every mint
 and pairs the missed rebalance with the rest.

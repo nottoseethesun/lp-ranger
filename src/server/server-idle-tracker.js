@@ -1,5 +1,5 @@
 /**
- * @file src/lib/server-idle-tracker.js
+ * @file src/server/server-idle-tracker.js
  * @module server-idle-tracker
  * @description
  * Server-side idle detection for the idle-driven price-lookup pause
@@ -16,7 +16,7 @@
 
 "use strict";
 
-const { log } = require("./log");
+const { log } = require("../lib/log");
 /**
  * @typedef {Object} IdleTrackerOpts
  * @property {number}   thresholdMs       Idle window in ms.

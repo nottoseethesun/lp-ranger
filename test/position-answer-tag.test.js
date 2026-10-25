@@ -19,7 +19,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { positionTag } = require("../src/lib/position-answer-tag");
-const { createRouteHandlers } = require("../src/lib/server-routes");
+const { createRouteHandlers } = require("../src/server/server-routes");
 
 const KEY = "pulsechain-0x1-0x2-100";
 

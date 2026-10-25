@@ -30,7 +30,7 @@ const {
   _splitByWindow,
   _consumeRebuildRequest,
 } = require("../src/lib/epoch-reconstructor");
-const { requestPriceRevalue } = require("../src/lib/server-rescan-prices");
+const { requestPriceRevalue } = require("../src/server/server-rescan-prices");
 const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
 const DAY = 24 * 60 * 60 * 1000;

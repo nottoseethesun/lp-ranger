@@ -16,7 +16,14 @@ const noNumberFromBigint = require("./eslint-rules/no-number-from-bigint");
 
 module.exports = [
   {
-    files: ["src/*.js", "src/lib/**/*.js", "scripts/**/*.js", "util/**/*.js"],
+    files: [
+      "src/*.js",
+      "src/lib/**/*.js",
+      "src/server/**/*.js",
+      "src/bot/**/*.js",
+      "scripts/**/*.js",
+      "util/**/*.js",
+    ],
     plugins: {
       security,
       "no-secrets": noSecrets,

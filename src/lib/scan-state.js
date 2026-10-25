@@ -28,7 +28,7 @@
  *   bot loop starts it when the poll that clears the move ends.
  * - **No Reload Current Position or Re-scan Prices while a coin move is
  *   under way** (`isAcoinMoveUnderWayOnThisPosition`), over the same
- *   window: the server refuses both (src/lib/server-reload-position.js). A
+ *   window: the server refuses both (src/server/server-reload-position.js). A
  *   move counts from the poll's first gate, before it holds the
  *   rebalance lock and raises `rebalanceInProgress` or
  *   `compoundInProgress`, to its end.

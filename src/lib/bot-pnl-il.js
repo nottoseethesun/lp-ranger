@@ -132,7 +132,7 @@ function _coinsPutInSinceMint(deps, tokenId, decimals) {
  * The two IL/G figures, from the values each one compares.
  *
  * The single expression of the rule. The bot tier reaches it through
- * `_computeIL` below; the view tier (`src/lib/position-details.js`, for an
+ * `_computeIL` below; the view tier (`src/server/position-details.js`, for an
  * unmanaged position) calls it directly. Both must answer identically
  * for the same position — an operator who stops managing one has
  * changed nothing on chain, so nothing on screen may move.

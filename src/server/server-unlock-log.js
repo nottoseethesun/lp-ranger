@@ -22,7 +22,7 @@
 
 "use strict";
 
-const { log } = require("./log");
+const { log } = require("../lib/log");
 const NS = "[unlock]";
 
 /** Summarize inbound request headers for the unlock trace log. */

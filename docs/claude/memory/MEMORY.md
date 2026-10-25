@@ -15,7 +15,8 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [full repo grep](feedback_full_repo_grep.md) — Renames and pattern audits grep the WHOLE repo
 - [git workflow](feedback_git_workflow.md) — No push/merge/rebase/delete-branch/release without OK
 - [never revert cache-bust stamps](feedback_never_revert_cache_bust_stamps.md) — The `?v=` stamp IS the invalidation; ship it
-- [never stash to compare](feedback_never_stash_to_compare.md) — Use a worktree, never `git stash`
+- [never stash to compare](feedback_never_stash_to_compare.md) — Never `git stash`; read another ref with `git show` or `git diff`
+- [no separate checkout](feedback_no_separate_checkout.md) — Work in the user's checkout; a git worktree or second copy only when the user asks
 - [never pattern-kill](feedback_never_pattern_kill.md) — pkill -f kills the caller; kill by port
 - [no flaky push](feedback_no_flaky_push.md) — Fix flaky tests before CI sees them
 - [no npx](feedback_no_npx.md) — Never npx; check package.json first
@@ -47,6 +48,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — Don't ask which
 - [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Only what was asked; yes/no means yes/no
+- [report that resolved](feedback_report_that_resolved.md) — "It finally went" closes the report: acknowledge it, don't investigate; read the whole message first
 - [branch data never meets main](feedback_branch_data_never_meets_main.md) — Server stopped through all of CI, restarted after the merge; never check main against what a branch writes
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong

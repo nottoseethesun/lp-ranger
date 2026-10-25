@@ -34,6 +34,26 @@ const path = require("node:path");
 
 const SRC = path.join(__dirname, "..", "src", "lib");
 
+/*- The folders whose modules can scan: the ones the programs share, in
+ *  src/lib/, and the server's and the bot's own. */
+const SCAN_DIRS = [
+  SRC,
+  ...["server", "bot"].map((d) => path.join(__dirname, "..", "src", d)),
+];
+
+/** Every module directly in those folders, by file name, with its source. */
+function _modules() {
+  return SCAN_DIRS.flatMap((dir) =>
+    fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".js"))
+      .map((f) => ({
+        name: f,
+        src: fs.readFileSync(path.join(dir, f), "utf8"),
+      })),
+  );
+}
+
 /*-
  *  Named calls that scan NFT event history — one NFT at a time, or a
  *  whole chain at once.
@@ -71,21 +91,19 @@ const EXEMPT = {
     "searches FOR the chain's oldest NFT's mint block, so cannot be bounded by one",
 };
 
-/** Every src/lib/ file that scans one NFT's events. */
+/** Every module that scans one NFT's events, by file name. */
 function scanSites() {
-  return fs
-    .readdirSync(SRC)
-    .filter((f) => f.endsWith(".js"))
-    .filter((f) => {
-      const src = fs.readFileSync(path.join(SRC, f), "utf8");
-      return SCAN_CALLS.test(src) || NFT_LABEL.test(src);
-    });
+  return _modules()
+    .filter((m) => SCAN_CALLS.test(m.src) || NFT_LABEL.test(m.src))
+    .map((m) => m.name);
 }
 
-/** Whether a file routes its floor through the shared helper. */
+/*- Whether a module routes its floor through the shared helper: from
+ *  src/lib/ it is `./nft-mint-blocks`, from the server's or the bot's
+ *  folder `../lib/nft-mint-blocks`. */
 function isBounded(file) {
-  const src = fs.readFileSync(path.join(SRC, file), "utf8");
-  return /require\(["']\.\/nft-mint-blocks["']\)/.test(src);
+  const { src } = _modules().find((m) => m.name === file);
+  return /require\(["'](?:\.\/|\.\.\/lib\/)nft-mint-blocks["']\)/.test(src);
 }
 
 describe("per-NFT scan floors", () => {
@@ -102,12 +120,9 @@ describe("per-NFT scan floors", () => {
     /*- If the label detector stops matching — a label reworded, the
      *  interpolation renamed — the guard narrows to name matching alone
      *  and still reports success. */
-    const byLabel = fs
-      .readdirSync(SRC)
-      .filter((f) => f.endsWith(".js"))
-      .filter((f) =>
-        NFT_LABEL.test(fs.readFileSync(path.join(SRC, f), "utf8")),
-      );
+    const byLabel = _modules()
+      .filter((m) => NFT_LABEL.test(m.src))
+      .map((m) => m.name);
     assert.ok(
       byLabel.length >= 3,
       `the per-NFT label detector matched only ${byLabel.join(", ") || "nothing"}`,

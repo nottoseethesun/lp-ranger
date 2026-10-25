@@ -1,10 +1,10 @@
 /**
- * @file src/lib/build-info.js
+ * @file src/server/build-info.js
  * @description Server-side build/version info helper. Mirrors the browser's
  * auto-generated src/client/web/build-info.js.
  *
  * Resolution order:
- *   1. `src/lib/build-info.json` — baked sidecar written by
+ *   1. `src/server/build-info.json` — baked sidecar written by
  *      `scripts/build-info.js` during `npm run build`. Ships in release
  *      tarballs, which don't include `.git`.
  *   2. Live git + package.json — the fallback for dev clones that haven't
@@ -16,7 +16,7 @@
 
 "use strict";
 
-const { log } = require("./log");
+const { log } = require("../lib/log");
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");

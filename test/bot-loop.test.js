@@ -13,7 +13,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const { resolvePrivateKey } = require("../src/lib/bot-private-key");
+const { resolvePrivateKey } = require("../src/bot/bot-private-key");
 const { wireBotStateGetConfig } = require("../src/lib/bot-state-init");
 const { CHAIN } = require("../src/lib/config");
 const { ADDR, _poll } = require("./_bot-loop-helpers");

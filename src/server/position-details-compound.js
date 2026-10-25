@@ -24,28 +24,28 @@
 
 "use strict";
 
-const { log } = require("./log");
-const config = require("./config");
-const { getPositionConfig } = require("./bot-config-v2");
-const { detectCompoundsOnChain } = require("./compounder");
-const { actualGasCostUsd } = require("./bot-pnl-updater");
-const { poolCreationFloor } = require("./pool-creation-block");
-const { nftCoinsToUsd, coinsToUsd } = require("./coin-value");
+const { log } = require("../lib/log");
+const config = require("../lib/config");
+const { getPositionConfig } = require("../lib/bot-config-v2");
+const { detectCompoundsOnChain } = require("../lib/compounder");
+const { actualGasCostUsd } = require("../lib/bot-pnl-updater");
+const { poolCreationFloor } = require("../lib/pool-creation-block");
+const { nftCoinsToUsd, coinsToUsd } = require("../lib/coin-value");
 const {
   compoundedCoins,
   feeRecords,
   walletCoinsPutIn,
   feesLeftInWallet,
-} = require("./compounded-coins");
-const { compoundPricesFor } = require("./compound-activity-figures");
-const { addedSinceMint } = require("./current-lp-deposit");
-const { getCachedLifetimeHodl } = require("./epoch-cache");
-const { parseCompositeKey } = require("./composite-key");
+} = require("../lib/compounded-coins");
+const { compoundPricesFor } = require("../lib/compound-activity-figures");
+const { addedSinceMint } = require("../lib/current-lp-deposit");
+const { getCachedLifetimeHodl } = require("../lib/epoch-cache");
+const { parseCompositeKey } = require("../lib/composite-key");
 const {
   mintBlocksByTokenId,
   scanFloorFor,
   chainScanFloor,
-} = require("./nft-mint-blocks");
+} = require("../lib/nft-mint-blocks");
 
 /**
  * Convert a chain-scan result for a single NFT into Current-panel values:

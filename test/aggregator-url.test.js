@@ -23,7 +23,7 @@ const assert = require("assert");
 const { _aggregatorBase } = require("../src/lib/rebalancer-aggregator");
 const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
 const { V3_ROUTER_LABEL } = require("../src/lib/rebalancer-router");
-const { resolvedHelpFigures } = require("../src/lib/resolved-settings");
+const { resolvedHelpFigures } = require("../src/server/resolved-settings");
 const {
   aggregatorBaseUrlOf,
   aggregatorNameInUse,

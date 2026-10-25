@@ -68,7 +68,7 @@ const ethers = require("ethers");
 const config = require("./lib/config");
 const { startBotLoop } = require("./lib/bot-loop");
 const { resetErrorLog } = require("./lib/error-log");
-const { resolvePrivateKey } = require("./lib/bot-private-key");
+const { resolvePrivateKey } = require("./bot/bot-private-key");
 const { createRebalanceLock } = require("./lib/rebalance-lock");
 const { createPositionManager } = require("./lib/position-manager");
 const {

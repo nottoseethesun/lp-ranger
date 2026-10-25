@@ -1,5 +1,5 @@
 /**
- * @file src/lib/rpc-endpoints.js
+ * @file src/server/rpc-endpoints.js
  * @module rpcEndpoints
  * @description
  * Serves the active chain's RPC endpoint list to the dashboard, so the
@@ -13,14 +13,14 @@
  * list the failover walks makes that impossible, and adding a fourth
  * endpoint is a one-line change in `chains.json` with no HTML edit.
  *
- * Mirrors `src/lib/chart-providers.js`, which solves the same problem for
+ * Mirrors `src/server/chart-providers.js`, which solves the same problem for
  * the chart links.
  */
 
 "use strict";
 
-const config = require("./config");
-const { readGlobalSetting } = require("./bot-config-v2");
+const config = require("../lib/config");
+const { readGlobalSetting } = require("../lib/bot-config-v2");
 
 /**
  * Shape one endpoint for display.

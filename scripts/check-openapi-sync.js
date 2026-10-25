@@ -49,14 +49,19 @@ const normalize = (s) =>
   s.replace(/\{[^}]+\}/g, ":p").replace(/:[A-Za-z]+/g, ":p");
 
 /**
- * Every `"METHOD /path"` handler-map key across the server sources.
+ * Every `"METHOD /path"` handler-map key across the server sources: the
+ * modules in `src/lib/` and in `src/server/`, the server's own, and
+ * `src/server.js`.
  * @returns {Set<string>}
  */
 function registeredRoutes() {
-  const files = fs
-    .readdirSync(path.join(ROOT, "src", "lib"))
-    .filter((f) => f.endsWith(".js"))
-    .map((f) => path.join(ROOT, "src", "lib", f))
+  const files = ["lib", "server"]
+    .flatMap((dir) =>
+      fs
+        .readdirSync(path.join(ROOT, "src", dir))
+        .filter((f) => f.endsWith(".js"))
+        .map((f) => path.join(ROOT, "src", dir, f)),
+    )
     .concat([path.join(ROOT, "src", "server.js")]);
   const routes = new Set();
   for (const file of files) {

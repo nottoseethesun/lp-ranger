@@ -2,7 +2,7 @@
 
 /**
  * @file test/position-state-routes.test.js
- * @description The yes-or-no route in src/lib/position-state-routes.js.
+ * @description The yes-or-no route in src/server/position-state-routes.js.
  *
  *   `GET /api/is-position-managed` is what the dashboard asks each time it
  *   puts a position on screen, so its Manage/Stop button is drawn from the
@@ -16,7 +16,7 @@ const assert = require("node:assert/strict");
 const {
   managedPositionList,
   createPositionStateRoutes,
-} = require("../src/lib/position-state-routes");
+} = require("../src/server/position-state-routes");
 
 const W = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";

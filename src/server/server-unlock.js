@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * @file src/lib/server-unlock.js
+ * @file src/server/server-unlock.js
  * @module server-unlock
  * @description
  * `POST /api/wallet/unlock`: the wallet password, entered in the
@@ -25,7 +25,7 @@
  * A wrong password is answered 401 and changes nothing.
  */
 
-const { log } = require("./log");
+const { log } = require("../lib/log");
 const unlockLog = require("./server-unlock-log");
 
 /**

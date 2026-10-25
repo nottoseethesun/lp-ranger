@@ -10,7 +10,7 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { createIdleTracker } = require("../src/lib/server-idle-tracker");
+const { createIdleTracker } = require("../src/server/server-idle-tracker");
 
 /** Controllable clock — same shape as test/throttle.test.js makeClock. */
 function makeClock(startMs = 0) {

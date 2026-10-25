@@ -149,7 +149,7 @@ log.info(
 
 const { emojiId } = require("./lib/logger");
 
-const installServerErrorGuard = require("./lib/server-error-guard");
+const installServerErrorGuard = require("./server/server-error-guard");
 
 const _headless = process.argv.includes("--headless");
 
@@ -158,8 +158,8 @@ const fs = require("fs");
 const path = require("path");
 
 const config = require("./lib/config");
-const { handleCors } = require("./lib/server-cors");
-const { handleCsrf } = require("./lib/server-csrf");
+const { handleCors } = require("./server/server-cors");
+const { handleCsrf } = require("./server/server-csrf");
 const walletManager = require("./lib/wallet-manager");
 const { getPositionHistory } = require("./lib/position-history");
 const { createRebalanceLock } = require("./lib/rebalance-lock");
@@ -170,11 +170,11 @@ const { parseCompositeKey } = require("./lib/composite-key");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
 const { buildGasStatusPayload } = require("./lib/gas-monitor");
 const { actualGasCostUsd } = require("./lib/bot-pnl-updater");
-const { userConfigurableRoutes } = require("./lib/user-configurable-routes");
-const { createPauseInfra } = require("./lib/server-pause");
+const { userConfigurableRoutes } = require("./server/user-configurable-routes");
+const { createPauseInfra } = require("./server/server-pause");
 const { readPriceCacheSettings } = require("./lib/price-fetcher-gate");
-const { createUnlockHandler } = require("./lib/server-unlock");
-const { logVersionBanner } = require("./lib/build-info");
+const { createUnlockHandler } = require("./server/server-unlock");
+const { logVersionBanner } = require("./server/build-info");
 const sendTx = require("./lib/send-transaction");
 
 /*-
@@ -419,10 +419,10 @@ const {
   createPositionRoutes,
 } = require("./lib/server-positions");
 
-const { createRouteHandlers } = require("./lib/server-routes");
+const { createRouteHandlers } = require("./server/server-routes");
 const { getLpProviderDisplayName } = require("./lib/lp-providers");
-const { createApiStatusHandler } = require("./lib/handle-api-status");
-const { createPositionStateRoutes } = require("./lib/position-state-routes");
+const { createApiStatusHandler } = require("./server/handle-api-status");
+const { createPositionStateRoutes } = require("./server/position-state-routes");
 const { primaryRouteLabel } = require("./lib/rebalancer-swap");
 const { moralisEnabledIn } = require("./lib/server-moralis");
 const { positionTag } = require("./lib/position-answer-tag");
@@ -449,7 +449,7 @@ function _scanRunningAnswer(move, action, positionKey) {
 const { askPassword: _askPassword } = require("./lib/ask-password");
 const {
   notifyShutdown: _notifyShutdown,
-} = require("./lib/telegram-notifications/server-shutdown");
+} = require("./server/telegram-notifications/server-shutdown");
 
 const _routeHandlers = createRouteHandlers({
   diskConfig: _diskConfig,

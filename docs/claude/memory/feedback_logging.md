@@ -28,7 +28,7 @@ Every log line that mentions an NFT position must include both:
 1. The numeric `tokenId` (e.g. `161234`)
 2. The 3-emoji fingerprint from `emojiId(tokenId)` (defined in `src/lib/logger.js`; the dashboard has its own, same algorithm, in `src/client/web/dashboard-helpers.js`) &mdash; an MD5-derived 3-emoji sequence wrapped in an ANSI black-background reset
 
-**Why:** Two-fold identification: the number is for grep / search / cross-referencing with on-chain explorers, the emoji fingerprint is for instant visual recognition when scanning a long log without reading every digit. The user works with many concurrent positions; the emoji fingerprint disambiguates at a glance. Existing reference impls: `src/lib/position-manager.js:242`, `src/lib/position-manager.js:294`, `src/lib/server-routes.js`.
+**Why:** Two-fold identification: the number is for grep / search / cross-referencing with on-chain explorers, the emoji fingerprint is for instant visual recognition when scanning a long log without reading every digit. The user works with many concurrent positions; the emoji fingerprint disambiguates at a glance. Existing reference impls: `src/lib/position-manager.js:242`, `src/lib/position-manager.js:294`, `src/server/server-routes.js`.
 
 **How to apply:**
 

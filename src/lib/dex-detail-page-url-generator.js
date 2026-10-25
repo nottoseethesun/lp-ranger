@@ -29,7 +29,7 @@
  * today's values coincide.
  *
  * The template shape and the `{poolId}`-left-for-the-client contract
- * deliberately mirror `src/lib/chart-providers.js`, so the dashboard
+ * deliberately mirror `src/server/chart-providers.js`, so the dashboard
  * substitutes both link families the same way.
  */
 

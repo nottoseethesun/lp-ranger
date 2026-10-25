@@ -42,7 +42,7 @@ Eight runtime modules re-export names they import:
   and the cascade's `tryPriceSources`.
 - `src/lib/bot-loop.js`, `src/lib/bot-cycle.js`, `src/lib/bot-recorder.js`,
   `src/lib/bot-pnl-updater.js`, `src/lib/pnl-tracker.js` and
-  `src/lib/position-details.js` re-export helpers, mostly for their tests.
+  `src/server/position-details.js` re-export helpers, mostly for their tests.
 
 `src/client/web/ethers-adapter.js` is not on the list. It adapts an npm package
 for the dashboard bundle, by design.

@@ -23,7 +23,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { _computeIL, ilFigures } = require("../src/lib/bot-pnl-il");
-const { _currentPnl } = require("../src/lib/position-details-quick");
+const { _currentPnl } = require("../src/server/position-details-quick");
 
 /*- One position, described once, so the two tiers cannot drift apart in
  *  the fixture rather than in the code. */

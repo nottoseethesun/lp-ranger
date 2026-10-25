@@ -59,7 +59,7 @@ describe("buildRebalanceOpts — rebalanceRangeWidthPct source", () => {
 
   it("omits customRangeWidthPct when _getConfig returns null", () => {
     /*- A null on disk (hand-edited config, or a key cleared by the
-     *  null-sweep in src/lib/server-routes.js POST /api/config before it
+     *  null-sweep in src/server/server-routes.js POST /api/config before it
      *  was deleted) reads as "no override": the truthy check omits the
      *  key and the rebalancer falls back to preserveRange(). */
     const deps = makeDeps(() => null);

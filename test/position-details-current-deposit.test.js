@@ -4,7 +4,7 @@
  * @file test/position-details-current-deposit.test.js
  * @description An unmanaged position's Current panel counts its deposit
  *   and its Net P&L as the dashboard does for a managed one
- *   (`computeQuickDetails`, src/lib/position-details-quick.js): Initial
+ *   (`computeQuickDetails`, src/server/position-details-quick.js): Initial
  *   Deposit for This LP is the minted coins with the wallet's coins its
  *   compounds took in beyond their fees, each at its compound's prices
  *   (src/lib/current-lp-deposit.js), from the compound list the bot saved
@@ -42,7 +42,10 @@ before(() => {
    *  the `after` hook below.
    */
   Module.prototype.require = function (id) {
-    if (id === "./rebalancer-pools")
+    /*- A module in src/server/ names a shared one `../lib/<name>`, one in
+     *  src/lib/ `./<name>`: either way it gets the stand-in. */
+    const name = id.replace(/^\.\.\/lib\//, "./");
+    if (name === "./rebalancer-pools")
       return {
         getPoolState: async () => ({
           tick: 0,
@@ -51,7 +54,7 @@ before(() => {
           decimals1: 18,
         }),
       };
-    if (id === "./bot-pnl-updater")
+    if (name === "./bot-pnl-updater")
       return {
         fetchTokenPrices: async () => ({ price0: 1, price1: 2 }),
         positionValueUsd: (_pos, _ps, p0, p1) => 10 * p0 + 10 * p1,
@@ -60,14 +63,14 @@ before(() => {
       };
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/lib/position-details-quick")];
-  ({ computeQuickDetails } = require("../src/lib/position-details-quick"));
+  delete require.cache[require.resolve("../src/server/position-details-quick")];
+  ({ computeQuickDetails } = require("../src/server/position-details-quick"));
   key = compositeKey(config.CHAIN_NAME, WALLET, PM, TOKEN_ID);
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/lib/position-details-quick")];
+  delete require.cache[require.resolve("../src/server/position-details-quick")];
 });
 
 const request = () => ({

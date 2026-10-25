@@ -90,6 +90,8 @@ module.exports = [
     files: [
       "src/*.js",
       "src/lib/**/*.js",
+      "src/server/**/*.js",
+      "src/bot/**/*.js",
       "test/**/*.js",
       "scripts/**/*.js",
       "util/**/*.js",
@@ -118,6 +120,8 @@ module.exports = [
     files: [
       "src/*.js",
       "src/lib/**/*.js",
+      "src/server/**/*.js",
+      "src/bot/**/*.js",
       "scripts/**/*.js",
       "util/**/*.js",
       "eslint-rules/**/*.js",

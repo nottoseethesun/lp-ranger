@@ -108,7 +108,7 @@ function createPositionManager(opts) {
   /**
    * Forget the shared signer, so the next `getSharedSigner` builds one
    * from the key it is then given. Called when a different wallet is
-   * imported (`_handleWalletImport`, src/lib/server-routes.js): the cached
+   * imported (`_handleWalletImport`, src/server/server-routes.js): the cached
    * signer would otherwise go on signing with the old wallet's key, and
    * every rebalance of the new wallet's positions would fail at the
    * ownership check.

@@ -136,7 +136,11 @@ describe("telegram-message — one sender, one escaper", () => {
    *  problem — it is a second set of answers to what mode to use, what
    *  to escape, and whether to retry. */
 
-  const SRC = path.join(__dirname, "..", "src", "lib");
+  /*- The app's module folders: the ones the programs share, the server's
+   *  own and the bot's own. */
+  const SRC_DIRS = ["lib", "server", "bot"].map((d) =>
+    path.join(__dirname, "..", "src", d),
+  );
   const SCRIPTS = path.join(__dirname, "..", "scripts");
 
   /** Every .js file under a directory, recursively. */
@@ -151,9 +155,10 @@ describe("telegram-message — one sender, one escaper", () => {
   }
 
   it("has exactly one file that talks to the Bot API", () => {
-    const callers = [..._jsFiles(SRC), ..._jsFiles(SCRIPTS)].filter((f) =>
-      fs.readFileSync(f, "utf8").includes("api.telegram.org"),
-    );
+    const callers = [
+      ...SRC_DIRS.flatMap(_jsFiles),
+      ..._jsFiles(SCRIPTS),
+    ].filter((f) => fs.readFileSync(f, "utf8").includes("api.telegram.org"));
     assert.deepStrictEqual(
       callers.map((f) => path.basename(f)),
       ["telegram-message.js"],
@@ -166,9 +171,10 @@ describe("telegram-message — one sender, one escaper", () => {
      *  comments to explain why a value is escaped, which is the comment
      *  doing its job; what must not spread is the code that decides
      *  which mode a request asks for. */
-    const setters = [..._jsFiles(SRC), ..._jsFiles(SCRIPTS)].filter((f) =>
-      /parse_mode/.test(fs.readFileSync(f, "utf8")),
-    );
+    const setters = [
+      ...SRC_DIRS.flatMap(_jsFiles),
+      ..._jsFiles(SCRIPTS),
+    ].filter((f) => /parse_mode/.test(fs.readFileSync(f, "utf8")));
     assert.deepStrictEqual(
       setters.map((f) => path.basename(f)),
       ["telegram-message.js"],

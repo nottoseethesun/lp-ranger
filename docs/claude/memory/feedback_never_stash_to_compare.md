@@ -1,6 +1,6 @@
 ---
 name: feedback_never_stash_to_compare
-description: "Never `git stash` to peek at another ref — a clean tree saves nothing and the pop grabs ANOTHER branch's stash; use a worktree"
+description: "Never `git stash` to peek at another ref — a clean tree saves nothing and the pop grabs ANOTHER branch's stash; read the ref with `git show` or `git diff`"
 metadata:
   node_type: memory
   type: feedback
@@ -10,8 +10,9 @@ metadata:
 
 # Never use `git stash` to compare against another ref
 
-To measure something on `main` (or any other ref) while on a branch, use
-a throwaway worktree. Never `git stash` / switch / `git stash pop`.
+To read something on `main` (or any other ref) while on a branch, read
+it with `git show` or `git diff`. Never `git stash` / switch /
+`git stash pop`.
 
 **Why:** On 2026-08-05, comparing import-cycle counts against `main`, I
 ran `git stash -q -u`, switched, measured, and `git stash pop`. Two
@@ -35,10 +36,10 @@ the comparison properly.
 
 **How to apply:**
 
-- To read or measure another ref: `git worktree add --detach <tmpdir> main`,
-  run the tool against that path, then `git worktree remove --force <tmpdir>`.
-  Scratch dir, never inside the repo.
-- To read a single file from another ref: `git show main:path/to/file`.
+- To read a single file from another ref: `git show main:path/to/file`;
+  to see what changed, `git diff main`. A worktree only when the user
+  asks for one: work done there is out of the user's sight
+  ([[feedback_no_separate_checkout]], the user's rule of 2026-10-25).
 - If `git stash` ever seems necessary, check `git status --porcelain` first —
   a clean tree means the stash is a no-op and the pop is dangerous.
 - Any comparison whose two sides come out identical deserves suspicion

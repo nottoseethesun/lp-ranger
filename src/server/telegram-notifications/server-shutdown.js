@@ -1,5 +1,5 @@
 /**
- * @file src/lib/telegram-notifications/server-shutdown.js
+ * @file src/server/telegram-notifications/server-shutdown.js
  * @description
  * Fire-and-forget Telegram notification for server/bot shutdown.  Extracted
  * from server.js to keep that file within the max-lines budget.
@@ -7,21 +7,24 @@
  * Spawns a detached child process (src/telegram-send.js) so the message
  * survives the parent's process.exit().  Gated on the `shutdown` event being
  * enabled in the user's Telegram notification preferences.  Lives under
- * `src/lib/telegram-notifications/` alongside the rest of the Telegram surface.
+ * `src/server/telegram-notifications/`; the Telegram modules the bot shares
+ * are in `src/lib/telegram-notifications/`.
  */
 
 "use strict";
 
-const { log } = require("../log");
+const { log } = require("../../lib/log");
 const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
 
-const telegram = require("./telegram");
-const { escapeValue } = require("./telegram-message");
+const telegram = require("../../lib/telegram-notifications/telegram");
+const {
+  escapeValue,
+} = require("../../lib/telegram-notifications/telegram-message");
 
 /** Path to the detached sender, `src/telegram-send.js`.  We're in
- *  `src/lib/telegram-notifications/`, so `src/` is two levels up.
+ *  `src/server/telegram-notifications/`, so `src/` is two levels up.
  *  Exported for the test that checks the sender is there. */
 const _SEND_SCRIPT = path.join(__dirname, "..", "..", "telegram-send.js");
 
