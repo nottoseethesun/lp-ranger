@@ -92,6 +92,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [finish logic](feedback_finish_logic.md) — Trace every path to completion before calling it done
 - [keep browser logs](feedback_keep_browser_logs.md) — Dashboard console.log is permanent
 - [KISS](feedback_kiss.md) — One clean heuristic beats layered complexity
+- [numbers stay numbers](feedback_numbers_stay_numbers.md) — Hold numbers as numbers; convert to text only where they leave the process (json at the send)
 - [logging](feedback_logging.md) — Token symbols, NFT id + emoji, full context on every move
 - [minimize caching](feedback_minimize_caching.md) — No new caching layers; reuse existing resolvers
 - [generic chain cache keys](feedback_generic_chain_cache_keys.md) — Key chain caches generically (e.g. by pool) so all positions share
