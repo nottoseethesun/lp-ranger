@@ -3414,7 +3414,7 @@ span[title]:not([title=""]):hover {
 }
 
 .\39 mm-pos-mgr-mission-top-gap {
-  height: 21px;
+  height: 13px;
 }
 
 .\39 mm-pos-mgr-mission-title {
@@ -3473,16 +3473,20 @@ span[title]:not([title=""]):hover {
   justify-content: flex-start;
   gap: 6px;
 
-  /* Fixed size — does NOT expand for content.  Width 92 % + height
-     120 px matches the reference screenshot: slightly larger than the
-     original 107 px pill without pushing the crest more than a hair
-     down.  Excess content wraps horizontally and scrolls vertically
-     instead of pushing the surrounding layout around. */
+  /*
+   * Fixed size: the badge does not grow with its text, so nothing below
+   * it moves when an action starts or ends. Width 92 % matches the
+   * reference screenshot. Height 132 px holds one action's three lines
+   * (its name, its position and fee tier, its token pair) when the
+   * position line wraps in two: four lines at 23.4 px, two 6 px gaps,
+   * the padding and the border come to 131.6 px. So one action never
+   * scrolls; stacked actions, which are rare, wrap and scroll.
+   */
   width: 92%;
   max-width: none;
-  height: 120px;
+  height: 132px;
   min-height: 0;
-  max-height: 120px;
+  max-height: 132px;
   flex-shrink: 0;
   margin: 0 auto;
   padding: 12px 18px;
@@ -3994,7 +3998,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("background-cloud_top.png?v=1792890473215");
+  background-image: url("background-cloud_top.png?v=1792907465313");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -4007,7 +4011,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("background-cloud_middle.png?v=1792890473215");
+  background-image: url("background-cloud_middle.png?v=1792907465313");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -4017,7 +4021,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("background-cloud_bottom.png?v=1792890473215");
+  background-image: url("background-cloud_bottom.png?v=1792907465313");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */
