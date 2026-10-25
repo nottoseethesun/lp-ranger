@@ -47,6 +47,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — Don't ask which
 - [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Only what was asked; yes/no means yes/no
+- [report that resolved](feedback_report_that_resolved.md) — "It finally went" closes the report: acknowledge it, don't investigate; read the whole message first
 - [branch data never meets main](feedback_branch_data_never_meets_main.md) — Server stopped through all of CI, restarted after the merge; never check main against what a branch writes
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
