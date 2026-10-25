@@ -117,6 +117,34 @@ describe("server", () => {
     assert.ok("walletAddress" in body.global);
   });
 
+  it("GET /api/status sends a BigInt on a bot state as its decimal text", async () => {
+    /*-
+     *  Each position's entry carries its whole bot state, and json has no
+     *  BigInt. The deposit count keeps the wallet's last reading of the
+     *  pool's two coins there as BigInts (src/lib/deposit-count.js), so the
+     *  answer sends each as its decimal text, every digit kept.
+     */
+    const key =
+      "pulsechain-0x1111111111111111111111111111111111111111-" +
+      "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-424245";
+    const states = getAllPositionBotStates();
+    states.set(key, {
+      running: true,
+      _depositWalletSeen: { raw0: 12345678901234567890n, raw1: 7n },
+    });
+    try {
+      const res = await req({ port: TEST_PORT, path: "/api/status" });
+      assert.strictEqual(res.status, 200);
+      const body = JSON.parse(res.body);
+      assert.deepStrictEqual(body.positions[key]._depositWalletSeen, {
+        raw0: "12345678901234567890",
+        raw1: "7",
+      });
+    } finally {
+      states.delete(key);
+    }
+  });
+
   // ── /api/config ───────────────────────────────────────────────────────────
 
   it("POST /api/config updates global allowed fields", async () => {

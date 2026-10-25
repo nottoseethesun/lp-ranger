@@ -360,13 +360,17 @@ function serveStatic(urlPath, res) {
 // ── JSON API helpers ────────────────────────────────
 
 /**
- * Write a JSON response.
+ * Write a JSON response. Each BigInt in the body goes out as its decimal
+ * text, every digit kept, since the format has none. A position's bot
+ * state, which the status answer sends whole, keeps some, such as the
+ * wallet's readings the deposit count compares. The rule is the one the
+ * rebalance log is written by (`_bigIntReplacer`, src/lib/bot-recorder.js).
  * @param {http.ServerResponse} res
  * @param {number}              status
  * @param {object}              body
  */
 function jsonResponse(res, status, body) {
-  const payload = JSON.stringify(body, null, 2);
+  const payload = JSON.stringify(body, botRecorder._bigIntReplacer, 2);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(payload),
