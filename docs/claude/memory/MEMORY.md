@@ -7,11 +7,11 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 `CLAUDE.md` covers architecture; `private/` is machine-local, `archive/` is resolved history. New here? Read [renamed lp ranger](project_renamed_lp_ranger.md) first.
 
 ## Workflow, git, CI & testing
-- [always build](feedback_always_build.md) — Edited public/? Run `npm run build`
+- [always build](feedback_always_build.md) — Edited src/client/web/? Run `npm run build`
 - [branching](feedback_branching.md) — Never push to main: branch + PR, ONE branch at a time
-- [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push
+- [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push; not again for code that just passed
 - [check both Node versions](feedback_check_both_node_versions.md) — `npm run check` runs one Node; CI runs 22 and 24. Run the gate under 22 too (`PATH=` Node 22 first), never the raw suite
-- [ci protocol](feedback_ci_protocol.md) — Never skip the local merge-to-main check
+- [ci protocol](feedback_ci_protocol.md) — Never skip the local merge-to-main check; "full c.i. to main" means all eight steps, the PR merge included
 - [full repo grep](feedback_full_repo_grep.md) — Renames and pattern audits grep the WHOLE repo
 - [git workflow](feedback_git_workflow.md) — No push/merge/rebase/delete-branch/release without OK
 - [never revert cache-bust stamps](feedback_never_revert_cache_bust_stamps.md) — The `?v=` stamp IS the invalidation; ship it
@@ -25,7 +25,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [Prettier only JS, JSON, YAML](feedback_prettier_only_js_json_yaml.md) — Never `prettier --write` Markdown or HTML; it rewrites the whole file
 - [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile + node_modules, `npm i` first
 - [reset --keep, not --hard](feedback_reset_keep_not_hard.md) — Protocol step 4's `--hard` destroys uncommitted work; use `--keep` on a dirty tree
-- [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap anything loading `src/` in wipe/restore-settings
+- [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap anything loading `src/lib/` in wipe/restore-settings
 - [test suite checks only what ships](feedback_test_suite_checks_only_what_ships.md) — Never an operator's `.env` or overrides; local and CI must agree; the diagnostic tool and startup check those
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the linter to find where a rule fires; don't guess
 - [tag format, no v](project_tag_format_no_v.md) — Strict semver; latest tag needs `--sort=-v:refname` plus `grep -v '^v'`
@@ -47,13 +47,14 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — Don't ask which
 - [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Only what was asked; yes/no means yes/no
+- [branch data never meets main](feedback_branch_data_never_meets_main.md) — Server stopped through all of CI, restarted after the merge; never check main against what a branch writes
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
 - [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms; heading + problem statement first; name the operator's action in a full sentence, never shorthand like "a refused save"
 - [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens and what a reader would see; function names come last, if at all
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei; an editing pass removes bulk (point buried in detail) and gaps (steps replaced by vague words)
-- [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Meet a word limit by dropping points, never steps or context
-- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns; a question names what its "both" means, and never asks what the spec already decides
+- [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Meet a word limit by dropping points, never steps or context; "waiting" says for what and until when; think out what the feature promises before offering options
+- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns; a question names what its "both" means, and never asks what the spec already decides; no coined metaphors ("the server's loaded copy"); use the user's name for a thing
 - [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one
 - [revert means code](feedback_revert_means_code.md) — "Revert" = repo edits only, never the plan
 - [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed in review (suspended for audits since 2026-10-19)
@@ -71,7 +72,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [verify runtime before rediagnosing](feedback_verify_runtime_before_rediagnosing.md) — "Still broken" but green? Check what's actually running
 - [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check; a partial sample proves nothing; an audit plan presents verified items only
 - [trace the claim, not just the code](feedback_trace_the_claim_not_just_the_code.md) — Follow a value to the screen and a condition to every writer before putting the consequence in writing
-- [audit before declaring done](feedback_audit_before_declaring_done.md) — Re-read the rules and audit state + sequence before saying done; a green check is not sufficient
+- [audit before declaring done](feedback_audit_before_declaring_done.md) — Re-read the rules and audit state + sequence before saying done; a green check is not sufficient; the audit runs before the gate (every reader of what the change writes), and the report lists what it checked
 - [verify symbols a comment names](feedback_verify_symbols_a_comment_names.md) — Grep every symbol a comment names
 - [check state before explaining design](feedback_check_state_before_explaining_design.md) — "Why does it do X?" → check PROJECT-STATE for a known-duplication entry before calling X deliberate
 - [check history before changing a design](feedback_check_history_before_changing_a_design.md) — A test pins it as a fix? Read its commit; a user-specified design waits for the user's word
@@ -91,6 +92,7 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [finish logic](feedback_finish_logic.md) — Trace every path to completion before calling it done
 - [keep browser logs](feedback_keep_browser_logs.md) — Dashboard console.log is permanent
 - [KISS](feedback_kiss.md) — One clean heuristic beats layered complexity
+- [numbers stay numbers](feedback_numbers_stay_numbers.md) — Hold numbers as numbers; convert to text only where they leave the process (json at the send)
 - [logging](feedback_logging.md) — Token symbols, NFT id + emoji, full context on every move
 - [minimize caching](feedback_minimize_caching.md) — No new caching layers; reuse existing resolvers
 - [generic chain cache keys](feedback_generic_chain_cache_keys.md) — Key chain caches generically (e.g. by pool) so all positions share
@@ -133,6 +135,10 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [where data lives](feedback_where_data_lives.md) — bot-config.json: settings only; records in `app-data/position-records.json`; scan caches in `app-data/scan-cache/`; `tmp/` disposable only
 - [docs don't restate checks](feedback_docs_dont_restate_checks.md) — A setting's entry gives its meaning and range once; no lists of refused values; "stops startup" said once
 - [docs always updated](feedback_docs_always_updated.md) — A doc a change makes stale is updated in the same change, without asking
+- [one home per fact in a doc set](feedback_doc_set_one_home_per_fact.md) — Quick Start in the user manual; an engineering doc's Commands section only points; user-facing rules live in the manual, the others refer
+- [util tool docs in docs/util](feedback_util_tool_docs_in_docs_util.md) — A util/ tool's docs: `docs/util/<folder>/` with user-manual.md, commands.md, engineering.md; move and rewrite in two commits
+- [terminal secrets never shown](feedback_terminal_secrets_never_shown.md) — Passwords, keys and api keys typed at a terminal never echo; always `src/lib/ask-password.js`
+- [built-in before package](feedback_builtin_before_package.md) — Node's own way first, confirmed in its docs; else only a widely used npm package
 - [util tools keep to their own folders](feedback_util_tools_keep_to_their_own_folders.md) — A util/ tool writes only app-data/util/<tool>/, caches in its scan-cache/; never the app's files, except a secret the app also uses, kept only in the app's store
 - [util tools use core settings only](feedback_util_tools_use_core_settings_only.md) — A util/ tool reads core settings (chains, endpoints, keys), never app preferences such as the Moralis on/off switch
 - [one active position per pool](feedback_one_active_position_per_pool.md) — Period: no fallback between positions of a pool; every start and re-open path enforces it in the core, bot.js included
@@ -140,4 +146,4 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [links go direct](feedback_links_go_direct.md) — A redirecting link is replaced by its final address; check with curl's `%{redirect_url}`
 - [no new HTML in JS](feedback_no_new_html_in_js.md) — No interpolated innerHTML in dashboard JS
 - [sound gate scope](feedback_sound_gate_scope.md) — Jingles gated on the browser idle timer is correct
-- [help page](project_help_page.md) — The User Manual is public/help-and-user-manual.html, its own CSS; never call it "Help"
+- [help page](project_help_page.md) — The User Manual is src/client/web/help-and-user-manual.html, its own CSS; never call it "Help"

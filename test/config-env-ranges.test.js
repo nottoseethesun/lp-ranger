@@ -13,9 +13,9 @@
  *   variable left unset, or set to nothing, leaves the shipped default
  *   standing.
  *
- *   Each case loads the real `src/config.js` afresh, as
+ *   Each case loads the real `src/lib/config.js` afresh, as
  *   `test/config-startup-checks.test.js` does. The five variables are
- *   pinned to nothing BEFORE anything under `src/` is required, because
+ *   pinned to nothing BEFORE anything under `src/lib/` is required, because
  *   dotenv leaves a variable alone once it is set, so the operator's own
  *   `.env` cannot reach these cases. Operator overrides are read from a
  *   directory of the test's own, whose bot-config-defaults.json moves
@@ -67,9 +67,9 @@ process.env.DEADLINE_SEC = "";
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
 const BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
-const { boundText } = require("../src/range-check");
+const { boundText } = require("../src/lib/range-check");
 
-/** Load `src/config.js` as startup would, with `envName` set to `value`. */
+/** Load `src/lib/config.js` as startup would, with `envName` set to `value`. */
 function loadWith(envName, value) {
   process.env[envName] = value;
   try {
@@ -79,8 +79,8 @@ function loadWith(envName, value) {
       "cache-store",
       "config",
     ])
-      delete require.cache[require.resolve(`../src/${mod}`)];
-    return require("../src/config");
+      delete require.cache[require.resolve(`../src/lib/${mod}`)];
+    return require("../src/lib/config");
   } finally {
     process.env[envName] = "";
   }

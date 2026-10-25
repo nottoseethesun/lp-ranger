@@ -19,7 +19,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const SETTINGS_DIR = makeTestTempFolder("router-branches-settings");
 fs.writeFileSync(
@@ -31,7 +31,7 @@ process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { swapViaRouter } = require("../src/rebalancer-router");
+const { swapViaRouter } = require("../src/lib/rebalancer-router");
 const {
   ADDR,
   makeTx,

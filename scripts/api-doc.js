@@ -12,7 +12,7 @@
 
 "use strict";
 
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");

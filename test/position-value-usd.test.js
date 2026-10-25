@@ -23,8 +23,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { positionValueUsd } = require("../src/bot-pnl-updater");
-const rangeMath = require("../src/range-math");
+const { positionValueUsd } = require("../src/lib/bot-pnl-updater");
+const rangeMath = require("../src/lib/range-math");
 
 /*- An in-range position whose range is NOT centred on the current tick.
  *  That asymmetry is what makes the two balances differ; a range centred

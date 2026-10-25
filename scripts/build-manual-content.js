@@ -1,13 +1,13 @@
 /**
  * @file scripts/build-manual-content.js
  * @description Renders the shared help copy from
- * `public/shared-help-content.json` into `public/help-and-user-manual.html`,
+ * `src/lib/shared-help-content.json` into `src/client/web/help-and-user-manual.html`,
  * between per-entry marker comments.
  *
  * Single source of truth for the shared copy: the JSON.  Two consumers
  * read it and neither holds its own wording:
  *
- *   - `public/param-help-content.js` imports it for the in-app circle-i
+ *   - `src/client/web/param-help-content.js` imports it for the in-app circle-i
  *     dialog (esbuild inlines the JSON into the bundle);
  *   - this script writes it into the User Manual, which the app serves
  *     at `/help-and-user-manual.html` and which GitHub Pages publishes.
@@ -30,13 +30,13 @@
  * appear in the manual and it never would.
  *
  * The configured numbers and names the manual quotes are written by the
- * same build.  `src/help-figures.js` works them out from the shipped JSON;
+ * same build.  `src/lib/help-figures.js` works them out from the shipped JSON;
  * the shared copy's `{{figure:name}}` tokens are filled before it is
  * rendered, each inside a `<span data-figure="name">`, and every such
  * span in the manual's own prose has its text rewritten.  A name the
  * table lacks stops the build.  Every figure being in a span is what lets
  * the copy the app serves be filled again in the browser with the
- * install's own figures, by `public/dashboard-manual-figures.js`; the copy
+ * install's own figures, by `src/client/web/dashboard-manual-figures.js`; the copy
  * GitHub Pages publishes keeps the shipped ones.
  *
  * Idempotent: running twice produces the same file.
@@ -46,42 +46,58 @@
 
 const fs = require("fs");
 const path = require("path");
-const { log } = require("../src/log");
-const { loadShippedDefaults } = require("../src/load-merged-defaults");
-const { aggregatorNameInUse } = require("../src/aggregator-in-use");
+const { log } = require("../src/lib/log");
+const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
+const { aggregatorNameInUse } = require("../src/lib/aggregator-in-use");
 const {
   helpFigures,
   fillEntryFigures,
   spanFigureTokens,
   fillFigureSpans,
-} = require("../src/help-figures");
+} = require("../src/lib/help-figures");
 
 const JSON_SRC = path.join(
   __dirname,
   "..",
-  "public",
+  "src",
+  "lib",
   "shared-help-content.json",
 );
-const HTML = path.join(__dirname, "..", "public", "help-and-user-manual.html");
+const HTML = path.join(
+  __dirname,
+  "..",
+  "src",
+  "client",
+  "web",
+  "help-and-user-manual.html",
+);
 
 /**
- * Render one shared entry as the body of a manual section.
+ * Render one shared entry as manual HTML.
  *
- * `heading` becomes an `<h3>` and `body` is emitted as-is — it already
- * carries the same inline HTML the dialog renders, which is what keeps
- * the two presentations identical rather than merely similar.
+ * An entry with a `manualHeading` is a whole section: an `<h2>` whose id
+ * is the entry's `manualAnchor`, then its sections. An entry without one
+ * is part of a section the manual writes by hand, and renders as its
+ * sections alone, wherever the manual puts its markers.
  *
- * @param {{manualHeading: string, manualAnchor: string,
+ * Each section's `heading` becomes an `<h3>` and its `body` is emitted
+ * as-is — it already carries the same inline HTML the dialog renders,
+ * which is what keeps the two presentations identical rather than merely
+ * similar.
+ *
+ * @param {{manualHeading?: string, manualAnchor?: string,
  *          sections: {heading: string, body: string}[]}} entry
  * @returns {string}
  */
 function renderEntry(entry) {
-  const lines = [
-    `  <h2 id="${entry.manualAnchor}">${entry.manualHeading}</h2>`,
-    "  <!-- Generated from public/shared-help-content.json by",
+  const lines = [];
+  if (typeof entry.manualHeading === "string")
+    lines.push(`  <h2 id="${entry.manualAnchor}">${entry.manualHeading}</h2>`);
+  lines.push(
+    "  <!-- Generated from src/lib/shared-help-content.json by",
     "       scripts/build-manual-content.js. Do not edit between the",
     "       markers; edit the JSON. -->",
-  ];
+  );
   for (const s of entry.sections) {
     lines.push(`  <h3>${s.heading}</h3>`);
     lines.push(`  <p>${s.body}</p>`);
@@ -135,7 +151,7 @@ function helpKeys(data) {
  * runs on before any override or `.env` value, on the chain it ships
  * set to (`defaults.chain`). They are what the copy GitHub Pages
  * publishes states. The copy the app serves is filled again in the
- * browser with the install's own (`public/dashboard-manual-figures.js`).
+ * browser with the install's own (`src/client/web/dashboard-manual-figures.js`).
  * @returns {Readonly<Record<string, string>>}
  */
 function shippedFigures() {
@@ -150,7 +166,7 @@ function shippedFigures() {
     ),
     appRuntime: runtime,
     txSpeedupSec: runtime.tx.speedupSec,
-    // As src/config.js derives it when TX_CANCEL_SEC is not set.
+    // As src/lib/config.js derives it when TX_CANCEL_SEC is not set.
     txCancelSec: runtime.tx.deadlineSec * runtime.tx.cancelToDeadlineMultiple,
     compoundMinFeeUsd: runtime.compound.minFeeUsd,
     chainKey,

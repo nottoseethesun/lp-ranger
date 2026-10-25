@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-router-deep-link.test.js
  * @description A deep link to a position, `/<chain>/<wallet>/<contract>/<tokenId>`,
- *   opened with that wallet loaded, through public/dashboard-router.js.
+ *   opened with that wallet loaded, through src/client/web/dashboard-router.js.
  *
  *   A position the browser's store already holds is activated at once,
  *   with no scan. One the store has never seen, as in a fresh browser, is
@@ -58,7 +58,7 @@ function openLink(tokenId, entries, found = []) {
 
 before(async () => {
   await learnActiveChain("pulsechain");
-  router = await import("../public/dashboard-router.js");
+  router = await import("../src/client/web/dashboard-router.js");
 });
 
 beforeEach(() => {

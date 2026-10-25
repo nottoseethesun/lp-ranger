@@ -1,7 +1,7 @@
 /**
  * @file test/slippage-resolver.test.js
  * @description Tests for `resolveSlippagePct` in
- *   `src/slippage-resolver.js`.
+ *   `src/lib/slippage-resolver.js`.
  *
  * The resolver picks the DESTINATION-token's per-token slippage
  * value.  When the destination side is unset, it returns the shipped
@@ -19,7 +19,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { resolveSlippagePct } = require("../src/slippage-resolver");
+const { resolveSlippagePct } = require("../src/lib/slippage-resolver");
 
 describe("resolveSlippagePct — destination-token rule", () => {
   it("uses slippagePctToken1 for a token0→token1 swap (destination = token1)", () => {

@@ -17,8 +17,8 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { buildBundles } = require("../scripts/build-bundles");
 
-const DASHBOARD = "public/dist/bundle.js";
-const MANUAL = "public/dist/manual-figures.js";
+const DASHBOARD = "src/client/web/dist/bundle.js";
+const MANUAL = "src/client/web/dist/manual-figures.js";
 const STEPS = ["scripts/cache-bust.js", "scripts/inline-svgs.js"];
 
 /**

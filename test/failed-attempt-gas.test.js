@@ -32,10 +32,10 @@ const assert = require("node:assert/strict");
 const {
   swapViaAggregator,
   _setWaitMsForTests,
-} = require("../src/rebalancer-aggregator");
-const { swapIfNeeded } = require("../src/rebalancer-swap");
-const { V3_ROUTER_LABEL } = require("../src/rebalancer-router");
-const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+} = require("../src/lib/rebalancer-aggregator");
+const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
+const { V3_ROUTER_LABEL } = require("../src/lib/rebalancer-router");
+const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 const { ADDR, buildMockEthersLib } = require("./helpers/rebalancer-mocks");
 const {
   EXCHANGE,
@@ -200,9 +200,9 @@ describe("a failed aggregator attempt's gas, through to the V3 router", () => {
 });
 
 describe("swapIfNeeded adds what every route given up on paid", () => {
-  const AGG_PATH = require.resolve("../src/rebalancer-aggregator");
-  const ROUTER_PATH = require.resolve("../src/rebalancer-router");
-  const SWAP_PATH = require.resolve("../src/rebalancer-swap");
+  const AGG_PATH = require.resolve("../src/lib/rebalancer-aggregator");
+  const ROUTER_PATH = require.resolve("../src/lib/rebalancer-router");
+  const SWAP_PATH = require.resolve("../src/lib/rebalancer-swap");
 
   /**
    * Load `swapIfNeeded` with both routes replaced by stand-ins.

@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-offset-row.test.js
  * @description Tests for the Position Offset row's two buttons in
- * `public/dashboard-throttle.js` — `resetOffset` ("No Offset") and
+ * `src/client/web/dashboard-throttle.js` — `resetOffset` ("No Offset") and
  * `saveOffset` ("Save").
  *
  * The behaviour under test: **only Save persists.**  `resetOffset` used
@@ -23,7 +23,7 @@ require("global-jsdom/register");
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { learnActiveChain } = require("./helpers/active-chain");
-const { CENTERED_OFFSET_PCT } = require("../src/centered-offset");
+const { CENTERED_OFFSET_PCT } = require("../src/lib/centered-offset");
 
 let mod;
 let configInputs;
@@ -35,9 +35,9 @@ let posted;
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  mod = await import("../public/dashboard-throttle.js");
-  configInputs = await import("../public/dashboard-config-inputs.js");
-  const store = await import("../public/dashboard-positions-store.js");
+  mod = await import("../src/client/web/dashboard-throttle.js");
+  configInputs = await import("../src/client/web/dashboard-config-inputs.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
   store.posStore.entries.length = 0;
   store.posStore.entries.push({
     tokenId: "157149",
@@ -84,7 +84,7 @@ describe("resetOffset — the No Offset button", () => {
   it("marks the input dirty so the next poll cannot clobber it", () => {
     /*- Same guard the Default button relies on: the injected value has
      *  to survive until the user decides whether to Save it. */
-    const cache = require("../public/dashboard-data-cache.js");
+    const cache = require("../src/client/web/dashboard-data-cache.js");
     mod.resetOffset();
     assert.equal(cache.isInputDirty("inOffsetToken0"), true);
   });
@@ -136,7 +136,7 @@ describe("saveOffset — the Save button", () => {
   it("sends an out-of-range value rather than correcting it", () => {
     /*- The browser used to rewrite 140 to 100 and save that, so the
      *  operator got a setting they never chose and no sign of it.
-     *  `src/config-bounds.js` refuses it by name instead, and
+     *  `src/lib/config-bounds.js` refuses it by name instead, and
      *  `dashboard-config-save.js` puts the field back. */
     document.getElementById("inOffsetToken0").value = "140";
     mod.saveOffset();

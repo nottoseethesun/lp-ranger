@@ -1,7 +1,7 @@
 /**
  * @file test/logger.test.js
  * @description Tests for the shared `logCtx` helper and address
- *   abbreviation in `src/logger.js`.  Guards the canonical 6-field
+ *   abbreviation in `src/lib/logger.js`.  Guards the canonical 6-field
  *   format used by every compound / rebalance / swap entry-point log.
  *   See the `feedback-log-full-context` memory for the rule.
  */
@@ -11,7 +11,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { abbrAddr, logCtx, emojiId } = require("../src/logger");
+const { abbrAddr, logCtx, emojiId } = require("../src/lib/logger");
 
 test("abbrAddr renders 6-char head + ellipsis + 3-char tail", () => {
   const out = abbrAddr("0x4e448B2dD8fBB22e7e91b7D7eB9C5db5fa11161A");

@@ -15,7 +15,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { getPoolState } = require("../src/rebalancer-pools");
+const { getPoolState } = require("../src/lib/rebalancer-pools");
 const {
   ADDR,
   defaultDispatch,

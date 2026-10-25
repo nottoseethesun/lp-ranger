@@ -5,7 +5,7 @@
  * @description Tests the readiness-gate decision the "All Positions
  *   Stats" header button uses.  The pure decision was extracted from
  *   `updateAllPositionsStatsBtn` into `computeAllPositionsStatsGate`
- *   in `public/dashboard-all-positions-stats.js` so it can be tested
+ *   in `src/client/web/dashboard-all-positions-stats.js` so it can be tested
  *   without driving the DOM cache path (whose module-singleton
  *   `_lastButtonState` cache would leak state between tests).  jsdom
  *   is still required — the module imports `dashboard-helpers.js`
@@ -26,7 +26,7 @@ let compute;
 
 before(async () => {
   ({ computeAllPositionsStatsGate: compute } =
-    await import("../public/dashboard-all-positions-stats.js"));
+    await import("../src/client/web/dashboard-all-positions-stats.js"));
 });
 
 describe("computeAllPositionsStatsGate()", () => {

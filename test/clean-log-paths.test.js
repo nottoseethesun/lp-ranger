@@ -20,7 +20,7 @@ const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const _USER_DIR = makeTestTempFolder("clean-log-settings");
 fs.writeFileSync(
@@ -96,7 +96,7 @@ describe("npm run clean:log", () => {
   it("empties the log in place, so a server writing it goes on writing it", () => {
     const p = put("logs/run.log", "an earlier run's lines\n");
     const inode = fs.statSync(p).ino;
-    // The server's own handle: opened to append, as src/log-file.js does.
+    // The server's own handle: opened to append, as src/lib/log-file.js does.
     const fd = fs.openSync(p, "a");
     try {
       cleanDiagnosticLog({ logPath: "logs/run.log", root });

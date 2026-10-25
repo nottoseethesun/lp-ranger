@@ -21,8 +21,11 @@ describe("compounder", () => {
     // but not directly exported; test indirectly through executeCompound mock
 
     it("module exports all expected functions", () => {
-      const mod = require("../src/compounder");
-      assert.equal(typeof mod.collectFees, "function");
+      const mod = require("../src/lib/compounder");
+      assert.equal(
+        typeof require("../src/lib/compound-collect").collectFees,
+        "function",
+      );
       assert.equal(typeof mod.addLiquidity, "function");
       assert.equal(typeof mod.executeCompound, "function");
       assert.equal(typeof mod.detectCompoundsOnChain, "function");
@@ -37,7 +40,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("returns compounded:false when no fees collected", async () => {
-      const { executeCompound } = require("../src/compounder");
+      const { executeCompound } = require("../src/lib/compounder");
 
       const _collectTx = {
         hash: "0xtest",
@@ -126,7 +129,7 @@ describe("compounder", () => {
 
   describe("compound config keys", () => {
     it("POSITION_KEYS includes compound fields", () => {
-      const { POSITION_KEYS } = require("../src/bot-config-keys");
+      const { POSITION_KEYS } = require("../src/lib/bot-config-keys");
       assert.ok(POSITION_KEYS.includes("autoCompoundEnabled"));
       assert.ok(POSITION_KEYS.includes("autoCompoundThresholdUsd"));
       assert.ok(POSITION_KEYS.includes("compoundHistory"));
@@ -139,13 +142,13 @@ describe("compounder", () => {
     });
 
     it("COMPOUND_MIN_FEE_USD is defined in config", () => {
-      const config = require("../src/config");
+      const config = require("../src/lib/config");
       assert.equal(typeof config.COMPOUND_MIN_FEE_USD, "number");
       assert.ok(config.COMPOUND_MIN_FEE_USD > 0);
     });
 
     it("COMPOUND_DEFAULT_THRESHOLD_USD is defined in config", () => {
-      const config = require("../src/config");
+      const config = require("../src/lib/config");
       assert.equal(typeof config.COMPOUND_DEFAULT_THRESHOLD_USD, "number");
       assert.ok(
         config.COMPOUND_DEFAULT_THRESHOLD_USD >= config.COMPOUND_MIN_FEE_USD,
@@ -158,7 +161,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("collects fees and returns balance diff", async () => {
-      const { collectFees } = require("../src/compounder");
+      const { collectFees } = require("../src/lib/compound-collect");
       let callCount = 0;
       const _collectTx = {
         hash: "0xcollect",
@@ -212,7 +215,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("calls increaseLiquidity and returns amounts", async () => {
-      const { addLiquidity } = require("../src/compounder");
+      const { addLiquidity } = require("../src/lib/compounder");
       const _incTx = {
         hash: "0xinc",
         nonce: 2,
@@ -266,7 +269,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("returns compounded:true with USD value when fees exist", async () => {
-      const { executeCompound } = require("../src/compounder");
+      const { executeCompound } = require("../src/lib/compounder");
       let balCall = 0;
       const _collectTx = {
         hash: "0xc",

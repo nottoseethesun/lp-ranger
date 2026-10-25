@@ -14,7 +14,7 @@ const path = require("path");
 /*-
  *  Token symbols resolved here are fixtures. They go to a file of this
  *  test's own, not the operator's cache, which nothing expires. Set
- *  before src/server-scan.js loads src/token-symbol-cache.js, which
+ *  before src/lib/server-scan.js loads src/lib/token-symbol-cache.js, which
  *  reads it once.
  */
 const SYMBOL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "server-scan-"));
@@ -28,8 +28,8 @@ const {
   resolveSymbolMap,
   formatNftResponse,
   poolKey,
-} = require("../src/server-scan");
-const { getTokenSymbol } = require("../src/token-symbol-cache");
+} = require("../src/lib/server-scan");
+const { getTokenSymbol } = require("../src/lib/token-symbol-cache");
 
 // ── Helpers ─────────────────────────────────────────────────────────
 

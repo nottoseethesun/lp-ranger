@@ -20,11 +20,11 @@ const {
   SAFETY_MULTIPLIER,
   SEND_GAS,
   _formatNative,
-} = require("../src/gas-monitor");
-const tg = require("../src/telegram-notifications/telegram");
+} = require("../src/lib/gas-monitor");
+const tg = require("../src/lib/telegram-notifications/telegram");
 const {
   EVENT_DEFAULTS,
-} = require("../src/telegram-notifications/telegram-events");
+} = require("../src/lib/telegram-notifications/telegram-events");
 
 let _originalFetch;
 beforeEach(() => {
@@ -365,7 +365,7 @@ describe("gas-monitor — checkGasBalance alert state", () => {
   });
 
   it("dedupes alert wallet-wide when multiple positions share an address (no explicit alertState)", async () => {
-    const { _resetSharedAlertState } = require("../src/gas-monitor");
+    const { _resetSharedAlertState } = require("../src/lib/gas-monitor");
     _resetSharedAlertState();
     const events = _captureNotifies();
     const gasPriceWei = 1_000_000_000_000n;

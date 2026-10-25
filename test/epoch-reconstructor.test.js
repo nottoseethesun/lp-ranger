@@ -14,8 +14,8 @@ const {
   _buildClosedEpoch,
   isEpochHistoryComplete,
   reconstructEpochs,
-} = require("../src/epoch-reconstructor");
-const epochCache = require("../src/epoch-cache");
+} = require("../src/lib/epoch-reconstructor");
+const epochCache = require("../src/lib/epoch-cache");
 const {
   CHAIN_HISTORY_MODULE,
   chainHistoryStub,
@@ -366,13 +366,13 @@ describe("_fetchEpochsFromChain resume buffer", () => {
       };
     };
     try {
-      delete require.cache[require.resolve("../src/epoch-reconstructor")];
-      const mod = require("../src/epoch-reconstructor");
+      delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
+      const mod = require("../src/lib/epoch-reconstructor");
       /*- Evict again: the copy just built holds the stubbed
        *  `getPositionHistory`, and leaving it cached would hand it to
        *  whoever requires this module next. The returned reference stays
        *  valid — only the cache entry goes. */
-      delete require.cache[require.resolve("../src/epoch-reconstructor")];
+      delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
       return { fetch: mod._fetchEpochsFromChain, seen };
     } finally {
       Module.prototype.require = orig;
@@ -413,7 +413,7 @@ describe("_fetchEpochsFromChain resume buffer", () => {
      *  passes against a stub reports nothing about the real code. */
     withStubbedHistory(null);
     assert.strictEqual(
-      require.cache[require.resolve("../src/epoch-reconstructor")],
+      require.cache[require.resolve("../src/lib/epoch-reconstructor")],
       undefined,
       "a stubbed epoch-reconstructor is still cached",
     );
@@ -501,7 +501,7 @@ describe("_fetchEpochsFromChain resume buffer", () => {
 
 describe("reconstructEpochs — the rescan flag", () => {
   /*- `_epochHistoryIncomplete` is the only thing that makes the
-   *  30-minute rescan timer in src/bot-loop.js fire for a short epoch
+   *  30-minute rescan timer in src/lib/bot-loop.js fire for a short epoch
    *  history; its other three conditions all describe the LIFETIME
    *  scan. So the flag has to be lowered on EVERY path that settles a
    *  complete history, not only on the rebuild at the end.
@@ -517,8 +517,8 @@ describe("reconstructEpochs — the rescan flag", () => {
    *  case has no position metadata, so each per-NFT fetch fails inside
    *  the loop's own try/catch. */
 
-  const { _cacheKeyFromState } = require("../src/epoch-reconstructor");
-  const { setCachedEpochs } = require("../src/epoch-cache");
+  const { _cacheKeyFromState } = require("../src/lib/epoch-reconstructor");
+  const { setCachedEpochs } = require("../src/lib/epoch-cache");
 
   const events = (n) =>
     Array.from({ length: n }, (_, i) => ({

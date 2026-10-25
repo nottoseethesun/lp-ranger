@@ -23,9 +23,9 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const botProvider = require("../src/bot-provider");
-const rpcQueue = require("../src/rpc-request-manager");
-const { readBotConfigDefaults } = require("../src/bot-config-defaults");
+const botProvider = require("../src/lib/bot-provider");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
 const URL_A = "http://limited.test";
 

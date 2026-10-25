@@ -31,7 +31,7 @@ let _tmpDir;
 let _origLogFile;
 
 const _origRequire = Module.prototype.require;
-const config = require("../src/config");
+const config = require("../src/lib/config");
 
 const POSITION = Object.freeze({
   token0: "0x" + "1".repeat(40),
@@ -118,13 +118,13 @@ before(() => {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/position-history")];
-  ({ getPositionHistory } = require("../src/position-history"));
+  delete require.cache[require.resolve("../src/lib/position-history")];
+  ({ getPositionHistory } = require("../src/lib/position-history"));
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/position-history")];
+  delete require.cache[require.resolve("../src/lib/position-history")];
   config.LOG_FILE = _origLogFile;
   fs.rmSync(_tmpDir, { recursive: true, force: true });
 });

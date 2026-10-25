@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-19T21:15:51.123Z
+  modified: 2026-10-24T04:57:19.888Z
 ---
 
 **Fixed 2026-10-17, committed in 5bf48d2.** Was: a failed aggregator attempt can
@@ -23,7 +23,7 @@ settled it named the three transactions and why each is paid for.
 
 **What changed:**
 - One field, `gasCostWei`, on whatever an attempt ends with: the result,
-  or the thrown error. `src/spent-gas.js` holds the add and read helpers
+  or the thrown error. `src/lib/spent-gas.js` holds the add and read helpers
   and `recordSpentGas`. The cancel error from `tx-speedup.js` uses the
   same field, which replaced `cancelGasCostWei`.
 - Each layer adds only what it paid: the retry loop its reverted swaps
@@ -41,7 +41,7 @@ Tests: `test/failed-attempt-gas.test.js` and `test/spent-gas.test.js`;
 **Since 2026-10-19 (uncommitted), at the user's word:** `recordSpentGas`
 saves the figure in the position's records (`failedMoveGas`, with when it
 was paid) rather than adding it to the open period, and the P&L adds each
-charge to the period it was paid in (`snapshot`, src/pnl-tracker.js), so
+charge to the period it was paid in (`snapshot`, src/lib/pnl-tracker.js), so
 Reload Current Position and a cleared scan cache no longer drop it.
 test/failed-move-gas.test.js. The proposal had said the gas "also" goes
 into the records, which would have kept it in the period too; the user,

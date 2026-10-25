@@ -1,6 +1,6 @@
 /**
  * @file test/send-transaction.test.js
- * @description Unit tests for src/send-transaction.js.
+ * @description Unit tests for src/lib/send-transaction.js.
  *
  * Covers init / getCurrentRPC / failoverToNextRPC, _resolveGasLimit,
  * _estimateWithFailover, and the public sendTransaction happy path.
@@ -17,7 +17,7 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const sendTx = require("../src/send-transaction");
+const sendTx = require("../src/lib/send-transaction");
 const { condemn } = require("./helpers/send-tx-stubs");
 
 /*- Stand-in ethers lib: JsonRpcProvider becomes a recognisable stub so

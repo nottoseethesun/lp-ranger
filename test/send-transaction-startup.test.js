@@ -25,8 +25,8 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const sendTx = require("../src/send-transaction");
-const rpcQueue = require("../src/rpc-request-manager");
+const sendTx = require("../src/lib/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
 const { PRI, FALL, makeLib, muteConsole } = require("./helpers/send-tx-stubs");
 
 /** Both endpoints refuse to answer the boot probe. */

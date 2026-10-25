@@ -28,9 +28,9 @@ process.env.GECKO_POOL_CACHE_PATH = path.join(_DIR, "gecko-pool-cache.json");
 const { describe, it, beforeEach, afterEach, after } = require("node:test");
 const assert = require("node:assert/strict");
 
-const config = require("../src/config");
-const { fetchHistoricalPriceGecko } = require("../src/price-fetcher");
-const { getHistoricalPrice, _resetForTest } = require("../src/price-cache");
+const config = require("../src/lib/config");
+const { fetchHistoricalPriceGecko } = require("../src/lib/price-fetcher");
+const { getHistoricalPrice, _resetForTest } = require("../src/lib/price-cache");
 
 const POOL = "0x" + "9".repeat(40);
 const TOKEN0 = "0x" + "a".repeat(40);

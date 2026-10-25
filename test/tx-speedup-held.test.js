@@ -3,7 +3,7 @@
 /**
  * @file test/tx-speedup-held.test.js
  * @description Three things about a stuck transaction that the speed-up
- *   pipeline (`_waitOrSpeedUp`, src/tx-speedup.js) must get right.
+ *   pipeline (`_waitOrSpeedUp`, src/lib/tx-speedup.js) must get right.
  *
  *   - The speed-up is timed from the transaction's first submission. A
  *     transaction recovered after an endpoint answered "already known"
@@ -23,9 +23,9 @@ const { describe, it, before, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { Wallet, Transaction } = require("ethers");
 
-const config = require("../src/config");
-const logModule = require("../src/log");
-const { _waitOrSpeedUp } = require("../src/tx-speedup");
+const config = require("../src/lib/config");
+const logModule = require("../src/lib/log");
+const { _waitOrSpeedUp } = require("../src/lib/tx-speedup");
 const { nonceTooLow } = require("./helpers/ethers-rpc-errors");
 
 const WALLET = "0x" + "11".repeat(20);

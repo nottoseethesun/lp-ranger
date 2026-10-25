@@ -24,7 +24,7 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const backoff = require("../src/price-source-backoff");
+const backoff = require("../src/lib/price-source-backoff");
 const {
   retryOn429,
   penaltyWaitMs,

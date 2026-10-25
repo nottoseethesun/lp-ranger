@@ -320,7 +320,7 @@
             "description": "Config saved. An answer to a request that named a position names it too: positionKey is the key the request named, and livePositionKey the key the values were saved under when a rebalance had moved it, so a dashboard that has moved to another position since it asked can keep the answer off its screen."
           },
           "400": {
-            "description": "Missing or invalid positionKey for position-specific keys, or a dashboard-settable value outside its range. The route takes settings only: the bot's own records (hodlBaseline, residuals, compoundHistory and the rest) are not saved through it. The two refusals are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Ranges are declared in src/config-bounds.js; null clears a setting rather than being checked. Names the position as the 200 does."
+            "description": "Missing or invalid positionKey for position-specific keys, or a dashboard-settable value outside its range. The route takes settings only: the bot's own records (hodlBaseline, residuals, compoundHistory and the rest) are not saved through it. The two refusals are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Ranges are declared in src/lib/config-bounds.js; null clears a setting rather than being checked. Names the position as the 200 does."
           }
         }
       }
@@ -591,44 +591,6 @@
         }
       }
     },
-    "/api/is-position-being-adjusted": {
-      "get": {
-        "tags": ["Positions"],
-        "summary": "Whether a rebalance or compound is under way",
-        "description": "True while a rebalance or compound is under way, for the position the key names or, with no key, for any. These are the flags Mission Control shows. `npm run gentle-stop` asks before stopping the server.",
-        "parameters": [
-          {
-            "name": "key",
-            "in": "query",
-            "required": false,
-            "description": "The position's composite key, chain-wallet-contract-tokenId. Without it, every position is asked about.",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The answer",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "adjusting": {
-                      "type": "boolean"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The key names no position"
-          }
-        }
-      }
-    },
     "/api/position/manage": {
       "post": {
         "tags": ["Positions"],
@@ -659,7 +621,7 @@
             "description": "Missing tokenId or no private key"
           },
           "409": {
-            "description": "Nothing was started, for one of three reasons. LP Ranger manages one active position per liquidity pool, so that profit and loss stays attributable to it. `pool-already-managed`: another position already manages this pool, and the body names it. `pool-has-open-position`: the position is closed, so its Manage would re-open it, and the wallet already holds an open position in its pool, which the body names; the wallet's positions are those the last wallet scan saw open, each still open unless the chain answers otherwise. Or nothing may start now: the server is still starting the positions saved as managed, one of which may be in the same pool, or it is stopping; the body then carries only `ok` and `error`.",
+            "description": "Nothing was started, for one of three reasons. LP Ranger manages one active position per liquidity pool, so that profit and loss stays attributable to it. `pool-already-managed`: another position already manages this pool, and the body names it. `pool-has-open-position`: the position is closed, so its Manage would re-open it, and the wallet already holds an open position in its pool, which the body names; the wallet's positions are those the last wallet scan saw open, each still open unless the chain answers otherwise. Or nothing may start now: the server is still starting the positions saved as managed, one of which may be in the same pool, or it is stopping; the body then carries only `ok` and `error`. A re-open retried on a running position (`forceRebalance: true`) while a scan is running on it is refused too, since its rebalance would be left out of the figures the scan rebuilds; `error` then asks for Manage again once the read finishes, and the body names the position by positionKey.",
             "content": {
               "application/json": {
                 "schema": {
@@ -914,7 +876,7 @@
             "description": "Missing positionKey"
           },
           "409": {
-            "description": "Position not running. Names the position by positionKey."
+            "description": "Position not running, or a scan is running on it: a rebalance made during the scan would be left out of the figures it rebuilds. The scan refusal carries `scanInProgress: true` and the reason in `error`; the dashboard's dialog waits for the scan to end. Names the position by positionKey. Once accepted, the rebalance holds the position's scans back until it is made."
           }
         }
       }
@@ -949,19 +911,46 @@
             "description": "Missing positionKey"
           },
           "409": {
-            "description": "Position not running"
+            "description": "Position not running, or a scan is running on it: a compound made during the scan would be left out of the figures it rebuilds. The scan refusal carries `scanInProgress: true`, the reason in `error`, and the position's positionKey; the dashboard's Compound Now dialog waits for the scan to end. Once accepted, the compound holds the position's scans back until it is made."
           }
         }
       }
     },
-    "/api/shutdown": {
+    "/api/stop-when-all-clear": {
       "post": {
         "tags": ["System"],
-        "summary": "Graceful shutdown",
-        "description": "Stop all managed positions and shut down the server. A rebalance or compound under way finishes first, however long it takes, and no position starts another check; then the server exits. Ctrl+C and `npm stop` exit within three seconds, cutting one off. `npm run gentle-stop`, the recommended stop, asks GET /api/is-position-being-adjusted until nothing is under way, then asks this route to stop the server and waits until it has exited. The shutdown alert goes out as it does on Ctrl+C.",
+        "summary": "Stop the server once nothing is under way",
+        "description": "A stop the server holds until nothing it has under way is left. From the first request the server starts nothing new: no position starts, no check begins a rebalance or compound, and Reload Current Position and Re-scan Prices are refused. It exits once each rebalance or compound under way, and then each scan still running, has finished, however long that takes; the shutdown alert goes out as it does on Ctrl+C. A repeat changes nothing and answers what the stop still waits for. `npm run gentle-stop`, the recommended stop, sends it every two seconds and prints the answer. Ctrl+C and `npm stop` exit within three seconds, cutting a move or scan off.",
         "responses": {
           "200": {
-            "description": "Shutdown initiated"
+            "description": "The stop is held. What it still waits for, position by position.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "stopping": { "type": "boolean" },
+                    "waitingFor": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "position": {
+                            "type": "string",
+                            "description": "The pair and NFT, as the log names it."
+                          },
+                          "activity": {
+                            "type": "string",
+                            "enum": ["rebalance", "compound", "scan"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1182,7 +1171,7 @@
                     },
                     "logo": {
                       "type": "string",
-                      "description": "File name under public/ of the chain's logo, shown in the dashboard header."
+                      "description": "File name under src/client/web/ of the chain's logo, shown in the dashboard header."
                     },
                     "tokenListUrl": {
                       "type": "string",
@@ -1838,7 +1827,7 @@
             }
           },
           "409": {
-            "description": "An operation is already in progress.",
+            "description": "Refused, the position left as it was. error names why: server-stopping (the server holds a stop), scan-in-progress (a scan of the position is running), or coin-move-under-way (a rebalance or compound of the position has started, from its first gate to its end, or a Rebalance Now or Compound Now waits to be made). message is for the operator; for coin-move-under-way it reads \"A coin move (rebalance or compound) for this position has already started. Try again once it's complete.\"",
             "content": {
               "application/json": {
                 "schema": {
@@ -1848,6 +1837,14 @@
                       "type": "boolean"
                     },
                     "error": {
+                      "type": "string",
+                      "enum": [
+                        "server-stopping",
+                        "scan-in-progress",
+                        "coin-move-under-way"
+                      ]
+                    },
+                    "message": {
                       "type": "string"
                     }
                   }
@@ -1949,7 +1946,7 @@
             }
           },
           "409": {
-            "description": "Position is not managed.",
+            "description": "Refused, the position left as it was. error names why: not-managed (Re-scan Prices applies only to a managed position), server-stopping, scan-in-progress, or coin-move-under-way, as for POST /api/position/reload. message is for the operator.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1959,7 +1956,13 @@
                       "type": "boolean"
                     },
                     "error": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "not-managed",
+                        "server-stopping",
+                        "scan-in-progress",
+                        "coin-move-under-way"
+                      ]
                     },
                     "message": {
                       "type": "string"

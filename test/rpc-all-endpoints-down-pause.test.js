@@ -5,7 +5,7 @@
  * holds ALL JSON-RPC traffic for a configured pause, then starts again
  * from the first endpoint.
  *
- * The hold is what makes that safe to retry into. `src/rpc-read-retry.js`
+ * The hold is what makes that safe to retry into. `src/lib/rpc-read-retry.js`
  * ignores whether failover moved and loops with no exit condition, so
  * with every endpoint refusing, the only thing bounding how fast it
  * re-asks them is this queue.
@@ -21,7 +21,7 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const rpcQueue = require("../src/rpc-request-manager");
+const rpcQueue = require("../src/lib/rpc-request-manager");
 
 /** Let pending timers and microtasks run. */
 const tick = (ms) => new Promise((r) => setTimeout(r, ms));

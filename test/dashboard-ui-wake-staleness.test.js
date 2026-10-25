@@ -38,8 +38,8 @@ let idle;
 let sounds;
 
 before(async () => {
-  idle = await import("../public/dashboard-idle.js");
-  sounds = await import("../public/dashboard-sounds.js");
+  idle = await import("../src/client/web/dashboard-idle.js");
+  sounds = await import("../src/client/web/dashboard-sounds.js");
 });
 
 // ── _shouldAdvanceWakeStamp ────────────────────────────────────────────

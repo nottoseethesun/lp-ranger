@@ -3,7 +3,7 @@ name: Pool-creation Factory scan direction
 description: Obsolete 2026-09-13 — findPoolCreationBlock no longer reads the Factory log at all; it binary-searches eth_getCode
 type: project
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
-modified: 2026-09-13T20:34:51.326Z
+modified: 2026-10-24T04:55:01.113Z
 ---
 
 **Obsolete 2026-09-13.** Scan direction stopped mattering:
@@ -18,7 +18,7 @@ Kept for history below.
 
 ---
 
-`src/pool-creation-finder.js` `findPoolCreationBlock` walks the V3
+`src/lib/pool-creation-finder.js` `findPoolCreationBlock` walks the V3
 Factory's `PoolCreated` event log from oldest to newest. For a pool
 created today inside a 5-year scan window, that traverses ~150 chunks of
 empty history before finding the creation event in the most recent

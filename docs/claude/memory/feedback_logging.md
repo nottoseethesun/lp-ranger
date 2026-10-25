@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T17:39:22.520Z
+  modified: 2026-10-24T05:24:12.652Z
 ---
 
 # Logging
@@ -19,16 +19,16 @@ When logging anything about a token, always include the human-readable symbol ne
 
 **Why:** User explicitly said "include the human-readable token name, as you always should do." This is a project-wide rule, not a one-off. Logs are the primary debugging surface and a bare 0x… makes them useless at a glance.
 
-**How to apply:** Wherever a log mentions a token address, render it with `formatToken(addr)` from `src/price-source-cascade.js`: `WPLS (0xA107…9a27)`, or the abbreviated address alone if the symbol cache hasn't loaded the token yet. Compute it on its own line before the log call ([[feedback_no_computation_in_params]]). For the bare symbol, `getTokenSymbol(addr)` lives in `src/token-symbol-cache.js` and answers null when unknown; never print a stand-in such as `?` for it.
+**How to apply:** Wherever a log mentions a token address, render it with `formatToken(addr)` from `src/lib/price-source-cascade.js`: `WPLS (0xA107…9a27)`, or the abbreviated address alone if the symbol cache hasn't loaded the token yet. Compute it on its own line before the log call ([[feedback_no_computation_in_params]]). For the bare symbol, `getTokenSymbol(addr)` lives in `src/lib/token-symbol-cache.js` and answers null when unknown; never print a stand-in such as `?` for it.
 
 ## log nft id emoji
 
 Every log line that mentions an NFT position must include both:
 
 1. The numeric `tokenId` (e.g. `161234`)
-2. The 3-emoji fingerprint from `emojiId(tokenId)` (defined in `src/logger.js`; the dashboard has its own, same algorithm, in `public/dashboard-helpers.js`) &mdash; an MD5-derived 3-emoji sequence wrapped in an ANSI black-background reset
+2. The 3-emoji fingerprint from `emojiId(tokenId)` (defined in `src/lib/logger.js`; the dashboard has its own, same algorithm, in `src/client/web/dashboard-helpers.js`) &mdash; an MD5-derived 3-emoji sequence wrapped in an ANSI black-background reset
 
-**Why:** Two-fold identification: the number is for grep / search / cross-referencing with on-chain explorers, the emoji fingerprint is for instant visual recognition when scanning a long log without reading every digit. The user works with many concurrent positions; the emoji fingerprint disambiguates at a glance. Existing reference impls: `src/position-manager.js:242`, `src/position-manager.js:294`, `src/server-routes.js`.
+**Why:** Two-fold identification: the number is for grep / search / cross-referencing with on-chain explorers, the emoji fingerprint is for instant visual recognition when scanning a long log without reading every digit. The user works with many concurrent positions; the emoji fingerprint disambiguates at a glance. Existing reference impls: `src/lib/position-manager.js:242`, `src/lib/position-manager.js:294`, `src/lib/server-routes.js`.
 
 **How to apply:**
 
@@ -57,7 +57,7 @@ Required fields in every such log line:
 
 **How to apply:**
 
-- Audit `_logCompoundSummary` (`src/compounder.js`), the rebalance entrypoint loggers (`src/rebalancer.js`), and the swap entrypoint loggers (`src/rebalancer-swap.js` / `rebalancer-aggregator.js`) when adding new log lines or modifying existing ones.
+- Audit `_logCompoundSummary` (`src/lib/compounder.js`), the rebalance entrypoint loggers (`src/lib/rebalancer.js`), and the swap entrypoint loggers (`src/lib/rebalancer-swap.js` / `rebalancer-aggregator.js`) when adding new log lines or modifying existing ones.
 - Compose the line with all 6 fields whenever the event class is one of compound / rebalance / swap.
 - If a caller is missing a field, **fix the caller** (don't silently render `?`). Cross-reference with the rule that opts objects should not use inconsistent field names (`wallet` vs `walletAddress`).
 - This rule does NOT apply to high-frequency cycle logs (poll, skip, threshold-check, etc.) — those are best kept compact. The rule is for the three named operation classes.

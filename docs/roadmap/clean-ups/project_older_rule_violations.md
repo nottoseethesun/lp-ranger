@@ -23,7 +23,7 @@ use of the exception. The rule is in
 Core Essentials. Of the 78 test files that swap a standard global, 68
 carry no such label anywhere. Most swap `fetch` or
 `Module.prototype.require`. Ten swap `console.log`, `console.warn` or
-`console.error`; for a module that logs through `src/log.js`, its
+`console.error`; for a module that logs through `src/lib/log.js`, its
 `log._setSinkForTests` seam makes that swap unnecessary. Three swap
 `setTimeout`, where `price-source-backoff._setDelays` and
 `bot-provider._setDelaysForTests` cover some cases.
@@ -34,17 +34,17 @@ module look like the owner, so a search for a name's definition lands
 in the wrong place, and every refactor has to update the copy too.
 Eight runtime modules re-export names they import:
 
-- `src/config.js` re-exports seven values it takes from
-  `src/runtime-flags.js`: the port, the private key, the dry-run and
+- `src/lib/config.js` re-exports seven values it takes from
+  `src/lib/runtime-flags.js`: the port, the private key, the dry-run and
   verbose flags, and the chain. The header of `runtime-flags.js` calls
   this deliberate, so that existing callers keep working.
-- `src/price-fetcher.js` re-exports the price gate's pause functions
+- `src/lib/price-fetcher.js` re-exports the price gate's pause functions
   and the cascade's `tryPriceSources`.
-- `src/bot-loop.js`, `src/bot-cycle.js`, `src/bot-recorder.js`,
-  `src/bot-pnl-updater.js`, `src/pnl-tracker.js` and
-  `src/position-details.js` re-export helpers, mostly for their tests.
+- `src/lib/bot-loop.js`, `src/lib/bot-cycle.js`, `src/lib/bot-recorder.js`,
+  `src/lib/bot-pnl-updater.js`, `src/lib/pnl-tracker.js` and
+  `src/lib/position-details.js` re-export helpers, mostly for their tests.
 
-`public/ethers-adapter.js` is not on the list. It adapts an npm package
+`src/client/web/ethers-adapter.js` is not on the list. It adapts an npm package
 for the dashboard bundle, by design.
 
 **History in CLAUDE.md.** Technical docs describe how the system works,
@@ -71,8 +71,9 @@ finds:
 - 511 checks on an element, such as `if (el)` and
   `if (!frag) return null`, all but three on what `g()`,
   `getElementById`, `querySelector`, `closest` or `cloneTpl` found. Of
-  these, 501 are in 50 dashboard files, 8 in `src/ui-state.js` and 2 in
-  `scripts/lint-svg.js`.
+  these, 501 are in 50 dashboard files, 8 were in `src/lib/ui-state.js`
+  and 2 are in `scripts/lint-svg.js`. That module was removed on
+  2026-10-25, since no part of the app loaded it.
 - 57 on the active position, `posStore.getActive()`, in the dashboard.
 - Dozens on another object: a `Map`'s entry, a `find` result, a
   regular expression's match, a caught error. Some values checked this

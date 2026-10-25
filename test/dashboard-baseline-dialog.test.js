@@ -8,10 +8,10 @@
  *   The dialog has two messages: the entry value LP Ranger found for a
  *   pool, and the coins whose prices it could not find. Each has its own
  *   lines in the dialog (`_showBaselineModal`,
- *   public/dashboard-data-baseline.js), so showing one never removes the
+ *   src/client/web/dashboard-data-baseline.js), so showing one never removes the
  *   places the other writes into, and the dialog can show either next
  *   time, for any position. Driven on the dialog's own markup from
- *   public/index.html.
+ *   src/client/web/index.html.
  */
 
 require("global-jsdom/register");
@@ -36,7 +36,7 @@ before(async () => {
     json: async () => ({}),
   });
   await learnActiveChain();
-  baseline = await import("../public/dashboard-data-baseline.js");
+  baseline = await import("../src/client/web/dashboard-data-baseline.js");
 });
 
 beforeEach(() => {

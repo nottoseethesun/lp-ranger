@@ -25,7 +25,7 @@ const {
   resolveToBlock,
   throwIfAborted,
   _DEFAULT_CHUNK_SIZE,
-} = require("../src/get-logs-chunked");
+} = require("../src/lib/get-logs-chunked");
 const SHIPPED = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 describe("chunkRanges — window arithmetic", () => {

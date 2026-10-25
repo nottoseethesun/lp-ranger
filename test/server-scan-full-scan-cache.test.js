@@ -27,7 +27,7 @@ const path = require("path");
 const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), "scan-full-cache-"));
 process.env.TOKEN_SYMBOL_CACHE_PATH = path.join(SCRATCH, "symbols.json");
 
-const DETECTOR = require.resolve("../src/position-detector");
+const DETECTOR = require.resolve("../src/lib/position-detector");
 const OTHER_PM = "0x" + "c".repeat(40);
 const WALLET = "0x" + "d".repeat(39) + "1";
 const HEAD = 500;
@@ -56,10 +56,10 @@ require.cache[DETECTOR] = {
   },
 };
 
-const config = require("../src/config");
-const sendTx = require("../src/send-transaction");
-const { createScanHandlers } = require("../src/server-scan");
-const { loadLpPositionCache } = require("../src/lp-position-cache");
+const config = require("../src/lib/config");
+const sendTx = require("../src/lib/send-transaction");
+const { createScanHandlers } = require("../src/lib/server-scan");
+const { loadLpPositionCache } = require("../src/lib/lp-position-cache");
 
 const scope = (contract) => ({ blockchain: config.CHAIN_NAME, contract });
 
@@ -69,7 +69,7 @@ describe("a full wallet scan of another position manager", () => {
 
   /*-
    *  The position cache lives in the scan-cache folder, which under
-   *  `node --test` is the test process's own (src/scan-cache-dir.js); the
+   *  `node --test` is the test process's own (src/lib/scan-cache-dir.js); the
    *  case runs in the scratch directory too.
    */
   before(() => {

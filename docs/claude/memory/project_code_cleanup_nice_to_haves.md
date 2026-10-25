@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d932d59e-01b4-45db-82b1-6d987abcda8f
-  modified: 2026-10-19T18:30:33.672Z
+  modified: 2026-10-24T05:23:58.886Z
 ---
 
 Running list of **code-cleanup nice-to-haves**.  Each entry here is polish
@@ -38,10 +38,10 @@ the compound-toggle incident.
 
 Pick a letter-first prefix (`nine-mm-`, `pm-`, `lpr-`, …), then sweep:
 
-- All CSS selectors under `public/*.css` (≈500+ touches in
+- All CSS selectors under `src/client/web/*.css` (≈500+ touches in
   `9mm-pos-mgr.css` alone).
-- Every HTML `class="…"` list in `public/index.html`,
-  `public/help-and-user-manual.html`, and other served pages.
+- Every HTML `class="…"` list in `src/client/web/index.html`,
+  `src/client/web/help-and-user-manual.html`, and other served pages.
 - JS references: `classList.add/remove/toggle`, `querySelector`,
   `matches`, `getElementsByClassName`, string templates that build
   class attributes.
@@ -78,7 +78,7 @@ Until 2026-09-02 the two used *different formulas* and disagreed — the
 table read `Collect(last) − DecreaseLiquidity(last)` and so missed every
 fee auto-compound had already swept, showing $149 against a lifetime
 $1,084 on the HEX pool. That is fixed: both now call
-`lifetimeFeeAmounts` in src/compounder.js. What remains is only the
+`lifetimeFeeAmounts` in src/lib/compounder.js. What remains is only the
 duplicated *pass*.
 
 Merging them would make a future divergence impossible by construction
@@ -100,7 +100,7 @@ Keep the two in step, and do not add a second entry for it.
 
 ### Stop hanging properties on arrays (plus a lint for it)
 
-`src/event-scanner.js` attaches `firstMintTimestamp` and
+`src/lib/event-scanner.js` attaches `firstMintTimestamp` and
 `firstMintBlockNumber` directly to the events array, beside the entries
 rather than as entries.  Copying an array copies its entries only, so
 `push(...list)`, `slice()`, `map()`, `JSON.stringify()` and

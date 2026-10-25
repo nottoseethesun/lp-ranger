@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
+  modified: 2026-10-24T05:05:31.327Z
 ---
 
 **Status: deferred / nice-to-have, surfaced 2026-06-17.**
@@ -13,8 +14,8 @@ Every npm script that involves the Node V8 inspector should print, on its own cl
 
 The four scripts in scope (all in `package.json`):
 
-- `npm run debug` — `node --inspect server.js`
-- `npm run debug-bot` — `node --inspect bot.js`
+- `npm run debug` — `node --inspect src/server.js`
+- `npm run debug-bot` — `node --inspect src/bot.js`
 - `npm run debug-attach` — `node scripts/debug-attach.js` (calls `scripts/_debug-attach.js`)
 - `npm run debug-attach-bot` — `node scripts/debug-attach-bot.js` (same shared helper)
 

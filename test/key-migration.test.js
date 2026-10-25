@@ -13,14 +13,14 @@ const {
   updatePositionState,
   createPerPositionBotState,
   getAllPositionBotStates,
-} = require("../src/server-positions");
+} = require("../src/lib/server-positions");
 const {
   getPositionConfig,
   compositeKey,
   readConfigValue,
   addManagedPosition,
-} = require("../src/bot-config-v2");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+} = require("../src/lib/bot-config-v2");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 /** Minimal position manager mock. */
 function mockPositionMgr() {

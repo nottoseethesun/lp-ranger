@@ -2,7 +2,7 @@
 
 /**
  * @file test/ui-defaults.test.js
- * @description The dashboard settings the server sends (src/ui-defaults.js)
+ * @description The dashboard settings the server sends (src/lib/ui-defaults.js)
  *   and `GET /api/ui-defaults`, which answers with them.
  *
  *   They are ui-defaults_non-layout_for-server-up-scenario.json with an
@@ -15,7 +15,7 @@
  *   The operator's copy is written to a temporary directory of this
  *   file's own, never to app-config/user-configurable/. The loader reads
  *   `LP_RANGER_USER_CONFIG_DIR` at module load, so it is set before
- *   anything under `src/` is required.
+ *   anything under `src/lib/` is required.
  */
 
 const { describe, it, before, beforeEach, after } = require("node:test");
@@ -32,13 +32,13 @@ const _FILE = "ui-defaults_non-layout_for-server-up-scenario.json";
 const {
   loadShippedDefaults,
   _resetMemoForTests: resetLoaderMemo,
-} = require("../src/load-merged-defaults");
+} = require("../src/lib/load-merged-defaults");
 const {
   readUiDefaults,
   readUiDefaultsStrict,
   handleUiDefaults,
   _resetMemoForTests,
-} = require("../src/ui-defaults");
+} = require("../src/lib/ui-defaults");
 
 const SHIPPED = loadShippedDefaults(_FILE);
 

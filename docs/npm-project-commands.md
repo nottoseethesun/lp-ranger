@@ -60,7 +60,7 @@ npm run debug-bot -- --help
 prints no startup banner — so a help listing can never be mistaken for a
 running process.
 
-The same text is produced by `src/cli-help.js`, so the help output and
+The same text is produced by `src/lib/cli-help.js`, so the help output and
 the tables below describe the same flags.
 
 ---
@@ -73,7 +73,7 @@ Starting and stopping a running install.
 | ------- | ----- | ----------- | ------- |
 | `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run bot -- --log-file --delete-pre-existing-log-file` · `npm run bot -- --start-with-price-lookups-unpaused` · `npm run bot -- --help` |
 | `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `app-data/scan-cache/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
-| `gentle-stop` | — | The recommended way to stop the server: waits until no rebalance or compound is under way, asking every five minutes, then stops it. See [Stopping a Running Install](#stopping-a-running-install). | `npm run gentle-stop` |
+| `gentle-stop` | — | The recommended way to stop the server: asks it to stop once nothing is under way, then prints what it is still finishing until it exits. See [Stopping a Running Install](#stopping-a-running-install). | `npm run gentle-stop` |
 | `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--headless` | Start the dashboard server and, once the wallet is unlocked, every position saved as managed. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. The log flags: see [Logging to a File](#logging-to-a-file). | `npm start -- --log-file --delete-pre-existing-log-file` · `npm start -- --verbose` · `npm start -- --help` |
 | `stop` | — | Force-stop: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. The server exits within three seconds, cutting off any rebalance or compound under way; prefer `npm run gentle-stop`. Falls back to an lsof-by-port lookup when there is no PID file, or its PID is no longer the server's. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
 
@@ -99,9 +99,9 @@ resetting local state.
 | `dev` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h` | Build, then start under `node --watch` so the server restarts on file changes. Each restart is a fresh boot, so `--delete-pre-existing-log-file` clears the log again every time a file is saved — useful for reproducing one thing, unhelpful for watching a session. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run dev -- --verbose` · `npm run dev -- --log-file --delete-pre-existing-log-file` · `npm run dev -- --help` |
 | `dev-clean` | — | The same as `clean`, but keeps the price, block-time and Gecko caches, which cost API quota to rebuild. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run dev-clean` |
 | `format` | — | Prettier write pass over the tracked file set. | `npm run format` |
-| `knip` | — | Dead-code report, for information: also lists unused exports, which are not gated (the dashboard's modules are reached through HTML `<script>` tags knip cannot trace, and `src/` exports internals for tests). | `npm run knip` |
+| `knip` | — | Dead-code report, for information: also lists unused exports, which are not gated (the dashboard's modules are reached through HTML `<script>` tags knip cannot trace, and `src/lib/` exports internals for tests). | `npm run knip` |
 | `knip:files` | — | The gating dead-code check: fails on any file nothing reaches. `lint` and `check` run it. | `npm run knip:files` |
-| `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint. | `npm run lint` |
+| `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint, knip's unused files, and the walk that fails on a module under `src/` no part of the app loads (`scripts/check-unused-src-modules.js`). | `npm run lint` |
 | `lint:fix` | — | The same set with autofix where each tool supports it. | `npm run lint:fix` |
 | `nuke` | — | Delete `node_modules` and `package-lock.json` for a clean reinstall. Run `npm install` afterwards. | `npm run nuke` |
 | `reset-wallet` | — | Delete `wallet.json` and scrub `WALLET_PASSWORD` from `.env`. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run reset-wallet` |
@@ -142,7 +142,7 @@ command each is named for.
 | Command | Flags | Description | Example |
 | ------- | ----- | ----------- | ------- |
 | `clean:reports` | — | Remove `test/report-artifacts/`. Invoked by all nine `pre*` hooks — `precheck`, `prelint`, `prelint:fix`, `pretest`, `pretest:coverage`, `pretest:watch` and the three `preaudit:*` — so every gate starts without stale reports. | `npm run clean:reports` |
-| `copy-fonts` | — | Copy the self-hosted WOFF2 files from `node_modules` into `public/fonts/`. Also runs automatically via `postinstall`. | `npm run copy-fonts` |
+| `copy-fonts` | — | Copy the self-hosted WOFF2 files from `node_modules` into `src/client/web/fonts/`. Also runs automatically via `postinstall`. | `npm run copy-fonts` |
 | `postinstall` | — | Runs automatically after `npm install`; copies the fonts. | automatic |
 | `precheck`, `prelint`, `prelint:fix`, `pretest`, `pretest:coverage`, `pretest:watch`, `preaudit:deps`, `preaudit:security`, `preaudit:secrets` | — | Run automatically before the command each is named for; clear stale reports and regenerate generated content so the gate starts from a known state. | automatic |
 | `prepare` | — | Runs automatically after `npm install`; installs the husky hooks. | automatic |
@@ -200,24 +200,29 @@ this run will not replace.
 ### Stopping a Running Install
 
 **Stop the server with `npm run gentle-stop`**, the recommended way: it
-lets a rebalance or compound under way finish first. Ctrl+C and
-`npm stop` are force-stops.
+lets a rebalance, compound or blockchain scan under way finish first.
+Ctrl+C and `npm stop` are force-stops.
 
-**`npm run gentle-stop` waits.** At once, then every five minutes
-(`shutdown.gentleStopPollMs`), it asks the server whether a rebalance or
-compound is under way (`GET /api/is-position-being-adjusted`). While one
-is, it says so and waits. Once none is, it asks the server to stop
-itself (`POST /api/shutdown`). The server stops every position, lets a
-rebalance or compound that began meanwhile finish, sends the shutdown
-alert, and exits; the command returns once it has. An unanswered
-question, or a stop request the server does not take, is sent again
-next time, since a server too busy to answer may be mid-rebalance. With
-no server listening, it just exits.
+**`npm run gentle-stop` waits.** It asks the server to stop once nothing
+is under way (`POST /api/stop-when-all-clear`). The server holds that
+stop: from the request on it starts nothing new, and once each
+rebalance, compound and scan under way has finished, it sends the
+shutdown alert and exits. The server decides, so no check can begin a
+rebalance between an all-clear and the stop. The command sends the
+request again every two seconds (`shutdown.gentleStopPollMs`); a repeat
+changes nothing, and each answer says what the server is still
+finishing, which the command prints when it changes and once a minute
+while it does not. It returns once the server has exited. That can take
+as long as a scan: minutes after a rebalance, about an hour for a
+position read from scratch. A request the server does not answer, or
+does not take, is sent again; with no server listening, the command
+just exits.
 
 **Once a stop begins, nothing new starts.** No position starts, a
-Manage is refused, and a check that was part way through when the stop
-came starts no rebalance or compound. Stop Managing on one position
-keeps that position's check from starting one too.
+Manage is refused, a check that was part way through when the stop came
+starts no rebalance or compound, and Reload Current Position and Re-scan
+Prices are refused. Stop Managing on one position keeps that position's
+check from starting one too.
 
 **The managed positions stay managed.** No stop, gentle or forced,
 takes a position off the list of managed positions. Once the wallet is
@@ -237,43 +242,43 @@ is under way.
 
 `npm stop` (alias `npm run stop`) shuts down without switching to the
 server's terminal. It reads the server PID from `tmp/lp-ranger.pid`
-(written on startup by `src/server-pid.js`) and sends **SIGTERM** — the
+(written on startup by `src/lib/server-pid.js`) and sends **SIGTERM** — the
 same handler as Ctrl+C, so it stops all managed positions and closes the
 HTTP server. It escalates to SIGKILL if the process is still there after
 the server's exit timeout plus a margin (`exitTimeoutMs` plus
 `stopKillMarginMs` in app-runtime.json, five seconds as shipped). Both
-SIGINT and SIGTERM run the one `shutdown` handler in `server.js`, from
+SIGINT and SIGTERM run the one `shutdown` handler in `src/server.js`, from
 the moment the server is listening, before the wallet key is resolved
 and the managed positions start.
 
 The server removes its PID file whenever it exits on its own: a
-shutdown, `POST /api/shutdown`, or an uncaught error. A server killed
+shutdown, `POST /api/stop-when-all-clear`, or an uncaught error. A server killed
 outright runs no code and leaves the file behind, and its PID may later
 belong to another process. So `npm stop` signals the PID only while it
-still runs `server.js`; otherwise it clears the file and falls back to an
+still runs `src/server.js`; otherwise it clears the file and falls back to an
 lsof-by-port lookup, as it does when there is no PID file at all. That
-lookup signals a listener only while it is this install's `server.js`,
+lookup signals a listener only while it is this install's `src/server.js`,
 so another program on the port is left alone.
 
 ### Dependency Cycles
 
 `npm run show-dependency-cycles` is an optional diagnostic. It runs
 [`madge`](https://github.com/pahen/madge) `--circular` across every `.js`
-file in the project (`src/`, `bot.js`, `server.js`, `scripts/`,
-`eslint-rules/`, `test/`, `public/`) and lists any circular module
+file in the project (`src/`, `scripts/`,
+`eslint-rules/`, `test/`, `src/client/web/`) and lists any circular module
 imports. It is not wired into `npm run check` — surface it only when you
 want it.
 
 Why a CLI tool instead of an ESLint rule: the server-side code is
 CommonJS (`require`/`module.exports`) because Node loads it directly with
 no `"type": "module"` in `package.json`; the dashboard code under
-`public/dashboard-*.js` is ESM (`import`/`export`) because esbuild bundles
-it into `public/dist/bundle.js` for the browser. The standard ESLint cycle
+`src/client/web/dashboard-*.js` is ESM (`import`/`export`) because esbuild bundles
+it into `src/client/web/dist/bundle.js` for the browser. The standard ESLint cycle
 rules (`import/no-cycle`, `import-x/no-cycle`) only reliably detect ESM
 cycles — they cannot trace `require()` calls because `require` is a
 runtime function call, not a static import. `madge` traverses both
 `import` and `require` by walking the actual dependency graph, so it
-catches cycles in both halves of the codebase. Dashboard `public/` ESM
+catches cycles in both halves of the codebase. Dashboard `src/client/web/` ESM
 cycles are also reported; cleaning those up is a separate nice-to-have
 task.
 
@@ -297,8 +302,8 @@ task.
   then deletes operator state (`bot-config.json`,
   `bot-config.backup.json`, `api-keys.json`, `rebalance_log.json`),
   every scan cache in `app-data/scan-cache/`, `logs/*.log`, the build artifacts
-  (`public/dist/`, `public/fonts/`, `public/ui-tokens.css`,
-  `public/disclosure-content.js`) and `test/report-artifacts/`.
+  (`src/client/web/dist/`, `src/client/web/fonts/`, `src/client/web/ui-tokens.css`,
+  `src/client/web/disclosure-content.js`) and `test/report-artifacts/`.
   It leaves `app-data/util/bookkeeping/`, where the bookkeeping tools
   keep their reports and the prices they fetched. The report's Moralis
   key is the app's own, in `api-keys.json`, so a clean deletes it.

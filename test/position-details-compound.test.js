@@ -21,7 +21,8 @@ require("./helpers/price-stand-ins");
 const {
   _detectCurrentNftValues,
   savedNftCompoundedUsd,
-} = require("../src/position-details-compound");
+  savedWalletCoinsPutIn,
+} = require("../src/lib/position-details-compound");
 
 /** #100 → #200 → #300, the later two minted 5M and 6M blocks in. */
 const CHAIN = [
@@ -50,10 +51,20 @@ const scan = (compounds, totalNftGasWei = "0") => ({
   totalNftGasWei,
 });
 
+/** One coin of an 18-decimal token, in its smallest unit. */
+const COIN = 10n ** 18n;
+
+/** A compound as the scan reports it: its whole deposit, in coins. */
+const deposit = (txHash, coins0, coins1) => ({
+  txHash,
+  amount0Deposited: String(BigInt(coins0) * COIN),
+  amount1Deposited: String(BigInt(coins1) * COIN),
+});
+
 describe("_detectCurrentNftValues", () => {
   it("reads only the NFT being looked at", async () => {
     const d = detector(scan([]));
-    await _detectCurrentNftValues(POSITION, {}, PS, PRICES, CHAIN, d.fn);
+    await _detectCurrentNftValues(POSITION, {}, PS, PRICES, CHAIN, [], d.fn);
     assert.equal(d.calls.length, 1, "one NFT, never the chain");
     assert.equal(d.calls[0].tokenId, "300");
   });
@@ -65,23 +76,51 @@ describe("_detectCurrentNftValues", () => {
      *  old; the chain names its mint, so the floor is free.
      */
     const d = detector(scan([]));
-    await _detectCurrentNftValues(POSITION, {}, PS, PRICES, CHAIN, d.fn);
+    await _detectCurrentNftValues(POSITION, {}, PS, PRICES, CHAIN, [], d.fn);
     assert.equal(d.calls[0].opts.fromBlock, 6_000_000);
   });
 
-  it("sums the standalone compounds' own values", async () => {
-    const d = detector(
-      scan([{ usdValue: 2.5 }, { usdValue: 1.25 }, { usdValue: 0.25 }]),
-    );
+  it("values the coins the standalone compounds put back", async () => {
+    // 4 of token0 at $1 and 3 of token1 at $2.
+    const d = detector(scan([deposit("0x1", 3, 1), deposit("0x2", 1, 2)]));
     const r = await _detectCurrentNftValues(
       POSITION,
       {},
       PS,
       PRICES,
       CHAIN,
+      [],
       d.fn,
     );
-    assert.equal(r.compoundUsd, 4);
+    assert.equal(r.compoundUsd, 10);
+  });
+
+  it("counts only the fees a compound the bot made put back", async () => {
+    /*-
+     *  The same figure the bot shows for this NFT while it manages it:
+     *  the saved record of the compound the bot made names its fees, 10
+     *  + 10, among the 110 + 110 its swap's deposit took from the wallet.
+     *  An unmanaged view that summed the whole deposit would disagree.
+     */
+    const d = detector(scan([deposit("0xAB", 110, 110)]));
+    const saved = [
+      {
+        txHash: "0xab",
+        trigger: "manual",
+        amount0Compounded: String(10n * COIN),
+        amount1Compounded: String(10n * COIN),
+      },
+    ];
+    const r = await _detectCurrentNftValues(
+      POSITION,
+      {},
+      PS,
+      PRICES,
+      CHAIN,
+      saved,
+      d.fn,
+    );
+    assert.equal(r.compoundUsd, 30);
   });
 
   it("answers zero for both rather than failing the request", async () => {
@@ -97,6 +136,7 @@ describe("_detectCurrentNftValues", () => {
       PS,
       PRICES,
       CHAIN,
+      [],
       d.fn,
     );
     assert.deepEqual(r, { compoundUsd: 0, gasUsd: 0 });
@@ -110,6 +150,7 @@ describe("_detectCurrentNftValues", () => {
       PS,
       PRICES,
       CHAIN,
+      [],
       d.fn,
     );
     assert.equal(r.gasUsd, 0);
@@ -168,5 +209,44 @@ describe("savedNftCompoundedUsd", () => {
       savedNftCompoundedUsd(disk, KEY, 300, 1, 1),
       savedNftCompoundedUsd(disk, KEY, "300", 1, 1),
     );
+  });
+});
+
+describe("savedWalletCoinsPutIn", () => {
+  const KEY = "pulsechain-0xW-0xC-300";
+  const cfg = (slot) => ({
+    global: {},
+    positions: slot ? { [KEY]: slot } : {},
+  });
+
+  it("reads the wallet's coins the NFT's compounds took in from the saved list", () => {
+    /*-
+     *  The deposit took 110 + 5 coins, 10 + 5 of them fees: 100 of the
+     *  first coin came from the wallet.
+     */
+    const disk = cfg({
+      compoundHistory: [
+        {
+          tokenId: "300",
+          txHash: "0xsweep",
+          trigger: "manual",
+          amount0Deposited: String(110n * COIN),
+          amount1Deposited: String(5n * COIN),
+          amount0Compounded: String(10n * COIN),
+          amount1Compounded: String(5n * COIN),
+        },
+      ],
+    });
+    assert.deepEqual(savedWalletCoinsPutIn(disk, KEY, "300", PS), {
+      amount0: 100,
+      amount1: 0,
+    });
+  });
+
+  it("answers none for a position the bot never managed", () => {
+    assert.deepEqual(savedWalletCoinsPutIn(cfg(null), KEY, "300", PS), {
+      amount0: 0,
+      amount1: 0,
+    });
   });
 });

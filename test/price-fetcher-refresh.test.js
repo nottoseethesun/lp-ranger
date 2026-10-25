@@ -27,8 +27,8 @@ process.env.PRICE_CACHE_PATH = path.join(
 const { describe, it, beforeEach, afterEach, after } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { fetchHistoricalPriceGecko } = require("../src/price-fetcher");
-const { setHistoricalPrice, _resetForTest } = require("../src/price-cache");
+const { fetchHistoricalPriceGecko } = require("../src/lib/price-fetcher");
+const { setHistoricalPrice, _resetForTest } = require("../src/lib/price-cache");
 
 const POOL = "0xPOOL";
 const TOKEN0 = "0xA";

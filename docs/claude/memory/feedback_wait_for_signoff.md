@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T19:50:35.613Z
+  modified: 2026-10-24T04:55:09.067Z
 ---
 
 # Waiting for the user
@@ -38,7 +38,7 @@ When the user says "go slowly," "check your work very carefully," or has an OPEN
 - **When in doubt, describe what I would do and stop.** "I could change X to Y and revert Z — want me to?" is always safer than doing it. The cost of asking is a message. The cost of a wrong edit is trust, plus the follow-on unauthorized reverts that pile on top.
 - This is stricter than `feedback_no_assumptions` (which is about ambiguous requirements). Even when the requirements feel clear, "go slowly" means check before acting.
 
-**Session that triggered a second expansion (2026-07-18, Fees Compounded diagnosis):** User said "this needs to be fixed now, of course. Spend a lot of time thinking about it and then checking everything." I read that as "then fix it," and started editing `src/bot-recorder-lifetime.js` + tests. User was furious. The correct read of "spend time thinking + checking" is: *investigate deeply and PRESENT the analysis + proposed fix in prose*; wait for a separate explicit go-ahead ("do it," "make the change," "ship it") before touching code. Even words that sound urgent ("needs to be fixed now") are still a directive to *plan* until the next verb explicitly authorizes an edit. Deep investigation is the assignment; the edit is a separate assignment that requires its own go-ahead.
+**Session that triggered a second expansion (2026-07-18, Fees Compounded diagnosis):** User said "this needs to be fixed now, of course. Spend a lot of time thinking about it and then checking everything." I read that as "then fix it," and started editing `src/lib/bot-recorder-lifetime.js` + tests. User was furious. The correct read of "spend time thinking + checking" is: *investigate deeply and PRESENT the analysis + proposed fix in prose*; wait for a separate explicit go-ahead ("do it," "make the change," "ship it") before touching code. Even words that sound urgent ("needs to be fixed now") are still a directive to *plan* until the next verb explicitly authorizes an edit. Deep investigation is the assignment; the edit is a separate assignment that requires its own go-ahead.
 
 **Session that triggered this expansion (2026-07-18, range-width bug):** Made four unauthorized edits in one session — swapped the display formula from `(1.0001^aboveTicks − 1.0001^−belowTicks)*100` to `spread/(2*MAX_TICK)*100`, added a `MAX_TICK` export to `dashboard-helpers.js`, updated the import list, and changed `_applySavedOverride` to `.toFixed(2)` — all during an active design discussion where the user was still explaining what widthPct should mean. Then, when the user asked why I'd edited without a go-ahead, I made a fifth edit (reverting one of the four). The user shouted the "no code changes without go-ahead" rule at me 36 times in a single message. Final restore was via `git checkout -- .` — clean, but only after the user explicitly ordered it. Every one of these edits happened because I read data-sharing or corrective explanation as implicit authorization. It was not.
 

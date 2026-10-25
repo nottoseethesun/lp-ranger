@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
+  modified: 2026-10-24T05:23:58.349Z
 ---
 
 **All EVM addresses must conform to the EIP-55 checksum spec** (`ethers.getAddress(addr)`). URLs in browsers come in as lowercase — Chrome / Brave canonicalize the path before sending. Anywhere code reads an EVM address from a URL path / query / fragment, **convert to checksum form before any downstream use** (comparing, hashing, building composite keys, sending to server, etc.).
@@ -27,10 +28,10 @@ metadata:
 
 **Code locations to audit/protect:**
 
-- `public/dashboard-router.js` — parses URL into wallet/contract/tokenId
-- `public/dashboard-positions.js` — posStore add path
-- `public/dashboard-data-cache.js` `flattenV2Status` — builds composite key from posStore
-- `public/dashboard-data-deposit.js` `_poolKey()` — builds localStorage keys; calls `.toLowerCase()` so it's consistent on its own, but make sure server data also normalizes
+- `src/client/web/dashboard-router.js` — parses URL into wallet/contract/tokenId
+- `src/client/web/dashboard-positions.js` — posStore add path
+- `src/client/web/dashboard-data-cache.js` `flattenV2Status` — builds composite key from posStore
+- `src/client/web/dashboard-data-deposit.js` `_poolKey()` — builds localStorage keys; calls `.toLowerCase()` so it's consistent on its own, but make sure server data also normalizes
 - Anywhere `fetch(/api/...)` includes an address in body or query
 
 **CLAUDE.md already states the constraint** ("EVM addresses use EIP-55 checksummed capitalization"). This memory documents the URL-segment-specific application of that rule, since URLs are the most common contamination vector and the failure mode is silent.

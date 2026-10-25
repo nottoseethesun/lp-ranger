@@ -1,6 +1,6 @@
 /**
  * @file test/setting-labels.test.js
- * @description Unit tests for `src/setting-labels.js` and the
+ * @description Unit tests for `src/lib/setting-labels.js` and the
  * `GET /api/setting-labels` route handler.  Covers happy path (valid
  * JSON on disk), missing-file fallback, malformed-JSON fallback,
  * `_comment` stripping, non-object-value rejection, empty-label
@@ -26,11 +26,11 @@ const _FILE = path.join(useShippedDefaultsCopy(), "setting-labels.json");
 let _originalContent = null;
 
 function _clearModuleCache() {
-  delete require.cache[require.resolve("../src/setting-labels")];
+  delete require.cache[require.resolve("../src/lib/setting-labels")];
   /*- The loader reads each config file once and keeps it, so a case
    *  that writes an override has to drop that memo as well; the module
    *  alone would come back and be handed the first read. */
-  require("../src/load-merged-defaults")._resetMemoForTests();
+  require("../src/lib/load-merged-defaults")._resetMemoForTests();
 }
 
 beforeEach(() => {
@@ -52,7 +52,7 @@ describe("setting-labels.readSettingLabels", () => {
         slippagePct: { label: "Slippage", unit: "%" },
       }),
     );
-    const { readSettingLabels } = require("../src/setting-labels");
+    const { readSettingLabels } = require("../src/lib/setting-labels");
     const out = readSettingLabels();
     assert.deepEqual(out.slippagePct, { label: "Slippage", unit: "%" });
   });
@@ -65,7 +65,7 @@ describe("setting-labels.readSettingLabels", () => {
         slippagePct: { label: "Slippage", unit: "%" },
       }),
     );
-    const { readSettingLabels } = require("../src/setting-labels");
+    const { readSettingLabels } = require("../src/lib/setting-labels");
     const out = readSettingLabels();
     assert.equal(out._comment, undefined);
     assert.deepEqual(out.slippagePct, { label: "Slippage", unit: "%" });
@@ -82,7 +82,7 @@ describe("setting-labels.readSettingLabels", () => {
         e: { label: "Ok", unit: "%" },
       }),
     );
-    const { readSettingLabels } = require("../src/setting-labels");
+    const { readSettingLabels } = require("../src/lib/setting-labels");
     const out = readSettingLabels();
     assert.equal(out.a, undefined);
     assert.equal(out.b, undefined);
@@ -93,7 +93,7 @@ describe("setting-labels.readSettingLabels", () => {
 
   it("defaults unit to empty string when missing", () => {
     fs.writeFileSync(_FILE, JSON.stringify({ x: { label: "X" } }));
-    const { readSettingLabels } = require("../src/setting-labels");
+    const { readSettingLabels } = require("../src/lib/setting-labels");
     const out = readSettingLabels();
     assert.equal(out.x.label, "X");
     assert.equal(out.x.unit, "");
@@ -101,13 +101,13 @@ describe("setting-labels.readSettingLabels", () => {
 
   it("returns empty map when file is missing", () => {
     fs.unlinkSync(_FILE);
-    const { readSettingLabels } = require("../src/setting-labels");
+    const { readSettingLabels } = require("../src/lib/setting-labels");
     assert.deepEqual(readSettingLabels(), {});
   });
 
   it("returns empty map when JSON is malformed", () => {
     fs.writeFileSync(_FILE, "{ not valid json");
-    const { readSettingLabels } = require("../src/setting-labels");
+    const { readSettingLabels } = require("../src/lib/setting-labels");
     assert.deepEqual(readSettingLabels(), {});
   });
 });
@@ -118,7 +118,7 @@ describe("setting-labels.handleSettingLabels", () => {
       _FILE,
       JSON.stringify({ slippagePct: { label: "Slip", unit: "%" } }),
     );
-    const { handleSettingLabels } = require("../src/setting-labels");
+    const { handleSettingLabels } = require("../src/lib/setting-labels");
     let gotStatus = null;
     let gotBody = null;
     const jsonResponse = (_res, status, body) => {
@@ -132,7 +132,7 @@ describe("setting-labels.handleSettingLabels", () => {
 
   it("returns 200 with empty map when file missing", () => {
     fs.unlinkSync(_FILE);
-    const { handleSettingLabels } = require("../src/setting-labels");
+    const { handleSettingLabels } = require("../src/lib/setting-labels");
     let gotStatus = null;
     let gotBody = null;
     const jsonResponse = (_res, status, body) => {

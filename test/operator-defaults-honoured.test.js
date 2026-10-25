@@ -12,7 +12,7 @@
  *   at all. The user, 2026-10-17: "it should of course use the
  *   `user-configurable`". Each case reads a default through the module
  *   that acts on it, with an override file of the test's own in place,
- *   written before anything under `src/` loads, because the loader reads
+ *   written before anything under `src/lib/` loads, because the loader reads
  *   the override directory's path at load.
  *
  *   "No Override" is the one place an override must not reach: it re-uses
@@ -50,21 +50,21 @@ fs.writeFileSync(
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const { resolveSlippagePct } = require("../src/slippage-resolver");
-const { buildRebalanceOpts } = require("../src/bot-cycle-opts");
+const { resolveSlippagePct } = require("../src/lib/slippage-resolver");
+const { buildRebalanceOpts } = require("../src/lib/bot-cycle-opts");
 const {
   resolveRangeOverrideEnabled,
   fullRangeSetting,
-} = require("../src/range-override");
-const { buildStatusPositions } = require("../src/build-status-positions");
-const { gasFeePctToRatio } = require("../src/swap-gates");
-const { createThrottle } = require("../src/throttle");
-const { CENTERED_OFFSET_PCT } = require("../src/centered-offset");
-const { _MAX_ITERATIONS } = require("../src/rebalancer-correct");
-const balanced = require("../src/telegram-notifications/balanced-notifier");
-const { EVENT_LABELS } = require("../src/telegram-notifications/telegram");
-const defaultsReader = require("../src/bot-config-defaults");
-const mergedLoader = require("../src/load-merged-defaults");
+} = require("../src/lib/range-override");
+const { buildStatusPositions } = require("../src/lib/build-status-positions");
+const { gasFeePctToRatio } = require("../src/lib/swap-gates");
+const { createThrottle } = require("../src/lib/throttle");
+const { CENTERED_OFFSET_PCT } = require("../src/lib/centered-offset");
+const { _MAX_ITERATIONS } = require("../src/lib/rebalancer-correct");
+const balanced = require("../src/lib/telegram-notifications/balanced-notifier");
+const { EVENT_LABELS } = require("../src/lib/telegram-notifications/telegram");
+const defaultsReader = require("../src/lib/bot-config-defaults");
+const mergedLoader = require("../src/lib/load-merged-defaults");
 
 /** Bot deps for one position whose saved settings are `saved`. */
 function deps(saved = {}) {

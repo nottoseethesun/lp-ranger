@@ -16,7 +16,7 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const { startLocalAggregator } = require("./helpers/local-aggregator");
-const { swapIfNeeded } = require("../src/rebalancer-swap");
+const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
 const {
   ADDR,
   makeTx,

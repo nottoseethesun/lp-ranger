@@ -38,10 +38,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const sendTx = require("../src/send-transaction");
-const rpcQueue = require("../src/rpc-request-manager");
-const outOfService = require("../src/rpc-out-of-service");
-const logModule = require("../src/log");
+const sendTx = require("../src/lib/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const outOfService = require("../src/lib/rpc-out-of-service");
+const logModule = require("../src/lib/log");
 
 const PRI = "http://reask-primary.test";
 const FALL = "http://reask-fallback.test";
@@ -315,7 +315,7 @@ describe("waitForReceipt — the only receipt wait outside sendTransaction", () 
      *  to a bare wait and every case above would still pass. */
     const src = fs
       .readFileSync(
-        path.join(__dirname, "..", "src", "rebalancer-aggregator.js"),
+        path.join(__dirname, "..", "src", "lib", "rebalancer-aggregator.js"),
         "utf8",
       )
       .replace(/\/\*[\s\S]*?\*\//g, "")

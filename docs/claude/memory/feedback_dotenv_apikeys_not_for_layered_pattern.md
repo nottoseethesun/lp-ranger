@@ -5,12 +5,13 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
+  modified: 2026-10-24T04:57:19.761Z
 ---
 
 The layered
 `app-config/app-defaults-for-user-configurable/` +
 `app-config/user-configurable/` pattern (with deep-merge overlay via
-`src/load-merged-defaults.js`) is for **tunable JSON files** — values
+`src/lib/load-merged-defaults.js`) is for **tunable JSON files** — values
 that ship with a sensible default and that operators may want to
 override per-install.
 

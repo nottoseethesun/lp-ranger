@@ -16,7 +16,7 @@ const os = require("node:os");
 const Module = require("node:module");
 
 /*- Redirect writeErrorLog's default path into a per-test tmp file by
- *  intercepting the require call for src/error-log.js.  This keeps
+ *  intercepting the require call for src/lib/error-log.js.  This keeps
  *  the real logs/error.log clean during tests. */
 let _capturedPath = null;
 const _origResolve = Module._resolveFilename;
@@ -30,8 +30,8 @@ before(() => {
 const {
   _recordScanFailure,
   _recordScanSuccess,
-} = require("../src/bot-recorder-lifetime");
-const errorLog = require("../src/error-log");
+} = require("../src/lib/bot-recorder-lifetime");
+const errorLog = require("../src/lib/error-log");
 
 function _ctx() {
   return {

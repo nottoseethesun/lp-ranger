@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-telegram-dialog.test.js
  * @description The Telegram dialog's alerts come from the one list the
- *   server sends them from (src/telegram-notifications/telegram-events.js):
+ *   server sends them from (src/lib/telegram-notifications/telegram-events.js):
  *   the dialog builds a checkbox for each, labels it with the title its
  *   alert is sent under, and ticks it as the server's answer says. The
  *   markup lists no alert of its own, since a copy there would be a second
@@ -12,7 +12,7 @@
  *   Until the server's choices arrive the checkboxes are disabled, and a
  *   save leaves the saved choices alone: boxes nobody filled would turn
  *   every alert off. Driven on the dialog's own markup from
- *   public/index.html, with the server's answers scripted.
+ *   src/client/web/index.html, with the server's answers scripted.
  */
 
 require("global-jsdom/register");
@@ -22,7 +22,7 @@ const assert = require("node:assert/strict");
 const {
   EVENT_DEFAULTS,
   eventTitle,
-} = require("../src/telegram-notifications/telegram-events");
+} = require("../src/lib/telegram-notifications/telegram-events");
 const { indexHtmlDocument } = require("./helpers/index-html");
 
 const IDS = Object.keys(EVENT_DEFAULTS);
@@ -74,7 +74,7 @@ before(async () => {
   document.body.replaceChildren(
     document.importNode(page.getElementById("telegramModal"), true),
   );
-  dialog = await import("../public/dashboard-telegram.js");
+  dialog = await import("../src/client/web/dashboard-telegram.js");
   dialog.initTelegram();
 });
 

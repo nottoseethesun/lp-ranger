@@ -18,7 +18,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const SHIPPED_CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
 const SETTINGS_DIR = makeTestTempFolder("agg-branches-settings");
@@ -46,8 +46,8 @@ const {
   _handleSwapError,
   _submitGasPrice,
   _setWaitMsForTests,
-} = require("../src/rebalancer-aggregator");
-const { swapIfNeeded } = require("../src/rebalancer-swap");
+} = require("../src/lib/rebalancer-aggregator");
+const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
 const {
   ADDR,
   defaultDispatch,
@@ -66,7 +66,7 @@ const {
   params,
   fixedOut,
 } = require("./helpers/aggregator-harness");
-const { CANCEL_GAS_LIMIT } = require("../src/tx-speedup");
+const { CANCEL_GAS_LIMIT } = require("../src/lib/tx-speedup");
 
 beforeEach(installAggregatorStage);
 afterEach(async () => {

@@ -38,7 +38,7 @@ const {
   PARSE_MODE,
   escapeValue,
   escapeCode,
-} = require("../src/telegram-notifications/telegram-message");
+} = require("../src/lib/telegram-notifications/telegram-message");
 
 /** Every character Telegram reserves in ordinary MarkdownV2 text. */
 const RESERVED = "_*[]()~`>#+-=|{}.!";
@@ -136,7 +136,7 @@ describe("telegram-message — one sender, one escaper", () => {
    *  problem — it is a second set of answers to what mode to use, what
    *  to escape, and whether to retry. */
 
-  const SRC = path.join(__dirname, "..", "src");
+  const SRC = path.join(__dirname, "..", "src", "lib");
   const SCRIPTS = path.join(__dirname, "..", "scripts");
 
   /** Every .js file under a directory, recursively. */

@@ -29,13 +29,13 @@ parenthetical only where it adds something.
 
 ## Implementation sketch
 
-- `src/bot-cycle.js#_handleRebalanceSuccess`: detect retry via
+- `src/lib/bot-cycle.js#_handleRebalanceSuccess`: detect retry via
   `deps._rebalanceEvents.length === 0` at the time of the success
   call (the history-scan populates this array; the just-completed
   rebalance is not in it yet at that point — zero means initial,
   ≥ 1 means retry). Build the label and pass it through the
   `notify("rebalanceSuccess", { … })` payload.
-- `src/telegram-notifications/telegram.js`: when `payload.label` is
+- `src/lib/telegram-notifications/telegram.js`: when `payload.label` is
   supplied, use it as the heading instead of the default
   `EVENT_LABELS.rebalanceSuccess`. Keeps the single `rebalanceSuccess`
   event type and its toggle, so users get one unified on/off for

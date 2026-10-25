@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-01T16:40:06.710Z
+  modified: 2026-10-24T04:55:09.143Z
 ---
 
 **Fixed**, shipped in 0.9.8 (Production 2026-10-01). Found on Production
@@ -47,10 +47,10 @@ Two consequences, and the second is the serious one:
 
 - **The loop spun unpaced.** Pacing is entered inside the patched
   `send()`, and a cached answer never reaches it — which is exactly what
-  `src/rpc-read-retry.js` states cannot happen, and its stated reason for
+  `src/lib/rpc-read-retry.js` states cannot happen, and its stated reason for
   carrying no backoff.
 - **One refusal was counted as hundreds of failures.** Every turn calls
-  `note(next, false)` into `src/rpc-out-of-service.js`. So what decides
+  `note(next, false)` into `src/lib/rpc-out-of-service.js`. So what decides
   failover stopped being the endpoint's failure rate and became the
   loop's iteration count. The rate rule was measuring the wrong thing
   entirely.
@@ -58,7 +58,7 @@ Two consequences, and the second is the serious one:
 ## The fix
 
 `buildProvider` passes `cacheTimeout: -1`
-(`src/bot-provider.js`). Every retry then becomes a real, paced request
+(`src/lib/bot-provider.js`). Every retry then becomes a real, paced request
 and every reported failure a real endpoint outcome. Measured after the
 change: nine requests over two seconds, gaps of 221–224 ms against a
 222 ms interval.
@@ -103,8 +103,8 @@ and the id it looks up is the position's CURRENT NFT — which a managed
 position re-mints on every rebalance, so the answer sits near the chain
 head while the walk starts at the pool's birth. Fixed by passing
 `direction: "desc"`; the existing early exit then ends the walk at the
-first window. `src/position-history-mint.js` and
-`src/event-scanner-mint-lookup.js` deliberately keep oldest-first,
+first window. `src/lib/position-history-mint.js` and
+`src/lib/event-scanner-mint-lookup.js` deliberately keep oldest-first,
 because both look up OLDER NFTs and that is their near end.
 
 Related: [[project_tx_wait_not_failover_covered]] and

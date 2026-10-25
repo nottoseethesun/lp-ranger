@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-param-help-tokens.test.js
  * @description Tests for the dynamic token-name substitution in
- *   `public/dashboard-param-help.js` — the `{{token0}}` / `{{token1}}`
+ *   `src/client/web/dashboard-param-help.js` — the `{{token0}}` / `{{token1}}`
  *   placeholders that let the per-token slippage dialogs show the
  *   ACTIVE position's real trade direction ("For example, when
  *   Wrapped Pulse is traded for PulseX.").  jsdom + real module.
@@ -26,14 +26,14 @@ let mod;
 let store;
 
 before(async () => {
-  store = await import("../public/dashboard-positions-store.js");
-  mod = await import("../public/dashboard-param-help.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
+  mod = await import("../src/client/web/dashboard-param-help.js");
   /*-
    *  The dialogs state the figures the server sends, so they open only
    *  once those have arrived. A server sending the shipped ones stands
    *  in for it.
    */
-  const figures = await import("../public/dashboard-help-figures.js");
+  const figures = await import("../src/client/web/dashboard-help-figures.js");
   await figures.loadHelpFigures({
     fetchFn: async () => ({
       ok: true,

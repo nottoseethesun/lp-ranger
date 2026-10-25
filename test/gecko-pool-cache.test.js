@@ -24,10 +24,12 @@ const {
   flushGeckoPoolCache,
   _resetForTest,
   _CACHE_PATH,
-} = require("../src/gecko-pool-cache");
-const { _resetForTest: _resetRateLimit } = require("../src/gecko-rate-limit");
-const config = require("../src/config");
-const { _getDelays, _setDelays } = require("../src/price-source-backoff");
+} = require("../src/lib/gecko-pool-cache");
+const {
+  _resetForTest: _resetRateLimit,
+} = require("../src/lib/gecko-rate-limit");
+const config = require("../src/lib/config");
+const { _getDelays, _setDelays } = require("../src/lib/price-source-backoff");
 
 /**
  * Zero the 429 retry schedule for one case through the backoff module's
@@ -286,10 +288,10 @@ describe("gecko-pool-cache", () => {
      *  A second copy of the module, holding the same file: what another
      *  process keeping this cache has.
      */
-    const id = require.resolve("../src/gecko-pool-cache");
+    const id = require.resolve("../src/lib/gecko-pool-cache");
     const ours = require.cache[id];
     delete require.cache[id];
-    const other = require("../src/gecko-pool-cache");
+    const other = require("../src/lib/gecko-pool-cache");
     require.cache[id] = ours;
     await getGeckoPoolOrientation("pulsechain", "0xpoolA", "0xtok0", "0xtok1");
     await other.getGeckoPoolOrientation(

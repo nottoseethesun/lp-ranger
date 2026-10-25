@@ -8,7 +8,7 @@
  * configuration loads.
  *
  * The bookkeeping tools take every configuration value from LP Ranger's
- * own resolver (src/config.js), the one the app and its tests use: the
+ * own resolver (src/lib/config.js), the one the app and its tests use: the
  * chain's details, the position manager, the endpoints and the pacing of
  * requests. That resolver serves one chain, and reads which one as it
  * loads: CHAIN_NAME in `.env`, else the shipped default, pulsechain. So a
@@ -26,7 +26,7 @@
  */
 
 const { Command, InvalidArgumentError } = require("commander");
-const { loadMergedDefaults } = require("../../src/load-merged-defaults");
+const { loadMergedDefaults } = require("../../src/lib/load-merged-defaults");
 
 /** The chains the configuration names, by their keys in chains.json. */
 const CHAIN_NAMES = Object.keys(loadMergedDefaults("chains.json"));

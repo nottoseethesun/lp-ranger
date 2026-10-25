@@ -35,7 +35,7 @@ from another wallet, and walks those who do not through the reload.
 A pool's rebalances are kept in its event cache file, described in
 `docs/engineering.md` § "Rebalance Event Caches". A scan reads only the
 blocks after the file's `lastBlock`, and `pairTransfers()`
-(`src/event-scanner.js`) pairs only the transfers that scan read, in two
+(`src/lib/event-scanner.js`) pairs only the transfers that scan read, in two
 passes:
 
 - **Pass 1:** an NFT leaving the wallet, then another arriving within
@@ -53,8 +53,8 @@ logs:
 ```
 
 LP Ranger's own rebalances meet the same gap but do not depend on the
-scan: `appendToPoolCache` (`src/pool-scanner.js`), called from
-`src/bot-loop.js` after every successful rebalance, adds the record
+scan: `appendToPoolCache` (`src/lib/pool-scanner.js`), called from
+`src/lib/bot-loop.js` after every successful rebalance, adds the record
 itself.
 
 ## How it is recovered today
@@ -65,7 +65,7 @@ a pool in use never reaches. The 30-minute `lifetimeRescanTimer` retries
 only a lifetime scan that did not finish, and the dashboard's poll
 re-renders what the server holds without scanning.
 
-Reload Current Position (`src/server-reload-position.js`) is the
+Reload Current Position (`src/lib/server-reload-position.js`) is the
 recovery: `clearPoolCache` empties the file, and the scan that follows
 reads the pool's history from the floor, where Pass 2 sees every mint
 and pairs the missed rebalance with the rest.

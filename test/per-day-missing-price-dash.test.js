@@ -5,13 +5,13 @@
  * @description A period whose prices could not be read shows a dash in
  *   the Per-Day P&L table, never figures valued at today's prices.
  *   Followed through each step that carries it: the history leaves an
- *   earlier day's unread price unread (src/position-history.js, tested in
+ *   earlier day's unread price unread (src/lib/position-history.js, tested in
  *   closed-position-history.test.js); the epoch built from that history
  *   is marked as missing a price (`_buildClosedEpoch`,
- *   src/epoch-reconstructor.js); its day keeps the mark
- *   (`_buildDailyPnl`, src/pnl-tracker.js); and the table writes a dash
+ *   src/lib/epoch-reconstructor.js); its day keeps the mark
+ *   (`_buildDailyPnl`, src/lib/pnl-tracker.js); and the table writes a dash
  *   in every money column of that day (`renderDailyPnl`,
- *   public/dashboard-history.js).
+ *   src/client/web/dashboard-history.js).
  *
  *   A period whose gas token had no price on the day it closed is
  *   followed the same way: its coins are priced, so only the day's Gas,
@@ -22,8 +22,8 @@ require("global-jsdom/register");
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
-const { _buildClosedEpoch } = require("../src/epoch-reconstructor");
-const { _buildDailyPnl } = require("../src/pnl-tracker");
+const { _buildClosedEpoch } = require("../src/lib/epoch-reconstructor");
+const { _buildDailyPnl } = require("../src/lib/pnl-tracker");
 const { learnActiveChain } = require("./helpers/active-chain");
 const { indexHtmlDocument } = require("./helpers/index-html");
 
@@ -63,7 +63,7 @@ before(async () => {
     json: async () => ({}),
   });
   await learnActiveChain();
-  history = await import("../public/dashboard-history.js");
+  history = await import("../src/client/web/dashboard-history.js");
   const page = indexHtmlDocument();
   document.body.replaceChildren(
     ...["dailyPnlBody", "tplDailyPnlRow"].map((id) =>
@@ -97,7 +97,7 @@ describe("a period whose prices could not be read", () => {
 /*-
  *  A closed NFT whose coins were priced, but whose gas token had no price
  *  on the day it closed: the amount of gas is known, its dollar figure is
- *  not (`pastGasCostUsd`, src/bot-pnl-updater.js).
+ *  not (`pastGasCostUsd`, src/lib/bot-pnl-updater.js).
  */
 const gasUnpriced = {
   ...unpriced,

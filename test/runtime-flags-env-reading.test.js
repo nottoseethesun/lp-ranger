@@ -3,12 +3,12 @@
 /**
  * @file test/runtime-flags-env-reading.test.js
  * @description The app reads each `.env` variable one way, by its rule in
- *   src/env-settings.js, and coerces nothing: `DRY_RUN` and `VERBOSE` are
+ *   src/lib/env-settings.js, and coerces nothing: `DRY_RUN` and `VERBOSE` are
  *   exactly `true` or `false`, and the port is plain digits. Anything
  *   else stops the load, naming the variable, where an older reading took
  *   `1` or `yes` for on, or the leading digits of `80a` for the port.
  *
- *   Each case loads the real src/runtime-flags.js afresh with one
+ *   Each case loads the real src/lib/runtime-flags.js afresh with one
  *   variable set. Operator overrides are read from an empty directory of
  *   the test's own, and every variable a case sets is cleared again, so
  *   the operator's own `.env`, which dotenv never lets override a set
@@ -27,12 +27,12 @@ const NAMES = ["DRY_RUN", "VERBOSE", "PORT"];
 for (const name of NAMES) process.env[name] = "";
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-/** Load src/runtime-flags.js as startup would, with `name` set to `text`. */
+/** Load src/lib/runtime-flags.js as startup would, with `name` set to `text`. */
 function loadWith(name, text) {
   process.env[name] = text;
   try {
-    delete require.cache[require.resolve("../src/runtime-flags")];
-    return require("../src/runtime-flags");
+    delete require.cache[require.resolve("../src/lib/runtime-flags")];
+    return require("../src/lib/runtime-flags");
   } finally {
     process.env[name] = "";
   }

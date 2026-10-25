@@ -36,7 +36,7 @@ let shouldSkipUnmanagedFetch;
 
 before(async () => {
   ({ shouldSkipUnmanagedFetch } =
-    await import("../public/dashboard-unmanaged.js"));
+    await import("../src/client/web/dashboard-unmanaged.js"));
 });
 
 describe("shouldSkipUnmanagedFetch", () => {
@@ -113,7 +113,14 @@ describe("the flush path consults it", () => {
   const fs = require("node:fs");
   const path = require("node:path");
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "public", "dashboard-unmanaged.js"),
+    path.join(
+      __dirname,
+      "..",
+      "src",
+      "client",
+      "web",
+      "dashboard-unmanaged.js",
+    ),
     "utf8",
   );
 

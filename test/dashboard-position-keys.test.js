@@ -32,9 +32,9 @@ let deposit;
 let store;
 
 before(async () => {
-  chainMod = await import("../public/dashboard-chain.js");
-  deposit = await import("../public/dashboard-data-deposit.js");
-  store = await import("../public/dashboard-positions-store.js");
+  chainMod = await import("../src/client/web/dashboard-chain.js");
+  deposit = await import("../src/client/web/dashboard-data-deposit.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
 });
 
 beforeEach(() => {

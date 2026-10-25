@@ -1,6 +1,6 @@
 /**
  * @file test/server.test.js
- * @description Integration tests for server.js.
+ * @description Integration tests for src/server.js.
  *
  * Starts the server on a random high port (to avoid conflicts), exercises
  * each route, then shuts down cleanly.  No external HTTP library needed —
@@ -14,11 +14,13 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const http = require("http");
-const { start, stop } = require("../server");
+const { start, stop } = require("../src/server");
 const {
   isPaused,
   _resetPauseStateForTests,
-} = require("../src/price-fetcher-gate");
+} = require("../src/lib/price-fetcher-gate");
+const { getAllPositionBotStates } = require("../src/lib/server-positions");
+const { isItOkayToStartAscan } = require("../src/lib/scan-state");
 
 // Production file protection is handled globally by scripts/check.sh
 // (backup before tests, restore after). No per-test snapshot needed.
@@ -113,6 +115,34 @@ describe("server", () => {
     assert.ok("positions" in body, "status should have positions section");
     assert.ok("port" in body.global);
     assert.ok("walletAddress" in body.global);
+  });
+
+  it("GET /api/status sends a BigInt on a bot state as its decimal text", async () => {
+    /*-
+     *  Each position's entry carries its whole bot state, and json has no
+     *  BigInt. The deposit count keeps the wallet's last reading of the
+     *  pool's two coins there as BigInts (src/lib/deposit-count.js), so the
+     *  answer sends each as its decimal text, every digit kept.
+     */
+    const key =
+      "pulsechain-0x1111111111111111111111111111111111111111-" +
+      "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-424245";
+    const states = getAllPositionBotStates();
+    states.set(key, {
+      running: true,
+      _depositWalletSeen: { raw0: 12345678901234567890n, raw1: 7n },
+    });
+    try {
+      const res = await req({ port: TEST_PORT, path: "/api/status" });
+      assert.strictEqual(res.status, 200);
+      const body = JSON.parse(res.body);
+      assert.deepStrictEqual(body.positions[key]._depositWalletSeen, {
+        raw0: "12345678901234567890",
+        raw1: "7",
+      });
+    } finally {
+      states.delete(key);
+    }
   });
 
   // ── /api/config ───────────────────────────────────────────────────────────
@@ -247,15 +277,6 @@ describe("server", () => {
     assert.deepStrictEqual(JSON.parse(res.body), { managed: false });
   });
 
-  it("GET /api/is-position-being-adjusted answers false with nothing under way", async () => {
-    const res = await req({
-      port: TEST_PORT,
-      path: "/api/is-position-being-adjusted",
-    });
-    assert.strictEqual(res.status, 200);
-    assert.deepStrictEqual(JSON.parse(res.body), { adjusting: false });
-  });
-
   // ── /api/rebalance ────────────────────────────────────────────────────────
 
   it("POST /api/rebalance returns 400 without positionKey", async () => {
@@ -275,7 +296,7 @@ describe("server", () => {
     /*-
      *  A position no bot is running is refused 409, and the refusal
      *  names the position, as every answer about one does
-     *  (src/position-answer-tag.js).
+     *  (src/lib/position-answer-tag.js).
      */
     const key =
       "pulsechain-0x1111111111111111111111111111111111111111-" +
@@ -290,6 +311,83 @@ describe("server", () => {
     assert.strictEqual(res.status, 409);
     assert.strictEqual(JSON.parse(res.body).positionKey, key);
   });
+
+  for (const [path, move, flag] of [
+    ["/api/rebalance", "rebalance", "forceRebalance"],
+    ["/api/compound", "compound", "forceCompound"],
+  ]) {
+    it(`POST ${path} refuses while a scan is running on the position`, async () => {
+      /*-
+       *  A move made during its position's scan would be left out of the
+       *  figures the scan rebuilds (src/lib/scan-state.js). The refusal says
+       *  so, names the position, is marked for the dialog to wait on,
+       *  and asks nothing of the bot.
+       */
+      const key =
+        "pulsechain-0x1111111111111111111111111111111111111111-" +
+        "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-424243";
+      const states = getAllPositionBotStates();
+      let kicks = 0;
+      const state = {
+        running: true,
+        _scanRunning: true,
+        _kickPoll: () => kicks++,
+      };
+      states.set(key, state);
+      try {
+        const res = await req({
+          port: TEST_PORT,
+          method: "POST",
+          path,
+          body: { positionKey: key },
+          headers: { "x-csrf-token": await csrfToken() },
+        });
+        assert.strictEqual(res.status, 409);
+        const body = JSON.parse(res.body);
+        assert.strictEqual(body.scanInProgress, true);
+        assert.strictEqual(body.positionKey, key);
+        assert.match(body.error, /history from the blockchain/);
+        assert.match(body.error, new RegExp(`A ${move} made during that read`));
+        assert.strictEqual(state[flag], undefined);
+        assert.strictEqual(kicks, 0);
+      } finally {
+        states.delete(key);
+      }
+    });
+
+    it(`POST ${path} holds the position's scans back until it is made`, async () => {
+      /*-
+       *  A scan waiting to start, deferred by a move being decided, holds
+       *  no request back: it waits for the moves, this one included.
+       */
+      const key =
+        "pulsechain-0x1111111111111111111111111111111111111111-" +
+        "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-424244";
+      const states = getAllPositionBotStates();
+      let kicks = 0;
+      const state = {
+        running: true,
+        _scanWaiting: true,
+        _kickPoll: () => kicks++,
+      };
+      states.set(key, state);
+      try {
+        const res = await req({
+          port: TEST_PORT,
+          method: "POST",
+          path,
+          body: { positionKey: key },
+          headers: { "x-csrf-token": await csrfToken() },
+        });
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(state[flag], true);
+        assert.strictEqual(isItOkayToStartAscan(state), false);
+        assert.strictEqual(kicks, 1);
+      } finally {
+        states.delete(key);
+      }
+    });
+  }
 
   // ── Static files ─────────────────────────────────────────────────────────
 

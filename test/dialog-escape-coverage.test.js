@@ -10,7 +10,7 @@
  * opted OUT by default, and nothing on screen says so.
  *
  * So the list is checked against the markup rather than against itself:
- * every `modal-overlay` in `public/index.html` must be registered, and a
+ * every `modal-overlay` in `src/client/web/index.html` must be registered, and a
  * new dialog fails CI until it is.
  *
  * `walletUnlockModal` is the deliberate exception and is asserted to
@@ -30,7 +30,10 @@ const ROOT = path.join(__dirname, "..");
 
 /** Overlay ids declared in the shipped markup. */
 function markupOverlayIds() {
-  const html = fs.readFileSync(path.join(ROOT, "public", "index.html"), "utf8");
+  const html = fs.readFileSync(
+    path.join(ROOT, "src", "client", "web", "index.html"),
+    "utf8",
+  );
   const ids = new Set();
   for (const tag of html.match(
     /<div[^>]*class="[^"]*modal-overlay[^"]*"[^>]*>/g,
@@ -43,7 +46,7 @@ function markupOverlayIds() {
 
 /** The source of one dashboard module. */
 const source = (name) =>
-  fs.readFileSync(path.join(ROOT, "public", name), "utf8");
+  fs.readFileSync(path.join(ROOT, "src", "client", "web", name), "utf8");
 
 /** The two sources the Escape handler's table is written in. */
 function escapeTableSources() {

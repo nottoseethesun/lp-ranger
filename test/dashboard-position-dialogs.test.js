@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-position-dialogs.test.js
  * @description When another position comes on screen, every dialog that
- *   belonged to the one before closes (public/dashboard-position-
+ *   belonged to the one before closes (src/client/web/dashboard-position-
  *   dialogs.js), as the user decided on 2026-10-18. A dialog's Save acts
  *   on the position on screen when it is clicked, so a dialog left open
  *   across a switch, by the browser's Back button say, would save the
@@ -18,7 +18,7 @@
  *   screen closes nothing.
  *
  *   Driven through the page's own switch (`activateByTokenId`) on its
- *   markup from public/index.html, with the server's answers scripted.
+ *   markup from src/client/web/index.html, with the server's answers scripted.
  */
 
 require("global-jsdom/register");
@@ -82,14 +82,15 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../public/dashboard-positions-store.js");
-  positions = await import("../public/dashboard-positions.js");
-  status = await import("../public/dashboard-data-status.js");
-  confirm = await import("../public/dashboard-confirm-dialog.js");
-  baseline = await import("../public/dashboard-data-baseline.js");
-  deposit = await import("../public/dashboard-data-deposit.js");
-  const slippage = await import("../public/dashboard-per-token-slippage.js");
-  const { wallet } = await import("../public/dashboard-wallet.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
+  positions = await import("../src/client/web/dashboard-positions.js");
+  status = await import("../src/client/web/dashboard-data-status.js");
+  confirm = await import("../src/client/web/dashboard-confirm-dialog.js");
+  baseline = await import("../src/client/web/dashboard-data-baseline.js");
+  deposit = await import("../src/client/web/dashboard-data-deposit.js");
+  const slippage =
+    await import("../src/client/web/dashboard-per-token-slippage.js");
+  const { wallet } = await import("../src/client/web/dashboard-wallet.js");
   wallet.address = WALLET;
   slippage.wirePerTokenSlippageEvents(
     (id, fn) => document.getElementById(id)?.addEventListener("click", fn),
@@ -118,6 +119,7 @@ describe("a switch to another position", () => {
       "priceOverrideModal",
       "poolDetailsModal",
       "rebalanceIlWarningModal",
+      "compoundScanWaitModal",
     ])
       open(id);
     el("curDepositInputWrap").classList.add("open");
@@ -129,6 +131,7 @@ describe("a switch to another position", () => {
       "priceOverrideModal",
       "poolDetailsModal",
       "rebalanceIlWarningModal",
+      "compoundScanWaitModal",
     ])
       assert.equal(isOpen(id), false, id);
     assert.equal(el("curDepositInputWrap").classList.contains("open"), false);
@@ -195,9 +198,9 @@ describe("a switch to another position", () => {
      *  once per episode: closed by a switch, the operator would never
      *  learn a rebalance had been aborted.
      */
-    const alerts = await import("../public/dashboard-alerts.js");
+    const alerts = await import("../src/client/web/dashboard-alerts.js");
     const warnings =
-      await import("../public/dashboard-post-rebalance-modal.js");
+      await import("../src/client/web/dashboard-post-rebalance-modal.js");
     alerts._resetAlertsState();
     warnings._resetPostRebalanceModalState();
     alerts.showPerPositionAlerts({

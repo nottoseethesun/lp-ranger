@@ -21,7 +21,8 @@ const assert = require("node:assert/strict");
 let typedDecimals;
 
 before(async () => {
-  ({ typedDecimals } = await import("../public/dashboard-token-decimals.js"));
+  ({ typedDecimals } =
+    await import("../src/client/web/dashboard-token-decimals.js"));
 });
 
 describe("typedDecimals", () => {

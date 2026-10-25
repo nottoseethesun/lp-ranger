@@ -1,10 +1,11 @@
 ---
 name: feedback-full-repo-grep
-description: "When doing a rename refactor or auditing a repo-wide pattern, grep the WHOLE repo, not just src/ + test/ + docs/. The non-obvious dirs that get missed: util/, package.json, .prettierignore, .env*, public/HTML, GitHub Actions YAML."
+description: "When doing a rename refactor or auditing a repo-wide pattern, grep the WHOLE repo, not just src/ + test/ + docs/. The non-obvious dirs that get missed: util/, package.json, .prettierignore, .env*, src/client/web/HTML, GitHub Actions YAML."
 metadata: 
   node_type: memory
   type: feedback
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
+  modified: 2026-10-24T05:23:58.808Z
 ---
 
 When sweeping for stale path references during a rename refactor
@@ -25,7 +26,7 @@ caught manually or via a broader follow-up audit:
   clean`, files don't actually get cleaned).
 - **`.prettierignore`** — ignore-list entries.
 - **`.env.example`** — operator-facing documentation.
-- **`public/*.html`** — user-facing help pages.
+- **`src/client/web/*.html`** — user-facing help pages.
 
 **How to apply:**
 
@@ -33,11 +34,11 @@ caught manually or via a broader follow-up audit:
   to repo-wide `grep -rn PATTERN .` with explicit excludes
   (`--exclude-dir=node_modules`, `--exclude-dir=.git`,
   `--exclude-dir=tmp`, `--exclude-dir=test/report-artifacts`,
-  `--exclude-dir=public/dist`) rather than enumerating an
+  `--exclude-dir=src/client/web/dist`) rather than enumerating an
   allowlist of "code dirs".
 - For audit fork briefings specifically: explicitly call out
   `util/`, `package.json` (npm scripts AND dependencies), root-level
-  configs (`.prettierignore`, `.eslintrc*`, `.env*`), `public/*.html`,
+  configs (`.prettierignore`, `.eslintrc*`, `.env*`), `src/client/web/*.html`,
   GitHub Actions YAML. Otherwise the fork will inherit my blind spot
   and miss the same files I would have.
 - For rename refactors that touch shell commands (`rm`, `cp`, `mv`,

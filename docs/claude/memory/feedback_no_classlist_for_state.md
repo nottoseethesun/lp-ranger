@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
+  modified: 2026-10-24T05:24:12.666Z
 ---
 
 Never read `element.classList`, `element.textContent`, `element.dataset`,
@@ -50,7 +51,7 @@ poll-result object), never back from what the DOM happens to look like.
   business decision instead of downstream of it.
 
 **Concrete example from this codebase (the bug that taught the rule):**
-`public/dashboard-events-manage.js`'s `_runClosedPositionFlow` checked
+`src/client/web/dashboard-events-manage.js`'s `_runClosedPositionFlow` checked
 `g("syncBadge")?.classList.contains("done")` to gate a re-open click.
 When a separate bug left the badge stuck on "Syncing…", the click was
 silently ignored — even though the underlying app state had a perfectly

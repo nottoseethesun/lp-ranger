@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-04T05:41:26.536Z
+  modified: 2026-10-24T04:54:38.489Z
 ---
 
 Found 2026-10-03 auditing for the same conflation as
@@ -19,11 +19,11 @@ What a transaction cost is `gasUsed × gasPrice` off its receipt. Three
 readers fetch those receipts, and all three answer an endpoint failure
 with zero:
 
-- `_fetchMintGasWei` (`src/compounder.js`) — `catch { return 0n; }`,
+- `_fetchMintGasWei` (`src/lib/compounder.js`) — `catch { return 0n; }`,
   and `if (!rcpt) return 0n` for a null receipt
-- `_fetchCompoundGas` (`src/compounder.js`) —
+- `_fetchCompoundGas` (`src/lib/compounder.js`) —
   `catch { /* receipt fetch failed — gas stays 0 */ }`
-- `_fetchReceiptGasWei` (`src/position-history.js`) — same two returns
+- `_fetchReceiptGasWei` (`src/lib/position-history.js`) — same two returns
 
 A null receipt is not a smaller charge. It means the endpoint does not
 know the transaction, which for a hash taken out of an event log means
@@ -38,7 +38,7 @@ Each failure is swallowed inside the helper, so
 nftGasWeiByTokenId[String(tid)] = String(r.totalNftGasWei || "0");
 ```
 
-Then `applyCurrentNftFigures` (`src/bot-pnl-current-nft.js`) gates the
+Then `applyCurrentNftFigures` (`src/lib/bot-pnl-current-nft.js`) gates the
 re-read on presence alone:
 
 ```js

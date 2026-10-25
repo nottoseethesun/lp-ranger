@@ -17,7 +17,7 @@
  */
 
 const http = require("http");
-const config = require("../../src/config");
+const config = require("../../src/lib/config");
 
 /** The refusal, in the shape a 0x v1 aggregator gives an unknown token. */
 const REFUSAL = {

@@ -10,7 +10,7 @@
  * secret (`PRIVATE_KEY`, `WALLET_PASSWORD`) is named as set, never
  * shown.
  *
- * It reads the settings through `resolveSettings` (src/settings-check.js),
+ * It reads the settings through `resolveSettings` (src/lib/settings-check.js),
  * the reading the `validate-config-values-with-any-user-overrides`
  * diagnostic checks, so what it prints is what that check judges. It
  * reads files and nothing else, so it is safe to run while the server is
@@ -21,8 +21,8 @@
  */
 
 const { Command } = require("commander");
-const { resolveSettings } = require("../../src/settings-check");
-const { ENV_SETTINGS } = require("../../src/env-settings");
+const { resolveSettings } = require("../../src/lib/settings-check");
+const { ENV_SETTINGS } = require("../../src/lib/env-settings");
 
 /**
  * The command, declared once, so Commander both parses it and renders

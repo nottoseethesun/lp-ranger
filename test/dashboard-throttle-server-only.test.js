@@ -45,11 +45,11 @@ let throttleMod, statusMod, store, positions, botConfig;
 before(async () => {
   await learnActiveChain("pulsechain", "PulseChain");
   await learnUiSettings();
-  throttleMod = await import("../public/dashboard-throttle.js");
-  statusMod = await import("../public/dashboard-data-status.js");
-  store = await import("../public/dashboard-positions-store.js");
-  positions = await import("../public/dashboard-positions.js");
-  ({ botConfig } = await import("../public/dashboard-helpers.js"));
+  throttleMod = await import("../src/client/web/dashboard-throttle.js");
+  statusMod = await import("../src/client/web/dashboard-data-status.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
+  positions = await import("../src/client/web/dashboard-positions.js");
+  ({ botConfig } = await import("../src/client/web/dashboard-helpers.js"));
   store.posStore.add(A);
   store.posStore.add(B);
   store.setPositionManaged(A.tokenId, true);

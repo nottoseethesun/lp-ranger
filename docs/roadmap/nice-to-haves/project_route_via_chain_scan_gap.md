@@ -18,9 +18,9 @@ shows an em-dash (—) for those rows.
 
 ## Detail
 
-Rebalance events reconstructed by `src/event-scanner.js ::
+Rebalance events reconstructed by `src/lib/event-scanner.js ::
 scanRebalanceHistory` lack a `swapSources` field — on-chain Transfer
-logs don't carry route info. `public/dashboard-history.js` renders
+logs don't carry route info. `src/client/web/dashboard-history.js` renders
 these as em-dash in the "Routed Via" column. The live path that does
 record the route, `appendToPoolCache`, runs only on the install that
 made the rebalance, so another machine, or a fresh install, gets every

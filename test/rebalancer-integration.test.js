@@ -11,8 +11,8 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const { executeRebalance } = require("../src/rebalancer");
-const { priceToTick, nearestUsableTick } = require("../src/range-math");
+const { executeRebalance } = require("../src/lib/rebalancer");
+const { priceToTick, nearestUsableTick } = require("../src/lib/range-math");
 
 /*
  * Local fee→spacing map for parameterized tests.  Production code reads
@@ -235,7 +235,7 @@ describe("Integration: extreme prices", () => {
 
 // ── enrichResultUsd — token decimal handling ─────────────────────────────────
 
-const { enrichResultUsd } = require("../src/rebalancer");
+const { enrichResultUsd } = require("../src/lib/rebalancer");
 
 describe("enrichResultUsd — token decimal handling", () => {
   it("uses 18 decimals for both tokens when decimals match (e.g. WPLS/WETH)", async () => {
@@ -334,5 +334,36 @@ describe("enrichResultUsd — token decimal handling", () => {
       `exit should be ~$0.01, got ${result.exitValueUsd}`,
     );
     // If decimals were hardcoded to 18, exitValueUsd would be ~1e-12 (effectively 0)
+  });
+});
+
+describe("Integration: the wallet's readings for the Activity Log", () => {
+  it("reads the wallet before the drain, after it, and just before the mint", async () => {
+    const sim = createSimulation({
+      positionAmount0: 10n * ONE_ETH,
+      positionAmount1: 5n * ONE_ETH,
+      price: 1.0,
+    });
+    const r = await executeRebalance(
+      mockSigner(),
+      sim.ethersLib,
+      makeOpts(makePosition()),
+    );
+    assert.strictEqual(r.success, true);
+    const { beforeDrain, afterDrain, beforeMint } = r.walletReadings;
+    // The wallet held nothing until the drain brought in the position.
+    assert.deepStrictEqual(beforeDrain, { amount0: 0, amount1: 0 });
+    assert.deepStrictEqual(afterDrain, { amount0: 10, amount1: 5 });
+    /*-
+     *  The mint takes the wallet's whole balance, so the reading just
+     *  before it is what the mint was asked to deposit. The fixture's
+     *  coins have no price, so the dust check skips the swap here, and
+     *  this test of the readings does not depend on one.
+     */
+    const mint = sim.invariantChecks.find((c) => c.step === "mint");
+    assert.deepStrictEqual(beforeMint, {
+      amount0: Number(mint.a0Desired) / 1e18,
+      amount1: Number(mint.a1Desired) / 1e18,
+    });
   });
 });

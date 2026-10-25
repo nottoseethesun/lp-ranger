@@ -3,7 +3,7 @@
 /**
  * @file test/resolve-managed-tid-closed-view.test.js
  * @description Tests the rebalance-follow decision in
- *   `public/dashboard-data.js`.  The prior file mirrored
+ *   `src/client/web/dashboard-data.js`.  The prior file mirrored
  *   `_resolveManagedTid` (which combines the decision with a posStore
  *   side effect) inline; the pure decision was extracted as
  *   `_computeRebalanceFollow(a, mp, states) → {migrateTo}` so tests
@@ -31,7 +31,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-sync-decisions.js");
+  mod = await import("../src/client/web/dashboard-sync-decisions.js");
 });
 
 const LIVE = {

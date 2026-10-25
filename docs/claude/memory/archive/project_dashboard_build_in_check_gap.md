@@ -3,19 +3,20 @@ name: Dashboard build not run by `npm run check`
 description: CLOSED 2026-05-02 — n/no-missing-import + n/no-missing-require now catch broken dashboard import paths in lint
 type: project
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
+modified: 2026-10-24T05:24:12.605Z
 ---
 **Status: CLOSED 2026-05-02 via PR #118 (commit a5b4760).**
 
 The gap was: `npm run check` ran ESLint + node:test + audits but never
 invoked `npm run build` (esbuild). ESLint had no path-resolution rule
-wired in, and tests only imported `src/` + `test/` — never the browser
-bundle. So a broken `import` in `public/dashboard-*.js` (e.g. after a
+wired in, and tests only imported `src/lib/` + `test/` — never the browser
+bundle. So a broken `import` in `src/client/web/dashboard-*.js` (e.g. after a
 file rename) passed both local check AND CI green, then blew up the
 moment esbuild ran.
 
 **Closing fix (PR #118):** wired `eslint-plugin-n`'s built-in
 `n/no-missing-import` (dashboard ESM block) and `n/no-missing-require`
-(`src/`/`scripts/`/`util/` CommonJS block) in `eslint.config.js`. No
+(`src/lib/`/`scripts/`/`util/` CommonJS block) in `eslint.config.js`. No
 new dependencies. Guarded against future config-disable regressions by
 `test/eslint-config-import-resolution.test.js`. Same PR also added
 `build-info.js` generation to `precheck`/`prelint` — the new rule

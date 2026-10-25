@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-data-deposit-reset.test.js
  * @description Tests for the "Return to Automatic Detection" reset
- *   handlers in `public/dashboard-data-deposit.js`.  Uses jsdom (via
+ *   handlers in `src/client/web/dashboard-data-deposit.js`.  Uses jsdom (via
  *   `global-jsdom/register`) to provide real `document` +
  *   `localStorage`, then imports the real module and calls the real
  *   `_loadNum` / `_saveInput` / `_resetInput` helpers.  No mirror,
@@ -32,7 +32,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-data-deposit.js");
+  mod = await import("../src/client/web/dashboard-data-deposit.js");
 });
 
 beforeEach(() => {

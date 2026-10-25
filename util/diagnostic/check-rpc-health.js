@@ -18,7 +18,7 @@
  * which is why the endpoint under test is printed above the table rather
  * than left to be inferred.
  *
- * **It imports nothing from `src/`** — only `_helpers`, which is itself
+ * **It imports nothing from `src/lib/`** — only `_helpers`, which is itself
  * dependency-free, and the two shipped JSON files, read as data. That is
  * deliberate and worth keeping. Loading the app's config would open the
  * log file and read operator settings, so the tool could no longer be

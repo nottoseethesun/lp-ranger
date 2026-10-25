@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-09-19T17:30:19.200Z
+  modified: 2026-10-24T04:55:01.346Z
 ---
 
 The user's framing, 2026-09-19:
@@ -25,17 +25,17 @@ accounting period, and a closed period keeps the dollars it closed at.
 
 These call sites price gas at today and are **correct**:
 
-- `src/bot-pnl-current-nft.js` `_weiToUsd` — managed Current panel.
-- `src/position-details-compound.js` `_currentValuesFromScan` —
+- `src/lib/bot-pnl-current-nft.js` `_weiToUsd` — managed Current panel.
+- `src/lib/position-details-compound.js` `_currentValuesFromScan` —
   unmanaged Current panel. Same figure, so the two views agree.
-- `src/bot-pnl-updater.js` `overridePnlWithRealValues` — the Lifetime
+- `src/lib/bot-pnl-updater.js` `overridePnlWithRealValues` — the Lifetime
   Gas line, re-derived every poll as `totalGasNative × current price`.
 
 These are past-dated charges that DO need historical pricing, because
 they land in a Per-Day row:
 
-- `src/epoch-reconstructor.js` — each epoch's gas, at its close day.
-- `src/bot-pnl-updater.js` `_applyMintGas` — the NFT's mint gas, at
+- `src/lib/epoch-reconstructor.js` — each epoch's gas, at its close day.
+- `src/lib/bot-pnl-updater.js` `_applyMintGas` — the NFT's mint gas, at
   `hodlBaseline.mintTimestamp`.
 
 **Why:** a reader looking at Current or Lifetime is asking what the

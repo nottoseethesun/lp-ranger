@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-16T18:37:29.437Z
+  modified: 2026-10-24T05:23:48.518Z
 ---
 
 # PulseChain testnet exploration
@@ -84,7 +84,7 @@ resets it.
   need a look.
 - **Plumbing already built.** On branch `migrate-to-new-9mm-data-api`
   (2026-10-16): `parseCompositeKey` reads from the right, there is a
-  `GET /api/chain` route plus `public/dashboard-chain.js`, and contract
+  `GET /api/chain` route plus `src/client/web/dashboard-chain.js`, and contract
   addresses no longer fall back to mainnet's.
 
 **Why:** live tests must never touch Production

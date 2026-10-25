@@ -34,16 +34,16 @@ style problem. Treat every edit with that weight.
 
 | Artifact | Path | Role |
 | -------- | ---- | ---- |
-| Disclosure source | [`public/disclosure.html`](../../public/disclosure.html) | **Canonical content.** Standalone page served via GitHub Pages and the only file to edit for text changes. |
-| Generator | [`scripts/build-disclosure-content.js`](../../scripts/build-disclosure-content.js) | Extracts the `<!-- DISCLOSURE:CONTENT:START/END -->` region and emits `public/disclosure-content.js` during `npm run build`. |
-| Generated in-app module | `public/disclosure-content.js` (gitignored) | Built artifact. `DISCLOSURE_HTML` / `DISCLOSURE_VERSION` consumed by the startup modal and Settings → Disclosure. Never edit by hand. |
+| Disclosure source | [`src/client/web/disclosure.html`](../../src/client/web/disclosure.html) | **Canonical content.** Standalone page served via GitHub Pages and the only file to edit for text changes. |
+| Generator | [`scripts/build-disclosure-content.js`](../../scripts/build-disclosure-content.js) | Extracts the `<!-- DISCLOSURE:CONTENT:START/END -->` region and emits `src/client/web/disclosure-content.js` during `npm run build`. |
+| Generated in-app module | `src/client/web/disclosure-content.js` (gitignored) | Built artifact. `DISCLOSURE_HTML` / `DISCLOSURE_VERSION` consumed by the startup modal and Settings → Disclosure. Never edit by hand. |
 | Version stamp | `Disclosure version: YYYY-MM-DD` line inside the content markers | Parsed by the generator into `DISCLOSURE_VERSION`. Single source of truth for the date. |
-| Renderer | [`public/dashboard-helpers.js`](../../public/dashboard-helpers.js) — `_populateDisclosure()` / `initDisclaimer()` | Inserts `DISCLOSURE_HTML` into `#disclaimerBody`; logs the version on load. |
-| Styling | [`public/style.css`](../../public/style.css) — `.disclaimer-*` classes | Accent-colored `<h3>` headings, modal layout. The standalone page reuses the same stylesheets plus `help.css` for page layout. |
+| Renderer | [`src/client/web/dashboard-helpers.js`](../../src/client/web/dashboard-helpers.js) — `_populateDisclosure()` / `initDisclaimer()` | Inserts `DISCLOSURE_HTML` into `#disclaimerBody`; logs the version on load. |
+| Styling | [`src/client/web/style.css`](../../src/client/web/style.css) — `.disclaimer-*` classes | Accent-colored `<h3>` headings, modal layout. The standalone page reuses the same stylesheets plus `help.css` for page layout. |
 | Acknowledgment gate | `initDisclaimer()` → Accept / Decline buttons | No suppression mechanism — the modal appears on every launch. |
 
-To change the disclosure text, edit `public/disclosure.html` only and run
-`npm run build`. Do not edit `public/disclosure-content.js` — it is
+To change the disclosure text, edit `src/client/web/disclosure.html` only and run
+`npm run build`. Do not edit `src/client/web/disclosure-content.js` — it is
 overwritten on every build and is gitignored.
 
 An older working brief at `docs/disclosure/disclosure.txt` is temporary
@@ -96,15 +96,15 @@ editing the text in a way that no longer matches the code.
 | Disclosure section | Source files to re-read |
 | ------------------ | ----------------------- |
 | Creator / Offeror / Operator roles | No source — factual/legal framing only |
-| Warranty disclaimer | [`server.js`](../../server.js) file-header disclaimer, [`public/index.html`](../../public/index.html) disclosure modal |
-| Venue Relationships — No Affiliation | [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js), [`src/rebalancer-swap.js`](../../src/rebalancer-swap.js), [`src/rebalancer-pools.js`](../../src/rebalancer-pools.js), [`app-config/app-defaults-for-user-configurable/chains.json`](../../app-config/app-defaults-for-user-configurable/chains.json) |
-| Data Storage (server-side) | [`src/bot-config-v2.js`](../../src/bot-config-v2.js), [`src/wallet-manager.js`](../../src/wallet-manager.js), [`src/api-key-store.js`](../../src/api-key-store.js), [`src/bot-recorder.js`](../../src/bot-recorder.js) |
-| Data Storage (client-side) | `public/dashboard-*.js` — any `localStorage.setItem` call |
-| External APIs contacted | [`src/price-fetcher.js`](../../src/price-fetcher.js), [`src/gecko-pool-cache.js`](../../src/gecko-pool-cache.js), [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js), [`src/bot-provider.js`](../../src/bot-provider.js) |
-| Token Logos | [`public/dashboard-token-logos.js`](../../public/dashboard-token-logos.js), [`public/dashboard-init.js`](../../public/dashboard-init.js) (the list is read only once the Disclosure is accepted), `tokenList` in [`chains.json`](../../app-config/app-defaults-for-user-configurable/chains.json) |
-| Transaction History / Post-Trade Data | [`src/bot-recorder.js`](../../src/bot-recorder.js), [`src/position-history.js`](../../src/position-history.js), [`public/dashboard-history.js`](../../public/dashboard-history.js), [`public/dashboard-data-kpi.js`](../../public/dashboard-data-kpi.js) |
-| User-Customizable Parameters (if/when added to in-app disclosure) | [`public/index.html`](../../public/index.html) form inputs, [`src/config.js`](../../src/config.js), [`src/bot-config-v2.js`](../../src/bot-config-v2.js) `GLOBAL_KEYS` / `POSITION_KEYS` |
-| MEV Exposure (if/when added) | [`src/rebalancer-pools.js`](../../src/rebalancer-pools.js) `_checkSwapImpact`, [`src/rebalancer-aggregator.js`](../../src/rebalancer-aggregator.js) |
+| Warranty disclaimer | [`src/server.js`](../../src/server.js) file-header disclaimer, [`src/client/web/index.html`](../../src/client/web/index.html) disclosure modal |
+| Venue Relationships — No Affiliation | [`src/lib/rebalancer-aggregator.js`](../../src/lib/rebalancer-aggregator.js), [`src/lib/rebalancer-swap.js`](../../src/lib/rebalancer-swap.js), [`src/lib/rebalancer-pools.js`](../../src/lib/rebalancer-pools.js), [`app-config/app-defaults-for-user-configurable/chains.json`](../../app-config/app-defaults-for-user-configurable/chains.json) |
+| Data Storage (server-side) | [`src/lib/bot-config-v2.js`](../../src/lib/bot-config-v2.js), [`src/lib/wallet-manager.js`](../../src/lib/wallet-manager.js), [`src/lib/api-key-store.js`](../../src/lib/api-key-store.js), [`src/lib/bot-recorder.js`](../../src/lib/bot-recorder.js) |
+| Data Storage (client-side) | `src/client/web/dashboard-*.js` — any `localStorage.setItem` call |
+| External APIs contacted | [`src/lib/price-fetcher.js`](../../src/lib/price-fetcher.js), [`src/lib/gecko-pool-cache.js`](../../src/lib/gecko-pool-cache.js), [`src/lib/rebalancer-aggregator.js`](../../src/lib/rebalancer-aggregator.js), [`src/lib/bot-provider.js`](../../src/lib/bot-provider.js) |
+| Token Logos | [`src/client/web/dashboard-token-logos.js`](../../src/client/web/dashboard-token-logos.js), [`src/client/web/dashboard-init.js`](../../src/client/web/dashboard-init.js) (the list is read only once the Disclosure is accepted), `tokenList` in [`chains.json`](../../app-config/app-defaults-for-user-configurable/chains.json) |
+| Transaction History / Post-Trade Data | [`src/lib/bot-recorder.js`](../../src/lib/bot-recorder.js), [`src/lib/position-history.js`](../../src/lib/position-history.js), [`src/client/web/dashboard-history.js`](../../src/client/web/dashboard-history.js), [`src/client/web/dashboard-data-kpi.js`](../../src/client/web/dashboard-data-kpi.js) |
+| User-Customizable Parameters (if/when added to in-app disclosure) | [`src/client/web/index.html`](../../src/client/web/index.html) form inputs, [`src/lib/config.js`](../../src/lib/config.js), [`src/lib/bot-config-v2.js`](../../src/lib/bot-config-v2.js) `GLOBAL_KEYS` / `POSITION_KEYS` |
+| MEV Exposure (if/when added) | [`src/lib/rebalancer-pools.js`](../../src/lib/rebalancer-pools.js) `_checkSwapImpact`, [`src/lib/rebalancer-aggregator.js`](../../src/lib/rebalancer-aggregator.js) |
 | Cybersecurity Controls (if/when added) | [`docs/security.md`](../security.md), [`CLAUDE-SECURITY.md`](CLAUDE-SECURITY.md) |
 
 If you edit one of these source files in a way that changes externally

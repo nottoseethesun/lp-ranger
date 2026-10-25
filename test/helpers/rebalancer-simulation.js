@@ -12,7 +12,7 @@
  * `mockSigner.sendTransaction(populated)` reads the encoded method name
  * and dispatches to the original mock function so test fixtures don't
  * need to know whether production code calls the contract method
- * directly or routes through `src/send-transaction.js`.
+ * directly or routes through `src/lib/send-transaction.js`.
  */
 
 const { initSendTx } = require("./send-tx-mock");

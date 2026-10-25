@@ -5,8 +5,8 @@
  * @description The server and the bot check every setting before they
  *   read any, and refuse to start on a wrong one, naming it.
  *
- *   Driven through the real entry points, `node server.js` and
- *   `node bot.js`, each run from a folder of this test's own whose `.env`
+ *   Driven through the real entry points, `node src/server.js` and
+ *   `node src/bot.js`, each run from a folder of this test's own whose `.env`
  *   sets a variable LP Ranger does not read, with an empty folder for the
  *   operator's copies of the settings files. Nothing in them can send a
  *   transaction: the check exits before the app's own config is loaded,
@@ -36,7 +36,7 @@ const { NODE_TEST_CONTEXT: _marker, ...ENV } = process.env;
 
 for (const entry of ["bot.js", "server.js"]) {
   it(`${entry} refuses to start, naming the setting`, () => {
-    const run = spawnSync(process.execPath, [path.join(ROOT, entry)], {
+    const run = spawnSync(process.execPath, [path.join(ROOT, "src", entry)], {
       cwd: DIR,
       env: { ...ENV, LP_RANGER_USER_CONFIG_DIR: USER_DIR },
       encoding: "utf8",

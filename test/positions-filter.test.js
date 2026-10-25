@@ -2,7 +2,7 @@
  * @file test/positions-filter.test.js
  * @description Tests for the LP Position Browser filter matcher.
  *
- * The matcher lives in `public/positions-filter.js` as a pure-JS module
+ * The matcher lives in `src/client/web/positions-filter.js` as a pure-JS module
  * with zero browser dependencies (no DOM, no localStorage), so it can be
  * loaded into Node tests via dynamic ESM import.
  *
@@ -21,7 +21,7 @@ describe("matchesPosFilter", () => {
   let matchesPosFilter;
 
   before(async () => {
-    const mod = await import("../public/positions-filter.js");
+    const mod = await import("../src/client/web/positions-filter.js");
     matchesPosFilter = mod.matchesPosFilter;
   });
 

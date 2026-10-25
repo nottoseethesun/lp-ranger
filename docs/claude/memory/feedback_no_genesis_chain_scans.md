@@ -3,6 +3,7 @@ name: Never start blockchain scans from genesis without discussion
 description: Any new on-chain getLogs/queryFilter scan must have a tight lower bound; do not write fromBlock 0 / unbounded scans without explicit user discussion first
 type: feedback
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
+modified: 2026-10-24T04:54:43.110Z
 ---
 Never write a blockchain scan that uses `fromBlock: 0`, `fromBlock: undefined`,
 or any other unbounded lower bound unless it is absolutely necessary AND you
@@ -15,11 +16,11 @@ blocks. Multiple such scans accumulated unnoticed across `hodl-baseline`,
 `bot-recorder._scanLifetimePoolData`, `position-history._supplementMintFromChain`,
 and `position-details` lifetime IL — fixed in the
 "add-compound-to-activity-log-and-start-all-historical-scans-from-pool-creation"
-branch by routing every site through `src/pool-creation-block.js`.
+branch by routing every site through `src/lib/pool-creation-block.js`.
 
 **How to apply:**
 - For NFT or pool-event scans, use the cached pool-creation-block helper at
-  `src/pool-creation-block.js` (`getPoolCreationBlockCached`,
+  `src/lib/pool-creation-block.js` (`getPoolCreationBlockCached`,
   `resolvePoolCreationBlockForPosition`, `resolvePoolAddressForToken`).
 - For incremental scans, persist a `lastScannedBlock` checkpoint and resume.
 - Only fall back to `0` as a last-resort default when the tight bound cannot

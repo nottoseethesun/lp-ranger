@@ -1,6 +1,6 @@
 /**
  * @file test/server-spa-fallback.test.js
- * @description Tests for the SPA catch-all in server.js.
+ * @description Tests for the SPA catch-all in src/server.js.
  * Extensionless GET paths serve index.html (for client-side routing).
  * Paths with file extensions that don't match a real file return 404.
  * API and health routes are unaffected.
@@ -11,7 +11,7 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const http = require("http");
-const { start, stop } = require("../server");
+const { start, stop } = require("../src/server");
 
 const PORT = 54370;
 

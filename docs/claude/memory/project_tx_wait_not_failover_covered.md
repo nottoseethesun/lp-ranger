@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-01T16:39:29.860Z
+  modified: 2026-10-24T04:54:38.598Z
 ---
 
 **Fixed**, shipped in 0.9.8 (Production 2026-10-01). Hit Production on
@@ -40,7 +40,7 @@ straight out.
 
 ## Root cause
 
-`_tolerantWait` (`src/tx-speedup.js:71`) wraps `tx.wait()` and catches
+`_tolerantWait` (`src/lib/tx-speedup.js:71`) wraps `tx.wait()` and catches
 exactly one error:
 
 ```js
@@ -58,7 +58,7 @@ provider the transaction object is bound to. So the rpc failover work of
 
 It bites hardest at exactly this moment, because the "speed-up refused,
 wait for the original" branch is a bare `_tolerantWait` with no race and
-no fallback (`src/tx-speedup.js`, phase 2).
+no fallback (`src/lib/tx-speedup.js`, phase 2).
 
 This is the gap recorded as untested in
 [[project_0097_burn_in_watch]] § 1 — the write path under failover.
@@ -77,7 +77,7 @@ Collects; the eleventh Collect has no matching deposit. So:
   `executeCompound` throws inside `collectFees`, so the ratio swap and
   `increaseLiquidity` never run.
 - **They are not swept back automatically.** `_resolveDepositAmounts`
-  (`src/compounder.js:248`) re-reads wallet balances **only when a ratio
+  (`src/lib/compounder.js:248`) re-reads wallet balances **only when a ratio
   swap fired**; with no swap it deposits just that collect's own
   amounts. So stranded fees wait for a rebalance (which mints with the
   whole wallet balance) or for a later compound that happens to swap.
@@ -88,7 +88,7 @@ Collects; the eleventh Collect has no matching deposit. So:
 - **The gas is unrecorded, permanently.** The collect's gas was spent on
   chain, but gas is written in `recordCompound` on the success path
   only. A rescan does not recover it:
-  `_supplementGasFromChain` (`src/position-history.js:536`) sums the
+  `_supplementGasFromChain` (`src/lib/position-history.js:536`) sums the
   mint TX and the close TX and nothing else. So `nftGasWeiByTokenId`
   stays short by that transaction for the life of the NFT.
 - **Nothing reaches the Activity log**, correctly — no
@@ -128,7 +128,7 @@ successful move. An assertion that the failing endpoint is "out of
 service" can therefore never hold once the move has happened; what
 survives as evidence is selection having advanced.
 
-`src/rebalancer-pools.js` carried a second, 180-line copy of this whole
+`src/lib/rebalancer-pools.js` carried a second, 180-line copy of this whole
 pipeline, holding this defect and three more besides — `unref`'d timers,
 no abort for the losing branch of a race, no re-ask hook at all. Nothing
 ever called it, so none of that could fire: the one `_waitOrSpeedUp` the
@@ -139,7 +139,7 @@ That helper was the one name the roadmap entry listed as duplicated which
 was not dead — worth knowing before trusting a list like that. It is no
 longer called `_receiptGas` and no longer lives there: the same expression
 turned out to exist thirteen times across nine modules, and it is now
-`receiptGasWei` in `src/receipt-gas.js`, shared by every path that records
+`receiptGasWei` in `src/lib/receipt-gas.js`, shared by every path that records
 a charge.
 
 ## The missing Telegram was a second bug, now confirmed

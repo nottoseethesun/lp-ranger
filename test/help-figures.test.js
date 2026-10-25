@@ -7,7 +7,7 @@
  *   the copy only under names that exist.
  *
  *   The circle-i dialogs and the User Manual both quote these figures, and
- *   both take them from `src/help-figures.js`. A figure the copy typed in
+ *   both take them from `src/lib/help-figures.js`. A figure the copy typed in
  *   instead goes stale the day the setting changes, and the help then
  *   states a figure the app does not use. A figure named wrongly must
  *   stop the build, rather than reach a reader as a raw token.
@@ -35,7 +35,7 @@ const {
   duration,
   shortDuration,
   count,
-} = require("../src/help-figures");
+} = require("../src/lib/help-figures");
 
 const { shippedFigures } = require("../scripts/build-manual-content");
 
@@ -190,11 +190,6 @@ describe("the figures", () => {
       uiDefaults: UI,
       appRuntime: {
         ...RUNTIME,
-        tx: {
-          ...RUNTIME.tx,
-          swapBackoffBaseMs: 120000,
-          swapBackoffMaxMs: 2400000,
-        },
         poll: { ...RUNTIME.poll, lifetimeRescanCheckMs: 3600000 },
         retire: { drainedAfterMs: 5400000 },
         compound: {
@@ -207,8 +202,6 @@ describe("the figures", () => {
       txCancelSec: 7200,
       compoundMinFeeUsd: 3,
     });
-    assert.equal(g.swapBackoffFirst, "2 minutes");
-    assert.equal(g.swapBackoffCeiling, "40 minutes");
     assert.equal(g.lifetimeRescanRetry, "1 hour");
     assert.equal(g.drainedRetire, "90 minutes");
     // Three polls of 600 s, over the 60 s floor.
@@ -383,7 +376,7 @@ describe("the module", () => {
      *  Node-only would break that build, not a test.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "help-figures.js"),
+      path.join(__dirname, "..", "src", "lib", "help-figures.js"),
       "utf8",
     );
     assert.deepEqual(src.match(/\brequire\s*\(/g) || [], []);

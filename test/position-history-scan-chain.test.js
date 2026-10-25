@@ -24,12 +24,12 @@ const {
   eventsFor,
   fetchChainNftEvents,
   emptyEvents,
-} = require("../src/nft-events-batch");
-const { parseLogs } = require("../src/nft-event-parse");
+} = require("../src/lib/nft-events-batch");
+const { parseLogs } = require("../src/lib/nft-event-parse");
 const {
   mintBlocksByTokenId,
   chainScanFloor,
-} = require("../src/nft-mint-blocks");
+} = require("../src/lib/nft-mint-blocks");
 const {
   IFACE,
   PM,
@@ -96,8 +96,8 @@ const topicOf = (name) => IFACE.getEvent(name).topicHash;
 function load(node, { pool = POOL } = {}) {
   const poolCalls = [];
   const fresh = [
-    require.resolve("../src/position-history-scan-helpers"),
-    require.resolve("../src/nft-events-batch"),
+    require.resolve("../src/lib/position-history-scan-helpers"),
+    require.resolve("../src/lib/nft-events-batch"),
   ];
   for (const f of fresh) delete require.cache[f];
   const orig = Module.prototype.require;
@@ -121,7 +121,7 @@ function load(node, { pool = POOL } = {}) {
   };
   try {
     return {
-      mod: require("../src/position-history-scan-helpers"),
+      mod: require("../src/lib/position-history-scan-helpers"),
       poolCalls,
     };
   } finally {

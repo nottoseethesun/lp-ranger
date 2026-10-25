@@ -52,7 +52,7 @@ describe("build-and-start --help answers without doing the work", () => {
     /*- The bundle's mtime is the evidence. A build rewrites it, along
      *  with the cache-bust stamps that invalidate every browser's copy
      *  of the dashboard — a heavy side effect for a question. */
-    const bundle = path.join(ROOT, "public", "dist", "bundle.js");
+    const bundle = path.join(ROOT, "src", "client", "web", "dist", "bundle.js");
     if (!fs.existsSync(bundle)) return; // nothing built yet; nothing to protect
     const before = fs.statSync(bundle).mtimeMs;
     run(["--help"]);

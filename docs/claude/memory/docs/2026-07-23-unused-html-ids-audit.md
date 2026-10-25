@@ -1,10 +1,10 @@
 # Unused HTML ids — one-shot audit, 2026-07-23
 
 Audit run under the fork agent on 2026-07-23. Cross-referenced every
-`id="..."` in `public/*.html` against JS quoted-string references,
+`id="..."` in `src/client/web/*.html` against JS quoted-string references,
 CSS `#id` selectors, HTML `for=` / `aria-*` linkages, and dynamic-ID
 construction patterns in JS. **47 provably-unused IDs** in
-`public/index.html`; `0` orphan `data-tpl` slots.
+`src/client/web/index.html`; `0` orphan `data-tpl` slots.
 
 Cluster 1 (5 IDs: dblPanel + friends) was deleted the same day —
 see the "remove-dead-doubling-panel-html" branch / merged PR.  The
@@ -40,8 +40,8 @@ delegated `document.body.addEventListener('click', ...)` that reads
 buttons across the four dialogs before deleting the IDs.
 
 **Trigger conditions to clean up:** any code change in
-`public/dashboard-data-deposit.js`, `public/dashboard-events-manage.js`,
-or the inline-edit dialog markup in `public/index.html`.
+`src/client/web/dashboard-data-deposit.js`, `src/client/web/dashboard-events-manage.js`,
+or the inline-edit dialog markup in `src/client/web/index.html`.
 
 ---
 
@@ -60,8 +60,8 @@ wallet-import UI was written around; nothing reads or writes them
 today.  Probably safe to remove without further investigation.
 
 **Trigger conditions to clean up:** any code change in
-`public/dashboard-wallet.js`, `public/dashboard-wallet-import.js`,
-or the wallet-import dialog markup in `public/index.html`.
+`src/client/web/dashboard-wallet.js`, `src/client/web/dashboard-wallet-import.js`,
+or the wallet-import dialog markup in `src/client/web/index.html`.
 
 ---
 
@@ -85,10 +85,10 @@ layout anchor or a small drift like Cluster 1.
 - `syncRow` (968) — bottom Sync-status row wrapper.  Verify the
   Sync badge painter targets the badge id, not the row wrapper.
 - `privacySubform` (625) — Privacy Mode sub-options wrapper.
-  Check `public/dashboard-privacy-subform.js` for the actual
+  Check `src/client/web/dashboard-privacy-subform.js` for the actual
   handles it uses.
 - `tgBalancedNote` (1320) — Telegram-config note.  Check
-  `public/dashboard-telegram.js`.
+  `src/client/web/dashboard-telegram.js`.
 
 **Trigger conditions to clean up:** each individual find lives near
 a specific dashboard module — the trigger is any code change in

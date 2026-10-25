@@ -9,7 +9,7 @@
  *   The manual's build writes the shipped figures into every
  *   `<span data-figure="name">`, the shared Impermanent Loss Guard
  *   section's included. The served copy loads the build's stamped bundle
- *   of `public/dashboard-manual-figures.js`, which asks
+ *   of `src/client/web/dashboard-manual-figures.js`, which asks
  *   `GET /api/help-figures` and rewrites each span; the Pages build drops
  *   the tag that loads it, and makes the stylesheets relative and
  *   unstamped. Each half is checked here: the module under jsdom with a
@@ -24,11 +24,11 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 const { readSpec, writePage } = require("../scripts/build-pages-site");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const ROOT = path.join(__dirname, "..");
 const MANUAL = fs.readFileSync(
-  path.join(ROOT, "public", "help-and-user-manual.html"),
+  path.join(ROOT, "src", "client", "web", "help-and-user-manual.html"),
   "utf8",
 );
 // The bundle the build makes of the module, stamped like every script.
@@ -54,7 +54,7 @@ before(async () => {
   globalThis.fetch = async () => ({ ok: false, status: 404 });
   console.warn = (...args) => warned.push(args.join(" "));
   try {
-    mod = await import("../public/dashboard-manual-figures.js");
+    mod = await import("../src/client/web/dashboard-manual-figures.js");
     await new Promise((resolve) => setImmediate(resolve));
   } finally {
     globalThis.fetch = realFetch;

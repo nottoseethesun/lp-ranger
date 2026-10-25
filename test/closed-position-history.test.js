@@ -72,8 +72,8 @@ Module.prototype.require = function (id) {
   return _origRequire.apply(this, arguments);
 };
 
-const config = require("../src/config");
-const { getPositionHistory } = require("../src/position-history");
+const config = require("../src/lib/config");
+const { getPositionHistory } = require("../src/lib/position-history");
 
 /**
  * Stub fetch so `_supplementHistoricalPrices` inside `getPositionHistory`

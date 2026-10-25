@@ -21,7 +21,9 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
-const { collectAndDrainOf } = require("../src/position-history-scan-helpers");
+const {
+  collectAndDrainOf,
+} = require("../src/lib/position-history-scan-helpers");
 const { captureWarnings } = require("./helpers/capture-warnings");
 
 const IDS = ["10", "11", "12"];
@@ -96,13 +98,13 @@ function load(read) {
     return orig.apply(this, arguments);
   };
   try {
-    delete require.cache[require.resolve("../src/epoch-reconstructor")];
-    const mod = require("../src/epoch-reconstructor");
+    delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
+    const mod = require("../src/lib/epoch-reconstructor");
     /*-
      *  Evicted again so the stubbed copy is not handed to whoever
      *  requires the module next.
      */
-    delete require.cache[require.resolve("../src/epoch-reconstructor")];
+    delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
     return { fetch: mod._fetchEpochsFromChain, trace };
   } finally {
     Module.prototype.require = orig;

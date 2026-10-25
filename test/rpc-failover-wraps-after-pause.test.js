@@ -5,7 +5,7 @@
  * from the FIRST endpoint, not sit on the dead one.
  *
  * What these pin: the end of the list has to come round.
- * `src/rpc-read-retry.js` ignores whether failover actually moved — its
+ * `src/lib/rpc-read-retry.js` ignores whether failover actually moved — its
  * comment says `false` "is a reason to come back round to the first one
  * rather than to give up" — and its loop has no exit condition. A last
  * endpoint that failover leaves selection sitting on is therefore a dead
@@ -24,9 +24,9 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { format } = require("node:util");
 
-const sendTx = require("../src/send-transaction");
-const rpcQueue = require("../src/rpc-request-manager");
-const logModule = require("../src/log");
+const sendTx = require("../src/lib/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const logModule = require("../src/lib/log");
 const { condemn } = require("./helpers/send-tx-stubs");
 
 const URLS = [
@@ -134,7 +134,7 @@ describe("failover wraps to the first endpoint after the pause", () => {
   });
 
   it("announces the pause in capitals, on Road Sign Yellow, in hours", () => {
-    /*- Captured through `src/log.js`'s sink injector rather than by
+    /*- Captured through `src/lib/log.js`'s sink injector rather than by
      *  reassigning `console.warn`: the global stays untouched, which is
      *  what that injector exists for. */
     const warns = [];

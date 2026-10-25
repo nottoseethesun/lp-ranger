@@ -20,7 +20,7 @@ const assert = require("node:assert/strict");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
 const { _poll } = require("./_bot-loop-helpers");
-const { checkIlGuard } = require("../src/il-guard");
+const { checkIlGuard } = require("../src/lib/il-guard");
 const { ilSnapshot } = require("./helpers/il-snapshot");
 
 /** A Rebalance Now's bot state, with a Guard block standing. */

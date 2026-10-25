@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T23:47:40.653Z
+  modified: 2026-10-24T04:54:38.470Z
 ---
 
 **Fixed, shipped in release 0.9.6** (PR #212, merged as `0587078`).
@@ -49,7 +49,7 @@ seconds later.
 
 ## Cause
 
-`failoverToNextRPC()` (`src/send-transaction.js`) takes no argument
+`failoverToNextRPC()` (`src/lib/send-transaction.js`) takes no argument
 saying **which** endpoint failed. It reads the shared `_activeIdx`,
 advances one, and returns. Nothing ties the advance to the endpoint the
 error came from, so every concurrent failing read advances it again.

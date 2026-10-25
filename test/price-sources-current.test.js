@@ -19,8 +19,8 @@ const assert = require("node:assert/strict");
 const {
   currentPriceSources,
   _fetchMoralisCurrent,
-} = require("../src/price-sources-current");
-const { setApiKey, setServiceEnabled } = require("../src/api-key-holder");
+} = require("../src/lib/price-sources-current");
+const { setApiKey, setServiceEnabled } = require("../src/lib/api-key-holder");
 
 const TOKEN = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
 const names = (sources) => sources.map((s) => s.name);

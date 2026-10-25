@@ -1,7 +1,7 @@
 /**
  * @file test/icons-files.test.js
  * @description Smoke test ensuring every icon reference in the
- * dashboard resolves to a real file under `public/icons/` that
+ * dashboard resolves to a real file under `src/client/web/icons/` that
  * parses as well-formed SVG.  Complements the static XML-validity
  * check in `scripts/lint-svg.js` (which runs at lint time and
  * validates every file in the directory) by pinning the specific
@@ -10,12 +10,12 @@
  *
  * Covers both:
  *   * Activity-Log icons — `ACT_ICONS` map in
- *     `public/dashboard-helpers.js` (loaded via `<img>` per
+ *     `src/client/web/dashboard-helpers.js` (loaded via `<img>` per
  *     docs/engineering.md § "SVG Assets").
  *   * Header / wallet-strip / modal icons — `data-svg="…"`
- *     placeholder attributes in `public/index.html` (inlined at
+ *     placeholder attributes in `src/client/web/index.html` (inlined at
  *     build time by `scripts/inline-svgs.js` into
- *     `public/dist/index.html`).
+ *     `src/client/web/dist/index.html`).
  */
 
 "use strict";
@@ -26,7 +26,7 @@ const fs = require("fs");
 const path = require("path");
 const { DOMParser } = require("@xmldom/xmldom");
 
-const _ICONS_DIR = path.join(__dirname, "..", "public", "icons");
+const _ICONS_DIR = path.join(__dirname, "..", "src", "client", "web", "icons");
 
 /*- Pluck the ACT_ICONS constant out of the ES-module dashboard file
  *  via a targeted regex.  Avoids booting a browser/JSDOM just to
@@ -34,7 +34,7 @@ const _ICONS_DIR = path.join(__dirname, "..", "public", "icons");
  *  — matching what would ship in bundle.js. */
 function _readActIconsInventory() {
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "public", "dashboard-helpers.js"),
+    path.join(__dirname, "..", "src", "client", "web", "dashboard-helpers.js"),
     "utf8",
   );
   const match = src.match(/export const ACT_ICONS = \{([^}]+)\}/);
@@ -52,7 +52,7 @@ function _readActIconsInventory() {
  *  want to spin up JSDOM just to read attributes. */
 function _readUiIconInventory() {
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "public", "index.html"),
+    path.join(__dirname, "..", "src", "client", "web", "index.html"),
     "utf8",
   );
   const set = new Set();
@@ -63,7 +63,7 @@ function _readUiIconInventory() {
 }
 
 function _assertFileParsesAsSvg(relPath) {
-  const abs = path.join(__dirname, "..", "public", relPath);
+  const abs = path.join(__dirname, "..", "src", "client", "web", relPath);
   assert.ok(fs.existsSync(abs), "missing file at " + abs);
   const errors = [];
   const parser = new DOMParser({
@@ -81,7 +81,7 @@ function _assertFileParsesAsSvg(relPath) {
   );
 }
 
-describe("Icon registries ↔ public/icons/ files", () => {
+describe("Icon registries ↔ src/client/web/icons/ files", () => {
   const actInventory = _readActIconsInventory();
   const uiInventory = _readUiIconInventory();
 
@@ -99,7 +99,7 @@ describe("Icon registries ↔ public/icons/ files", () => {
     );
   });
 
-  it("every file under public/icons/ is referenced by ACT_ICONS OR index.html", () => {
+  it("every file under src/client/web/icons/ is referenced by ACT_ICONS OR index.html", () => {
     const onDisk = fs.readdirSync(_ICONS_DIR).filter((f) => f.endsWith(".svg"));
     const referenced = new Set([
       ...Object.values(actInventory).map((p) => p.replace("icons/", "")),
@@ -109,7 +109,7 @@ describe("Icon registries ↔ public/icons/ files", () => {
     assert.deepEqual(
       orphans,
       [],
-      "these files exist under public/icons/ but nothing references them: " +
+      "these files exist under src/client/web/icons/ but nothing references them: " +
         orphans.join(", "),
     );
   });

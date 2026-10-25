@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-helpers.test.js
- * @description Tests for the pure helpers in `public/dashboard-helpers.js`.
+ * @description Tests for the pure helpers in `src/client/web/dashboard-helpers.js`.
  *   Uses jsdom (via `global-jsdom/register`) to populate browser globals,
  *   then imports the module directly and asserts against its real exports.
  *
@@ -34,7 +34,7 @@ const { learnUiSettings } = require("./helpers/ui-settings");
 let helpers;
 
 before(async () => {
-  helpers = await import("../public/dashboard-helpers.js");
+  helpers = await import("../src/client/web/dashboard-helpers.js");
   // As at startup: the copy tick's length is a setting the server sends.
   await learnUiSettings();
 });

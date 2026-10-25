@@ -21,10 +21,10 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const util = require("util");
 
-const { _setSinkForTests } = require("../src/log");
-const { swapViaAggregator } = require("../src/rebalancer-aggregator");
-const { quoteImpactPct } = require("../src/rebalancer-swap-impact");
-const { swapIfNeeded } = require("../src/rebalancer-swap");
+const { _setSinkForTests } = require("../src/lib/log");
+const { swapViaAggregator } = require("../src/lib/rebalancer-aggregator");
+const { quoteImpactPct } = require("../src/lib/rebalancer-swap-impact");
+const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
 const {
   ADDR,
   makeTx,

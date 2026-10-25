@@ -9,15 +9,19 @@
  * can reassign fields and the installed mocks read the new value):
  *
  *   - `cachedHodl`        what `getCachedLifetimeHodl` returns
+ *   - `currentPrices`     what `fetchTokenPrices` returns
  *   - `compoundResult`    what `classifyCompounds` returns per NFT
  *   - `poolStateResult`   pool state, or an Error for `getPoolState` to throw
  *   - `poolCreationBlock` what the pool-creation lookup returns
  *   - `scanError`         an Error for the chain read to throw
+ *   - `duringRead`        run as the chain read is served, standing in
+ *                         for what else the bot does while a scan runs
  *
  * and observations through the same object:
  *
  *   - `scanCalled` / `classifyCalled` / `depositCalled` / `hodlComputed` /
  *     `baselineRevalued`
+ *   - `classifyOpts`    the options `classifyCompounds` was last given
  *   - `scanCount`       how many chain reads `fetchAllNftEvents` served
  *   - `scanFromBlock`   the block `fetchAllNftEvents` was actually given
  *   - `scanOpts`        the options it was given (resume buffer, live id)
@@ -38,9 +42,10 @@ const _origRequire = Module.prototype.require;
  *  with first, and the stubs below would not reach them.
  */
 const _LIFETIME_MODULES = [
-  "../../src/bot-recorder-lifetime",
-  "../../src/bot-recorder-lifetime-read",
-  "../../src/bot-recorder-decimals-heal",
+  "../../src/lib/bot-recorder-lifetime",
+  "../../src/lib/bot-recorder-lifetime-read",
+  "../../src/lib/bot-recorder-decimals-heal",
+  "../../src/lib/shared-chain-read",
 ];
 
 /** Drop the lifetime modules from the require cache. */
@@ -57,10 +62,12 @@ function resetState() {
   state.scanCount = 0;
   state.scanOpts = null;
   state.classifyCalled = false;
+  state.classifyOpts = null;
   state.depositCalled = false;
   state.hodlComputed = false;
   state.baselineRevalued = false;
   state.cachedHodl = { poolAddress: "0xPOOL" };
+  state.currentPrices = { price0: 1, price1: 1 };
   state.compoundResult = {
     compounds: [],
     totalCompoundedUsd: 0,
@@ -71,6 +78,7 @@ function resetState() {
   state.poolCreationBlock = 0;
   state.scanFromBlock = null;
   state.scanError = null;
+  state.duringRead = null;
 }
 
 /*- Mock builders shared by both install functions (keeps them DRY). */
@@ -103,15 +111,16 @@ function _installMocks() {
     }
     if (id === "./bot-pnl-updater") {
       return {
-        fetchTokenPrices: async () => ({ price0: 1, price1: 1 }),
+        fetchTokenPrices: async () => ({ ...state.currentPrices }),
         actualGasCostUsd: async () => 0,
         pastGasCostUsd: async () => 0,
       };
     }
     if (id === "./compounder") {
       return {
-        classifyCompounds: async () => {
+        classifyCompounds: async (_events, opts) => {
           state.classifyCalled = true;
+          state.classifyOpts = opts;
           return state.compoundResult;
         },
       };
@@ -148,6 +157,7 @@ function _installMocks() {
           state.scanFromBlock = fromBlock;
           state.scanOpts = opts;
           if (state.scanError) throw state.scanError;
+          if (typeof state.duringRead === "function") state.duringRead();
           return new Map([[1, []]]);
         },
       };

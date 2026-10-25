@@ -9,8 +9,8 @@
  *   encrypted wallet and api keys, and the shipped defaults with the
  *   operator's copies. What is read from the blockchain or a price
  *   service, kept to save reading it again, is in `app-data/scan-cache/`
- *   (src/scan-cache-dir.js). What the bot records about a position is in
- *   `app-data/position-records.json` (src/position-records.js). `tmp/`
+ *   (src/lib/scan-cache-dir.js). What the bot records about a position is in
+ *   `app-data/position-records.json` (src/lib/position-records.js). `tmp/`
  *   holds nothing worth keeping: the server's PID file alone of what the
  *   app writes.
  *
@@ -28,11 +28,11 @@ const {
   POSITION_KEYS,
   SETTING_POSITION_KEYS,
   RECORD_POSITION_KEYS,
-} = require("../src/bot-config-keys");
+} = require("../src/lib/bot-config-keys");
 
-const SRC = path.join(__dirname, "..", "src");
+const SRC = path.join(__dirname, "..", "src", "lib");
 
-/** Each module under src/, by file name, as code with comments removed. */
+/** Each module under src/lib/, by file name, as code with comments removed. */
 const MODULES = fs
   .readdirSync(SRC)
   .filter((f) => f.endsWith(".js"))

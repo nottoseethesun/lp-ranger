@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-19T21:13:30.722Z
+  modified: 2026-10-24T05:23:58.440Z
 ---
 
 # 9mm api sunset
@@ -90,7 +90,7 @@ Verified 2026-10-16 against the data.9mm.pro docs page, curl, and the
   (→ `app.9mm.pro/add`); the README's badge links and issues link,
   still on the old repo name `9mm-lp-position-manager` (→ `lp-ranger`);
   `moralis.io` in engineering.md (two hops → `https://moralis.com/`);
-  the whitepaper link in `src/range-math.js`
+  the whitepaper link in `src/lib/range-math.js`
   (→ `app.uniswap.org/whitepaper-v3.pdf`); and `snowpack.dev` in a
   `.gitignore` comment (→ `www.snowpack.dev`). Proposed to leave: the
   SVG namespace name, the Apache license's own text, and `knip.json`'s
@@ -113,7 +113,7 @@ api key is gone. The route is renamed "Watergun Aggregator", and
 `/api/status` carries `swapRouteLabel`. Watergun is in the No Affiliation
 list and the disclosure is dated 2026-10-16. The redirecting links go
 direct. Testnet plumbing: `parseCompositeKey` reads from the right, there
-is a `GET /api/chain` route plus `public/dashboard-chain.js`, the
+is a `GET /api/chain` route plus `src/client/web/dashboard-chain.js`, the
 dashboard's `compositeKey` callers take the chain from it (six other
 key builders still hard-coded `pulsechain` until the evening; see
 below), and the contract addresses no longer fall back to mainnet's. Still open: 9mm's testnet addresses were
@@ -175,9 +175,9 @@ session's scratchpad). Never run the whole suite outside `npm run check`.
   is logged to the browser console with what happened. The user chose
   the console over `logs/lp-ranger.log`, which only the server writes.
 - The route names are static config: `chains.json` → `aggregator.name`
-  and `contracts.swapRouter` (now `{address, name}`). `src/config.js`
+  and `contracts.swapRouter` (now `{address, name}`). `src/lib/config.js`
   refuses to start without them, or without an `aggregator.url` string.
-  `public/dashboard-routing-labels.js` and the badge's `index.html` text
+  `src/client/web/dashboard-routing-labels.js` and the badge's `index.html` text
   are gone; the badge is empty until the first poll (user approved).
   The user's rule behind it: [[feedback_one_literal_per_shipped_default]].
 - Reload Current Position is chain-agnostic. The epoch cache takes the
@@ -201,12 +201,12 @@ that nothing in lp-ranger may be hard-coded to a blockchain
 ([[feedback_never_hard_code_a_chain]]). Done:
 
 - `chains.json` gained `homepage`, `logo`, `blockTimeSec`,
-  `nativeCurrencySymbol`, `cacheTag` and `priceServices`; `src/config.js`
+  `nativeCurrencySymbol`, `cacheTag` and `priceServices`; `src/lib/config.js`
   checks each at startup. The price fetcher, historical prices and the
   Moralis key check ask each service by the chain's own id, and skip a
   service whose id is ""; the Moralis table in code is gone, and the dust
   tokens carry `moralisChain`. The current-price fetchers moved to
-  `src/price-sources-current.js` (500-line cap).
+  `src/lib/price-sources-current.js` (500-line cap).
 - Cache names use the chain's `cacheTag` (`pulse` on PulseChain, so no
   existing cache is orphaned; the testnet's is `pulsetest`). The LP
   position cache's callers now pass the chain; they never had.
@@ -285,7 +285,7 @@ fixture-named event caches sit in `tmp/` from about 2026-09-19.
 steps out, plus a sweep of hard-coded values into JSON).** Every value
 found in code went to the JSON files: the failover window, the budget of
 the reads someone waits on (shared by pool state and the re-open check),
-the history lookback (one module now, `src/history-lookback.js`, for the
+the history lookback (one module now, `src/lib/history-lookback.js`, for the
 three scans that wrote five years and ten-second blocks themselves), the
 event cache's lifetime, scan reuse, the pairing window, the gas-price
 log interval, the send retries, a chain's default gas floor, the

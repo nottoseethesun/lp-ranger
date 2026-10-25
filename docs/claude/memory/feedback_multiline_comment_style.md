@@ -3,7 +3,7 @@ name: Multi-line comment style
 description: Prefer `/*- ... */` block form for multi-line comments over stacked `//` lines
 type: feedback
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
-modified: 2026-10-17T04:18:17.446Z
+modified: 2026-10-24T05:23:58.824Z
 ---
 For multi-line comments, use the block form opened with `/*-` (dash
 after the star) and closed with `*/` on its own line, rather than
@@ -30,7 +30,7 @@ function/method headers use `/**` — they are a separate, required
 format for exported APIs.
 
 **CSS exception:** stylelint-config-standard's `comment-whitespace-inside`
-rule rejects `/*-` (the `-` is not whitespace). For `public/*.css`, use
+rule rejects `/*-` (the `-` is not whitespace). For `src/client/web/*.css`, use
 plain `/* ... */` with a leading space. Do NOT disable the stylelint rule
 to allow `/*-` in CSS — user rejected that approach.
 

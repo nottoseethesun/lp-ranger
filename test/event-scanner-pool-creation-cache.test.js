@@ -27,8 +27,8 @@ process.env.POOL_CREATION_BLOCK_CACHE_PATH = path.join(
   "pool-creation-blocks-cache-eslc-test-" + process.pid + ".json",
 );
 
-const { scanRebalanceHistory } = require("../src/event-scanner");
-const poolCreationBlock = require("../src/pool-creation-block");
+const { scanRebalanceHistory } = require("../src/lib/event-scanner");
+const poolCreationBlock = require("../src/lib/pool-creation-block");
 
 const WALLET = "0xABCDEF0000000000000000000000000000000001";
 const POS_MGR = "0x1234560000000000000000000000000000000099";

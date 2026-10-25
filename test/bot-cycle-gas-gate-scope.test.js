@@ -23,7 +23,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 // The gate's share is an operator's own, 0.8%, not the 0.5% that ships.
 const DEFER_PCT = 0.8;
@@ -79,11 +79,11 @@ function loadWithProbe(gasUsd, posValue) {
     };
   };
   try {
-    delete require.cache[require.resolve("../src/bot-cycle")];
-    const mod = require("../src/bot-cycle");
+    delete require.cache[require.resolve("../src/lib/bot-cycle")];
+    const mod = require("../src/lib/bot-cycle");
     /*- Evicted again so the stubbed copy is not handed to whoever
      *  requires this module next. */
-    delete require.cache[require.resolve("../src/bot-cycle")];
+    delete require.cache[require.resolve("../src/lib/bot-cycle")];
     return { mod, probe };
   } finally {
     Module.prototype.require = orig;

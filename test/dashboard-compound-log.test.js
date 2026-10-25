@@ -18,7 +18,7 @@ describe("formatCompoundEntry", () => {
   let formatCompoundEntry;
 
   before(async () => {
-    const mod = await import("../public/dashboard-compound-log.js");
+    const mod = await import("../src/client/web/dashboard-compound-log.js");
     formatCompoundEntry = mod.formatCompoundEntry;
   });
 
@@ -62,10 +62,12 @@ describe("formatCompoundEntry", () => {
     assert.equal(entry.txHash, "0xfeed");
     assert.equal(
       entry.detail,
-      "NFT #157149 \u2014 $12.35 reinvested (Auto) — pos ctx",
+      "NFT #157149 \u2014 $usd 12.35 reinvested (Auto) — pos ctx",
     );
     assert.ok(entry.when instanceof Date);
     assert.equal(entry.when.toISOString(), "2026-04-26T10:00:00.000Z");
+    // The record itself, for the entry's figures.
+    assert.equal(entry.event, st.compoundHistory[0]);
   });
 
   it("labels manual triggers as Manual", () => {
@@ -113,7 +115,7 @@ describe("formatCompoundEntry", () => {
       position: { tokenId: 7 },
     };
     const entry = formatCompoundEntry(st, "", null);
-    assert.match(entry.detail, /\$0\.00 reinvested/);
+    assert.match(entry.detail, /\$usd 0\.00 reinvested/);
   });
 
   it("returns undefined `when` when the compound entry has no timestamp", () => {
@@ -173,7 +175,7 @@ describe("formatCompoundHistoryEntry", () => {
   let formatCompoundHistoryEntry;
 
   before(async () => {
-    const mod = await import("../public/dashboard-compound-log.js");
+    const mod = await import("../src/client/web/dashboard-compound-log.js");
     formatCompoundHistoryEntry = mod.formatCompoundHistoryEntry;
   });
 
@@ -182,21 +184,27 @@ describe("formatCompoundHistoryEntry", () => {
     assert.equal(formatCompoundHistoryEntry(undefined, "", 1), null);
   });
 
-  it("labels historical trigger as Historical", () => {
-    const ev = {
-      timestamp: "2026-04-04T21:15:15.000Z",
-      usdValue: 2.29,
-      trigger: "historical",
-      txHash: "0xhist",
-      tokenId: 158220,
-    };
-    const entry = formatCompoundHistoryEntry(ev, "", null);
-    assert.equal(entry.title, "Compound");
-    assert.equal(entry.type, "fee");
-    assert.equal(entry.txHash, "0xhist");
-    assert.match(entry.detail, /^NFT #158220/);
-    assert.match(entry.detail, /\$2\.29 reinvested \(Historical\)/);
-    assert.equal(entry.when.toISOString(), "2026-04-04T21:15:15.000Z");
+  it("shows no marker for a compound rebuilt from the chain", () => {
+    /*-
+     *  A rebuild writes trigger `unknown`; a record written before that
+     *  says `historical`. The chain does not say what started either.
+     */
+    for (const trigger of ["unknown", "historical"]) {
+      const ev = {
+        timestamp: "2026-04-04T21:15:15.000Z",
+        usdValue: 2.29,
+        trigger,
+        txHash: "0xhist",
+        tokenId: 158220,
+      };
+      const entry = formatCompoundHistoryEntry(ev, "", null);
+      assert.equal(entry.title, "Compound");
+      assert.equal(entry.type, "fee");
+      assert.equal(entry.txHash, "0xhist");
+      assert.equal(entry.detail, "NFT #158220 — $usd 2.29 reinvested");
+      assert.equal(entry.when.toISOString(), "2026-04-04T21:15:15.000Z");
+      assert.equal(entry.event, ev);
+    }
   });
 
   it("labels auto trigger as Auto and manual as Manual", () => {
@@ -222,14 +230,50 @@ describe("formatCompoundHistoryEntry", () => {
     );
   });
 
-  it("defaults unknown trigger to Auto", () => {
+  it("marks an amount at the prices of its compound's time (historical $usd)", () => {
+    /*-
+     *  A compound the bot makes is recorded with the prices its amount
+     *  was worked out at. An entry a rebuild wrote carries none: its
+     *  amount is at the prices of the rebuild, and shows no mark.
+     */
     const ev = {
-      timestamp: "2026-04-26T10:00:00.000Z",
-      usdValue: 1,
-      trigger: "bogus",
-      tokenId: 1,
+      timestamp: "2026-10-21T10:51:00.000Z",
+      usdValue: 4.33,
+      price0: 0.002,
+      price1: 0.003,
+      trigger: "auto",
+      tokenId: 164910,
     };
-    assert.match(formatCompoundHistoryEntry(ev, "", null).detail, /\(Auto\)/);
+    assert.equal(
+      formatCompoundHistoryEntry(ev, "", null).detail,
+      "NFT #164910 — $usd 4.33 (historical $usd) reinvested (Auto)",
+    );
+    const rebuilt = { ...ev, price0: undefined, price1: undefined };
+    assert.equal(
+      formatCompoundHistoryEntry(rebuilt, "", null).detail,
+      "NFT #164910 — $usd 4.33 reinvested (Auto)",
+    );
+    // Both prices, or the amount is not known to be at that time's.
+    for (const half of [{ price0: undefined }, { price1: Number.NaN }])
+      assert.doesNotMatch(
+        formatCompoundHistoryEntry({ ...ev, ...half }, "", null).detail,
+        /historical/,
+      );
+  });
+
+  it("shows no marker for a trigger it does not know, or none", () => {
+    for (const trigger of ["bogus", undefined]) {
+      const ev = {
+        timestamp: "2026-04-26T10:00:00.000Z",
+        usdValue: 1,
+        trigger,
+        tokenId: 1,
+      };
+      assert.equal(
+        formatCompoundHistoryEntry(ev, "", null).detail,
+        "NFT #1 — $usd 1.00 reinvested",
+      );
+    }
   });
 
   it("uses fallbackTokenId when the event lacks tokenId", () => {
@@ -271,7 +315,7 @@ describe("formatCompoundHistoryEntry", () => {
       tokenId: 1,
     };
     const entry = formatCompoundHistoryEntry(ev, "", null);
-    assert.match(entry.detail, /\$0\.00 reinvested/);
+    assert.match(entry.detail, /\$usd 0\.00 reinvested/);
   });
 
   it("returns undefined when for missing timestamp/txHash", () => {

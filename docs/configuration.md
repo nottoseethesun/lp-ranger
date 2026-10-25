@@ -208,13 +208,13 @@ only what you need.
 
 A row reading **none** in the JSON counterpart column means there is no JSON
 key for that variable, and the reason is on the row. Most variables are read
-by [`src/config.js`](../src/config.js) at startup; the overrides under
+by [`src/lib/config.js`](../src/lib/config.js) at startup; the overrides under
 [File Paths and Diagnostics](#file-paths-and-diagnostics) are read by the
 module that owns each file instead.
 
 ### Configuration Precedence
 
-Three layers, lowest to highest. [`src/config.js`](../src/config.js)
+Three layers, lowest to highest. [`src/lib/config.js`](../src/lib/config.js)
 composes them at startup and every consumer reads the result:
 
 1. **Shipped default** — the single literal, in a tracked JSON file
@@ -240,7 +240,7 @@ a value saved falls back to.
 
 **A value that is both displayed and acted on resolves through the same
 expression.** The server resolves all three layers for the dashboard
-(`src/resolved-settings.js`): `GET /api/bot-config-defaults` fills the
+(`src/lib/resolved-settings.js`): `GET /api/bot-config-defaults` fills the
 Bot Configuration inputs and their Default buttons, and the help quotes
 the same figures, so what you see is what the bot runs on.
 
@@ -271,13 +271,13 @@ each layer live in [`docs/security.md`](security.md).
 | Variable | Default | JSON counterpart | Notes |
 | --- | --- | --- | --- |
 | `PRIVATE_KEY` | *(unset)* | **none, by design** | This setting is for Headless Operation only (running the bot only, and not the web app). Hex signing key, `0x`-prefixed, in plaintext. A dashboard install imports its wallet through the UI and unlocks it in the browser instead. |
-| `WALLET_PASSWORD` | *(unset)* | **none, by design** | This setting is for Headless Operation only (running the bot only, and not the web app). It decrypts the wallet and the stored API keys at startup without prompting, which is what lets an unattended bot sign. The trade-off is a plaintext password in `.env` — see [Wallet password persistence](claude/CLAUDE-SECURITY.md#wallet-password-persistence). Read by [`src/bot-private-key.js`](../src/bot-private-key.js) and [`src/server-routes.js`](../src/server-routes.js), not by `config.js`. A dashboard install is asked for the password in the browser instead, and `node server.js --headless` asks in the terminal. |
+| `WALLET_PASSWORD` | *(unset)* | **none, by design** | This setting is for Headless Operation only (running the bot only, and not the web app). It decrypts the wallet and the stored API keys at startup without prompting, which is what lets an unattended bot sign. The trade-off is a plaintext password in `.env` — see [Wallet password persistence](claude/CLAUDE-SECURITY.md#wallet-password-persistence). Read by [`src/lib/bot-private-key.js`](../src/lib/bot-private-key.js) and [`src/lib/server-routes.js`](../src/lib/server-routes.js), not by `config.js`. A dashboard install is asked for the password in the browser instead, and `node src/server.js --headless` asks in the terminal. |
 
 ### Position Discovery (`.env`)
 
 | Variable | Default | JSON counterpart | Notes |
 | --- | --- | --- | --- |
-| `POSITION_ID` | *(unset)* | **none** — a run mode, not a setting | A single NFT token ID for `npm run bot` to start when `bot-config.json` lists no managed positions. Blank scans the wallet. `server.js` ignores it and starts whatever the config marks `running`. An ID that is not among the wallet's valid positions does not fail — detection falls back to the first position it found. |
+| `POSITION_ID` | *(unset)* | **none** — a run mode, not a setting | A single NFT token ID for `npm run bot` to start when `bot-config.json` lists no managed positions. Blank scans the wallet. `src/server.js` ignores it and starts whatever the config marks `running`. An ID that is not among the wallet's valid positions does not fail — detection falls back to the first position it found. |
 
 ### Bot Behaviour (`.env`)
 
@@ -292,7 +292,6 @@ each layer live in [`docs/security.md`](security.md).
 | `CHECK_INTERVAL_SEC` | `300` | `bot-config-defaults.json` → `checkIntervalSec` | Seconds between on-chain poll cycles. Range 10 to 3600 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `MIN_REBALANCE_INTERVAL_MIN` | `10` | `bot-config-defaults.json` → `minRebalanceIntervalMin` | Shortest wait between two rebalances of one position. |
 | `MAX_REBALANCES_PER_DAY` | `5` | `bot-config-defaults.json` → `maxRebalancesPerDay` | Daily cap, counted per pool rather than per wallet. |
-| `REBALANCE_RETRY_SWAP_LIMIT` | `8` | `app-runtime.json` → `tx.retrySwapLimit` | Consecutive retries after the price moved under a rebalance before the bot aborts it and waits for the operator. |
 | `TX_SPEEDUP_SEC` | `120` | `app-runtime.json` → `tx.speedupSec` | Seconds a transaction may stay pending before a same-nonce replacement goes out at 1.5× gas. Range 1 to 120000 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. Range 300 to 3600 seconds, five minutes to an hour. |
 | `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Range 1 to 172800 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
@@ -370,7 +369,7 @@ it, and nothing gets past two days. A setting with a sensible range of its
 own declares that instead, which the poll interval does.
 
 **The same range applies wherever the setting is written** — the JSON file
-and `.env` both ask `src/timer-bounds.js`, so a value one accepts the
+and `.env` both ask `src/lib/timer-bounds.js`, so a value one accepts the
 other cannot refuse.
 
 Lesser rather than greater is what keeps these safe. A countdown is held as
@@ -535,7 +534,7 @@ setting:
 | Key | PulseChain | What it is for |
 | --- | --- | --- |
 | `displayName` | `PulseChain` | The chain's name wherever the dashboard and the logs show it. |
-| `homepage`, `logo` | `https://pulsechain.com/`, `pulsechain-logo-transparent.png` | The chain link in the dashboard header; `logo` is a file under `public/`. |
+| `homepage`, `logo` | `https://pulsechain.com/`, `pulsechain-logo-transparent.png` | The chain link in the dashboard header; `logo` is a file under `src/client/web/`. |
 | `tokenList.url` | `https://raw.githubusercontent.com/ninemm-pro/app-tokens/main/9mm-tokenlist-extended.json` | Where the dashboard reads token logos: a token list in the [Uniswap format](https://tokenlists.org), each token's logo at its `logoURI`, shown left of the token's name in the Pool line and atop Position Stats. On PulseChain, 9MM's extended list ([ninemm-pro/app-tokens](https://github.com/ninemm-pro/app-tokens)). `""` for a chain with none, where every token shows a transparent placeholder. |
 | `blockTimeSec` | `10` | Average seconds per block, which turns a span of time into a block count: the history scan's lookback (`bot-config-defaults.json` → `historyLookbackYears`), and the compounder's reposition window (`app-runtime.json` → `compound.repositionWindowSec`). |
 | `nativeCurrencySymbol` | `PLS` | The native token's symbol in messages and logs. |
@@ -581,14 +580,14 @@ these as a supported way to lay out an install, which they are not.
 
 | Variable | Default | JSON counterpart | Notes |
 | --- | --- | --- | --- |
-| `WALLET_FILE_PATH` | `app-config/user-configurable/wallet.json` | **none** | Encrypted wallet file, read and written by [`src/wallet-manager.js`](../src/wallet-manager.js). |
-| `API_KEYS_FILE_PATH` | `app-config/user-configurable/api-keys.json` | **none** | Encrypted third-party API keys, read and written by [`src/api-key-store.js`](../src/api-key-store.js). |
-| `PRICE_CACHE_PATH` | `app-data/scan-cache/historical-price-cache.json` | **none** | Historical USD price cache ([`src/price-cache.js`](../src/price-cache.js)). |
-| `BLOCK_TIME_CACHE_PATH` | `app-data/scan-cache/block-time-cache.json` | **none** | Block-number-to-timestamp cache ([`src/block-time-cache.js`](../src/block-time-cache.js)). |
-| `GECKO_POOL_CACHE_PATH` | `app-data/scan-cache/gecko-pool-cache.json` | **none** | Which way round GeckoTerminal quotes each pool ([`src/gecko-pool-cache.js`](../src/gecko-pool-cache.js)). |
-| `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` | `app-data/scan-cache/liquidity-pair-details-cache.json` | **none** | Initial-residual snapshot per pool scope ([`src/liquidity-pair-details.js`](../src/liquidity-pair-details.js)). |
-| `POOL_CREATION_BLOCK_CACHE_PATH` | `app-data/scan-cache/pool-creation-blocks-cache.json` | **none** | Resolved pool deployment blocks ([`src/pool-creation-block.js`](../src/pool-creation-block.js)). |
-| `TOKEN_SYMBOL_CACHE_PATH` | `app-data/scan-cache/token-symbol-cache.json` | **none** | Token names and symbols read from the chain ([`src/token-symbol-cache.js`](../src/token-symbol-cache.js)). |
+| `WALLET_FILE_PATH` | `app-config/user-configurable/wallet.json` | **none** | Encrypted wallet file, read and written by [`src/lib/wallet-manager.js`](../src/lib/wallet-manager.js). |
+| `API_KEYS_FILE_PATH` | `app-config/user-configurable/api-keys.json` | **none** | Encrypted third-party API keys, read and written by [`src/lib/api-key-store.js`](../src/lib/api-key-store.js). |
+| `PRICE_CACHE_PATH` | `app-data/scan-cache/historical-price-cache.json` | **none** | Historical USD price cache ([`src/lib/price-cache.js`](../src/lib/price-cache.js)). |
+| `BLOCK_TIME_CACHE_PATH` | `app-data/scan-cache/block-time-cache.json` | **none** | Block-number-to-timestamp cache ([`src/lib/block-time-cache.js`](../src/lib/block-time-cache.js)). |
+| `GECKO_POOL_CACHE_PATH` | `app-data/scan-cache/gecko-pool-cache.json` | **none** | Which way round GeckoTerminal quotes each pool ([`src/lib/gecko-pool-cache.js`](../src/lib/gecko-pool-cache.js)). |
+| `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` | `app-data/scan-cache/liquidity-pair-details-cache.json` | **none** | Initial-residual snapshot per pool scope ([`src/lib/liquidity-pair-details.js`](../src/lib/liquidity-pair-details.js)). |
+| `POOL_CREATION_BLOCK_CACHE_PATH` | `app-data/scan-cache/pool-creation-blocks-cache.json` | **none** | Resolved pool deployment blocks ([`src/lib/pool-creation-block.js`](../src/lib/pool-creation-block.js)). |
+| `TOKEN_SYMBOL_CACHE_PATH` | `app-data/scan-cache/token-symbol-cache.json` | **none** | Token names and symbols read from the chain ([`src/lib/token-symbol-cache.js`](../src/lib/token-symbol-cache.js)). |
 | `INSPECTOR_PORT` | `9229` | **none** | Port `npm run debug-attach` reports the V8 inspector on ([`scripts/_debug-attach.js`](../scripts/_debug-attach.js)). |
 | `LP_RANGER_PID` | *(unset)* | **none** | The process for `npm run debug-attach` to signal, for when its port and `pgrep` lookups find the wrong one. It changes with every start, so it suits the command line better than `.env`. |
 | `MORALIS_API_KEY` | *(unset)* | **none** | Read only by `util/diagnostic/verify-compound-usd`. The key LP Ranger itself prices with is the one entered in Settings, stored encrypted in `api-keys.json`; this variable does not change it. |
@@ -673,7 +672,7 @@ rejects anything over 10,000 blocks with JSON-RPC `-32602`, "eth_getLogs is
 limited to a 10000 block range". A five-year history scan asks for ~15.8M
 blocks, so without splitting, the query simply fails.
 
-`src/get-logs-chunked.js` is the only place that arithmetic lives. Callers hand
+`src/lib/get-logs-chunked.js` is the only place that arithmetic lives. Callers hand
 it a range and a query function; it walks the range in capped windows.
 
 The default of 9,000 is 90% of the published 10,000-block limit, verified
@@ -696,7 +695,7 @@ the real code nested, which is not actionable as raised.
 
 Rate limits are published per IP, not per endpoint object or per scan. This
 process may hold three providers and run a history scan while the bot polls, all
-from one address. `src/rpc-request-manager.js` is therefore a single FIFO queue
+from one address. `src/lib/rpc-request-manager.js` is therefore a single FIFO queue
 for the whole process: every request enqueues and is released one at a time on a
 fixed schedule.
 
@@ -706,7 +705,7 @@ the only thing that actually guarantees a rate, and every exception (a fast path
 for reads, a priority lane for transactions) is a hole the rate escapes through.
 If something needs to go sooner, the answer is a shorter interval.
 
-It is wired in by `buildProvider` (`src/bot-provider.js`), which wraps ethers'
+It is wired in by `buildProvider` (`src/lib/bot-provider.js`), which wraps ethers'
 `send()` — the single funnel all JSON-RPC traffic passes through, reads and
 writes alike. Anything added later is paced automatically, with nothing to
 remember at the call site. A delay between chunks could not do this job: a
@@ -816,8 +815,6 @@ In `app-runtime.json`.
 | `tx.sendRetries` | `3` | How often a send that failed for a passing reason is sent again. `0` to `10`. |
 | `tx.sendRetryBaseDelayMs` | `30000` | The wait before the first retry; each later retry waits one more of it (30, 60 and 90 seconds as shipped). |
 | `tx.cancelPhaseFloorSec` | `10` | The least time a sped-up transaction gets to confirm before the cancel goes out. |
-| `tx.swapBackoffBaseMs` | `60000` | After the price moved under a rebalance, the wait before it is tried again; each failure in a row doubles it. One second to an hour. |
-| `tx.swapBackoffMaxMs` | `1200000` | The longest that wait may grow. One second to a day. |
 | `tx.midwayRetryLimit` | `4` | How many times a rebalance left mid-way, its coins in the wallet, is tried again before the bot aborts and asks you to act. 1 to 20. |
 | `poll.afterActionMs` | `2000` | How soon the bot looks again after a rebalance, compound or cancel, so the dashboard shows the result. |
 | `poll.lifetimeRescanCheckMs` | `1800000` | How often the bot checks whether a position's lifetime figures need their scan run again, and runs it if so. |
@@ -825,7 +822,7 @@ In `app-runtime.json`.
 | `shutdown.exitTimeoutMs` | `3000` | How long the server spends stopping before it exits regardless. One second to one minute. |
 | `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. Half a second to one minute. |
 | `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop`, and `npm run gentle-stop` once the server has taken its stop, check whether the server has gone. 10 milliseconds to five seconds. |
-| `shutdown.gentleStopPollMs` | `300000` | How often `npm run gentle-stop` asks whether a rebalance or compound is under way, and how long it waits for each answer. One second to one hour. |
+| `shutdown.gentleStopPollMs` | `2000` | How often `npm run gentle-stop` sends its stop request, each answered with what the server is still finishing, and how long it waits for each answer. One second to one minute. |
 | `dashboard.pollsBeforeAssumedSeen` | `2.5` | How many dashboard polls the server waits, after a change the dashboard must show, before assuming it was seen: the alert for a failed re-open comes up before the position is retired. 1 to 100. |
 | `compound.autoSpacingPolls` | `5` | The least time between two automatic compounds of one position, in polls of `CHECK_INTERVAL_SEC`. 1 to 100. |
 | `compound.autoSpacingFloorSec` | `300` | The floor under that time, in seconds, however short the poll interval. Compound Now is held to neither. 1 to 86400. |

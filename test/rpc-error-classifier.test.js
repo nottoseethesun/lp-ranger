@@ -1,7 +1,7 @@
 "use strict";
 /**
  * @file test/rpc-error-classifier.test.js
- * @description Unit tests for src/rpc-error-classifier.js — verifies
+ * @description Unit tests for src/lib/rpc-error-classifier.js — verifies
  * that real-world ethers/RPC error shapes land in the correct bucket
  * and that the inner-message extractor walks nested error wrappers.
  */
@@ -14,7 +14,7 @@ const {
   innerErrorMessage,
   getBuckets,
   isContractRevert,
-} = require("../src/rpc-error-classifier");
+} = require("../src/lib/rpc-error-classifier");
 const {
   contractReverted,
   endpointFailedRead,

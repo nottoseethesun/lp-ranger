@@ -10,9 +10,9 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { createPositionManager } = require("../src/position-manager");
-const { createRebalanceLock } = require("../src/rebalance-lock");
-const sendTx = require("../src/send-transaction");
+const { createPositionManager } = require("../src/lib/position-manager");
+const { createRebalanceLock } = require("../src/lib/rebalance-lock");
+const sendTx = require("../src/lib/send-transaction");
 
 /*- Reset send-transaction state between cases.  position-manager now
  *  initialises sendTx with the test's ethersLib stub; without a reset,

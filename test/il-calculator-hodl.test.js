@@ -1,6 +1,6 @@
 /**
  * @file test/il-calculator-hodl.test.js
- * @description Unit tests for `computeHodlIL` in src/il-calculator.js,
+ * @description Unit tests for `computeHodlIL` in src/lib/il-calculator.js,
  * including the residual-credit fix that closed the user-reported
  * "Wallet Residual is not included in overall profit-loss" omission.
  */
@@ -9,7 +9,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { computeHodlIL } = require("../src/il-calculator");
+const { computeHodlIL } = require("../src/lib/il-calculator");
 
 describe("computeHodlIL — base behaviour", () => {
   it("returns lpValue − hodlValue when residual is not supplied", () => {

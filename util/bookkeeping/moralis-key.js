@@ -6,7 +6,7 @@
  * @description
  * The Moralis api key the bookkeeping report prices with, which is
  * LP Ranger's own: one key, kept in one place. LP Ranger's api-key store
- * (src/api-key-store.js) keeps it in
+ * (src/lib/api-key-store.js) keeps it in
  * `app-config/user-configurable/api-keys.json`, encrypted with the
  * wallet's password, and the report reads and saves it only through that
  * store. A key saved in the dashboard serves the report, and one the
@@ -27,10 +27,10 @@
  * whether it takes the key, and saves it only if it does. The report
  * never changes the password, and asks for it twice only when it saves a
  * new key. Both are typed in the terminal through
- * LP Ranger's own prompt (src/ask-password.js), which shows nothing of
+ * LP Ranger's own prompt (src/lib/ask-password.js), which shows nothing of
  * what is typed. Neither is ever an argument, which shell history and
  * `ps` would keep. The password is saved nowhere. The
- * plain key is only in memory, in src/api-key-holder.js, which the price
+ * plain key is only in memory, in src/lib/api-key-holder.js, which the price
  * library reads. Git ignores everything in `app-config/user-configurable/`
  * but its README, so the store never reaches the remote.
  *
@@ -52,14 +52,14 @@
  * used up is still taken, and CoinGecko answers until the quota resets.
  */
 
-const { askPassword } = require("../../src/ask-password");
+const { askPassword } = require("../../src/lib/ask-password");
 const {
   hasEncryptedKey,
   loadEncryptedKey,
   saveEncryptedKey,
-} = require("../../src/api-key-store");
-const { setApiKey } = require("../../src/api-key-holder");
-const { pingMoralis } = require("../../src/server-moralis");
+} = require("../../src/lib/api-key-store");
+const { setApiKey } = require("../../src/lib/api-key-holder");
+const { pingMoralis } = require("../../src/lib/server-moralis");
 
 /** Where LP Ranger keeps its api keys, as the report's messages name it. */
 const STORE_FILE = "app-config/user-configurable/api-keys.json";

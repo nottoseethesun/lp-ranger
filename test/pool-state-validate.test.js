@@ -1,8 +1,8 @@
 /**
  * @file test/pool-state-validate.test.js
  * @description Unit coverage for the error classes + validation
- *   predicates in `src/pool-state-validate.js`.  The orchestrator and
- *   `_getPoolStateOnce` integration in `src/rebalancer-pools.js` are
+ *   predicates in `src/lib/pool-state-validate.js`.  The orchestrator and
+ *   `_getPoolStateOnce` integration in `src/lib/rebalancer-pools.js` are
  *   covered in `test/rebalancer-pools.test.js`.
  */
 
@@ -21,7 +21,7 @@ const {
   isAnyInteger,
   isFinitePositive,
   isPositiveBigIntish,
-} = require("../src/pool-state-validate");
+} = require("../src/lib/pool-state-validate");
 
 // ── Error class construction ────────────────────────────────────────────────
 

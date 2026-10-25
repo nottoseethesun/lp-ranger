@@ -5,30 +5,26 @@
     "host": "127.0.0.1"
   },
   "shutdown": {
-    "_comment": "How a stop ends the server. On SIGINT or SIGTERM (Ctrl+C, or `npm stop`) the server starts stopping every position and closing its listener, then exits once exitTimeoutMs has passed, finished or not, cutting off any rebalance or compound under way. `npm stop` sends that SIGTERM, checks every stopCheckIntervalMs whether the server has gone, and falls back to SIGKILL only after exitTimeoutMs + stopKillMarginMs. The margin lets a slow stop still finish its own exit, removing the PID file, before the kill. `npm run gentle-stop` asks GET /api/is-position-being-adjusted at once, then every gentleStopPollMs (300000, five minutes); once nothing is under way it asks the server to stop itself (POST /api/shutdown), which lets a move begun meanwhile finish, and checks every stopCheckIntervalMs until the server has gone. Each is a timer setting checked by src/timer-bounds.js; an unusable one stops the program reading it, naming the setting. Read by src/shutdown-timing.js, for server.js, bot.js, scripts/stop.js and scripts/gentle-stop.js.",
+    "_comment": "How a stop ends the server. On SIGINT or SIGTERM (Ctrl+C, or `npm stop`) the server starts stopping every position and closing its listener, then exits once exitTimeoutMs has passed, finished or not, cutting off any rebalance or compound under way. `npm stop` sends that SIGTERM, checks every stopCheckIntervalMs whether the server has gone, and falls back to SIGKILL only after exitTimeoutMs + stopKillMarginMs. The margin lets a slow stop still finish its own exit, removing the PID file, before the kill. `npm run gentle-stop` asks the server to stop once nothing is under way (POST /api/stop-when-all-clear): the server starts nothing new from then on and exits once each rebalance, compound and scan under way has finished. The script asks again every gentleStopPollMs (2000, two seconds), printing what the stop still waits for, and once the server stops answering checks every stopCheckIntervalMs until it has gone. Each is a timer setting checked by src/lib/timer-bounds.js; an unusable one stops the program reading it, naming the setting. Read by src/lib/shutdown-timing.js, for src/server.js, src/bot.js, scripts/stop.js and scripts/gentle-stop.js.",
     "exitTimeoutMs": 3000,
     "stopKillMarginMs": 2000,
     "stopCheckIntervalMs": 100,
-    "gentleStopPollMs": 300000
+    "gentleStopPollMs": 2000
   },
   "defaults": {
-    "_comment": "chain: which entry of chains.json the app runs against when CHAIN_NAME is not set in .env. Read by src/runtime-flags.js, which lowercases it and looks it up in chains.json; a value matching no entry there throws at startup rather than falling back to another chain, since the entry carries the RPC endpoints and contract addresses every transaction is built against. Per feedback_one_literal_per_shipped_default the chain name lives here only.",
+    "_comment": "chain: which entry of chains.json the app runs against when CHAIN_NAME is not set in .env. Read by src/lib/runtime-flags.js, which lowercases it and looks it up in chains.json; a value matching no entry there throws at startup rather than falling back to another chain, since the entry carries the RPC endpoints and contract addresses every transaction is built against. Per feedback_one_literal_per_shipped_default the chain name lives here only.",
     "chain": "pulsechain"
   },
   "tx": {
-    "_comment": "TX recovery pipeline timing, cross-chain. speedupSec: after this many seconds of the original TX not confirming, submit a same-nonce replacement with 1.5x gas (Phase 2 of _waitOrSpeedUp). deadlineSec: on-chain contract deadline (`require(block.timestamp <= deadline)`) stamped into removeLiquidity / swap / mint calldata. cancelToDeadlineMultiple: the bot's per-TX give-up timer (TX_CANCEL_SEC in code) is derived as deadlineSec × cancelToDeadlineMultiple — how much total time to wait before sending a 0-PLS self-transfer cancel at the stuck nonce. Rule of thumb: set the multiple ≥ 4 so a slow-chain retry cycle can complete before the bot gives up on the nonce. See src/config.js for the derivation and src/rebalancer-pools.js for the deadline enforcement.",
+    "_comment": "TX recovery pipeline timing, cross-chain. speedupSec: after this many seconds of the original TX not confirming, submit a same-nonce replacement with 1.5x gas (Phase 2 of _waitOrSpeedUp). deadlineSec: on-chain contract deadline (`require(block.timestamp <= deadline)`) stamped into removeLiquidity / swap / mint calldata. cancelToDeadlineMultiple: the bot's per-TX give-up timer (TX_CANCEL_SEC in code) is derived as deadlineSec × cancelToDeadlineMultiple — how much total time to wait before sending a 0-PLS self-transfer cancel at the stuck nonce. Rule of thumb: set the multiple ≥ 4 so a slow-chain retry cycle can complete before the bot gives up on the nonce. See src/lib/config.js for the derivation and src/lib/rebalancer-pools.js for the deadline enforcement.",
     "speedupSec": 120,
     "deadlineSec": 900,
     "cancelToDeadlineMultiple": 4,
-    "retrySwapLimit": 8,
-    "_swapBackoff_comment": "How a rebalance is retried after the pool's price moved between its swap and its mint: it waits swapBackoffBaseMs, doubling with each failure in a row up to swapBackoffMaxMs, until retrySwapLimit failures abort it and ask the operator to rebalance by hand. The next successful rebalance clears it; Rebalance Now is not held to it. Read by src/bot-cycle-backoff.js; ranges are in setting-bounds.json.",
-    "swapBackoffBaseMs": 60000,
-    "swapBackoffMaxMs": 1200000,
-    "_midwayRetryLimit_comment": "How many times a rebalance left mid-way (the old position drained, no new one minted, the coins in the wallet) is tried again before the bot aborts and asks the operator to act. Read by src/bot-loop.js; its range is in setting-bounds.json.",
+    "_midwayRetryLimit_comment": "How many times a rebalance left mid-way (the old position drained, no new one minted, the coins in the wallet) is tried again before the bot aborts and asks the operator to act. Read by src/lib/bot-loop.js; its range is in setting-bounds.json.",
     "midwayRetryLimit": 4,
     "_cancelPhaseFloorSec_comment": "The least time, in seconds, a sped-up transaction gets to confirm before the zero-value cancel goes out. The speed-up's wait normally runs until TX_CANCEL_SEC has passed since the original was sent; when getting the speed-up sent took that long already (its send backs off between retries), the wait still lasts this long, so the replacement is never cancelled the moment it is sent.",
     "cancelPhaseFloorSec": 10,
-    "_sendRetries_comment": "How often a transaction whose sending failed for a passing reason (a timeout, a dropped connection, a rate limit) is sent again, and how long to wait first. The wait grows with each try: sendRetryBaseDelayMs before the first retry, twice that before the second, and so on, so the defaults wait 30, 60 and 90 seconds. 0 retries sends once and gives up on the first such failure. A failure that says the transaction can never go through is not retried. Read by src/tx-retry.js for every send in the app. sendRetryBaseDelayMs is checked as a timer setting by src/timer-bounds.js, and both stop startup when unusable, naming the setting.",
+    "_sendRetries_comment": "How often a transaction whose sending failed for a passing reason (a timeout, a dropped connection, a rate limit) is sent again, and how long to wait first. The wait grows with each try: sendRetryBaseDelayMs before the first retry, twice that before the second, and so on, so the defaults wait 30, 60 and 90 seconds. 0 retries sends once and gives up on the first such failure. A failure that says the transaction can never go through is not retried. Read by src/lib/tx-retry.js for every send in the app. sendRetryBaseDelayMs is checked as a timer setting by src/lib/timer-bounds.js, and both stop startup when unusable, naming the setting.",
     "sendRetries": 3,
     "sendRetryBaseDelayMs": 30000
   },
@@ -37,16 +33,16 @@
     "pollsBeforeAssumedSeen": 2.5
   },
   "poll": {
-    "_comment": "afterActionMs: how soon the bot looks at a position again after a rebalance, compound or cancel, so the dashboard shows the result without waiting a poll interval. lifetimeRescanCheckMs: how often the bot checks whether a position's lifetime figures need their scan run again (missing, or a scan that failed), and runs it if so. Both are timers held to the timer rule (src/timer-bounds.js); startup stops on an unusable value, naming it.",
+    "_comment": "afterActionMs: how soon the bot looks at a position again after a rebalance, compound or cancel, so the dashboard shows the result without waiting a poll interval. lifetimeRescanCheckMs: how often the bot checks whether a position's lifetime figures need their scan run again (missing, or a scan that failed), and runs it if so. Both are timers held to the timer rule (src/lib/timer-bounds.js); startup stops on an unusable value, naming it.",
     "afterActionMs": 2000,
     "lifetimeRescanCheckMs": 1800000
   },
   "retire": {
-    "_comment": "drainedAfterMs: how long a managed position may sit drained, with no rebalance under way, before the bot stops managing it. The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too: the operator has this long to raise Slippage or click Rebalance Now. Read by src/bot-cycle-drain.js; its range is in setting-bounds.json.",
+    "_comment": "drainedAfterMs: how long a managed position may sit drained, with no rebalance under way, before the bot stops managing it. The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too: the operator has this long to raise Slippage or click Rebalance Now. Read by src/lib/bot-cycle-drain.js; its range is in setting-bounds.json.",
     "drainedAfterMs": 1800000
   },
   "rescanPrices": {
-    "_comment": "How long the dashboard's Re-scan Prices dialog waits for the scan it started before handing the button back, rather than spinning forever. Read by public/dashboard-rescan-prices.js via the rescanPricesTimeoutMs field on GET /api/status. It bounds a button, not a scan: nothing server-side reads it, and the scan it is waiting on runs to completion either way.",
+    "_comment": "How long the dashboard's Re-scan Prices dialog waits for the scan it started before handing the button back, rather than spinning forever. Read by src/client/web/dashboard-rescan-prices.js via the rescanPricesTimeoutMs field on GET /api/status. It bounds a button, not a scan: nothing server-side reads it, and the scan it is waiting on runs to completion either way.",
     "timeoutMs": 7200000
   },
   "compound": {
@@ -54,7 +50,7 @@
     "defaultThresholdUsd": 5,
     "_repositionWindowSec_comment": "Compound detection: an IncreaseLiquidity on an NFT within this many seconds after a DecreaseLiquidity that drained it is a reposition (a drain, then a re-deposit), not a compound, and its amounts are not counted as compounded fees. Turned into blocks with the active chain's blockTimeSec in chains.json, so the window is the same length of time on every chain. 500000 s is about 5.8 days: 50,000 blocks at ten seconds a block.",
     "repositionWindowSec": 500000,
-    "_autoSpacing_comment": "The least time between two automatic compounds of one position: autoSpacingPolls poll intervals (CHECK_INTERVAL_SEC), never less than autoSpacingFloorSec. Each compound pays gas for a collect and a deposit, so a short poll interval must not mean one every poll. Compound Now is not held to it. Read by src/bot-cycle-compound.js; ranges are in setting-bounds.json.",
+    "_autoSpacing_comment": "The least time between two automatic compounds of one position: autoSpacingPolls poll intervals (CHECK_INTERVAL_SEC), never less than autoSpacingFloorSec. Each compound pays gas for a collect and a deposit, so a short poll interval must not mean one every poll. Compound Now is not held to it. Read by src/lib/bot-cycle-compound.js; ranges are in setting-bounds.json.",
     "autoSpacingPolls": 5,
     "autoSpacingFloorSec": 300
   },

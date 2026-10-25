@@ -1,7 +1,7 @@
 /**
  * @file test/rebalancer-pools-retry.test.js
  * @description Validation and retry coverage for `getPoolState` in
- *   `src/rebalancer-pools.js`.  Covers:
+ *   `src/lib/rebalancer-pools.js`.  Covers:
  *
  *   - `_getPoolStateOnce` throws `PoolStateInvalidError` on the first
  *     failing field (decimals0=NaN, tick=undefined, etc.)
@@ -28,11 +28,11 @@ const {
   _getPoolStateOnce,
   getPoolState,
   _setRetryDelayForTests,
-} = require("../src/rebalancer-pools");
+} = require("../src/lib/rebalancer-pools");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
-} = require("../src/pool-state-validate");
+} = require("../src/lib/pool-state-validate");
 
 /*- Shrink the inter-retry delay to zero so the exhaustion test (4
  *  attempts) completes in milliseconds rather than ~6 seconds. */
@@ -185,7 +185,7 @@ test("getPoolState exhausts every RPC then throws PoolStateUnavailableError", as
    *  than pinned: the contract is "try every RPC twice", and hard-coding
    *  the product means the test fails for the wrong reason the next time
    *  an endpoint is added. */
-  const expectedAttempts = require("../src/config").RPC_URLS.length * 2;
+  const expectedAttempts = require("../src/lib/config").RPC_URLS.length * 2;
   const { lib, constructed } = makeMockEthers({ decimals0: undefined });
   await withMockRpc(lib, () =>
     assert.rejects(
@@ -217,7 +217,7 @@ test("getPoolState exhausts every RPC then throws PoolStateUnavailableError", as
    *  is the whole point of reading through its selection. */
   assert.equal(
     constructed.length,
-    require("../src/config").RPC_URLS.length,
+    require("../src/lib/config").RPC_URLS.length,
     "one provider per endpoint, built once",
   );
 });
@@ -246,9 +246,9 @@ test("getPoolState reports what it sees to the decider", async () => {
    *  process: this walk produces up to six failures per call, across
    *  ten positions.  A rate decides now, so the most frequent read in
    *  the bot can say what it sees. */
-  const decider = require("../src/rpc-out-of-service");
-  const sendTx = require("../src/send-transaction");
-  const { RPC_URLS } = require("../src/config");
+  const decider = require("../src/lib/rpc-out-of-service");
+  const sendTx = require("../src/lib/send-transaction");
+  const { RPC_URLS } = require("../src/lib/config");
   decider._resetForTests();
   try {
     const { lib } = makeMockEthers({ tick: undefined });

@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-mission-badge.test.js
  * @description Tests for `findActiveActions` and `findActiveAction` in
- *   `public/dashboard-mission-badge.js`.  Uses jsdom + direct import of
+ *   `src/client/web/dashboard-mission-badge.js`.  Uses jsdom + direct import of
  *   the real browser module.
  *
  *   `dashboard-mission-badge` imports `posStore` from
@@ -31,8 +31,8 @@ let store;
 before(async () => {
   // Import the underlying posStore first, then mission-badge so its
   // `posStore` binding resolves via the shared module instance.
-  store = await import("../public/dashboard-positions-store.js");
-  mod = await import("../public/dashboard-mission-badge.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
+  mod = await import("../src/client/web/dashboard-mission-badge.js");
 });
 
 beforeEach(() => {

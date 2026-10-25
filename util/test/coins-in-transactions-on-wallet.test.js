@@ -19,7 +19,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("path");
 
-const config = require("../../src/config");
+const config = require("../../src/lib/config");
 const { CHAIN_NAMES, oneChainNotice } = require("../bookkeeping/blockchain");
 const { PRICE_ADVICE, usdPriceOn } = require("../bookkeeping/usd-prices");
 const { RPC_ADVICE } = require("../bookkeeping/coins-in-transaction");

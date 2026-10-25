@@ -6,7 +6,7 @@
  * the environment over them, then each JSON settings file, the
  * operator's copy over the shipped one. It must print the reading the
  * validation diagnostic checks, `resolveSettings` in
- * src/settings-check.js, and never a secret's value. Each install is a
+ * src/lib/settings-check.js, and never a secret's value. Each install is a
  * fixture in a temporary folder, with an environment of the test's own,
  * so the machine running the suite cannot change the answer.
  */
@@ -19,8 +19,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { buildProgram, main } = require("../diagnostic/print-resolved-settings");
-const { resolveSettings } = require("../../src/settings-check");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { resolveSettings } = require("../../src/lib/settings-check");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 
 const SECRET_KEY = "not-a-real-key-for-the-test";
 const SECRET_PASSWORD = "not-a-real-password-for-the-test";

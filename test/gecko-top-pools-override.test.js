@@ -10,8 +10,8 @@
  *
  *   The operator's copy is written to a temporary directory of this
  *   file's own. The loader reads `LP_RANGER_USER_CONFIG_DIR` at module
- *   load, so it is set before anything under `src/` is required, and each
- *   case loads src/gecko-pool-cache.js afresh after writing its copy.
+ *   load, so it is set before anything under `src/lib/` is required, and each
+ *   case loads src/lib/gecko-pool-cache.js afresh after writing its copy.
  */
 
 const { describe, it, beforeEach, after } = require("node:test");
@@ -24,8 +24,8 @@ const _USER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "gecko-top-pools-"));
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const { _resetMemoForTests } = require("../src/load-merged-defaults");
-const GECKO = require.resolve("../src/gecko-pool-cache");
+const { _resetMemoForTests } = require("../src/lib/load-merged-defaults");
+const GECKO = require.resolve("../src/lib/gecko-pool-cache");
 
 /** Write the operator's copy of price-services.json with `topPools`. */
 function override(topPools) {

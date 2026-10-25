@@ -17,7 +17,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { _pickBestPool } = require("../src/gecko-pool-cache");
+const { _pickBestPool } = require("../src/lib/gecko-pool-cache");
 
 /** A pool as `_fetchTokenPoolsOnce` shapes one. */
 function pool(name, liquidity, volume, side = "quote") {

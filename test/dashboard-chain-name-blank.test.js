@@ -25,16 +25,16 @@ let alerts;
 let status;
 
 before(async () => {
-  chain = await import("../public/dashboard-chain.js");
-  alerts = await import("../public/dashboard-alerts.js");
-  status = await import("../public/dashboard-data-status.js");
+  chain = await import("../src/client/web/dashboard-chain.js");
+  alerts = await import("../src/client/web/dashboard-alerts.js");
+  status = await import("../src/client/web/dashboard-data-status.js");
   document.body.replaceChildren(
     document.importNode(
       indexHtmlDocument().getElementById("tplPosContext"),
       true,
     ),
   );
-  const store = await import("../public/dashboard-positions-store.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
   store.posStore.entries.length = 0;
   store.posStore.entries.push({
     tokenId: "7",

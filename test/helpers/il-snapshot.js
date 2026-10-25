@@ -5,7 +5,7 @@
  * @description A poll's P&L snapshot as the Impermanent Loss Guard reads
  *   it: the Current panel's IL/G for the NFT held (`totalIL`), and the
  *   minted coins and prices it was measured with (`ilInputs`), in the
- *   shape `_computeIL` (src/bot-pnl-il.js) leaves them. For tests that
+ *   shape `_computeIL` (src/lib/bot-pnl-il.js) leaves them. For tests that
  *   need a position at some value against some holding value without
  *   building a whole snapshot; a test of how the two are worked out
  *   builds them with `_computeIL` itself.

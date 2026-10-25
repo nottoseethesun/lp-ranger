@@ -1,18 +1,18 @@
 ---
 name: feedback_cache_keys_lead_with_the_chain
-description: "Every cache of chain data is keyed with the canonical chain-first key (cacheKey in src/cache-store.js), browser caches included; the chain cannot change while a server runs"
+description: "Every cache of chain data is keyed with the canonical chain-first key (cacheKey in src/lib/cache-store.js), browser caches included; the chain cannot change while a server runs"
 metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T16:54:31.724Z
+  modified: 2026-10-24T04:54:55.222Z
 ---
 
 Every cache of chain or price-service data keys its entries with the
 canonical format: the chain's key in chains.json first, then what
 identifies the entry, dash-joined and lower-cased. That is
-`cacheKey(chain, ...parts)` in `src/cache-store.js`, or the canonical
-pool key in `src/pool-key.js` for a pool's identity. This applies to
+`cacheKey(chain, ...parts)` in `src/lib/cache-store.js`, or the canonical
+pool key in `src/lib/pool-key.js` for a pool's identity. This applies to
 memory and disk caches on the server and to the browser's localStorage
 copies of scan results (those end with the chain:
 `9mm_position_store_<chain>`).

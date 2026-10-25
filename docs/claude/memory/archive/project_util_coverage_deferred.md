@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 8264efa3-921c-4733-b040-c9845e2b3a5e
-  modified: 2026-08-05T00:43:40.360Z
+  modified: 2026-10-24T04:54:38.321Z
 ---
 
 **Resolved 2026-08-05.** Every file under `util/` now clears the 80%
@@ -31,7 +31,7 @@ tools' behaviour:
    constants.** `loadConfigOrExit(configPath = CONFIG_PATH)`,
    `_applyMutations(..., paths)`, `main(argv, opts)`. The CLI is
    byte-identical; tests point at a scratch directory. This is the
-   convention `src/cache-store.js` already used (`fsModule` injection).
+   convention `src/lib/cache-store.js` already used (`fsModule` injection).
 
 Test via console capture with `util/diagnostic/test/_capture.js`
 (`captureConsole`, `captureExit`, `fakeProvider`). Extract, never

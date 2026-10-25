@@ -4,17 +4,17 @@
  *   page, then stamps every page and composes the dashboard's: the last
  *   steps of `npm run build`.
  *
- *   The two bundles are the dashboard's (`public/dashboard-init.js` →
- *   `public/dist/bundle.js`) and the User Manual's
- *   (`public/dashboard-manual-figures.js` →
- *   `public/dist/manual-figures.js`). The server lets a browser keep any
+ *   The two bundles are the dashboard's (`src/client/web/dashboard-init.js` →
+ *   `src/client/web/dist/bundle.js`) and the User Manual's
+ *   (`src/client/web/dashboard-manual-figures.js` →
+ *   `src/client/web/dist/manual-figures.js`). The server lets a browser keep any
  *   script for a year, so a page must load each of its scripts under the
  *   build's fresh stamp (`scripts/cache-bust.js`). A module a page loaded
  *   on its own would bring imports no stamp in the page can reach; one
  *   bundle per page puts every module behind one stamped tag. The server
- *   shows the dashboard from `public/dist/index.html`, which
+ *   shows the dashboard from `src/client/web/dist/index.html`, which
  *   `scripts/inline-svgs.js` composes from the stamped
- *   `public/index.html`, so it runs after the stamp.
+ *   `src/client/web/index.html`, so it runs after the stamp.
  *
  *   `--watch`, for `npm run build:watch`, keeps rebuilding both bundles as
  *   their sources change, and ends each rebuild the same way, so a
@@ -25,16 +25,16 @@
 
 const { spawnSync } = require("child_process");
 const esbuild = require("esbuild");
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 
 const BUNDLES = [
   {
-    entryPoints: ["public/dashboard-init.js"],
-    outfile: "public/dist/bundle.js",
+    entryPoints: ["src/client/web/dashboard-init.js"],
+    outfile: "src/client/web/dist/bundle.js",
   },
   {
-    entryPoints: ["public/dashboard-manual-figures.js"],
-    outfile: "public/dist/manual-figures.js",
+    entryPoints: ["src/client/web/dashboard-manual-figures.js"],
+    outfile: "src/client/web/dist/manual-figures.js",
   },
 ];
 

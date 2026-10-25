@@ -20,17 +20,17 @@ const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const util = require("util");
 
-const realLog = require("../src/log");
+const realLog = require("../src/lib/log");
 const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 
 const PATHS = {
-  pools: require.resolve("../src/rebalancer-pools"),
-  swap: require.resolve("../src/rebalancer-swap"),
-  price: require.resolve("../src/price-fetcher"),
-  dust: require.resolve("../src/dust"),
-  gates: require.resolve("../src/swap-gates"),
-  log: require.resolve("../src/log"),
-  correct: require.resolve("../src/rebalancer-correct"),
+  pools: require.resolve("../src/lib/rebalancer-pools"),
+  swap: require.resolve("../src/lib/rebalancer-swap"),
+  price: require.resolve("../src/lib/price-fetcher"),
+  dust: require.resolve("../src/lib/dust"),
+  gates: require.resolve("../src/lib/swap-gates"),
+  log: require.resolve("../src/lib/log"),
+  correct: require.resolve("../src/lib/rebalancer-correct"),
 };
 
 const T0 = "0xT0";
@@ -317,7 +317,7 @@ describe("corrective swap — a round that fails", () => {
      *  The first round's swap confirmed and was paid for; the second
      *  fails. The failure has to carry both, its own and the first
      *  round's, or the record of what the rebalance paid loses the first
-     *  (src/spent-gas.js).
+     *  (src/lib/spent-gas.js).
      */
     const failed = Object.assign(new Error("swap reverted"), {
       gasCostWei: 7n,

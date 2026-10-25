@@ -20,8 +20,8 @@ const path = require("path");
 // ── _applyRebalanceResult: post-rebalance cache clears ─────────────
 
 describe("_applyRebalanceResult — post-rebalance scan trigger", () => {
-  const { _applyRebalanceResult } = require("../src/bot-recorder");
-  const epochCache = require("../src/epoch-cache");
+  const { _applyRebalanceResult } = require("../src/lib/bot-recorder");
+  const epochCache = require("../src/lib/epoch-cache");
 
   // An isolated cache file, outside the install.
   const isolatedDir = fs.mkdtempSync(path.join(os.tmpdir(), "arr-epochs-"));

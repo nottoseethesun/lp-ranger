@@ -1,0 +1,160 @@
+/**
+ * @file src/lib/build-status-positions.js
+ * @module build-status-positions
+ * @description
+ * Builder for the `positions` map in the `GET /api/status` response.
+ * Extracted from `src/lib/server-positions.js` to keep that file under the
+ * 500-line cap.  Pure module — no in-memory state of its own; reads
+ * the live bot states via the supplied `getStates` callback and the
+ * disk config / position-manager via injected references.
+ *
+ * Merges three layers per position key:
+ *   1. `posDefaults`              (server-wide defaults from /api/status)
+ *   2. live bot state (loop 1)    — present only for actively-managed positions
+ *   3. disk config slot           — settings, status, hodlBaseline, etc.
+ *
+ * Loop 2 (stopped / disk-only entries) emits a *terminal sync state*
+ * so the dashboard's syncBadge resolves to "Synced" instead of staying
+ * stuck on "Syncing…" for a position whose bot has retired.  See the
+ * block comment on the loop-2 branch for the full bug-fix rationale.
+ */
+
+"use strict";
+
+const {
+  resolveRangeOverrideEnabled,
+  resolveRebalanceOffsetPct,
+  fullRangeSetting,
+} = require("./range-override");
+const { isAscanRunningOnThisPosition } = require("./scan-state");
+
+/**
+ * Settings keys that flow through to the dashboard for *unmanaged*
+ * positions (so the user sees persisted settings for positions the bot
+ * isn't actively managing, e.g. closed-view or paused positions).
+ */
+const _UNMANAGED_SETTINGS_KEYS = [
+  "impermanentLossGuardPct",
+  "rebalanceOutOfRangeThresholdPercent",
+  "rebalanceTimeoutMin",
+  "rebalanceRangeWidthPct",
+  "fullRangeRebalanceEnabled",
+  "slippagePctToken0",
+  "slippagePctToken1",
+  "minRebalanceIntervalMin",
+  "maxRebalancesPerDay",
+  "priceOverride0",
+  "priceOverride1",
+  "priceOverrideForce",
+  "autoCompoundEnabled",
+  "autoCompoundThresholdUsd",
+  /*- The coins, not a dollar total. The P&L snapshot prices them for the
+   *  panels; this carries the saved figure itself. */
+  "compoundedAmount0",
+  "compoundedAmount1",
+  "lastCompoundAt",
+  "offsetToken0Pct",
+  "rangeOverrideEnabled",
+  "lifetimeStartDateOverrideUtc",
+];
+
+/**
+ * Build the `positions` map for the GET /api/status response: merges
+ * per-position bot state, disk config, and sensible defaults; attaches a
+ * canonical poolKey to every managed entry. Unmanaged positions (in
+ * disk config but not currently running) get a lightweight subset of
+ * their persisted settings so the dashboard UI still has context.
+ *
+ * @param {object} diskConfig   Parsed bot-config (has `.positions` map).
+ * @param {object} posDefaults  Base defaults applied to every entry.
+ * @param {object} positionMgr  Position manager (exposes poolKey()).
+ * @param {object} cfg          Config object with CHAIN_NAME + POSITION_MANAGER.
+ * @param {object} deps         Injected dependencies:
+ *   - `getStates()` → returns the Map of composite-key → bot state
+ *   - `attachPoolKeys(positions, positionMgr, cfg)` → mutates positions
+ * @returns {Record<string, object>}
+ */
+function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg, deps) {
+  const { getStates, attachPoolKeys } = deps;
+  const positions = {};
+  for (const [key, state] of getStates()) {
+    const posConfig = diskConfig.positions[key] || {};
+    positions[key] = { ...posDefaults, ...state, ...posConfig };
+    /*- Publish the RESOLVED Range-override mode, never the raw key.
+     *  The unset-slot rule lives in exactly one place (see
+     *  src/lib/range-override.js) and the dashboard consumes its answer, so
+     *  the badge, the disabled fields, and what the bot actually does at
+     *  rebalance time can never drift apart. */
+    positions[key].rangeOverrideEnabled =
+      resolveRangeOverrideEnabled(posConfig);
+    /*-
+     *  And the offset the next rebalance uses, for the Rebalance Now
+     *  preview: `offsetToken0Pct` above is the saved value alone, which
+     *  the Bot Settings field shows.
+     */
+    positions[key].rebalanceOffsetToken0Pct =
+      resolveRebalanceOffsetPct(posConfig);
+    /*-
+     *  The Full-Range checkbox's flag, the install's default standing in
+     *  for one the position has not saved.
+     */
+    positions[key].fullRangeRebalanceEnabled = fullRangeSetting(posConfig);
+    /*-
+     *  Whether a scan is running on the position, from the one rule the
+     *  server refuses a Rebalance Now and a Compound Now by
+     *  (src/lib/scan-state.js): their dialogs wait on it.
+     */
+    positions[key].scanInProgress = isAscanRunningOnThisPosition(state);
+  }
+  for (const [key, posConfig] of Object.entries(diskConfig.positions)) {
+    if (positions[key]) continue;
+    const s = { ...posDefaults };
+    for (const k of _UNMANAGED_SETTINGS_KEYS)
+      if (posConfig[k] !== undefined) s[k] = posConfig[k];
+    s.rangeOverrideEnabled = resolveRangeOverrideEnabled(posConfig);
+    s.rebalanceOffsetToken0Pct = resolveRebalanceOffsetPct(posConfig);
+    s.fullRangeRebalanceEnabled = fullRangeSetting(posConfig);
+    /*- For positions that the user has explicitly stopped (or that
+     *  auto-retired after a failed re-open attempt), publish a
+     *  terminal sync state.  Rationale: there is no live bot loop
+     *  scanning, so there is nothing for the dashboard to "still be
+     *  syncing" — the scan-complete flags are the bot loop's signal
+     *  to the dashboard, and without them dashboard-data._syncStatus
+     *  paints "Syncing…" forever for a stopped slot.  That stuck
+     *  badge then disables the closed-position Manage button (via
+     *  computeManageUI's syncComplete gate), silently blocking the
+     *  user from re-clicking Manage to retry a re-open with a freshly
+     *  bumped slippage.  Only emit for status=='stopped' so that a
+     *  status=='running' position whose bot loop is still booting
+     *  (e.g. mid-startup-stagger) correctly shows "Syncing…"
+     *  until its real bot state lands in loop 1.  `status` is included
+     *  for diagnostic clarity in the payload — `computeManageUI`
+     *  treats undefined and "stopped" identically (both => not
+     *  running), so it does not change UI logic. */
+    if (posConfig.status === "stopped") {
+      s.status = "stopped";
+      s.rebalanceScanComplete = true;
+      s.lifetimeScanComplete = true;
+    } else if (posConfig.status === "running") {
+      /*- Mid-startup case: disk says this position is under management,
+       *  but its bot loop hasn't booted yet (behind the startup
+       *  stagger — one bot-loop start per CHECK_INTERVAL_SEC/N seconds
+       *  in `src/lib/server-auto-start.js`).  Echo `status: "running"` so
+       *  the dashboard's readiness gate ("N of M managed positions
+       *  loaded" on the All Stats button) counts this slot
+       *  in its denominator instead of treating it as invisible.
+       *  Deliberately do NOT set scan-complete flags — they stay
+       *  false-ish so the gate still reports the position as "not
+       *  ready" until the real bot state lands via loop 1. */
+      s.status = "running";
+    }
+    positions[key] = s;
+  }
+  attachPoolKeys(positions, positionMgr, cfg);
+  return positions;
+}
+
+module.exports = {
+  buildStatusPositions,
+  _UNMANAGED_SETTINGS_KEYS, // exported for tests
+};

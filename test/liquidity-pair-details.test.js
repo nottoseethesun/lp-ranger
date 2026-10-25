@@ -47,10 +47,11 @@ const assert = require("node:assert/strict");
 const {
   ensureInitialResidualData,
   loadInitialResidualData,
+  readBalanceAt,
   _resetForTest,
   _CACHE_PATH,
-} = require("../src/liquidity-pair-details");
-const { liquidityPairScopeKey } = require("../src/cache-store");
+} = require("../src/lib/liquidity-pair-details");
+const { liquidityPairScopeKey } = require("../src/lib/cache-store");
 
 /** Mock ethers module used to inject deterministic balance reads. */
 function _makeEthersStub({ rawBal0, rawBal1, decimals0, decimals1 }) {
@@ -227,8 +228,10 @@ describe("liquidity-pair-details cache", () => {
     };
     try {
       _resetForTest();
-      delete require.cache[require.resolve("../src/liquidity-pair-details")];
-      const fresh = require("../src/liquidity-pair-details");
+      delete require.cache[
+        require.resolve("../src/lib/liquidity-pair-details")
+      ];
+      const fresh = require("../src/lib/liquidity-pair-details");
       await fresh.ensureInitialResidualData(_baseArgs({ refresh: true }));
       assert.equal(
         observed.refresh,
@@ -237,7 +240,9 @@ describe("liquidity-pair-details cache", () => {
       );
     } finally {
       Module._load = _origLoadInner;
-      delete require.cache[require.resolve("../src/liquidity-pair-details")];
+      delete require.cache[
+        require.resolve("../src/lib/liquidity-pair-details")
+      ];
     }
   });
 
@@ -301,5 +306,46 @@ describe("liquidity-pair-details cache", () => {
     assert.equal(data.token0Price, 0);
     assert.equal(data.token1Price, 0);
     assert.equal(data.token0Amount, 1000);
+  });
+});
+
+describe("readBalanceAt", () => {
+  /** A token contract that counts how often it is asked its decimals. */
+  function countingEthers() {
+    const asked = { decimals: 0, blockTags: [] };
+    return {
+      asked,
+      Contract: class {
+        async balanceOf(_owner, opts) {
+          asked.blockTags.push(opts.blockTag);
+          return 2500000n;
+        }
+        async decimals() {
+          asked.decimals++;
+          return 6;
+        }
+      },
+      formatUnits: _makeEthersStub({}).formatUnits,
+    };
+  }
+  const args = (ethersLib, more = {}) => ({
+    tokenAddress: "0x95B30398aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    wallet: "0x4e448400000000000000000000000000000000Cd",
+    blockTag: 777,
+    provider: {},
+    ethersLib,
+    ...more,
+  });
+
+  it("reads the balance at the end of the block, in whole coins", async () => {
+    const ethersLib = countingEthers();
+    assert.equal(await readBalanceAt(args(ethersLib)), 2.5);
+    assert.deepEqual(ethersLib.asked, { decimals: 1, blockTags: [777] });
+  });
+
+  it("does not ask the token its decimals when the caller knows them", async () => {
+    const ethersLib = countingEthers();
+    assert.equal(await readBalanceAt(args(ethersLib, { decimals: 3 })), 2500);
+    assert.equal(ethersLib.asked.decimals, 0);
   });
 });

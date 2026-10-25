@@ -29,7 +29,7 @@ sorted list, reassigned every time the list is written.
 So the app cannot ask "which epoch is missing?" It can only count:
 
 ```js
-// src/epoch-reconstructor.js, isEpochHistoryComplete
+// src/lib/epoch-reconstructor.js, isEpochHistoryComplete
 (closedEpochs?.length || 0) >= closedIds.length
 ```
 

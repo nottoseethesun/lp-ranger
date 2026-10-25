@@ -5,14 +5,14 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-09-20T21:06:56.716Z
+  modified: 2026-10-24T04:55:01.135Z
 ---
 
 Before adding a mechanism, find out how this app already answers that
 class of problem, and use that answer.
 
 **LP Ranger's answer for every money figure is: store the coins, compute
-the dollars where they are shown.** `src/coin-value.js` is the one place
+the dollars where they are shown.** `src/lib/coin-value.js` is the one place
 that multiplication lives; `compoundedAmount0/1` are coins; the Current
 panel's gas is `wei × today's price`; a closed period's gas is that
 period's coins at that period's close day. CLAUDE.md says it outright:

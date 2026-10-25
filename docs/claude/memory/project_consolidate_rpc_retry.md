@@ -5,12 +5,12 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
-  modified: 2026-10-02T22:17:55.710Z
+  modified: 2026-10-24T04:55:01.257Z
 ---
 
 **Status: DONE, 2026-10-02.** All three steps shipped. The duplication
-this file was opened for no longer exists: `src/rpc-walk-order.js` is
-deleted, and no reader outside `src/send-transaction.js` builds a
+this file was opened for no longer exists: `src/lib/rpc-walk-order.js` is
+deleted, and no reader outside `src/lib/send-transaction.js` builds a
 provider or keeps an endpoint list. Everything below is kept as the
 record of what was done and why, not as work outstanding — the one
 thing still worth carrying forward is the shape of the sweep in
@@ -24,7 +24,7 @@ come from `sendTx`. Providers come from exactly three places, so three
 greps settle it:
 
 - builds its own — `buildProvider(` / `new JsonRpcProvider` — expect
-  hits only in `src/send-transaction.js`;
+  hits only in `src/lib/send-transaction.js`;
 - takes one from a signer — `signer.provider` / `runner.provider` —
   fine, because `FailoverNonceManager.provider` returns the managed
   proxy;
@@ -43,7 +43,7 @@ The user's words, in order:
 
 1. *"make the main consolidated failover route properly log one log line
    about success if the previous attempt was a failure and logged as
-   such."* **DONE** — `retryRead` (`src/rpc-read-retry.js`) closes a run
+   such."* **DONE** — `retryRead` (`src/lib/rpc-read-retry.js`) closes a run
    it has logged with one line naming the endpoint that answered and
    whether that endpoint is the one that had been failing. Gated on
    `attempt > 1`. Pinned by `test/rpc-read-retry-recovery-log.test.js`.
@@ -80,7 +80,7 @@ refused to move for blips lasting seconds. So a recovery line saying
 > **Updated 2026-09-12.** Both orchestrators now walk `config.RPC_URLS`
 > rather than a hand-built primary/fallback pair, and both build their
 > providers through `buildProvider`, so their requests are paced by
-> `src/rpc-request-manager.js` like every other. The duplication below is
+> `src/lib/rpc-request-manager.js` like every other. The duplication below is
 > unchanged — only the URL source and provider construction moved.
 
 ## The cost is diagnostic, and it was paid on 2026-10-01
@@ -107,8 +107,8 @@ a log onto each copy now.
 
 The same retry orchestrator shape now exists in two places (and likely more):
 
-- **`src/rebalancer-pools.js` `getPoolState`** (PR #137 / commit `b920a5d`). Iterates `config.RPC_URLS` (the ordered endpoint list), each tried up to `_POOL_STATE_ATTEMPTS_PER_URL` (2) times with `_POOL_STATE_RETRY_DELAY_MS` (3 s) wait between. Builds a fresh provider per attempt via `buildProvider` (so the requests are paced by the global request manager); falls back to the caller-supplied provider when the ethersLib lacks the constructor (test-mock case). On exhaustion throws `PoolStateUnavailableError(attempts, cause)`. Test-only delay override via `_setRetryDelayForTests`.
-- **`src/server-can-reopen.js` `_readBothBalancesWithRetry`** (closed-position-reopen PR / branch `closed-position-reopen-via-manage`). Identical shape: same `config.RPC_URLS` list, same attempts-per-url, same delay default, same `buildProvider`-or-fallback construction, same test setter, throws `WalletReadUnavailableError(attempts, cause)`.
+- **`src/lib/rebalancer-pools.js` `getPoolState`** (PR #137 / commit `b920a5d`). Iterates `config.RPC_URLS` (the ordered endpoint list), each tried up to `_POOL_STATE_ATTEMPTS_PER_URL` (2) times with `_POOL_STATE_RETRY_DELAY_MS` (3 s) wait between. Builds a fresh provider per attempt via `buildProvider` (so the requests are paced by the global request manager); falls back to the caller-supplied provider when the ethersLib lacks the constructor (test-mock case). On exhaustion throws `PoolStateUnavailableError(attempts, cause)`. Test-only delay override via `_setRetryDelayForTests`.
+- **`src/lib/server-can-reopen.js` `_readBothBalancesWithRetry`** (closed-position-reopen PR / branch `closed-position-reopen-via-manage`). Identical shape: same `config.RPC_URLS` list, same attempts-per-url, same delay default, same `buildProvider`-or-fallback construction, same test setter, throws `WalletReadUnavailableError(attempts, cause)`.
 
 The two functions differ only in (a) what they call inside the inner `try` and (b) the error class they throw on exhaustion.
 
@@ -146,7 +146,7 @@ whole parameter list:
 | provider fallback | the caller-passed provider | `providerFactory()` |
 
 So the helper is `withRpcRetry({ fn, tag, ErrorClass, fallbackProvider })`
-in `src/rpc-retry.js`, and both call sites collapse to a few lines. The
+in `src/lib/rpc-retry.js`, and both call sites collapse to a few lines. The
 fallback exists only for test mocks whose ethers lacks the constructor —
 keep it, both rely on it.
 
@@ -167,10 +167,10 @@ keep it, both rely on it.
 ## Audit candidates beyond these two
 
 Before refactoring, grep for similar patterns. Quick mental list:
-- `src/send-transaction.js` — already has its own RPC-failover Proxy + retry layer (`_retrySend` in `src/tx-retry.js`), but that's WRITE-path with nonce considerations; probably orthogonal, don't try to merge.
-- `src/event-scanner.js` — chunk-loop with rate limiting; retry on chunk failure?
-- `src/price-fetcher.js` — has Moralis → GeckoTerminal → DexScreener cascade with its own retry / fallback logic. Different shape (fallback DATA SOURCES not fallback RPCs); probably should stay separate.
-- `src/pool-creation-finder.js` — binary search on `eth_getCode`; deliberately has NO retry. A provider error there means the node cannot serve historical state, and the caller's degraded path (return 0, keep your own floor) is correct and cheap. Leave it alone.
+- `src/lib/send-transaction.js` — already has its own RPC-failover Proxy + retry layer (`_retrySend` in `src/lib/tx-retry.js`), but that's WRITE-path with nonce considerations; probably orthogonal, don't try to merge.
+- `src/lib/event-scanner.js` — chunk-loop with rate limiting; retry on chunk failure?
+- `src/lib/price-fetcher.js` — has Moralis → GeckoTerminal → DexScreener cascade with its own retry / fallback logic. Different shape (fallback DATA SOURCES not fallback RPCs); probably should stay separate.
+- `src/lib/pool-creation-finder.js` — binary search on `eth_getCode`; deliberately has NO retry. A provider error there means the node cannot serve historical state, and the caller's degraded path (return 0, keep your own floor) is correct and cheap. Leave it alone.
 
 The consolidation only makes sense for the SHAPE that appears in `getPoolState` + `_readBothBalancesWithRetry` (per-URL × per-attempt JsonRpcProvider construction). Don't try to unify with the price-source cascade or the sendTx write-path Proxy — those are different concerns.
 

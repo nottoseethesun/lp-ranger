@@ -3,7 +3,7 @@
 /**
  * @file test/pool-already-managed.test.js
  * @description Tests for the one-active-position-per-pool decision in
- *   `src/pool-already-managed.js`.
+ *   `src/lib/pool-already-managed.js`.
  *
  *   The rule exists for attribution: two positions open in the same pool
  *   hold indistinguishable tokens in the same wallet, so gains moving
@@ -24,8 +24,8 @@ const {
   rejectIfPoolManaged,
   poolHoldersForStartUp,
   readPoolOfPosition,
-} = require("../src/pool-already-managed");
-const { PM_ABI } = require("../src/pm-abi");
+} = require("../src/lib/pool-already-managed");
+const { PM_ABI } = require("../src/lib/pm-abi");
 
 const A = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
 const B = "0x57fde0a71132198BBeC939B98976993d8D89D225";
@@ -36,7 +36,7 @@ const WALLET = "0x1111111111111111111111111111111111111111";
  *  chain/contract/wallet the way the server binds it.  Taken from the
  *  real module so these tests break if that rule ever changes, rather
  *  than passing against a private copy. */
-const { createPositionManager } = require("../src/position-manager");
+const { createPositionManager } = require("../src/lib/position-manager");
 const _pm = createPositionManager({ rebalanceLock: null });
 const poolKeyFn = (t0, t1, fee) =>
   _pm.poolKey("pulsechain", "0xCC05", "0xW", t0, t1, fee);

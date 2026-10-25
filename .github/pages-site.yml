@@ -34,27 +34,27 @@ droppedScripts:
 # Pages to publish. `css` names the page-specific stylesheet whose
 # cache-busted href also needs flattening.
 pages:
-  - src: public/help-and-user-manual.html
+  - src: src/client/web/help-and-user-manual.html
     css: help.css
-  - src: public/disclosure.html
+  - src: src/client/web/disclosure.html
     css: help.css
-  - src: public/screenshot-gallery.html
+  - src: src/client/web/screenshot-gallery.html
     css: gallery.css
 
 # Stylesheets and assets copied flat alongside the pages.
 flatAssets:
-  - public/style.css
-  - public/9mm-pos-mgr.css
-  - public/fonts.css
-  - public/help.css
-  - public/gallery.css
-  - public/favicon.png
+  - src/client/web/style.css
+  - src/client/web/9mm-pos-mgr.css
+  - src/client/web/fonts.css
+  - src/client/web/help.css
+  - src/client/web/gallery.css
+  - src/client/web/favicon.png
 
 # Self-hosted fonts. Populated by `npm run copy-fonts`, which the deploy
 # workflow runs; a missing directory degrades to fallback typefaces
 # rather than failing the build.
 fonts:
-  from: public/fonts
+  from: src/client/web/fonts
   to: fonts
   extension: .woff2
 

@@ -25,7 +25,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-token-decimals.js");
+  mod = await import("../src/client/web/dashboard-token-decimals.js");
 });
 
 /** A status for a pool of two 18-decimal coins, with coin 1 forced to 8. */

@@ -10,7 +10,7 @@
  *   key, and on an install upgraded from an older release those can be
  *   addresses that release saved, no longer the ones in use. The row
  *   reads none of them, so they change nothing it shows. Driven through
- *   the open modal on its own markup from public/index.html.
+ *   the open modal on its own markup from src/client/web/index.html.
  */
 
 require("global-jsdom/register");
@@ -77,9 +77,9 @@ before(async () => {
     return { ok: true, status: 200, json: async () => ({}) };
   };
   await learnActiveChain("pulsechain");
-  const providers = await import("../public/dashboard-lp-providers.js");
+  const providers = await import("../src/client/web/dashboard-lp-providers.js");
   await providers.loadLpProviders();
-  stats = await import("../public/dashboard-all-positions-stats.js");
+  stats = await import("../src/client/web/dashboard-all-positions-stats.js");
   const page = indexHtmlDocument();
   document.body.replaceChildren(
     document.importNode(page.getElementById("allPositionsStatsModal"), true),

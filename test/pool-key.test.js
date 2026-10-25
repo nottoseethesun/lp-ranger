@@ -2,7 +2,7 @@
 
 /**
  * @file test/pool-key.test.js
- * @description Tests for `src/pool-key.js`, the one definition of
+ * @description Tests for `src/lib/pool-key.js`, the one definition of
  *   "these two positions are in the same pool".
  *
  *   The point of the module is that BOTH tiers decide with it — the
@@ -19,8 +19,8 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 
-const { poolPairKey, poolKey } = require("../src/pool-key");
-const { createPositionManager } = require("../src/position-manager");
+const { poolPairKey, poolKey } = require("../src/lib/pool-key");
+const { createPositionManager } = require("../src/lib/position-manager");
 const { learnActiveChain } = require("./helpers/active-chain");
 
 const A = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
@@ -32,7 +32,7 @@ let _poolHeldBy;
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a pool.
   await learnActiveChain();
-  const mod = await import("../public/dashboard-manage-ui.js");
+  const mod = await import("../src/client/web/dashboard-manage-ui.js");
   _poolKeyOf = mod._poolKeyOf;
   _poolHeldBy = mod._poolHeldBy;
 });
@@ -78,24 +78,24 @@ test("the server's scoped key is built from this one", () => {
 
 test("the module stays importable from the browser bundle", () => {
   /*- It is dependency-free on purpose: esbuild bundles it into
-   *  public/dist/bundle.js, and a single `require` of anything
+   *  src/client/web/dist/bundle.js, and a single `require` of anything
    *  Node-only would break that build. Guarding the constraint here
    *  rather than waiting for a build failure, because the failure
    *  would surface as a broken dashboard, not a failing test. */
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "src", "pool-key.js"),
+    path.join(__dirname, "..", "src", "lib", "pool-key.js"),
     "utf8",
   );
   const requires = src.match(/\brequire\s*\(/g) || [];
-  assert.deepEqual(requires, [], "src/pool-key.js must import nothing");
+  assert.deepEqual(requires, [], "src/lib/pool-key.js must import nothing");
   const imports = src.match(/^\s*import\s/gm) || [];
-  assert.deepEqual(imports, [], "src/pool-key.js must import nothing");
+  assert.deepEqual(imports, [], "src/lib/pool-key.js must import nothing");
 });
 
 // ── Cross-tier agreement ─────────────────────────────────────────────
 
 test("the key the server publishes equals the key the client builds", () => {
-  /*- `attachPoolKeys` (src/server-positions.js) stamps `poolKey` onto
+  /*- `attachPoolKeys` (src/lib/server-positions.js) stamps `poolKey` onto
    *  every managed entry in GET /api/status, and `_poolHeldBy` compares
    *  the active position's client-built key against it. If the two
    *  spellings ever diverge, nothing throws — the comparison simply

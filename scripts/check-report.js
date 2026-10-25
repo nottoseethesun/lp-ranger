@@ -22,7 +22,7 @@
 
 "use strict";
 
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
@@ -103,6 +103,42 @@ function _knipDetail(knip) {
 }
 
 /**
+ * The unused-module check's result (scripts/check-unused-src-modules.js),
+ * or a result saying it did not run when its file is missing or not
+ * JSON. Its own function, as `_knipDetail` is, to keep `loadResults`
+ * under the complexity ceiling.
+ * @returns {{ok: boolean, entryPoints: number, modules: number,
+ *   unused: string[], error?: string}}
+ */
+function _unusedSrcModulesResult() {
+  const result = _readJson("unused-src-modules.json");
+  if (result !== null) return result;
+  return {
+    ok: false,
+    entryPoints: 0,
+    modules: 0,
+    unused: [],
+    error: "report missing",
+  };
+}
+
+/**
+ * Summarise the unused-module result for the overview table.
+ * @param {{entryPoints: number, modules: number, unused: string[],
+ *   error?: string}} result
+ * @returns {string}  One line, naming up to three modules.
+ */
+function _unusedSrcModulesDetail(result) {
+  if (result.error !== undefined) return `did not run: ${result.error}`;
+  const unused = result.unused;
+  if (unused.length === 0)
+    return `0 unused, ${result.modules} modules reached from ${result.entryPoints} entry points`;
+  const shown = unused.slice(0, 3).join(", ");
+  const more = unused.length > 3 ? ` (+${unused.length - 3} more)` : "";
+  return `${unused.length} unused module(s): ${shown}${more}`;
+}
+
+/**
  * Load and parse all captured raw outputs into a single results object.
  * @returns {object}
  */
@@ -143,6 +179,7 @@ function loadResults() {
    *  `{ files: [...], issues: [...] }`.  A missing or crashed run reads
    *  as no findings, and the exit code is what decides pass/fail. */
   const knip = _readJson("knip.json") || { files: [] };
+  const unusedSrcModules = _unusedSrcModulesResult();
   /*- The checker emits its own JSON, so there is nothing to parse —
    *  just a shape to fall back to when the file is missing. */
   const openapiSync = _readJson("openapi-sync.json") || {
@@ -234,6 +271,10 @@ function loadResults() {
           : `${lintSvg.errors} err across ${lintSvg.files} files`,
     },
     knip: { ok: exitCodes.knip === 0, detail: _knipDetail(knip) },
+    unusedSrcModules: {
+      ok: exitCodes.unusedSrcModules === 0,
+      detail: _unusedSrcModulesDetail(unusedSrcModules),
+    },
     openapiSync: {
       ok: exitCodes.openapiSync === 0,
       detail: openapiSync.ok
@@ -296,6 +337,7 @@ function loadResults() {
     { name: "actionlint", ...checks.actionlint },
     { name: "lint-svg", ...checks.lintSvg },
     { name: "knip (files)", ...checks.knip },
+    { name: "unused-src-modules", ...checks.unusedSrcModules },
     { name: "openapi-sync", ...checks.openapiSync },
     { name: "Config values", ...checks.configValues },
     { name: "Tests", ...checks.tests },
@@ -325,6 +367,7 @@ function loadResults() {
     actionlint,
     lintSvg,
     knip,
+    unusedSrcModules,
     openapiSync,
     npmAudit,
     securityLint,

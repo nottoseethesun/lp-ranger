@@ -17,7 +17,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { stampPage } = require("../scripts/cache-bust");
 
-const PUBLIC = path.join(__dirname, "..", "public");
+const PUBLIC = path.join(__dirname, "..", "src", "client", "web");
 
 describe("stampPage", () => {
   it("stamps every script and stylesheet a page loads, relative or absolute", () => {

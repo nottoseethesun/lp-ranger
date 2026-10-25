@@ -1,7 +1,7 @@
 /**
  * @file scripts/copy-fonts.js
  * @description Copy self-hosted WOFF2 font files from the `@fontsource/*`
- * npm packages into `public/fonts/`. Runs automatically via the
+ * npm packages into `src/client/web/fonts/`. Runs automatically via the
  * `postinstall` lifecycle hook after `npm install` / `npm ci`.
  *
  * Keeping the fonts self-hosted (no CDN) avoids a third-party request
@@ -10,12 +10,12 @@
 
 "use strict";
 
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const DEST = path.join(ROOT, "public", "fonts");
+const DEST = path.join(ROOT, "src", "client", "web", "fonts");
 
 /** WOFF2 files to copy, relative to `node_modules/`. */
 const FONTS = [

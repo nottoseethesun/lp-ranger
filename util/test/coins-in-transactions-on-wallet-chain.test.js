@@ -78,6 +78,33 @@ test("pacedProvider spaces requests and reads each receipt and block once", asyn
     assert.ok(asked[i][2] - asked[i - 1][2] >= 20, `request ${i} waited`);
 });
 
+test("pacedProvider keeps its spacing after a timer that fires late", async () => {
+  /*-
+   *  A busy process runs a timer late. The second request's turn is due
+   *  25 ms after the first, but the event loop is held for 30 ms while it
+   *  waits, so it goes out late; the third must still wait its full
+   *  spacing after the second, not only what is left of the slot the
+   *  second was due in.
+   */
+  const sentAt = [];
+  const inner = {
+    async getTransactionCount() {
+      sentAt.push(Date.now());
+      return 7;
+    },
+  };
+  const paced = pacedProvider(inner, 25);
+  await paced.getTransactionCount(WALLET, 1);
+  setTimeout(() => {
+    const until = Date.now() + 30;
+    while (Date.now() < until);
+  }, 5);
+  await paced.getTransactionCount(WALLET, 2);
+  await paced.getTransactionCount(WALLET, 3);
+  const gap = sentAt[2] - sentAt[1];
+  assert.ok(gap >= 20, `the third request followed the second by ${gap} ms`);
+});
+
 /* ---------- searching by NFT ---------- */
 
 /**

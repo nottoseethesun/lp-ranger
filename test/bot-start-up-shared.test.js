@@ -2,8 +2,8 @@
 
 /**
  * @file test/bot-start-up-shared.test.js
- * @description The headless bot (bot.js) starts the positions saved as
- *   managed through the server's start-up (src/server-auto-start.js), so
+ * @description The headless bot (src/bot.js) starts the positions saved as
+ *   managed through the server's start-up (src/lib/server-auto-start.js), so
  *   the same rules hold without the dashboard: one active position per
  *   pool, and a saved position that cannot be managed comes off the list.
  *   test/server-auto-start.test.js tests those rules. bot.js runs the
@@ -16,12 +16,12 @@ const fs = require("fs");
 const path = require("path");
 
 const SRC = fs
-  .readFileSync(path.join(__dirname, "..", "bot.js"), "utf8")
+  .readFileSync(path.join(__dirname, "..", "src", "bot.js"), "utf8")
   .replace(/\/\*[\s\S]*?\*\//g, "")
   .replace(/\/\/[^\n]*/g, "");
 
 it("starts its saved positions through the server's start-up", () => {
-  assert.match(SRC, /require\("\.\/src\/server-auto-start"\)/);
+  assert.match(SRC, /require\("\.\/lib\/server-auto-start"\)/);
   assert.match(SRC, /createAutoStartManagedPositions\(\{/);
 });
 

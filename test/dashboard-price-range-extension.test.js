@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-price-range-extension.test.js
  * @description Tests for the Price Range Extension row in
- * `public/dashboard-price-range-extension.js`: the Default button, the
+ * `src/client/web/dashboard-price-range-extension.js`: the Default button, the
  * Full-Range checkbox, and the Save button that commits both.
  *
  * The row's contract, which these pin:
@@ -42,11 +42,11 @@ let posted;
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  mod = await import("../public/dashboard-price-range-extension.js");
-  configInputs = await import("../public/dashboard-config-inputs.js");
-  cache = await import("../public/dashboard-data-cache.js");
-  rangeOverride = await import("../public/dashboard-range-override.js");
-  const store = await import("../public/dashboard-positions-store.js");
+  mod = await import("../src/client/web/dashboard-price-range-extension.js");
+  configInputs = await import("../src/client/web/dashboard-config-inputs.js");
+  cache = await import("../src/client/web/dashboard-data-cache.js");
+  rangeOverride = await import("../src/client/web/dashboard-range-override.js");
+  const store = await import("../src/client/web/dashboard-positions-store.js");
   store.posStore.entries.length = 0;
   store.posStore.entries.push({
     tokenId: "157149",
@@ -168,7 +168,7 @@ describe("computeRangeRowPatch — what Save commits", () => {
   it("sends an out-of-range figure rather than dropping it", () => {
     /*- Dropping it here logged "Setting Saved" over a width nothing
      *  stored. It goes to the server, which refuses it by name
-     *  (`src/config-bounds.js`) and has the field put back. */
+     *  (`src/lib/config-bounds.js`) and has the field put back. */
     for (const raw of ["0", "0.05", "201"])
       assert.equal(
         mod.computeRangeRowPatch(raw, false).rebalanceRangeWidthPct,

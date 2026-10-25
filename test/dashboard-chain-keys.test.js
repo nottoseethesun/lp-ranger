@@ -21,7 +21,7 @@ require("global-jsdom/register");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const { learnActiveChain } = require("./helpers/active-chain");
-const { poolKey } = require("../src/pool-key");
+const { poolKey } = require("../src/lib/pool-key");
 
 const WALLET = "0x4e44847675763d5540b32bee8a713cfdcb4be61a";
 const PM = "0xcc05bf158202b4f461ede8843d76dcd7bbad07f2";
@@ -37,12 +37,12 @@ let dataCache;
 let store;
 
 before(async () => {
-  reloadFlow = await import("../public/dashboard-reload-flow.js");
-  rescanPrices = await import("../public/dashboard-rescan-prices.js");
-  deposit = await import("../public/dashboard-data-deposit.js");
-  manageUi = await import("../public/dashboard-manage-ui.js");
-  dataCache = await import("../public/dashboard-data-cache.js");
-  store = await import("../public/dashboard-positions-store.js");
+  reloadFlow = await import("../src/client/web/dashboard-reload-flow.js");
+  rescanPrices = await import("../src/client/web/dashboard-rescan-prices.js");
+  deposit = await import("../src/client/web/dashboard-data-deposit.js");
+  manageUi = await import("../src/client/web/dashboard-manage-ui.js");
+  dataCache = await import("../src/client/web/dashboard-data-cache.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
   /*-
    *  One NFT position, active, as the position store holds it once
    *  restored from the browser's storage at page load — which is before

@@ -1,6 +1,6 @@
 /**
  * @file test/error-log.test.js
- * @description Tests for src/error-log.js writeErrorLog / getErrorLogPath.
+ * @description Tests for src/lib/error-log.js writeErrorLog / getErrorLogPath.
  * Format invariant: every entry starts with exactly four blank lines,
  * followed by `[ISO-timestamp] context` on the fifth line, then the
  * error's stack.  The four-blank-line separator is load-bearing so the
@@ -19,8 +19,8 @@ const {
   clearErrorLog,
   resetErrorLog,
   getErrorLogPath,
-} = require("../src/error-log");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+} = require("../src/lib/error-log");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const LOGGING = require("../app-config/app-defaults-for-user-configurable/logging.json");
 
 function _tmpPath(name) {

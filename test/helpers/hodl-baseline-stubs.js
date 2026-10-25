@@ -29,7 +29,7 @@
 
 "use strict";
 
-const config = require("../../src/config");
+const config = require("../../src/lib/config");
 
 /** A pool address of the right shape, and not the zero sentinel. */
 const POOL_ADDR = "0x" + "11".repeat(20);

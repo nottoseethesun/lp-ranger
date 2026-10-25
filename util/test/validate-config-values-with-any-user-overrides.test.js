@@ -5,7 +5,7 @@
  * diagnostic that checks every setting an install runs on and lists each
  * problem, as the server and the bot do at startup.
  *
- * The verdict itself is src/settings-check.js's, tested in
+ * The verdict itself is src/lib/settings-check.js's, tested in
  * test/settings-check.test.js; these cover the command: its help, the
  * words it prints, and its exit status. Each install is a fixture in a
  * temporary directory, with an empty environment, so the machine running

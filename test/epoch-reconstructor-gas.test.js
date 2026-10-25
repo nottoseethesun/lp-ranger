@@ -23,7 +23,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { _buildClosedEpoch } = require("../src/epoch-reconstructor");
+const { _buildClosedEpoch } = require("../src/lib/epoch-reconstructor");
 const {
   CHAIN_HISTORY_MODULE,
   chainHistoryStub,
@@ -149,11 +149,11 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
       };
     };
     try {
-      delete require.cache[require.resolve("../src/epoch-reconstructor")];
-      const mod = require("../src/epoch-reconstructor");
+      delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
+      const mod = require("../src/lib/epoch-reconstructor");
       /*- Evicted again so the stubbed copy cannot be handed to whoever
        *  requires this module next. */
-      delete require.cache[require.resolve("../src/epoch-reconstructor")];
+      delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
       return mod;
     } finally {
       Module.prototype.require = orig;
@@ -273,7 +273,7 @@ describe("_fetchEpochsFromChain — resolving the gas cost", () => {
     /*- Closes the loop on the real entry point rather than trusting the
      *  links to compose: an unread gas amount shortens the history,
      *  which raises `_epochHistoryIncomplete`, which is the only thing
-     *  that makes the 30-minute timer in src/bot-loop.js try again.
+     *  that makes the 30-minute timer in src/lib/bot-loop.js try again.
      *  Without that last step a withheld epoch stays withheld until a
      *  restart. */
     const mod = withGas({ gasCostWei: null }, 0.02);

@@ -9,7 +9,7 @@
  *   those from the json."
  *
  *   Both names reach the dialogs and the User Manual as help figures
- *   (src/help-figures.js). These cases build both from figures naming a
+ *   (src/lib/help-figures.js). These cases build both from figures naming a
  *   chain and an aggregator that no shipped file names, so copy that
  *   still typed either name in would not say them. A chain with no
  *   aggregator is worded apart: "the" followed by an empty name would
@@ -25,12 +25,19 @@ const BOT = require("../app-config/app-defaults-for-user-configurable/bot-config
 const BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
 const RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 const UI = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-up-scenario.json");
-const SHARED = require("../public/shared-help-content.json");
-const { helpFigures } = require("../src/help-figures");
+const SHARED = require("../src/lib/shared-help-content.json");
+const { helpFigures } = require("../src/lib/help-figures");
 const { render } = require("../scripts/build-manual-content");
 
 const MANUAL = fs.readFileSync(
-  path.join(__dirname, "..", "public", "help-and-user-manual.html"),
+  path.join(
+    __dirname,
+    "..",
+    "src",
+    "client",
+    "web",
+    "help-and-user-manual.html",
+  ),
   "utf8",
 );
 
@@ -53,7 +60,8 @@ function figuresFor(aggregatorName) {
 let buildParamHelp;
 
 before(async () => {
-  ({ buildParamHelp } = await import("../public/param-help-content.js"));
+  ({ buildParamHelp } =
+    await import("../src/client/web/param-help-content.js"));
 });
 
 /** Every section body of one dialog, joined. */

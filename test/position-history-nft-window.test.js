@@ -100,7 +100,7 @@ function _provider() {
 
 /*-
  *  Today, so the history is priced from the fallback prices these tests
- *  pass: an earlier day's unread price stays unread (src/position-history.js),
+ *  pass: an earlier day's unread price stays unread (src/lib/position-history.js),
  *  and what is tested here is the scan windows, which a priced history
  *  is what reaches.
  */
@@ -138,7 +138,7 @@ async function _run({ withClose, extraOpts = {} }) {
   try {
     const { getPositionHistory } = origRequire.call(
       module,
-      "../src/position-history",
+      "../src/lib/position-history",
     );
     _ctx.result = await getPositionHistory(TOKEN_ID, {
       rebalanceEvents: _events({ withClose }),
@@ -147,7 +147,7 @@ async function _run({ withClose, extraOpts = {} }) {
     });
   } finally {
     Module.prototype.require = origRequire;
-    const pcb = origRequire.call(module, "../src/pool-creation-block");
+    const pcb = origRequire.call(module, "../src/lib/pool-creation-block");
     if (typeof pcb._resetForTests === "function") pcb._resetForTests();
   }
   /*- Keep only the Collect / DecreaseLiquidity scans, so the assertions

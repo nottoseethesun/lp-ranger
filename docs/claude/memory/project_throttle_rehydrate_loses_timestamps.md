@@ -5,9 +5,10 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
+  modified: 2026-10-24T04:55:09.182Z
 ---
 
-`src/throttle.js#rehydrate(count)` (around line 259) takes only a
+`src/lib/throttle.js#rehydrate(count)` (around line 259) takes only a
 COUNT and sets `state.dailyCount = count`.  It does NOT restore
 `state.rebTimestamps`.
 
@@ -35,7 +36,7 @@ first.
   - Change `rehydrate(count)` → `rehydrate({ timestamps })`.
   - Populate `state.rebTimestamps = [...timestamps]` and `state.dailyCount = timestamps.length`.
   - Call `_evaluateDoubling()` once at the end of `rehydrate` so the post-restart state correctly reflects any in-flight doubling activation.
-  - Caller in `src/bot-recorder.js` (around line 248–253) already has timestamps via `found.map((e) => e.timestamp * 1000)`; just thread them through.
+  - Caller in `src/lib/bot-recorder.js` (around line 248–253) already has timestamps via `found.map((e) => e.timestamp * 1000)`; just thread them through.
 - Do NOT remove the existing dailyCount-rehydration path — that part
   works correctly and must keep working.
 

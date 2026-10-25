@@ -17,8 +17,8 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
-const config = require("../../src/config");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
+const config = require("../../src/lib/config");
 const {
   RECORD_MARGIN_MS,
   readJson,

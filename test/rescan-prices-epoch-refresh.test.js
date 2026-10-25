@@ -23,8 +23,8 @@ const assert = require("node:assert/strict");
 const {
   _needsPriceFill,
   _needsExitFromChain,
-} = require("../src/position-history");
-const { requestPriceRevalue } = require("../src/server-rescan-prices");
+} = require("../src/lib/position-history");
+const { requestPriceRevalue } = require("../src/lib/server-rescan-prices");
 
 /** A period with both ends dated and both ends already priced. */
 function pricedRecord() {

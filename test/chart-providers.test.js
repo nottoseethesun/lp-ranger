@@ -1,6 +1,6 @@
 /**
  * @file test/chart-providers.test.js
- * @description Unit tests for src/chart-providers.js and the
+ * @description Unit tests for src/lib/chart-providers.js and the
  * GET /api/chart-providers route handler. Covers the happy path
  * against the real chains.json on disk, per-chain blockchain-slug
  * substitution (DexTools' "pulse" vs DexScreener's "pulsechain"),
@@ -19,7 +19,7 @@ const {
   readChartProviders,
   handleChartProviders,
   _buildProvidersList,
-} = require("../src/chart-providers");
+} = require("../src/lib/chart-providers");
 
 describe("chart-providers.readChartProviders — happy path", () => {
   it("returns DexScreener / GeckoTerminal / DexTools entries for pulsechain", () => {

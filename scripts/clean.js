@@ -48,7 +48,7 @@ const {
   waitForServerExit,
   human,
 } = require("./clear-blockchain-scan-cache");
-const { loadMergedDefaults } = require("../src/load-merged-defaults");
+const { loadMergedDefaults } = require("../src/lib/load-merged-defaults");
 const { checkErrorLogPath } = require("./_check-error-log");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -76,10 +76,10 @@ const STATE_FILES = [
  *  server is started without them. All four are gitignored, so a fresh
  *  clone does not have them either. */
 const BUILD_ARTIFACTS = [
-  "public/disclosure-content.js",
-  "public/ui-tokens.css",
+  "src/client/web/disclosure-content.js",
+  "src/client/web/ui-tokens.css",
 ];
-const BUILD_DIRS = ["public/dist", "public/fonts"];
+const BUILD_DIRS = ["src/client/web/dist", "src/client/web/fonts"];
 
 /*-
  *  Log output, where logging.json puts it with any override applied.

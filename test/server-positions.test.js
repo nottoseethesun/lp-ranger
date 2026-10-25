@@ -1,6 +1,6 @@
 /**
  * @file test/server-positions.test.js
- * @description Unit tests for src/server-positions.js.
+ * @description Unit tests for src/lib/server-positions.js.
  *
  * Tests createPerPositionBotState, attachMultiPosDeps,
  * updatePositionState, getAllPositionBotStates, and createPositionRoutes.
@@ -16,9 +16,9 @@ const {
   updatePositionState,
   getAllPositionBotStates,
   createPositionRoutes,
-} = require("../src/server-positions");
-const config = require("../src/config");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+} = require("../src/lib/server-positions");
+const config = require("../src/lib/config");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
 
 // Valid EIP-55 checksummed addresses for composite key tests.
@@ -484,7 +484,7 @@ describe("createPositionRoutes", () => {
     it("preserves prior status=stopped when retry fails", async () => {
       // Failed retry should not promote a previously-stopped position
       // to running on disk.
-      const cfg = require("../src/config");
+      const cfg = require("../src/lib/config");
       const stoppedKey = `pulsechain-${WALLET}-${cfg.POSITION_MANAGER}-77`;
       const dc = makeDiskConfig({
         positions: { [stoppedKey]: { status: "stopped", residuals: { x: 1 } } },

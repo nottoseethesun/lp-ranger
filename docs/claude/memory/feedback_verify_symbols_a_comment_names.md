@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-10-01T01:02:34.072Z
+  modified: 2026-10-24T04:54:55.328Z
 ---
 
 **A comment that names a symbol — a function, module, flag or config key — is a claim, and it must be checked like one.** Before leaving any comment you edited, grep every name in it. If the symbol does not exist, or does not do what the sentence says, fix the sentence.
@@ -23,8 +23,8 @@ The fourth is the instructive one: it was found immediately after *editing that 
 
 ## Re-pointing a sentence at a different file makes every number in it a new claim (2026-09-30)
 
-Correcting "`_waitOrSpeedUp()` in `src/rebalancer.js`" to
-`src/tx-speedup.js` across three docs looked like relocating a pointer.
+Correcting "`_waitOrSpeedUp()` in `src/lib/rebalancer.js`" to
+`src/lib/tx-speedup.js` across three docs looked like relocating a pointer.
 It is not. **The rest of the sentence was written about a different
 implementation, and each of its claims has to be re-checked against the
 new one.** Two were wrong once re-pointed:

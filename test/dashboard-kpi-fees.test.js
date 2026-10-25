@@ -8,6 +8,9 @@
  *   `feesAccrued + compoundedAccrued`. Rendering that as "Fees Earned"
  *   and then adding Fees Compounded counts the compounded portion twice
  *   — on a real position that was $40.76 of the $79.78 Profit shown.
+ *
+ *   An unmanaged position shows no Profit at all, since it can never
+ *   have the compound records Profit needs.
  */
 
 "use strict";
@@ -21,7 +24,7 @@ describe("currentUnclaimedFees", () => {
 
   before(async () => {
     ({ currentUnclaimedFees } =
-      await import("../public/dashboard-data-kpi-fees.js"));
+      await import("../src/client/web/dashboard-data-kpi-fees.js"));
   });
 
   it("reports the unclaimed figure the bot published", () => {
@@ -94,7 +97,7 @@ describe("unmanaged unclaimed fees", () => {
   let remember, read;
 
   before(async () => {
-    const m = await import("../public/dashboard-data-kpi-fees.js");
+    const m = await import("../src/client/web/dashboard-data-kpi-fees.js");
     remember = m.rememberUnmanagedUnclaimedFees;
     read = m.unmanagedUnclaimedFees;
   });
@@ -136,7 +139,7 @@ describe("Current panel composition", () => {
   let kpi;
 
   before(async () => {
-    kpi = await import("../public/dashboard-data-kpi.js");
+    kpi = await import("../src/client/web/dashboard-data-kpi.js");
   });
 
   beforeEach(() => {
@@ -147,6 +150,7 @@ describe("Current panel composition", () => {
       "kpiValue",
       "pnlFees",
       "pnlCompounded",
+      "pnlFeesLeft",
       "pnlGas",
       "pnlPrice",
       "pnlRealized",
@@ -214,13 +218,173 @@ describe("Current panel composition", () => {
     assert.equal(Number(bd.total.toFixed(2)), 144.21, "Net P&L must not move");
     assert.equal(bd.fees, 0.27, "the dialog shows the same unclaimed figure");
   });
+
+  it("adds the fees a compound left in the wallet to Profit and to Net P&L, on their own line", () => {
+    /*-
+     *  The user, 2026-10-23: "The Compound knows the total of coins so of
+     *  course, that should show up in Current." They are in neither fee
+     *  row nor the IL/G, which counts no coin in the wallet, and outside
+     *  Current Value, so Net P&L adds them too: once a later compound
+     *  sweeps them in, Initial Deposit for This LP counts them among the
+     *  wallet's coins it took (src/lib/current-lp-deposit.js), so they
+     *  still count once.
+     *  Profit = 0.27 + 40.76 + 5.00 - 0.28 + (-1.72) = 44.03
+     *  Net P&L = (3143.94 - 3000) + 0.27 + 0 + 5.00 = 149.21
+     */
+    const snap = {
+      liveEpoch: { fees: 41.03, gas: 0 },
+      currentFeesUsd: 0.27,
+      currentCompoundedUsd: 40.76,
+      currentFeesLeftUsd: 5,
+      currentGasUsd: 0.28,
+      currentValue: 3143.94,
+      totalIL: -1.72,
+    };
+    kpi._applySnapshotKpis({ pnlSnapshot: snap }, 3000, 0);
+    assert.equal(usd("pnlFeesLeft"), 5);
+    assert.equal(usd("pnlCompounded"), 40.76, "Fees Compounded unchanged");
+    assert.equal(usd("curProfit"), 44.03);
+    const bd = kpi.getCurBreakdown();
+    assert.equal(Number(bd.total.toFixed(2)), 149.21, "Net P&L counts them");
+    assert.equal(bd.feesLeft, 5, "and the dialog shows them on their row");
+  });
+
+  it("shows a dash on the line when no compound left any", () => {
+    kpi._applySnapshotKpis(
+      { pnlSnapshot: { currentFeesUsd: 0.27, currentFeesLeftUsd: 0 } },
+      0,
+      0,
+    );
+    assert.equal(
+      document.getElementById("pnlFeesLeft").textContent.includes("—"),
+      true,
+    );
+  });
+});
+
+describe("the Current panel's Initial Deposit for This LP", () => {
+  /*-
+   *  The coins the NFT was minted with, $3,000 at its mint, and the
+   *  wallet's coins its compounds took in beyond their fees, $500 at
+   *  their compounds' prices (`currentDepositAddedUsd`,
+   *  src/lib/current-lp-deposit.js). Current Value holds both.
+   */
+  let kpi;
+  before(async () => {
+    kpi = await import("../src/client/web/dashboard-data-kpi.js");
+  });
+
+  const status = (snap, over = {}) => ({
+    _hasPositionData: true,
+    hodlBaseline: { entryValue: 3000 },
+    pnlSnapshot: {
+      currentValue: 3600,
+      currentFeesUsd: 0.5,
+      currentDepositAddedUsd: 500,
+      currentFeesLeftUsd: 5,
+      ...snap,
+    },
+    ...over,
+  });
+
+  it("counts the wallet's coins the NFT's compounds took in, with the coins it was minted with", () => {
+    assert.equal(kpi._resolveCurDeposit(status()), 3500);
+  });
+
+  it("keeps those coins out of Net P&L, and adds the fees left in the wallet", () => {
+    // (3600 - 3500) + 0.50 unclaimed + 0 realized + 5.00 left = 105.50
+    const t = kpi._resolveKpiTotals(status());
+    assert.equal(t.curDep, 3500);
+    assert.equal(Number(t.curTotal.toFixed(2)), 105.5);
+  });
+
+  it("adds them to the minted coins at the prices when the bot started, where the mint's are missing", () => {
+    const d = status(
+      { liveEpoch: { entryValue: 2900 } },
+      { hodlBaseline: null },
+    );
+    assert.equal(kpi._resolveCurDeposit(d), 3400);
+  });
+
+  it("is nothing while neither figure for the minted coins is known", () => {
+    assert.equal(kpi._resolveCurDeposit(status({}, { hodlBaseline: null })), 0);
+  });
+});
+
+describe("an unmanaged position's Profit", () => {
+  /*-
+   *  The user, 2026-10-23: "An Unmanaged Position should not show any
+   *  Profit figure, because it simply can never have the required info."
+   *  Profit needs LP Ranger's record of each compound, kept only while
+   *  LP Ranger manages the position.
+   */
+  let kpi;
+  let unmanaged;
+
+  before(async () => {
+    kpi = await import("../src/client/web/dashboard-data-kpi.js");
+    unmanaged = await import("../src/client/web/dashboard-unmanaged-apply.js");
+  });
+
+  beforeEach(() => {
+    document.body.innerHTML = [
+      "kpiValue",
+      "pnlFees",
+      "pnlCompounded",
+      "pnlFeesLeft",
+      "pnlGas",
+      "pnlPrice",
+      "kpiPnl",
+      "curProfit",
+      "curIL",
+      "pnlRealized",
+    ]
+      .map((id) => '<div id="' + id + '"></div>')
+      .join("");
+  });
+
+  const text = (id) => document.getElementById(id).textContent;
+
+  it("shows no figure from the first step, whatever its answer carries", () => {
+    // The dash the fetch puts on every card before asking.
+    document.getElementById("curProfit").textContent = "—";
+    unmanaged._applyCurrentKpis({
+      value: 100,
+      feesUsd: 2,
+      il: 30,
+      profit: 32,
+      netPnl: 5,
+    });
+    assert.equal(text("curProfit"), "—");
+    assert.ok(text("curIL").includes("30"), "the IL/G still shows");
+  });
+
+  it("puts the dash back on each status answer, over a figure from managing it", () => {
+    kpi._setProfitKpi("curProfit", 12, 0.5, -1);
+    assert.ok(text("curProfit").includes("10.50"), "the managed figure");
+    kpi._applyUnmanagedSnapshotOverlay({
+      pnlSnapshot: {
+        currentCompoundedUsd: 10,
+        currentFeesLeftUsd: 1,
+        currentGasUsd: 0.5,
+      },
+    });
+    assert.equal(text("curProfit"), "—");
+    assert.ok(text("pnlCompounded").includes("10"), "the lines above it show");
+  });
+
+  it("puts the dash back before the second step's figures arrive, too", () => {
+    kpi._setProfitKpi("curProfit", 12, 0.5, -1);
+    kpi._applyUnmanagedSnapshotOverlay({});
+    assert.equal(text("curProfit"), "—");
+  });
 });
 
 describe("Lifetime Net P&L", () => {
   let kpi;
 
   before(async () => {
-    kpi = await import("../public/dashboard-data-kpi.js");
+    kpi = await import("../src/client/web/dashboard-data-kpi.js");
   });
 
   /** A lifetime snapshot: $1,000 deposited, prices flat. */

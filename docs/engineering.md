@@ -18,7 +18,7 @@ For a higher-level overview of how the bot and dashboard cooperate, see
 documented interactively via Scalar — see the
 [API Documentation](#api-documentation) section below for how to start it.
 The execution entry point itself is described in the
-[`server.js`](#serverjs) section below, which walks through the startup
+[`src/server.js`](#srcserverjs) section below, which walks through the startup
 sequence.
 
 ---
@@ -46,6 +46,12 @@ sequence.
   - [How a Scan Fills a File](#how-a-scan-fills-a-file)
   - [When a File Changes](#when-a-file-changes)
   - [What Reads the Files](#what-reads-the-files)
+- [Deposit Count](#deposit-count)
+- [Activity Log Figures](#activity-log-figures)
+  - [Rebalance: Impermanent Loss/Gain](#rebalance-impermanent-lossgain)
+  - [Compound: Percent Gain for Position](#compound-percent-gain-for-position)
+  - [One Entry per Transaction](#one-entry-per-transaction)
+  - [Limitations of the Figures](#limitations-of-the-figures)
 - [Per-NFT Scan Windows](#per-nft-scan-windows)
   - [Cost](#cost)
   - [Batched chain reads](#batched-chain-reads)
@@ -69,7 +75,7 @@ sequence.
 - [Security](#security) → [`docs/security.md`](security.md)
 - [Check Report Artifacts](#check-report-artifacts)
 - [API Documentation](#api-documentation)
-- [`server.js`](#serverjs)
+- [`src/server.js`](#srcserverjs)
 - [Reading Configuration Values](#reading-configuration-values)
 - [RPC Failover](#rpc-failover)
 - [RPC Reachability at Startup](#rpc-reachability-at-startup)
@@ -196,7 +202,7 @@ or the position's lifetime.
 | Per-position bot state | `server-positions.js` | The mutable record one loop writes and `GET /api/status` serves. The only channel from bot to dashboard. |
 | P&L tracker | `pnl-tracker.js` | Closed epochs plus one live epoch. Persisted by pool identity, so it survives the rebalances that change tokenIds. |
 | Throttle | `throttle.js` | Minimum interval, daily cap, doubling window. One per position, so a volatile pool cannot slow a quiet one. |
-| Residual tracker | `residual-tracker.js` | Per-pool leftovers across rebalances. Feeds both the IL/G credit and the cleanup sweep. |
+| Residual tracker | `residual-tracker.js` | Per-pool leftovers across rebalances, capped at the wallet's balance. Feeds the residual value in the dialog shown after a rebalance; the Lifetime IL/G's credit and the cleanup sweep read the wallet's balances instead. |
 | Rebalance lock | `rebalance-lock.js` | One async mutex. One wallet means one nonce, so only one position may send at a time. |
 | RPC request queue | `rpc-request-manager.js` | One FIFO queue. Every JSON-RPC request in the process leaves on its schedule, whichever provider issued it. |
 | Shared signer | via `getSharedSigner` | One NonceManager for the wallet. Per-position signers would keep separate counters and collide. |
@@ -226,8 +232,9 @@ the app is doing.
 **Synced also means the state is on disk.** Setting the flag writes the
 position's config, so a position showing Synced has its baseline and
 totals persisted and is safe to shut down, best with
-`npm run gentle-stop`, which waits out any rebalance or compound under
-way. Ctrl+C and `npm stop`, which share a shutdown handler, do not wait.
+`npm run gentle-stop`, which waits out any rebalance, compound or scan
+under way. Ctrl+C and `npm stop`, which share a shutdown handler, do not
+wait.
 
 #### Start from Fresh Installation
 
@@ -352,7 +359,7 @@ one active position per pool, so each pool keeps its open position, or
 the first listed if none is open. One whose owner or pool could not be
 read is not started, since nothing then shows its pool free; it stays on
 the list for the next launch, as does one that merely fails to start.
-The headless bot (`bot.js`) starts its listed positions through the
+The headless bot (`src/bot.js`) starts its listed positions through the
 same start-up.
 
 Positions start staggered rather than together. With the default poll
@@ -361,7 +368,7 @@ both their polling and their scans instead of firing every request at
 once. While the start-up runs, the dashboard's badge reads Syncing for
 every position and the server refuses a Manage or a wallet import, since
 either would start positions alongside the ones still waiting their
-turn (`src/app-phase.js`).
+turn (`src/lib/app-phase.js`).
 
 Each position then runs the same sequence as a fresh one, with two
 differences that account for the speed:
@@ -404,8 +411,8 @@ Every USD figure is a token amount times a token price. Current prices
 come from up to three services, tried in priority order behind an
 in-memory cache (two minutes as shipped). Historical prices, a token's
 price at a past block, come from Moralis or GeckoTerminal. Implementation
-lives in [`src/price-fetcher.js`](../src/price-fetcher.js), with the
-services in [`src/price-sources-current.js`](../src/price-sources-current.js).
+lives in [`src/lib/price-fetcher.js`](../src/lib/price-fetcher.js), with the
+services in [`src/lib/price-sources-current.js`](../src/lib/price-sources-current.js).
 
 ### Current Prices
 
@@ -473,7 +480,7 @@ to re-query historical price APIs for events that have already occurred.
 
 The free GeckoTerminal API allows 30 calls/min. A centralized sliding-window
 rate limiter (`geckoRateLimit()` in
-[`src/gecko-rate-limit.js`](../src/gecko-rate-limit.js)) is applied to
+[`src/lib/gecko-rate-limit.js`](../src/lib/gecko-rate-limit.js)) is applied to
 **every** GeckoTerminal call and is shared between `price-fetcher.js` and
 `gecko-pool-cache.js` so all callers (HODL baseline, epoch reconstruction,
 position history, pool-orientation bootstraps) draw from a single budget.
@@ -483,17 +490,17 @@ If the window is full the caller automatically waits until a slot opens.
 
 Current-price results are cached with a configurable TTL (default 120 s,
 see `priceCacheTtlMs` below), keyed by the canonical `chain-token`
-(`cacheKey` in `src/cache-store.js`). Historical prices have their own
+(`cacheKey` in `src/lib/cache-store.js`). Historical prices have their own
 disk-backed cache in `app-data/scan-cache/historical-price-cache.json`, with no TTL since
 a past price never changes. It is keyed by chain, token, and the block
 (`@<block>`) or, for a caller without one, the UTC day
-(`src/price-cache.js`), so it survives restarts and serves every pool
+(`src/lib/price-cache.js`), so it survives restarts and serves every pool
 that holds the token.
 
 Each write of that cache, and of GeckoTerminal's pool cache
-(`src/gecko-pool-cache.js`), reads the file as it is at that moment. It
+(`src/lib/gecko-pool-cache.js`), reads the file as it is at that moment. It
 lays all of the process's entries over it, and replaces the file whole
-(`src/shared-json-file.js`). The text goes into a folder `fs.mkdtempSync`
+(`src/lib/shared-json-file.js`). The text goes into a folder `fs.mkdtempSync`
 makes beside the file, with a name no other process gets, and is then
 renamed over the old file. So a write keeps every entry the file held
 when it read it, which lets LP Ranger and a tool under `util/` that
@@ -513,14 +520,14 @@ cannot cross from one mounted filesystem to another.
 
 To stay under price-source quotas, `fetchTokenPriceUsd` and
 `fetchDustUnitPriceUsd` are gated at the public API of
-`src/price-fetcher.js` whenever nobody needs them. `fetchHistoricalPriceGecko`
+`src/lib/price-fetcher.js` whenever nobody needs them. `fetchHistoricalPriceGecko`
 is never gated.
 
 **Pause sources** (each can pause on its own):
 
 - **Server idle** — every `/api/*` request except `/health` resets the
   countdown; after 15 min without one the server pauses itself.
-- **Browser idle** — `public/dashboard-idle.js` posts pause after 15 min
+- **Browser idle** — `src/client/web/dashboard-idle.js` posts pause after 15 min
   of no input; the next activity (focus, a click, mouse movement, the
   wheel, a key, a touch or a pointer press) posts unpause through a
   handler throttled to once per 500 ms.
@@ -528,7 +535,7 @@ is never gated.
   runs inside `withFreshPricesAllowed(...)`, which bypasses both the pause
   flag and cache TTL for the duration and restores prior state on exit
   (success or thrown).
-- **Headless `bot.js`** — starts paused by default; opt out with
+- **Headless `src/bot.js`** — starts paused by default; opt out with
   `--start-with-price-lookups-unpaused`.
 
 `/api/*` traffic resets the server idle countdown but does NOT auto-unpause;
@@ -570,8 +577,8 @@ next poll after activity returns — without a gate, returning to a long-
 untouched tab triggers a backlog of jingles in quick succession (observed
 during burn-in).
 
-`public/dashboard-sounds.js` `playSound()` reads `isBrowserPaused()` from
-`public/dashboard-idle.js` and skips playback while the browser-side
+`src/client/web/dashboard-sounds.js` `playSound()` reads `isBrowserPaused()` from
+`src/client/web/dashboard-idle.js` and skips playback while the browser-side
 idle flag is `true`. `playSoundAlways()` (About Easter Egg, LP/Ranger
 title tune) is intentionally unaffected — those fire on explicit user
 clicks, and any click is itself an activity event that flips
@@ -580,7 +587,7 @@ runs.
 
 The browser idle flag is independent of the move-scope bypass
 (`withFreshPricesAllowed`). That bypass lives entirely server-side in
-`src/price-fetcher-gate.js` and never touches the browser, so an auto-
+`src/lib/price-fetcher-gate.js` and never touches the browser, so an auto-
 rebalance or compound that runs while the user is away leaves the
 browser still paused and the gate suppresses the corresponding sound
 until the user returns.
@@ -588,7 +595,7 @@ until the user returns.
 `isBrowserPaused` alone does not catch system-suspend or tab-discard:
 when JS execution freezes the 3 s polling stops, the seen-maps stay
 stale, and on wake the next poll fires sounds for every event the bot
-recorded during sleep. `public/dashboard-idle.js` `_uiLastWokeUpAtMS`
+recorded during sleep. `src/client/web/dashboard-idle.js` `_uiLastWokeUpAtMS`
 advances inside `_onActivity` when an activity event (`focus` arriving
 first) lands after a gap exceeding `PAUSE_AFTER_NO_INPUT_MS` (15 min);
 the exported `isStaleForUiPurposes(eventMs)` consulted by
@@ -603,7 +610,8 @@ A ceiling on how much impermanent loss a position may carry before the
 bot stops rebalancing it, since a rebalance locks that loss in. Before
 every **automatic** rebalance the guard compares the hypothetical
 post-rebalance position against holding the coins the NFT currently
-held was minted with, valued at today's prices, and rejects the
+held was minted with, and those put into it since, valued at today's
+prices, and rejects the
 rebalance when the projection falls more than `impermanentLossGuardPct`
 below holding. That comparison is the Current panel's IL/G for the NFT,
 and the guard reads it rather than working it out again. Holding is
@@ -616,12 +624,12 @@ both coins shared.
 
 **Read-only by construction.** Both inputs come from the poll cycle's
 figures — `snap.totalIL` and the minted coins and prices it was measured
-with, `snap.ilInputs`, both from `_computeIL` (`src/bot-pnl-il.js`)
+with, `snap.ilInputs`, both from `_computeIL` (`src/lib/bot-pnl-il.js`)
 inside `updatePnlAndStats` — so evaluating the guard sends no
-transaction. Holding is `hodlValueUsd` (`src/il-calculator.js`), the
+transaction. Holding is `hodlValueUsd` (`src/lib/il-calculator.js`), the
 same expression IL/G uses; the projection is holding plus `totalIL`. The
 gate runs among the rebalance gates (`gatesFromGuard`,
-`src/bot-cycle-gates.js`), which return before `executeRebalance` is
+`src/lib/bot-cycle-gates.js`), which return before `executeRebalance` is
 called, so there is no path from a rejection to `decreaseLiquidity` or
 `collect`. A rejected position is left exactly as it was found.
 `test/il-guard.test.js` drives the gate with a `deps` whose provider and
@@ -634,14 +642,26 @@ last prices fetched, of any age, and a rebalance is due because the
 price has moved, so an old price makes the loss look smaller. Once every
 gate before the guard has passed and the guard will measure, the figures
 are worked out again with fresh prices (`snapForGuard`,
-`src/bot-cycle-gates.js`): one more price lookup per rebalance the bot is
+`src/lib/bot-cycle-gates.js`): one more price lookup per rebalance the bot is
 about to make.
+
+**An even comparison.** The guard compares the position as it was
+minted against the same position rebalanced, the user's ruling
+(2026-10-23): "If you add in residual coins, it's not an even
+comparison." So it counts no coin in the wallet: neither a rebalance's
+leftovers nor a deposit waiting there is on either side, and the guard
+needs no deposit count before it measures. Coins put into the NFT after
+its mint are in its LP value, so they count on the holding side too: the
+wallet's coins a compound's deposit took in beyond its fees, from the
+compound's record (`walletCoinsPutIn`, `src/lib/compounded-coins.js`).
+Measured on the wallet's coins instead, a deposit left out of holding
+would hide a loss of its own size, and one counted on both sides would
+still shrink the loss as a share of holding.
 
 **Slippage is excluded.** A rebalance moves the same dollars from one
 tick range to another, so the projection is the position's present worth:
-its LP value plus the pool-scoped wallet residual that the rebalance
-would fold back in. The fees this NFT has compounded come off it, as they
-do in IL/G: compounding raises the liquidity while holding stays at the
+its LP value. The fees this NFT has compounded come off it, as they do
+in IL/G: compounding raises the liquidity while holding stays at the
 minted coins, so counting them would let earnings hide a loss.
 
 **Two consequences.** First, the bot cannot clear a rejection itself.
@@ -656,6 +676,21 @@ means the position is out of range and earning nothing.
 **Skipped for manual rebalances.** Like every other gate in
 `_checkRebalanceGates`, a user-forced **Rebalance Now** bypasses it — and
 that path already shows its own impermanent-loss confirmation.
+
+**Skipped for an empty position.** A rebalance whose mint fails after the
+drain leaves the NFT empty and the coins in the wallet, and the bot
+retries the mint as an automatic rebalance (`rebalanceFailedMidway`,
+`src/lib/bot-loop.js`). The guard stands aside while the position holds no
+liquidity (`isThisPositionDrained`, `src/lib/position-drained.js`, the user's
+decision, 2026-10-23), before its backoff, so a wait left by an earlier
+rejection holds no mint either. The rebalance passed the guard before it
+drained, and the drain locked the loss in. Measured, the guard would read
+the empty position as worth nothing, since it counts no coin in the
+wallet, and turn the mint down with a 100% loss, leaving the coins idle;
+with this NFT's compounded fees the projection came out below zero, which
+it treated as no figure, so the outcome hung on whether the NFT had
+compounded. `ilGuardWillMeasure` answers the same, so the poll takes no
+fresh prices for it.
 
 **Fails open.** A guard percentage outside its bounds, a projection that
 cannot be computed, or minted coins the mint scan has not read yet all
@@ -716,10 +751,10 @@ accepted; the shipped file is held to it; and `evaluateIlGuard` applies
 no guard to a figure outside it.
 
 The shipped default layers env-over-JSON like every tunable around it
-(see the `src/config.js` header): shipped default, operator override,
+(see the `src/lib/config.js` header): shipped default, operator override,
 then `IMPERMANENT_LOSS_GUARD_PCT` on top. That layer is what makes the
 setting reachable on a headless install, where there is no Bot
-Configuration panel to press Save in. `src/il-guard.js` reads the same
+Configuration panel to press Save in. `src/lib/il-guard.js` reads the same
 `config.IMPERMANENT_LOSS_GUARD_PCT` export for its own fallback, so the
 badge and the enforced threshold resolve through one expression.
 
@@ -733,7 +768,7 @@ position data arrives. Retry pacing is the server-internal
 layered defaults file only, like `residualCleanup`.
 
 Note that `readConfigValue` returns `undefined` for a key never saved and
-does **not** consult the layered defaults file — `src/il-guard.js` applies
+does **not** consult the layered defaults file — `src/lib/il-guard.js` applies
 the shipped default itself, the way `bot-cycle-opts.js` does for slippage
 and approval multiple. Without that the guard would be inert on every
 position until the user pressed Save.
@@ -757,7 +792,7 @@ something real:
 
 ### What recovery does
 
-`_handleRecovery` in [`src/bot-loop.js`](../src/bot-loop.js) restores
+`_handleRecovery` in [`src/lib/bot-loop.js`](../src/lib/bot-loop.js) restores
 normal operation in one step:
 
 | Cleared or restored | Effect |
@@ -789,16 +824,15 @@ result.inRange === true &&
 ```
 
 The alternative — "no rebalance, no error, no deferral" — looks
-equivalent and is not. A poll can decline to rebalance for at least nine
+equivalent and is not. A poll can decline to rebalance for at least eight
 distinct reasons, and most return a shape that names no reason at all:
 
 | Result shape | Returned by |
 | --- | --- |
 | `{rebalanced: false}` | throttle, pool daily cap, dry run, aborted-and-drained short-circuit, drain timer |
 | `{…, withinThreshold: true}` | out of range but inside the OOR threshold |
-| `{…, priceVolatile: true}` | volatile-price deferral |
+| `{…, priceVolatile: true}` | a rebalance the price outran, held for the owner |
 | `{…, scanRunning: true}` | scan in progress |
-| `{…, swapBackoff: true}` | swap backoff |
 
 A negative test reads every row above as a recovery. It would also need a
 new clause each time a gate is added, and the failure mode of forgetting
@@ -807,7 +841,7 @@ one is silent.
 ### Why `inRange` can be trusted
 
 `inRange` is set by `_checkRangeAndThreshold`
-([`src/bot-cycle.js`](../src/bot-cycle.js)), which runs **before** every
+([`src/lib/bot-cycle.js`](../src/lib/bot-cycle.js)), which runs **before** every
 execution gate. No blocked result can carry it, so asserting it needs no
 clause per gate — the gates all run downstream.
 
@@ -882,11 +916,11 @@ unclaimed fees and lifetime P&L.
 ## Dust Threshold
 
 Every "is this amount small enough to ignore?" decision in the rebalancer
-routes through one utility: [`src/dust.js`](../src/dust.js). Callers never
+routes through one utility: [`src/lib/dust.js`](../src/lib/dust.js). Callers never
 hardcode a literal USD number — they `await isDust(usdAmount)` (or read
 `getDustThresholdUsd()` for the live value). The primary consumer today is
 the post-rebalance corrective-swap loop in
-[`src/rebalancer-correct.js`](../src/rebalancer-correct.js), which stops
+[`src/lib/rebalancer-correct.js`](../src/lib/rebalancer-correct.js), which stops
 iterating once the remaining imbalance drops below threshold.
 
 ### Pegged to a Reference Asset, Not to USD
@@ -919,10 +953,10 @@ price scale. Do NOT edit the file in
 ### Live USD/unit Resolution
 
 `fetchDustUnitPriceUsd()` in
-[`src/price-fetcher.js`](../src/price-fetcher.js) walks the
+[`src/lib/price-fetcher.js`](../src/lib/price-fetcher.js) walks the
 `priceSourceTokens` list in order. For each token it tries Moralis first,
 then DexScreener. The first non-zero result wins. Results are cached with a
-dedicated TTL (`getDustUnitPriceCacheTtlMs`, `src/price-fetcher-gate.js`)
+dedicated TTL (`getDustUnitPriceCacheTtlMs`, `src/lib/price-fetcher-gate.js`)
 so repeated `isDust()` calls during a single rebalance don't hammer the
 price APIs.
 
@@ -938,7 +972,7 @@ The guard is designed to never silently disable itself:
   message names the setting. A threshold that is text, zero or less
   would let no amount compare below it, so the guard would call nothing
   dust. The rule is the one the shipped-values test holds the file to
-  (`src/value-kinds.js`).
+  (`src/lib/value-kinds.js`).
 - If every price source returns zero, `getDustThresholdUsd()` falls back
   to the file's `fallbackThresholdUsd` ($1.00 as shipped) — a fixed floor
   rather than an open gate — and flags `usedFallback: true` so callers
@@ -955,13 +989,13 @@ Both prefer a closed door over an open one: with no network,
 compound, cumulative impermanent loss/gain — are computed from the on-chain
 history of the wallet's position NFTs. The question of **how far back to
 scan** is answered by three layered bounds, resolved in order by
-[`src/event-scanner.js`](../src/event-scanner.js):
+[`src/lib/event-scanner.js`](../src/lib/event-scanner.js):
 
 1. **The lookback** (the outer bound)
 
    `historyLookbackYears` in `bot-config-defaults.json` (5 as shipped),
    turned into blocks at the active chain's `blockTimeSec` in
-   `chains.json` by [`src/history-lookback.js`](../src/history-lookback.js):
+   `chains.json` by [`src/lib/history-lookback.js`](../src/lib/history-lookback.js):
 
    ```text
    BLOCKS_PER_YEAR = round((365.25 * 24 * 3600) / blockTimeSec)  (3,155,760 at 10 s)
@@ -1024,12 +1058,18 @@ scan** is answered by three layered bounds, resolved in order by
 
    The cache is **not** invalidated on rebalance. A successful rebalance
    appends its own record to the file, sets `_needsFullRescan`
-   (`src/bot-recorder.js`) and starts the scan at once
-   (`src/bot-cycle.js`), running the event and lifetime scans together.
-   The `lifetimeRescanTimer` in `src/bot-loop.js`, every
+   (`src/lib/bot-recorder.js`) and starts the scan at once
+   (`src/lib/bot-cycle.js`), running the event and lifetime scans together.
+   The `lifetimeRescanTimer` in `src/lib/bot-loop.js`, every
    `poll.lifetimeRescanCheckMs` (30 minutes as shipped), retries a scan
-   that did not finish. `clearPoolCache()` runs only from the Reload
-   Current Position handler (`src/server-reload-position.js`).
+   that did not finish. The request lives in memory, so a stop before
+   the scan finishes drops it. A start therefore also recounts the
+   deposits whenever the count stops short of the current NFT's mint,
+   its `lastBlock` below the mint block (`depositsBehind`,
+   `lifetimeScanPlan` in `src/lib/bot-recorder-lifetime.js`), so the coins
+   that rebalance swept in still reach Total Lifetime Deposit.
+   `clearPoolCache()` runs only from the Reload Current Position handler
+   (`src/lib/server-reload-position.js`).
 
 In short: **we start as far back as the lookback (five years as
 shipped), but never before the pool itself was created, and never before
@@ -1039,13 +1079,13 @@ the last cached scan.** The three bounds compose, so the actual
 
 See also:
 
-- [`src/event-scanner.js`](../src/event-scanner.js) — scanner entry point
+- [`src/lib/event-scanner.js`](../src/lib/event-scanner.js) — scanner entry point
   and cache integration
-- [`src/pool-scanner.js`](../src/pool-scanner.js) — per-pool locking and
+- [`src/lib/pool-scanner.js`](../src/lib/pool-scanner.js) — per-pool locking and
   scan orchestration
-- [`src/epoch-reconstructor.js`](../src/epoch-reconstructor.js) — turns
+- [`src/lib/epoch-reconstructor.js`](../src/lib/epoch-reconstructor.js) — turns
   rebalance events into P&L epochs
-- [`src/cache-store.js`](../src/cache-store.js) — disk cache with TTL
+- [`src/lib/cache-store.js`](../src/lib/cache-store.js) — disk cache with TTL
 
 ---
 
@@ -1081,7 +1121,7 @@ digits and the two coins to their first eight, all in lower case. The
 fee tier is in millionths, so 2500 is 0.25%. For example,
 `event-cache-pulse-cc05bf-111111-95b30398-a1077a29-2500.json` is the
 PLSX/WPLS pool at 0.25% for a wallet whose address begins `0x111111`.
-`eventCachePath` in `src/cache-store.js` builds the name.
+`eventCachePath` in `src/lib/cache-store.js` builds the name.
 
 ### What a File Holds
 
@@ -1117,10 +1157,16 @@ chain, so a file rebuilt by a scan has none, and Routed Via shows a dash for
 those rebalances; `app-data/rebalance_log.json` still holds each route
 ([Show Swap Route Even If Only Blockchain Data Available](roadmap/nice-to-haves/project_route_via_chain_scan_gap.md)).
 
+A record also holds its Activity Log entry's figures
+([Activity Log Figures](#activity-log-figures)): `walletReadings`,
+`beforeRebalance`, `afterRebalance` and `historical`. A record still
+waiting for them carries `figuresDue: true`. A record written before
+the figures existed has none of these fields.
+
 ### How a Scan Fills a File
 
-`scanRebalanceHistory` (`src/event-scanner.js`) fills a file, called
-through `scanPoolHistory` (`src/pool-scanner.js`). In order:
+`scanRebalanceHistory` (`src/lib/event-scanner.js`) fills a file, called
+through `scanPoolHistory` (`src/lib/pool-scanner.js`). In order:
 
 1. **One scan per pool.** `scanPoolHistory` takes the pool's lock, so a
    second caller waits until the first scan has finished. Different
@@ -1171,7 +1217,7 @@ and the server answers an unmanaged one 404. And it loses the route of
 every rebalance this install added, so Routed Via shows a dash for
 those rows ([What a File Holds](#what-a-file-holds)). The User Manual's
 section "Rebalancing or Compounding Outside LP Ranger"
-(`public/help-and-user-manual.html#outside-lp-ranger`) advises operators
+(`src/client/web/help-and-user-manual.html#outside-lp-ranger`) advises operators
 to make their own moves from another wallet, and walks them through the
 reload. The roadmap tracks recording such a rebalance without a reload
 as
@@ -1180,17 +1226,21 @@ as
 ### When a File Changes
 
 - **A successful rebalance adds its record** (`appendToPoolCache`,
-  `src/pool-scanner.js`, called from `src/bot-loop.js`). It holds the
+  `src/lib/pool-scanner.js`, called from `src/lib/bot-loop.js`). It holds the
   pool's lock while it writes, so a scan under way cannot overwrite the
   record. It leaves `lastBlock` alone, so the scan the bot starts next
   reads the blocks up to the mint, keeping one record per transaction.
+- **A scan pass finishes a record's Activity Log figures**
+  (`updateCachedEvents`, `src/lib/pool-scanner.js`, called from
+  `src/lib/bot-rebalance-figures.js`), under the same lock, changing only
+  the records it finished.
 - **Each write renews the entry.** An entry not written for
   `eventCacheTtlMs` (a year as shipped) lapses, and the next scan reads
   the pool's history again from the floor.
 - **Clearing a file** makes the next scan read the pool's history again
   from the floor too. Reload Current Position, for a managed position,
   empties its pool's file (`clearPoolCache`, called from
-  `src/server-reload-position.js`);
+  `src/lib/server-reload-position.js`);
   `node util/cache/clean-pool-cache.js` deletes one pool's files, for
   every wallet ([Cache Utilities](#cache-utilities)); and
   `npm run clear-blockchain-scan-cache` deletes every scan cache.
@@ -1201,13 +1251,673 @@ any caller asking for the same pool and wallet within `poolScanReuseMs`
 
 ### What Reads the Files
 
-- **The bot**, for each managed position (`src/bot-recorder.js`), and
+- **The bot**, for each managed position (`src/lib/bot-recorder.js`), and
   **the dashboard's view of an unmanaged position**
-  (`src/position-details.js`), both through `scanPoolHistory`.
+  (`src/lib/position-details.js`), both through `scanPoolHistory`.
 - **The bookkeeping report**
   (`util/bookkeeping/coins-in-transactions-on-wallet`), which reads the
   files directly to list each rebalance
   ([Which Transactions It Lists](util/bookkeeping-for-coins-in-transactions/engineering.md#which-transactions-it-lists)).
+
+---
+
+## Deposit Count
+
+Coins the owner sends to the wallet are money put in. The deposit count
+records them as they arrive, so no figure reads them as the position's
+gain.
+
+Every poll credits the wallet's coins of the pool's two tokens to the
+position in the Lifetime figures (the Wallet Residual, `walletResiduals`
+in `src/lib/bot-pnl-updater.js`). A deposit sitting there was never the
+position's. Until something counts it as money put in, Lifetime Net P&L
+reads high by it, and so does the Lifetime IL/G. The Current IL/G and
+the Impermanent Loss Guard count no coin in the wallet
+(`src/lib/bot-pnl-il.js`), so a deposit moves them only once a compound
+takes it into the NFT, and then through the compound's record, not
+through this count. The Lifetime scan counts such coins too, but
+only once a rebalance has minted them into a new NFT: it reads the
+wallet's transfers in the window between one mint and the next
+(`src/lib/lifetime-hodl.js`).
+
+**The wallet's balance of a coin two pools share.** When the pools of two
+or more running managed positions contain the same coin, WPLS for
+example, the wallet's balance of it is divided between those positions,
+so the Wallet Residual counts it once in all
+(`src/lib/wallet-coin-share.js`). Each position's part is the amount of
+the coin its own NFT contains at the current price, out of the amount
+the NFTs of all those positions contain. Inside its range an NFT contains
+some of each of its pool's two coins; outside it, only one of them and
+none of the other. Each position works its own amount out at its check,
+and takes each other position's amount as that position saved it at the
+end of its last check (`positionStats`), so a position counts for the
+others from the end of its first check until it stops. At both moments each other
+running position whose pool contains one of its coins is checked again
+at once (`src/lib/shared-coin-wake.js`), with the wake-up Rebalance Now
+uses; a position whose scan is running is left to the check its scan
+pass ends with, and nothing is woken while the app itself is stopping.
+When none of those NFTs contains any of the coin, the balance is divided
+by each position's value in dollars instead, each other position's value
+as it published it at its last check, and evenly when none of them has
+any value. A coin no other running position's pool contains is the
+position's alone, whatever its NFT contains. A deposit of the coin
+waiting in the wallet is divided the same way (**A coin two positions
+hold**, below).
+
+**What it counts.** The same transfers by the same rules, from the block
+after the last one counted up to the chain's head, one entry per
+transaction (`depositsInWindow`, `src/lib/wallet-deposits.js`, which the
+Lifetime scan uses too). A swap, a collect or drain, and the position
+manager's and pool's own transfers are left out; a wrap of the native
+coin is credited once. So is every transaction the wallet sent itself,
+read from each possible deposit's sender (`_sentByOthers`): every
+rebalance and compound the bot makes, for any position, is one, while a
+deposit is sent to the wallet by someone else. Without it, another
+managed pool's drain, fee collection or swap, paying in a coin this pool
+shares, counted as this pool's deposit, since none of this pool's coins
+went out. A wrap counts though the wallet sends it: the native coins it
+wrapped were never counted. A sender that cannot be read fails the
+count. A count starts after the latest of three blocks:
+the last block a move's count read (`countedThrough`), the newest mint
+the Lifetime results cover (`lastBlock`), and the current NFT's mint,
+before which deposits went into that mint. It waits while the Lifetime
+results do not exist yet or the mint block is unknown. A count that
+fails is logged and changes nothing, and the move goes on.
+
+**When it counts** (`src/lib/deposit-count.js`):
+
+- as the first step of every rebalance (`_executeAndRecord`,
+  `src/lib/bot-cycle.js`) and every compound (`_executeCompoundInner`,
+  `src/lib/bot-cycle-compound.js`), once the move holds the lock;
+- when a poll sees the wallet's coins rise above what the last poll saw
+  (`countDepositsOnRise`, injected into `updatePnlAndStats` the way the
+  per-NFT figures are). The first poll after a start or a Reload always
+  counts, and so does the first poll after a move's count: the move
+  takes coins from the wallet, so a deposit arriving after its count
+  can leave the wallet below what the last poll saw, and no rise would
+  show it.
+
+**Where it records.** A move's count is the record. Its deposits go into
+the pool's Lifetime results in the epoch cache (`lifetimeHodlAmounts` and
+`freshDeposits`): their coins into the lifetime holding, their entries
+into the deposit list at their own blocks, each naming its transaction,
+and how far the count read (`countedThrough`). `computeDepositUsd` then
+prices the new entries into Total Lifetime Deposit, each at its own
+block's price. A poll's count is held on the bot state instead
+(`_depositOverlay`), priced the same way. The next move's count reads the
+same blocks again and records its own answer in its place, keeping any
+price the poll fetched. The overlay lives in memory, so a restart drops
+it and the first poll counts again.
+
+**Each deposit counts once.** When the Lifetime scan later reads the
+window that ends at the next mint, it leaves out the transactions the
+count recorded (`countedTx` in `computeLifetimeHodl`), and enters each
+of the rest as the count would have: on its own, at its own block and
+naming its transaction (`_freshDeposits`, `src/lib/lifetime-hodl.js`).
+So Total Lifetime Deposit prices every deposit at its own block, and a
+scan that builds the list again from the chain, as Reload Current
+Position does, enters the same deposits the count recorded, at the same
+blocks. Reload asks for their prices again, past the cache. With a
+Moralis API key a past block's price comes back the same; without one
+GeckoTerminal answers with the closing price of the deposit's UTC day,
+so a deposit first priced during its own day can come back a little
+different (see the README's Nice to Have's). A list an earlier version
+saved holds each window it read as one entry at the mint's block,
+naming no transaction; the scan keeps such an entry until the list is
+built again, which the upgrade from 0.9.10 has the first start do (see
+**Additions the Lifetime scan counts**, below). A
+Lifetime scan that ran while a move's count was saved keeps that count
+when it writes its results (`withLaterCounts`, used by
+`computeAndCacheHodl`), which it
+reads from the epoch cache; so a count writes the cache with the copy in
+memory, before it prices the deposits. A scan that does not count again
+keeps the results the bot holds rather than the copy it read when it
+started. The other way round, a count saves into the results standing
+when it saves, not those it read when it started, so a scan's newer
+results take its deposits, and a deposit already saved is not added
+twice. Total Lifetime Deposit is the total of the list standing when a
+pricing ends (`computeDepositUsd`), whichever wrote it last. A price
+that cannot be had leaves a deposit recorded, unpriced, until the next
+pricing of the list. Reload
+Current Position clears the epoch-cache entry, and the count's records
+with it, and drops the overlay and the last wallet reading, so the first
+poll after the rebuild counts from the current NFT's mint again. A count
+still reading the chain when Reload clears the results is dropped, so it
+cannot write the old results back over the rebuild.
+
+**What the figures add** (`src/lib/counted-deposits.js`, pure):
+
+- The Lifetime IL/G and Total Lifetime Deposit already hold the moves'
+  counts, so they add only the overlay's entries after the newest mint
+  covered (`pollDeposits`). A deposit of a coin another running position
+  holds counts in them only where its coins went (below).
+- A rebalance's Activity Log figure sets aside the deposits entered from
+  the old NFT's mint up to the new one, the count's and the Lifetime
+  scan's alike, with the entry an earlier version summed at the mint
+  (`cachedDepositFor`, `src/lib/rebalance-activity-figures.js`); for a
+  coin another running position holds, what the replay below shows the
+  rebalance took (`depositTakenAt`).
+- The Current IL/G and the Guard add no counted deposit: they count no
+  coin in the wallet. A deposit that a compound takes into the NFT
+  counts there from the compound's record, with the NFT's minted coins
+  (`walletCoinsPutIn`), the same in the bot and in the unmanaged details
+  view, which reads the compound list the bot saved
+  (`savedWalletCoinsPutIn`, `src/lib/position-details-compound.js`).
+
+**A coin two positions hold.** Each position counts the deposits of its
+own two coins, so a deposit of a coin two running managed positions
+hold is in both lists. Counted in full by each, it would be money put in
+twice for coins that arrived once. So each such deposit counts where its
+coins went (`src/lib/deposit-attribution.js`, the user's design,
+2026-10-24):
+
+- **while the coins wait in the wallet**, each position whose pool
+  contains the coin counts the share of them the Wallet Residual (Pool)
+  credits it (**The wallet's balance of a coin two pools share**, above;
+  `fraction0`, `fraction1` from `walletResiduals`). What it counts as
+  put in then matches the coins it is credited with, so the deposit
+  moves none of its Lifetime figures. The share moves from poll to poll
+  as prices move the coins in each NFT, and Total Lifetime Deposit with
+  it;
+- **a rebalance takes them all**, since it mints with the wallet's whole
+  balance: from its mint on, the position it minted for counts every
+  deposit of its two coins still waiting, and the others none of it;
+- **a compound takes part**: of the wallet's coins its deposit took in
+  beyond its fees, the deposits' part is in proportion to their share of
+  the wallet's balance of the coin before the collect, which the
+  compound now records (`amount0WalletBefore`, `amount1WalletBefore`,
+  with the deposit's `blockNumber`). That part counts for the
+  compounding position, and only the rest still waits. A compound
+  recorded without the reading takes deposit coins first; one with no
+  block recorded, or without its fees told apart, takes nothing. Nor
+  does an addition another wallet paid for, which the compound list
+  holds as a compound with no collect before it, once the pool's
+  deposit list names it (`paidForByAnotherWallet`,
+  `src/lib/counted-deposits.js`).
+
+Nothing is saved for it. Every poll, `depositAttribution`
+(`src/lib/deposit-attribution-inputs.js`) replays each of the position's
+two coins, in block order, over what the running positions of the wallet
+hold (`_walletDepositStates`, attached by `attachMultiPosDeps` in
+`src/lib/server-positions.js`): their deposit lists with what polls have
+found since, their rebalance events, each at its new NFT's mint block,
+and their compound lists. A deposit and a move in the same block are
+taken in that order, as the Lifetime scan's windows end at a mint. It
+answers how much the position's lifetime holding and Total Lifetime
+Deposit change when the deposits it lists are replaced by its part of
+every deposit of its coins (`lifetimeDepositFigure`, and `_computeIL` in
+`src/lib/bot-pnl-il.js`). A deposit of a coin no other running position
+holds comes out as before. A deposit brings one of its pool's coins,
+never both: a transaction in which both come in is a drain or a fee
+collection (`_isDeposit`, `src/lib/wallet-deposits.js`), and a wrap brings
+only the wrapped coin. So a deposit's dollar figure (`usd`) is that one
+coin's, and is divided as its coins are, with no further field kept.
+Only the running positions take part, as only they share the Wallet
+Residual: coins a stopped position's NFT took, or that left the wallet by
+another route, such as a hand-minted position or a withdrawal, still
+count as waiting.
+
+**A compound that sweeps a deposit in.** A compound whose ratio swap
+fires offers its deposit the wallet's whole balance
+(`_resolveDepositAmounts`, `src/lib/compounder.js`), so the deposit can take
+in coins the wallet held before the collect: a counted deposit, a
+rebalance's leftovers, the coins the first mint left. None is a fee.
+Recorded as compounded, such coins would raise Fees Compounded by their
+size, and the Lifetime IL/G, which takes Fees Compounded off the
+position's side, would read a loss of the same size. (The Current IL/G
+would not move: it counts as put in only what a compound took beyond
+the fees it records.) The compound therefore records the fees apart
+(`src/lib/compounded-coins.js`):
+it reads the wallet before its collect (`collectFees`) and just before
+its deposit, and, coin by coin, what the deposit took from the wallet's
+earlier balance is the first reading less the wallet after the deposit;
+the rest of the deposit is fees. Its record keeps them
+(`amount0Compounded`, `amount1Compounded`) beside the whole deposit, and
+every reading of an NFT's compounds counts them: the per-NFT coins the
+bot reads back from the chain (`applyCurrentNftFigures`, matched to the
+record by transaction), the rebuilt compound list, and the unmanaged
+view. The lifetime running total (`recordCompound`) takes every fee the
+compound collected instead (`feesCollected`), those it left in the
+wallet included (**Fees the deposit could not take**, below), which is
+what a rebuild of the compound list counts; it never takes the wallet's
+coins the deposit took in. The rest of the deposit,
+the wallet's coins it took in, counts with the NFT's minted coins in the
+Current IL/G and the Guard (`walletCoinsPutIn`), since the position's
+value now holds them.
+
+**A compound with no such record.** A compound LP Ranger made before it
+kept the record, or one made outside LP Ranger, has its fees worked out
+from the chain instead (`src/lib/compound-fees-on-chain.js`), when a
+rebuild of the compound list meets it. Its collect is the `Collect`
+event just before its deposit (`depositAndCollect`, the rule
+`collectBeforeDeposit` in `src/lib/nft-move-rules.js`); its swap is each
+transaction between the collect and the deposit that sent one of the
+pool's coins from the wallet and paid it the other, found by the
+wallet's outgoing transfers in those blocks and read from its receipt
+(`walletSwapsBetween`, with `exchangeInTx` in `src/lib/swap-exchange.js`);
+its deposit is its `IncreaseLiquidity` event. The fee coins after the
+swap are what the collect brought in, less what the swap sold of one
+coin, plus what it bought of the other; of each coin the deposit put
+back its fees first, up to those fee coins, and the rest came from the
+wallet (`feeFieldsOf`, the rule `compoundFeeUnits` applies to the
+bot's readings). A deposit with no collect before it put back no fees.
+The compound list holds every addition to the NFT after its mint outside
+a rebalance (`classifyCompounds`), so an addition another wallet paid
+for is one of these: none of its coins came from the wallet, and the
+readers that count only the wallet's coins leave it out once the pool's
+deposit list names it (**The Current panel's deposit**, below, and the
+sharing of a deposit between positions, above). The Current IL/G's
+holding side counts it, since the position's value holds it.
+The entry keeps the fields (`_feeFields` in
+`src/lib/compound-activity-figures.js`, which keeps the bot's record of
+them first, then an earlier rebuild's), so each compound is read from
+the chain once, and every count reads them as it reads the bot's record
+(`feeRecords`). A swap that cannot be read leaves the fees unknown, so
+the compound counts its whole deposit until a later rebuild reads it.
+A scan pass rebuilds the list while the open NFT holds a compound whose
+fees are not named (`namesNoFeesOn`, `rebuildCompounds` in
+`lifetimeScanPlan`), which an upgrade from 0.9.10 meets at its first
+start for every NFT open then.
+
+**Additions the Lifetime scan counts.** An addition of liquidity to a
+position NFT after its mint is money put in only when another wallet
+paid for it (`_additionsPutIn`, `src/lib/lifetime-hodl.js`). One the
+wallet paid for took coins already counted: a deposit counted when it
+reached the wallet, or the position's own leftovers and fees, which
+Lifetime Net P&L counts as the Wallet Residual and the Initial Wallet
+Residual. The addition's receipt decides: a transfer of either of the
+pool's coins out of the wallet in its transaction means the wallet
+paid. LP Ranger's own compounds pay from the wallet, so the scan skips
+the receipt for one its compound list records as Auto or Manual. That
+mark is not needed for the answer: Reload Current Position on a release
+before this one emptied the compound list, and the rebuilt entries
+carry no mark. An addition another wallet paid for counts all of it,
+as a deposit entry of its own, at its own block and naming its
+transaction (`kind: "external"`). An addition whose receipt cannot be
+read stops the scan, which is tried again, rather than being counted on
+a guess. The scan works the additions out again each time it recounts
+the deposits, keeping only the price each one was given.
+
+A list 0.9.10 saved can hold what this release would not build, in two
+ways. It summed the deposits each rebalance's mint took in into one
+entry at the mint's block, priced at the mint's day, which leaves the
+total of those deposits the list keeps beside it larger than its
+entries naming a transaction add up to; among them can be another
+managed pool's moves, when the two pools share a coin. And it judged an
+addition by the NFT's fees, so it can hold additions the wallet paid
+for, filed at an NFT's mint block with nothing to mark them; such a
+list adds up to more than its first mint plus that total. The upgrade
+from 0.9.10 takes each list holding either out, with the saved Total
+Lifetime Deposit of each position in that pool, whose positions the
+pool's saved rebalance history names
+(`util/migration/from-0.9.10/drop-old-deposit-lists.js`). A list holding
+only its first mint stays, since this release would build the same one.
+The first start then builds each list taken out again by this
+release's rules and prices it. The saved total has to go too, since a
+start that builds a list from nothing prices it only when no total is
+saved.
+
+**Fees the deposit could not take.** A deposit takes only what fits the
+range, so without the swap, or with one coin short after it, some fees
+stay in the wallet. They are the fee coins the compound's own
+transactions left it with, after the swap (`feeCoins`), less the fees the
+deposit put back; the record keeps them (`amount0FeesLeft`,
+`amount1FeesLeft`) and a rebuild of the list keeps them with the other
+fee fields (`_feesKept`). Worked out from the coins as collected instead,
+they would be wrong whenever the swap ran, which turns part of one coin
+into the other. Without the fee coins none are recorded, since the
+readings alone cannot tell fees from a deposit that landed meanwhile.
+The Current panel shows them on its Fees Left Over line, from
+`currentFeesLeftUsd` (`feesLeftInWallet`, the bot in
+`src/lib/bot-pnl-current-nft.js`, the unmanaged view from the saved list),
+and a managed position's Profit adds them, since they are in neither fee
+line and the Current IL/G counts no coin in the wallet; an unmanaged
+position shows no Profit. The Current panel's Net P&L adds them too,
+for both views, since they are outside Current Value. A later compound
+can sweep them into the position, which Current Value then holds, but
+Initial Deposit for This LP then counts them among the wallet's coins
+that compound took (**The Current panel's deposit**, below), so they
+still count once. The Lifetime panel counts them in Fees Compounded: a
+compound adds every fee it collected to the lifetime total
+(`_feesForLifetimeTotal`, `src/lib/bot-cycle-compound.js`), as a rebuild
+of the compound list counts every fee collected. The Lifetime IL/G takes
+Fees Compounded off the position's side and credits the wallet's coins,
+so the two cancel over these fees, which count as fees, not as gain.
+
+**The Current panel's deposit.** Initial Deposit for This LP, which the
+Current panel's Net P&L subtracts, is the coins the NFT was minted with,
+at its mint's prices, and the wallet's coins its compounds took in
+beyond their fees, each at that compound's prices
+(`src/lib/current-lp-deposit.js`). A compound whose swap runs deposits
+the wallet's whole balance of the pool's two coins, so it can take in a
+deposit the owner sent or a rebalance's leftovers; those coins were put
+into the NFT after its mint, and left out of the deposit they would read
+as the NFT's gain in Net P&L until the next rebalance. A compound's
+prices are the ones the
+bot recorded with it, else the price cache's at its block, as a rebuild
+of the compound list prices it (`compoundPricesFor`; a rebuild keeps no
+compound's prices), else today's, which flags the deposit as the mint's
+own missing price does. A compound whose record does not tell its fees
+apart adds nothing (`walletCoinsOf`). The deposit also counts the
+liquidity another wallet added to the NFT: the Lifetime scan enters each
+such addition in the pool's deposit list naming its NFT (`kind:
+"external"`, `tokenId`, `_additionsPutIn`), and the Current panel adds
+the current NFT's entries at the prices Total Lifetime Deposit gave them
+(`addedByOthers`); an entry not priced yet adds nothing, as it adds
+nothing there. The compound list holds the same addition, and the
+deposit leaves that entry out (`paidForByAnotherWallet`,
+`src/lib/counted-deposits.js`), so the addition counts once. Such coins
+never pass through the bot's wallet, so the deposit count cannot see
+them, and the scan works the deposit list out again only after a
+rebalance or a Reload Current Position: until then the Lifetime panel
+reads such an addition as a gain, a limit the user accepted and the User
+Manual's FAQ states (2026-10-24). So does the Current panel, unless a
+rebuild of the compound list, such as Re-scan Prices asks for, has met
+the addition since: its entry then counts among the coins the NFT's
+compounds took in beyond their fees, at its own block's prices. The bot
+publishes the
+addition as `currentDepositAddedUsd`, with `currentDepositAddedFallback`
+(`addedSinceMint`, `src/lib/bot-pnl-current-nft.js`); the unmanaged view
+works it out from the compound list the bot saved and the pool's deposit
+list in the epoch cache (`savedDepositAdded`), in its first step's Net
+P&L and on its second step's snapshot. A deposit the operator types in
+replaces the whole figure.
+
+**A deposit that lands while the compound runs.** The owner's coins can
+reach the wallet between the two readings, while the collect or the
+swap confirms, where the readings cannot tell them from fees. Two
+figures come from the compound's own transactions instead. What the
+collect brought in is the amount its transaction reports collecting,
+the position manager's `Collect` event, capped at the wallet's rise
+across it, which a token keeping a fee on each transfer lands short of
+(`src/lib/compound-collect.js`); so a deposit landing then is neither
+offered to a deposit that takes only the fees nor counted in the
+compound's Activity Log figure. And the fees are capped at the fee coins
+as those transactions moved them (`feeCoins`, `compoundFeeUnits`): what
+the collect brought in, less what the swap's own transactions sent of
+the token sold, plus what they received of the token bought, read from
+their receipts (`exchange`, `src/lib/rebalancer-swap-balance.js`, through
+`exchangeInTx` in `src/lib/swap-exchange.js`). A
+deposit the swap's whole-balance deposit sweeps in then counts once, as
+the owner's money. A swap whose receipt could not be read leaves the
+readings alone to decide.
+
+**Limits.**
+
+- A deposit of a coin two managed pools hold is counted by each pool in
+  full, as the Lifetime scan counts it in each pool's window after a
+  rebalance, while the wallet credit splits the coin between the pools
+  by their shares.
+- Fees a compound leaves in the wallet, the ones its deposit could not
+  fit, are not in Fees Compounded. The Lifetime IL/G counts them on the
+  position's side, as the wallet's coins and, once a rebalance mints
+  them, in the position's value, until Re-scan Prices or Reload Current
+  Position rebuilds the compound list, whose total is every fee
+  collected. The Current panel shows them on its Fees Left Over line,
+  which its Profit and its Net P&L add.
+
+---
+
+## Activity Log Figures
+
+Each Rebalance and Compound entry in the Activity Log shows two figures
+under its date, as percents: a Rebalance's in whole numbers, a
+Compound's to three decimal places, since the fees one compound collects
+are often well under 1% of the position (`PCT_DECIMALS`,
+`src/client/web/dashboard-activity-figures.js`):
+
+- **Historical** is the figure at the moment the entry is created,
+  right after the rebalance or compound succeeds. It is stored with the
+  entry's record and never worked out again.
+- **Current** is the same figure at today's prices. The browser works
+  it out from the coins stored with the record, on every status answer,
+  using the prices the server sends for the position
+  (`pnlSnapshot.ilInputs`, the operator's price overrides applied).
+
+A Rebalance entry's label reads "Impermanent Loss/Gain:", a Compound
+entry's "Percent Gain for Position:". A figure not yet known shows a
+dash. An entry written before these figures existed shows "Old Log:
+Unavailable". Nothing rebuilds it on its own. Reload Current Position
+rebuilds the position's records, the Activity Log's among them, and
+reloads the page once its scan has finished. Re-scan Prices rebuilds
+the compound list, working out from the chain the figures of each
+compound that had none, and writes each compound's amount at the
+prices of the moment it runs. As the last step of each scan of the
+position on screen, on the status answer that first says the scan has
+finished, the dashboard takes that position's Rebalance and Compound
+entries off the log (`removePositionActivityEntries`,
+`src/client/web/dashboard-activity-figures.js`, by the position's `poolKey`) and
+the history pass draws them again from the records the scan left
+(`src/client/web/dashboard-populate-history.js`): the figures, a Compound's
+amount and its "(historical $usd)" mark, as the scan left them. No
+answer before that one changes such an entry.
+
+The log finds a position's entries by its pool key, which the server
+sends only with a managed position's second data load. The first
+brings the position's saved records, as the server starts it; the
+second brings its pair, fee tier and pool key, once the server has read
+it from the blockchain. So neither the live event check
+(`src/client/web/dashboard-data-events.js`) nor the history pass draws a
+managed position's Rebalance or Compound entries before the second
+(`canDrawPositionEntries`): each is drawn with its position line and
+filed under its pool. The history pass's own gate, which waits for a
+running position's scan, could not hold this alone: while the server
+starts a position, its loop is not yet running.
+
+Both formulas are in `src/lib/coin-value.js`, which
+the dashboard bundles, so the browser and the bot work the figures out
+with one formula.
+
+### Rebalance: Impermanent Loss/Gain
+
+A rebalance mints with the wallet's whole balance of the pool's two
+coins, so it reads that balance three times as it goes. It keeps the
+three readings, in whole coins, as `walletReadings`
+(`src/lib/rebalancer-execute.js`):
+
+| Reading       | When it is read                                               |
+| ------------- | ------------------------------------------------------------- |
+| `beforeDrain` | before the old NFT is emptied (`src/lib/rebalancer-pools.js`) |
+| `afterDrain`  | after the old NFT is emptied, before any swap                 |
+| `beforeMint`  | after every swap, just before the mint                        |
+
+The coins after the drain are everything the rebalance had to work
+with, and the coins before the mint are the same coins once the swaps
+are done. A deposit the owner made since the last rebalance sits in
+both, though it was never part of the position, so it is set aside:
+
+- `beforeRebalance` is `afterDrain` less the deposit;
+- `afterRebalance` is `beforeMint` times the rebalance's share of the
+  value: the value of `beforeRebalance` over the value of `afterDrain`,
+  at the rebalance's prices.
+
+Taking the deposit out as its share of the value never leaves a
+negative coin, even when the swaps traded the deposit's coins with the
+rest, and the deposit carries its share of the swaps' cost. The figure
+is the value of `afterRebalance` less the value of `beforeRebalance`,
+over the value of `afterRebalance`, times 100, both at one set of
+prices; negative is a loss (`rebalanceIlPct`). At the rebalance's own
+prices the share cancels out, so the Historical figure needs no
+deposit, and the bot stores it the moment the rebalance succeeds
+(`figuresAtCreation`, `src/lib/rebalance-activity-figures.js`). It is
+priced as the panels price the position: the prices fetched right after
+the mint, with the operator's price overrides applied
+(`applyPriceOverrides`, `src/lib/price-overrides.js`).
+
+**The deposit** is the one the Lifetime accounting already counts for
+the rebalance's mint, in the epoch cache's `lifetimeHodlAmounts.deposits`:
+the entries tagged `kind: "fresh"` after the old NFT's mint and up to
+the new NFT's, each at its own block and naming its transaction. The
+[deposit count](#deposit-count) records them as they arrive, and the
+Lifetime scan enters the rest, whatever arrived after the count's last
+read, the same way (`src/lib/lifetime-hodl.js`). The tag tells the
+wallet's coins that went into the mint apart from an addition another
+wallet paid for (`external`), which names its transaction but never
+passed through the wallet, so it is no deposit waiting there. A list an
+earlier version saved holds the scan's part as one entry at the mint's
+block, naming no transaction, and an entry counted before the tag
+existed counts as fresh when it is the first for its block. For a coin
+another running position holds, the deposits a rebalance took are what
+the replay of the running positions' deposits and moves shows still
+waiting at its mint, whichever position listed them (`depositTakenAt`;
+see [Deposit Count](#deposit-count), "A coin two positions hold"): one
+may have gone into the other position's NFT first. The deposit is
+capped, coin by coin, at
+`beforeDrain`: a deposit a compound has since swept into the position
+is no longer in the wallet; it came out with the old NFT's coins and
+belongs to the rebalance.
+
+**When the coin figures are written.** The Lifetime accounting counts a
+mint's deposits in the scan pass that follows the rebalance, so the
+record waits until then, marked `figuresDue: true`. A rebalance the
+event scanner reads fresh from the chain, after a Reload or on a
+position's first scan, carries the same mark (`src/lib/event-scanner.js`).
+At the end of each scan pass, `finishPassRebalanceFigures`
+(`src/lib/bot-rebalance-figures.js`) finishes every marked record whose
+mint the deposits cover, the cache's `lastBlock` being at or past the
+mint block:
+
+- the readings come from the record, else from this install's
+  `app-data/rebalance_log.json`, else from the chain: the wallet's
+  balances at the end of the block before the drain, the drain's block,
+  and the block before the mint. The drain is the old NFT's latest
+  `DecreaseLiquidity` at or before the mint, found among the NFT events
+  the pass has already read (`drainBefore`, `src/lib/nft-move-rules.js`);
+- the prices come from the log, with the overrides applied, else from
+  the historical-price lookup at the mint block, which the epoch
+  rebuild has usually cached already.
+
+The finished record goes into the pool's event cache
+(`updateCachedEvents`, `src/lib/pool-scanner.js`), into the bot's list of
+the position's events, and out with the next status answer. A record
+stays marked while the deposits do not cover its mint, or while it
+needs the chain and the pass could not read the NFT events; the next
+pass tries again. A pass prepares that read whenever a marked record
+has no readings of its own, even when nothing else in the pass reads
+the chain (`prepareSharedRead`, `src/lib/shared-chain-read.js`). So a record
+left marked by a stop during an earlier pass, after every Lifetime
+figure was saved, is finished by the next pass, the one a restart runs
+included. A price that does not come back, a wallet reading that fails, as
+on an endpoint that keeps no past state, or a drain that cannot be
+found, finishes the record with those figures null, which the Activity
+Log shows as dashes. Reload Current Position reads every event again,
+so each is marked once more, and a Historical figure stored as a dash,
+on the record or in the rebalance log, counts as missing: its prices
+are asked for again (`_withFigure`), and a lookup that again answers
+nothing leaves the dash.
+
+### Compound: Percent Gain for Position
+
+The figure is the fees the compound collected, as a share of the
+position right after it. The fees and the deposit are different coins:
+the deposit takes only what fits the range, leaving the rest in the
+wallet, and a ratio swap can sweep in coins that were already there.
+Using the fees keeps a deposit the owner made from counting as a gain.
+
+Within one NFT, at one set of prices, value is proportional to
+liquidity. So the share is the fees' value times the liquidity the
+deposit added, over the deposit's value times the NFT's liquidity after
+the deposit, times 100, and no snapshot of the position is needed
+(`src/lib/compound-activity-figures.js`). A compound records
+`feesCollected`, in whole coins, and `historical.percentGainForPosition`
+the moment it succeeds (`recordCompound`, `src/lib/bot-cycle-compound.js`).
+A figure it cannot work out is null, as is one without a price for each
+coin, and the compound is recorded all the same. Current is
+`feesCollected` at today's prices over the position's value today.
+
+**A rebuild of the compound list** works the figures out for every
+compound it finds. A rebuild runs on Reload Current Position, Re-scan
+Prices, a position's first lifetime scan, and a reclassify request
+(`_classifyAllCompounds`, `src/lib/bot-recorder-lifetime.js`). The collect
+is the NFT's latest `Collect` within one span of `getLogsChunkSize`
+blocks before the deposit, with no other deposit after it
+(`collectBeforeDeposit`, `src/lib/nft-move-rules.js`). A deposit with no
+such collect is the owner's own coins, and its figure is 0%. The
+liquidity before the deposit is the running total of the NFT's events.
+The prices are those at the deposit's block, through the historical-price
+cache, which keeps each under its block (`compoundPricesFor`). With a
+Moralis key stored, Moralis prices each coin at that block. Without
+one, or for a coin Moralis has no price for, GeckoTerminal's candle for
+the day does. Two compounds on one day are two lookups. A price lookup
+that fails, or finds a price for only one coin, gives no figure. The
+entry then keeps the figure it already held, from an earlier rebuild
+(`_chainOrEarlier`), since Re-scan Prices reads past the price cache
+and a failed lookup there is no reason to forget a figure. An entry
+that held none stays null, and the next rebuild works it out again.
+
+The rebuild keeps what the chain cannot supply. A compound the bot
+recorded when it happened, trigger `auto` or `manual`, keeps its
+trigger and figures, matched by transaction. A figure it recorded as
+unknown, for want of a price at the time, is worked out from the chain
+like any other, at the deposit's block, keeping the trigger; a lookup
+that again answers nothing leaves it unknown. One the bot recorded after
+the rebuild's chain read began stays in the list, since the read could
+not have seen it. A compound found only on the chain gets trigger
+`unknown`, and the Activity Log shows it with no marker.
+
+A Compound entry's $usd amount (`usdValue`) is the deposited coins at
+the prices of the moment its record is written. The bot's own record of
+a compound keeps those prices (`price0`, `price1`), and the Activity Log
+marks such an amount "(historical $usd)" (`src/client/web/dashboard-compound-log.js`).
+A rebuild writes every entry's amount at the prices it is handed,
+today's, with the operator's price overrides applied as the poll applies
+them (`_readCurrentPrices`, `src/lib/bot-recorder-lifetime.js`), and without
+prices (`_entryOf`), so its entries show no mark: a compound the bot
+recorded loses its mark, and its amount is the rebuild's. When the scan
+has no price for a coin, the amount it would write counts only the other
+coin, so an entry keeps its amount and the prices it was worked out at,
+mark and all (`_amountOf`). A compound recorded during the rebuild's
+chain read is kept as recorded, mark and all.
+
+Because the rebuild needs the old list, Reload Current Position and
+`npm run clear-blockchain-scan-cache` leave `compoundHistory` in place
+([POST /api/position/reload](#post-apipositionreload)).
+
+### One Entry per Transaction
+
+The dashboard keeps one record of the Rebalance and Compound entries
+the Activity Log shows, keyed by kind and transaction hash
+(`src/client/web/dashboard-activity-figures.js`). It is JavaScript state, never
+read back from the page. `act()` (`src/client/web/dashboard-helpers.js`) draws
+no entry the log already shows: the live-event check and the history
+pass can both reach one rebalance or compound, and switching positions
+runs the history pass again. The same record is how each status answer
+brings Current up to date, and fills in an entry drawn while its
+figures were due. Each entry in it also carries its position's
+`poolKey`, which is how the end of a scan takes that position's entries
+off before the history pass draws them again; an entry with no
+transaction hash is kept under a key of its own, so it comes off too
+rather than gaining a copy at each redraw. The log forgets an entry
+when it trims it, and every entry when it is cleared.
+
+A Rebalance entry names what started the rebalance, (Out of Range),
+(Manual) or (Residual Cleanup), from its record's `trigger`, in the one
+wording both paths draw it with (`src/client/web/dashboard-rebalance-log.js`).
+The bot puts `trigger` on its own event list and on the pool's event
+cache (`_buildEventEntry`, `src/lib/pool-scanner.js`), so the label survives
+a page reload and a redraw. A rebuild of the event list from the chain
+cannot know it; when the finishing step finishes such an event, it takes
+`trigger` back from this install's rebalance log
+(`loggedRebalanceFigures`, `src/lib/rebalance-activity-figures.js`), which
+has kept it for every rebalance. A rebalance this install did not make
+names nothing.
+
+`util/bookkeeping` finds the same transactions on the chain for its
+reports, so the two rules that pair a move's transactions,
+`drainBefore` and `collectBeforeDeposit`, are in
+`src/lib/nft-move-rules.js`, which both use.
+
+### Limitations of the Figures
+
+- A rebalance retried after an earlier attempt swapped and stopped
+  starts its readings after that first swap, so the first swap's cost
+  is not in its figure.
+- A rebalance rebuilt from the chain whose old NFT was emptied well
+  before the new mint, by hand or by another tool, is read around that
+  earlier emptying, so its figure takes in whatever the wallet did in
+  between.
+- A deposit that arrives during a rebalance, after the drain and before
+  the mint, counts as a gain.
 
 ---
 
@@ -1244,7 +1954,7 @@ directions it can land:
 - an NFT that compounded mid-life returns the **compound's** Collect,
   which `_supplementExitFromChain` then reads as its exit value.
 
-`src/nft-mint-blocks.js` owns the floor rule:
+`src/lib/nft-mint-blocks.js` owns the floor rule:
 
 | Function | Answers |
 | --- | --- |
@@ -1273,7 +1983,7 @@ Three rules within that module decide correctness:
   other's.
 
   That NFT also needs its own mint date, for the opening row of the
-  Per-Day P&L table, and `_applyFirstMint` in `src/position-history.js`
+  Per-Day P&L table, and `_applyFirstMint` in `src/lib/position-history.js`
   takes it off the events array rather than reading chain. Two fields
   can supply it, and both are gated on a token id:
 
@@ -1330,15 +2040,15 @@ it.
 
 Every read of a whole chain is one pass, not one pass per NFT. Two
 places read a chain, both through `scanChainNftEvents`
-(`src/nft-events-batch.js`):
+(`src/lib/nft-events-batch.js`):
 
 | Reader | Events | NFTs | Serves |
 | --- | --- | --- | --- |
-| `fetchAllNftEvents` (`src/bot-recorder-scan-helpers.js`), prepared by `prepareLifetimeRead` | all three | the whole chain | the bot's lifetime scan — Fees Compounded, lifetime HODL, deposit — and epoch reconstruction in the same pass |
-| `scanChainCollectAndDrain` (`src/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, when nothing else in its pass reads the chain |
+| `fetchAllNftEvents` (`src/lib/bot-recorder-scan-helpers.js`), prepared by `prepareLifetimeRead` | all three | the whole chain | the bot's lifetime scan — Fees Compounded, lifetime HODL, deposit — and epoch reconstruction in the same pass |
+| `scanChainCollectAndDrain` (`src/lib/position-history-scan-helpers.js`) | `Collect`, `DecreaseLiquidity` | closed NFTs not already in the epoch resume buffer | epoch reconstruction, when nothing else in its pass reads the chain |
 
 The unmanaged view's `_detectCurrentNftValues`
-(`src/position-details-compound.js`) is not a chain reader: it scans the
+(`src/lib/position-details-compound.js`) is not a chain reader: it scans the
 one NFT being looked at (see [Call sites](#call-sites)).
 
 The filter OR-matches every token id in the chain — `tokenId` is the
@@ -1385,21 +2095,30 @@ inputs its consumers use:
 
 #### One read per pass
 
-A scan pass needs the chain's history twice: epoch reconstruction wants
-Collect and DecreaseLiquidity for the closed NFTs, and the lifetime
-figures want all three event types for every NFT. The first is a subset
-of the second, so when the lifetime side is going to read the chain in
-that pass, reconstruction takes its histories out of that read
-(`collectAndDrainOf`) rather than making its own. A read shared this way
-is made once however many consumers ask (`shareRead`).
+A scan pass can need the chain's history three times: epoch
+reconstruction wants Collect and DecreaseLiquidity for the closed NFTs,
+the lifetime figures want all three event types for every NFT, and a
+Rebalance event waiting for its Activity Log figures with no wallet
+readings of its own wants its old NFT's DecreaseLiquidity, to find the
+drain. The others are subsets of the lifetime read, so when it is going
+to be made in that pass, reconstruction takes its histories out of it
+(`collectAndDrainOf`) rather than making its own, and the figures find
+their drains in it. A read shared this way is made once however many
+consumers ask (`shareRead`).
 
-- **The bot.** `_scanAndReconstruct` asks `lifetimeScanPlan` as soon as
-  the event scan has found the chain. When the lifetime scan will read,
-  the pass prepares that read (`prepareLifetimeRead`,
-  `src/bot-recorder-lifetime-read.js`) and hands it to reconstruction;
-  the lifetime scan then uses the same read. When the read runs, it
-  looks up the pool's creation block and decides whether the resume
-  buffer can still be trusted.
+- **The bot.** `_scanAndReconstruct` asks as soon as the event scan has
+  found the chain (`prepareSharedRead`, `src/lib/shared-chain-read.js`).
+  When the lifetime scan will read (`lifetimeScanPlan`), or a waiting
+  Rebalance event has no readings of its own (`figuresNeedNftEvents`),
+  the pass prepares the read (`prepareLifetimeRead`,
+  `src/lib/bot-recorder-lifetime.js`) and hands it to reconstruction; the
+  lifetime scan and the figures then use the same read. When the read
+  runs, it looks up the pool's creation block and decides whether the
+  resume buffer can still be trusted, and whether to use it at all: a
+  read that runs while the plan finds no lifetime figures to work out,
+  as one for the figures alone does, uses none. The lifetime scan's
+  success releases the buffer, and such a read can run after that, so
+  one it refilled would stay held into a later scan.
 - **The unmanaged view.** Nothing to share: it builds no epochs, because
   it renders no Per-Day P&L, and reads no chain.
 
@@ -1407,7 +2126,7 @@ Three rules keep the sharing sound:
 
 | Rule | Why |
 | --- | --- |
-| Reconstruction shares only a read that will happen anyway | Otherwise it pays for a third event type and the live NFT to save nothing; with nothing else reading, its own two-type read is cheaper |
+| Reconstruction shares only a read another step will want | Otherwise it pays for a third event type and the live NFT to save nothing; with nothing else reading, its own two-type read is cheaper. A waiting Rebalance event whose readings turn out to be in the rebalance log never asks for the read, so in that rare pass reconstruction pays for the larger read alone |
 | A shared read covers each NFT's whole history | Reconstruction values each closed NFT over its whole life. A lifetime read always starts from the pool's creation block, lifted to the chain's first mint. That holds even if every figure is saved after the read was prepared. `test/bot-recorder-lifetime-share.test.js` pins it for every state |
 | The lifetime scan reuses the pass's read only for the chain it was prepared for (`chainSignature`: the live NFT, every NFT with its mint block, and the chain's first mint) | Reconstruction can run long enough for a manual rebalance to land. A read prepared before it describes a chain that no longer exists, so the scan reads afresh and logs why |
 
@@ -1422,6 +2141,9 @@ failure means:
   rest are skipped, and the short history schedules another attempt.
 - **A shared read** — the failure is not kept, so the next consumer in
   the pass or request makes its own attempt rather than inheriting it.
+  The Activity Log figures are one consumer, asking once for all their
+  waiting Rebalance events (`_nftEventsOnce`), so a failure leaves them
+  all waiting for the next pass rather than starting a read for each.
 
 That is affordable because a chain costs minutes, and because transient
 RPC failures are retried per request beneath the batch.
@@ -1445,9 +2167,9 @@ The two chain readers in the table above each hand the batch the
 chain's mint blocks, so every NFT is floored at its own mint.
 
 Three places read a single NFT, floored at that NFT's own mint:
-`src/bot-pnl-current-nft.js` and `_detectCurrentNftValues` in
-`src/position-details-compound.js` read the current NFT, and
-`src/position-history.js` reads a closed position looked at on its own.
+`src/lib/bot-pnl-current-nft.js` and `_detectCurrentNftValues` in
+`src/lib/position-details-compound.js` read the current NFT, and
+`src/lib/position-history.js` reads a closed position looked at on its own.
 The last takes its floor from `result.mintBlockNumber`, which
 `supplementFromEvents` fills from the rebalance events before any scan
 runs.
@@ -1463,12 +2185,12 @@ list does not yet name. Each matched file must either require
 the reason. Each chain reader must also pass the chain's mint blocks to
 the batch; an empty map would floor every NFT at the shared floor.
 
-`src/compounder.js` is exempt because it defines the single-NFT scan and
+`src/lib/compounder.js` is exempt because it defines the single-NFT scan and
 leaves the floor to its caller. Three files are exempt because they
 search *for* a mint block and so cannot be bounded below by one:
-`src/event-scanner-mint-lookup.js`, which instead stops at the first
-chunk that yields a hit, `src/hodl-baseline.js` and
-`src/position-history-mint.js`.
+`src/lib/event-scanner-mint-lookup.js`, which instead stops at the first
+chunk that yields a hit, `src/lib/hodl-baseline.js` and
+`src/lib/position-history-mint.js`.
 
 ### The dashboard does not scan a position the bot owns
 
@@ -1477,7 +2199,7 @@ history the bot computes for a position it manages. Running both is two
 full passes over every NFT in the chain, so the dashboard suppresses its
 fetch for a managed position.
 
-`shouldSkipUnmanagedFetch()` in `public/dashboard-unmanaged.js` is the
+`shouldSkipUnmanagedFetch()` in `src/client/web/dashboard-unmanaged.js` is the
 decision, consulted from `flushPendingUnmanagedFetch()`. It takes two
 inputs and suppresses only when **both** hold: a `/api/status` response
 has landed, and that response reports the position as managed.
@@ -1490,7 +2212,7 @@ the page was closed. Suppressing on it would leave a genuinely
 unmanaged position with nothing to populate its KPIs.
 
 After the first response the value is authoritative. The server's
-`managedPositions` (`src/handle-api-status.js`) is the union of live bot
+`managedPositions` (`src/lib/handle-api-status.js`) is the union of live bot
 loops **and** positions whose saved status is `running` but whose loop
 has not started yet, so a position the bot is about to pick up already
 reads as managed. This matters because the bot starts positions on a
@@ -1536,31 +2258,31 @@ When the user selects a position or imports/clears a wallet, the URL bar is
 updated via `router.navigate()` with `callHandler: false` (no page reload,
 no re-triggering of route handlers). Addresses are lowercased in URLs.
 
-Source: [`public/dashboard-router.js`](../public/dashboard-router.js)
+Source: [`src/client/web/dashboard-router.js`](../src/client/web/dashboard-router.js)
 
 ---
 
 ## Shared Help Copy
 
-Some help text has to appear in two places at once: the circle-i dialog
-beside a setting in Bot Configuration, and the corresponding section of the
-User Manual that GitHub Pages publishes. Written twice, the two drift on
+Some help text has to appear in two places at once: a circle-i dialog,
+beside a setting in Bot Configuration or on a dashboard card, and the
+corresponding section of the User Manual that GitHub Pages publishes. Written twice, the two drift on
 the first copy-edit — and the Telegram alert links readers to the
 published page, so a stale manual is what the operator reads when
 something has already gone wrong.
 
-[`public/shared-help-content.json`](../public/shared-help-content.json)
+[`src/lib/shared-help-content.json`](../src/lib/shared-help-content.json)
 is the single source. Two consumers read it and neither holds its own
 wording:
 
-- [`public/param-help-content.js`](../public/param-help-content.js)
+- [`src/client/web/param-help-content.js`](../src/client/web/param-help-content.js)
   imports it for the in-app dialog. The import needs the
   `with { type: "json" }` attribute — esbuild bundles a bare JSON import
   happily, but Node's native ESM loader, which the test suite uses to
   import the module directly, rejects it with
   `ERR_IMPORT_ATTRIBUTE_MISSING`.
 - [`scripts/build-manual-content.js`](../scripts/build-manual-content.js)
-  renders it into `public/help-and-user-manual.html` between per-entry
+  renders it into `src/client/web/help-and-user-manual.html` between per-entry
   marker comments, on every `npm run build`, `npm run lint` and
   `npm run check`:
 
@@ -1569,6 +2291,14 @@ wording:
 ...generated, do not edit...
 <!-- HELP:inIlGuard:END -->
 ```
+
+An entry with a `manualHeading` renders as a whole section: an `<h2>`
+whose id is its `manualAnchor`, then an `<h3>` and a paragraph for each
+of its sections, as the Impermanent Loss Guard's (`inIlGuard`) does. An
+entry without one renders as its sections alone, for part of a section
+the manual writes by hand around the markers. The Activity Log's
+"Historical and current prices" (`activityLogPrices`) is one: the
+Activity Log's circle-i shows it after its own section.
 
 The manual is rewritten in place rather than generated as a separate
 artifact the way `build-disclosure-content.js` does, because it is a
@@ -1587,9 +2317,9 @@ Two deliberate failure choices:
   sweep in and crash the build on.
 
 `manualBaseUrl` plus an entry's `manualAnchor` is also where
-[`src/il-guard.js`](../src/il-guard.js) builds the deep link its Telegram
+[`src/lib/il-guard.js`](../src/lib/il-guard.js) builds the deep link its Telegram
 alert carries, so the anchor exists in exactly one place. That read is
-guarded: an unguarded `require` of a file under `public/` would let a
+guarded: an unguarded `require` of a file under `src/client/web/` would let a
 malformed help file take `bot-cycle` down with it and stop the bot from
 starting at all. A missing or broken file degrades to an alert without a
 link.
@@ -1599,7 +2329,7 @@ link.
 Help quoting a setting's default, range or timing reads the number the
 install runs on rather than repeating it, so the copy follows the
 setting whether a release or the operator changes it.
-[`src/help-figures.js`](../src/help-figures.js) works out one table of
+[`src/lib/help-figures.js`](../src/lib/help-figures.js) works out one table of
 named figures, plain text worded for a sentence ("15", "4 hours",
 "10m → 20m → 40m → 80m"), and the copy's worked examples, such as the
 Impermanent Loss Guard's and the NEAR LIMIT badge's, so those stay true
@@ -1609,13 +2339,13 @@ was written for. A chain with no aggregator is worded apart: the
 dialogs branch on an empty `aggregatorName`, and the manual's prose,
 which cannot, quotes `aggregatorInUse`, which reads "none" there.
 Whether a chain has one is
-[`src/aggregator-in-use.js`](../src/aggregator-in-use.js)'s answer,
+[`src/lib/aggregator-in-use.js`](../src/lib/aggregator-in-use.js)'s answer,
 the same one the swap and the "Route:" badge act on.
 
-[`src/resolved-settings.js`](../src/resolved-settings.js) resolves the
+[`src/lib/resolved-settings.js`](../src/lib/resolved-settings.js) resolves the
 values on the server in the bot's order: the shipped file, the
 operator's copy in `app-config/user-configurable/`, then `.env` (from
-`src/config.js`) where it can set one. Ranges come from the shipped
+`src/lib/config.js`) where it can set one. Ranges come from the shipped
 `setting-bounds.json` alone, since a range an override could widen would
 bound nothing. The slippage confirmation tiers and the NEAR LIMIT
 threshold are the values the server sends the page (see
@@ -1633,12 +2363,12 @@ The figures reach the copy three ways:
   `<span data-figure="name">…</span>`. The manual build writes the
   shipped figures in, and the GitHub Pages copy keeps them. The copy the
   app serves loads the build's stamped bundle of
-  [`public/dashboard-manual-figures.js`](../public/dashboard-manual-figures.js),
-  `public/dist/manual-figures.js`, which rewrites the spans from
+  [`src/client/web/dashboard-manual-figures.js`](../src/client/web/dashboard-manual-figures.js),
+  `src/client/web/dist/manual-figures.js`, which rewrites the spans from
   `GET /api/help-figures`; the Pages build drops that tag.
 - **The dashboard's static help** in `index.html` holds empty
   `<span data-figure="name"></span>` elements, filled by
-  [`public/dashboard-help-figures.js`](../public/dashboard-help-figures.js)
+  [`src/client/web/dashboard-help-figures.js`](../src/client/web/dashboard-help-figures.js)
   once the server answers. It asks at startup, again until answered,
   without holding startup up. A dialog builds its copy from the same
   table when it opens, and does not open before the answer. The Doubling
@@ -1682,10 +2412,10 @@ exactly as GitHub Pages will publish it. Independent of the dashboard
 
 **Why a script is needed at all.** The gallery cannot be opened straight
 off disk. Its three inputs live in three places — the page and CSS in
-`public/`, the self-hosted fonts under `node_modules/@fontsource`, and
+`src/client/web/`, the self-hosted fonts under `node_modules/@fontsource`, and
 every screenshot in `docs/images/` — and the page references images as
 `images/…`, which resolves next to the HTML rather than into `docs/`.
-Opening `public/screenshot-gallery.html` in a browser therefore shows a
+Opening `src/client/web/screenshot-gallery.html` in a browser therefore shows a
 page with no images whatsoever.
 
 [`scripts/build-pages-site.js`](../scripts/build-pages-site.js) assembles
@@ -1730,7 +2460,7 @@ The deploy workflow calls the same builder:
 With one builder behind the local preview (`npm run show-gallery`) and
 the deploy, the preview cannot drift from what deploys.
 Only the two CI-only steps remain in YAML: `npm ci` and `copy-fonts`
-populate `public/fonts/`, which the builder then copies. A preview must
+populate `src/client/web/fonts/`, which the builder then copies. A preview must
 not run those, because `npm ci` wipes and reinstalls `node_modules`.
 
 `readSpec()` throws on a missing or malformed spec rather than falling
@@ -1864,7 +2594,7 @@ and each tool's own `argv` scanner are gone.
   files with the operator's copies over them, `.env`, and
   `bot-config.json`. Its verdict is the server's and the bot's at
   startup, which refuse to start on any problem: both ask
-  `src/settings-check.js`, over the JSON Schemas the shipped-values test
+  `src/lib/settings-check.js`, over the JSON Schemas the shipped-values test
   uses.
   It reads files only, so it is safe while the server runs; run it from
   the install's folder. Exit status 0 when every setting passes, 1
@@ -1873,7 +2603,7 @@ and each tool's own `argv` scanner are gone.
   on: the `.env` variables LP Ranger reads, with the environment over
   them, then each JSON settings file by name, the operator's copy over
   the shipped one, as raw JSON. A secret is named as set, never shown.
-  It reads them through `resolveSettings` in `src/settings-check.js`,
+  It reads them through `resolveSettings` in `src/lib/settings-check.js`,
   the reading the validator above checks. Reads files only; run it from
   the install's folder.
 
@@ -1901,7 +2631,7 @@ entry, a `compoundHistory` row — does not match what the NFT actually
 earned. Which input was wrong?
 
 The bot never reads a compound's USD value from a price feed alone. It
-multiplies three independent inputs, in `src/compounder.js`
+multiplies three independent inputs, in `src/lib/compounder.js`
 `executeCompound`:
 
 ```text
@@ -1912,21 +2642,29 @@ usdValue = (amount0Deposited / 10^decimals0) × price0
 The amounts come from the `IncreaseLiquidity` event on the deposit TX,
 the decimals from `poolState`, and the prices from
 `deps._lastPrice0` / `_lastPrice1` — whatever
-`src/bot-pnl-updater.js` `_fetchWithOverrides` last resolved for the
+`src/lib/bot-pnl-updater.js` `_fetchWithOverrides` last resolved for the
 position, which is either the live price cascade or a per-position
 manual price override. Any one of the three can be wrong on its own,
 and each failure leaves a different signature. The tool re-derives all
 three from the chain and from live price sources, then reports which
 one has to be wrong to produce the reported figure.
 
+The Telegram alert reports the fees among that deposit: the record's
+`amount0Compounded` and `amount1Compounded` at the same prices
+(`src/lib/compounded-coins.js`). When the deposit also took in coins the
+wallet already held, the alert names their value apart, and the
+`usdValue` this tool checks is the whole deposit's, the Activity Log's
+$usd amount.
+
 The figure matters beyond the alert text. `recordCompound` in
-`src/bot-cycle-compound.js` adds the same compound's **coins** to the
-position's `compoundedAmount0` / `compoundedAmount1`, and those coins
-priced at the current poll are half of the dashboard's lifetime
-fee-earnings figure (`currentFeesUsd + snap.totalCompoundedUsd`, see
-`src/ui-state.js`). That total is only ever accumulated incrementally
-once disk holds a non-zero value — the on-chain rescan in
-`src/bot-recorder-lifetime.js` is deliberately gated off by
+`src/lib/bot-cycle-compound.js` adds every **fee** the same compound
+collected to the position's `compoundedAmount0` / `compoundedAmount1`,
+and those coins priced at the current poll are half of the fee earnings
+the Lifetime panel's Profit adds (Current Fees plus Fees Compounded,
+`src/client/web/dashboard-data-kpi.js`). That total is only ever
+accumulated incrementally once disk holds a non-zero value — the
+on-chain rescan in
+`src/lib/bot-recorder-lifetime.js` is deliberately gated off by
 `_resolveDiskState`. A bad compound figure therefore persists in
 lifetime P&L until it is corrected by hand.
 
@@ -1944,7 +2682,7 @@ What the tool does:
    (`Transfer` from the zero address) events.
 4. Labels each `IncreaseLiquidity` as mint / compound / rebalance
    re-deposit by reusing the production classifier
-   (`_filterRebalances` from `src/compounder.js`), so the labels match
+   (`_filterRebalances` from `src/lib/compounder.js`), so the labels match
    the bot's own bookkeeping.
 5. Prices every event at live USD, printing Moralis, GeckoTerminal,
    and DexScreener separately alongside the cascade result so a single
@@ -1966,7 +2704,7 @@ Reading the hypothesis block:
 - **decimals shift** — every `(decimals0, decimals1)` pair within ±4
   that reproduces the reported figure to within 5%. A hit means the
   amounts were divided by the wrong power of ten. Cross-check against
-  the decimals heal / override path in `src/bot-recorder-decimals-heal.js`
+  the decimals heal / override path in `src/lib/bot-recorder-decimals-heal.js`
   and the `decimalsOverride0` / `decimalsOverride1` /
   `decimalsOverrideForce0` / `decimalsOverrideForce1` config keys.
 
@@ -2072,7 +2810,7 @@ steady state is under 200 ms — which is why a run of newly-built
 providers overlaps the global request queue's release interval and a
 warm one does not.
 
-Unlike the other tools here it imports nothing from `src/` — only
+Unlike the other tools here it imports nothing from `src/lib/` — only
 `_helpers` — so it opens no log file and reads no operator settings, and
 is therefore safe to run against a live install. That is the whole point
 of it, and it is why the default endpoint is a literal here rather than
@@ -2090,7 +2828,7 @@ command.
   `app-data/scan-cache/pnl-epochs-cache.json` to `freshDeposits: null` and
   `lifetimeHodlAmounts: null`. On the next
   `npm start` that combination drives the lifetime-scan recovery path in
-  `src/bot-recorder-lifetime.js` and `src/bot-loop.js` (see
+  `src/lib/bot-recorder-lifetime.js` and `src/lib/bot-loop.js` (see
   [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause)
   for the surrounding price-lookup gating), which is what exercises the
   `lifetimeScanComplete` flag and the Syncing badge. A cache built by a
@@ -2136,11 +2874,19 @@ procedure documented in README.md &sect; Update.
 `util/migration/` brings the files Step Six copied up to date with the
 new release, also in Step Six, straight after the copy (`node
 ./util/migration`). Each change a release makes to where a file lives or
-what it holds is one step, a file of its own, run in release order from
-the `STEPS` list in `util/migration/index.js`. Every
+what it holds is one step, a file of its own in a folder named for the
+release it updates from (`from-0.9.9/`, `from-0.9.10/`), run in release
+order from the `STEPS` list in `util/migration/index.js`. Every
 step prints what it changed and is safe to run again; `--dry-run`
-reports without changing anything. Node built-ins only, like the copy.
-Its tests are in `util/test/migration.test.js`.
+reports without changing anything. The steps share two modules, beside
+`index.js`: `settings-copies.js` for the operator's copies of the settings files,
+which keeps each old file in `tmp/` before changing it, and
+`env-file.js` for `.env`, which keeps each changed line as a comment and
+makes no copy, since the file holds the private key. Node built-ins
+only, like the copy. Its tests are in `util/test/migration.test.js`,
+`util/test/migration-099-settings.test.js`,
+`util/test/migration-from-0.9.10.test.js` and
+`util/test/migration-from-0.9.10-deposit-lists.test.js`.
 
 #### Cache Utilities
 
@@ -2216,7 +2962,7 @@ documentation is in `docs/util/bookkeeping-for-coins-in-transactions/`:
 | Know how the tools work, module by module | [Engineering Reference](util/bookkeeping-for-coins-in-transactions/engineering.md) |
 | Record a transaction by hand | [Step by Step](util/bookkeeping-for-coins-in-transactions/engineering.md#step-by-step) |
 
-Their settings are LP Ranger's own, read through `src/config.js`, so
+Their settings are LP Ranger's own, read through `src/lib/config.js`, so
 `.env` and the operator's settings files apply to them as to the app.
 They fail over to no other rpc endpoint, and for prices ask Moralis,
 then CoinGecko, and no third service. They write only under
@@ -2276,10 +3022,10 @@ One home for each kind of data:
   managed positions, the encrypted wallet and api keys, and the shipped
   defaults with the operator's copies. **Never cache data.**
 - **`app-data/position-records.json`** — what the bot worked out or
-  recorded about each position (`src/position-records.js`).
+  recorded about each position (`src/lib/position-records.js`).
 - **`app-data/scan-cache/`** — what was read from the blockchain or a
   price service; rebuilt if deleted, at about an hour per position
-  (`src/scan-cache-dir.js`).
+  (`src/lib/scan-cache-dir.js`).
 - **`app-data/util/bookkeeping/`** — the csv reports the bookkeeping
   tools in `util/bookkeeping/` write, one per wallet, range of days and
   time zone, and in `scan-cache/` the prices they fetched. A tool under
@@ -2298,7 +3044,7 @@ One home for each kind of data:
   addresses (PositionManager, Factory, SwapRouter), gas multipliers, the
   aggregator (url, name, wait window, quote time limit, retry count), and
   each price service's id for the chain. Read once at
-  module load by `src/config.js` via the layered defaults+user-
+  module load by `src/lib/config.js` via the layered defaults+user-
   override loader. **To customize:** copy this file to
   `app-config/user-configurable/chains.json` and edit the copy
   (deep-merge — you only need to ship the keys you want to override).
@@ -2313,7 +3059,7 @@ One home for each kind of data:
   Tracked shipped default. Universal dust threshold (in abstract
   units of an inflation-resistant reference asset) plus the list of
   tokens used to fetch the live USD/unit price. Read once at module
-  load by `src/dust.js` via the layered defaults+user-override
+  load by `src/lib/dust.js` via the layered defaults+user-override
   loader. See [Dust Threshold](#dust-threshold) for the strategy and
   rationale. **To customize** (tune the threshold or switch reference
   assets): copy this file to
@@ -2323,19 +3069,19 @@ One home for each kind of data:
 - **`app-defaults-for-user-configurable/price-services.json`** —
   Tracked shipped default. The base url of each price service's api
   (DexScreener, GeckoTerminal, Moralis), version included where the url
-  carries one. Read once at module load by `src/price-service-urls.js`,
+  carries one. Read once at module load by `src/lib/price-service-urls.js`,
   which every price request is built through. Which tokens a service can price
   on a chain is per chain instead, in `chains.json` → `priceServices`.
-  `geckoTerminal.topPoolsConsidered`, read by `src/gecko-pool-cache.js`,
+  `geckoTerminal.topPoolsConsidered`, read by `src/lib/gecko-pool-cache.js`,
   is how many of a token's pools are weighed when its historical price is
   looked up.
 - **`app-defaults-for-user-configurable/setting-bounds.json`** —
   Tracked. The range every checked setting must fall in, at the setting's
   own path; `timers` holds the timer rule. Read through
-  `src/setting-bounds.js` by the save check (`src/config-bounds.js`) and
-  the startup check (`src/config.js`, through `src/bot-config-defaults.js`,
-  `src/ui-defaults.js`, `src/runtime-flags.js` and
-  `src/timer-bounds.js`). The dashboard bundles it for the figures its
+  `src/lib/setting-bounds.js` by the save check (`src/lib/config-bounds.js`) and
+  the startup check (`src/lib/config.js`, through `src/lib/bot-config-defaults.js`,
+  `src/lib/ui-defaults.js`, `src/lib/runtime-flags.js` and
+  `src/lib/timer-bounds.js`). The dashboard bundles it for the figures its
   help quotes and for its token-decimals check. **Not overridable:** a
   range an override could widen would bound nothing.
 - **`app-defaults-for-user-configurable/api-keys.example.json`** —
@@ -2347,7 +3093,7 @@ One home for each kind of data:
 - **`user-configurable/bot-config.json`** — Runtime, gitignored.
   Managed position lifecycle (`status: running/stopped`), per-position
   settings (thresholds, slippage, auto-compound config, initial deposit
-  overrides), global bot settings. Read/written by `src/bot-config-v2.js`
+  overrides), global bot settings. Read/written by `src/lib/bot-config-v2.js`
   via `loadConfig()` / `saveConfig()`. Atomic write (tmp + rename); every
   write is logged with the caller's stack for config-stomp debugging.
 - **`app-data/position-records.json`** — Runtime, gitignored. Each
@@ -2358,7 +3104,7 @@ One home for each kind of data:
   `RECORD_POSITION_KEYS`), kept apart
   from the settings so a settings reset leaves the figures. Read and
   written with bot-config.json, which merges them into each position's
-  slot in memory (`src/position-records.js`); copied to
+  slot in memory (`src/lib/position-records.js`); copied to
   `position-records.backup.json` on each `loadConfig` call that makes
   backups, as bot-config.json is.
 - **`user-configurable/bot-config.backup.json`** — Runtime, gitignored.
@@ -2367,7 +3113,7 @@ One home for each kind of data:
   and the bot call it once as they start, so the snapshot holds the file
   as it was before that run saved anything. The price library's three
   cache lifetimes are read through it too (`readPriceCacheSettings`,
-  `src/price-fetcher-gate.js`), when a program's entry point asks, never
+  `src/lib/price-fetcher-gate.js`), when a program's entry point asks, never
   as the library loads. The server and the bot ask as they start, and
   their reads make the copies. A tool under `util/` that needs the
   lifetimes passes `skipBackups`, so its read leaves the snapshot alone
@@ -2386,18 +3132,18 @@ One home for each kind of data:
   wallet state (AES-256-GCM with PBKDF2-SHA512 key derivation from the
   user's password). Holds address, source (generated/seed/key),
   encrypted private key and mnemonic. Plaintext secrets are NEVER
-  written to disk. Read/written by `src/wallet-manager.js`. Tests
+  written to disk. Read/written by `src/lib/wallet-manager.js`. Tests
   override the path via the `WALLET_FILE_PATH` environment variable.
 - **`user-configurable/api-keys.json`** — Runtime, gitignored.
   Encrypted storage for third-party API keys (Moralis, Telegram bot
   token + chat ID), using the same wallet password and encryption
-  scheme as `wallet.json`. Read/written by `src/api-key-store.js`.
+  scheme as `wallet.json`. Read/written by `src/lib/api-key-store.js`.
   Tests override the path via the `API_KEYS_FILE_PATH` environment
   variable.
 - **`app-data/rebalance_log.json`** — Runtime, gitignored. JSON array
   of every rebalance event ever: timestamps, fees collected, gas cost,
   exit/entry USD values, token balances. Appended to by
-  `src/bot-recorder.js`. Read by `src/position-history.js` for
+  `src/lib/bot-recorder.js`. Read by `src/lib/position-history.js` for
   closed-position P&L display. Configurable via the `LOG_FILE`
   environment variable. Lives outside `app-config/` because it's
   per-install runtime DATA, not config.
@@ -2410,7 +3156,7 @@ files under `app-config/app-defaults-for-user-configurable/`.
 
 | File | What it holds | How the page gets it | An operator's copy takes effect |
 | ---- | ------------- | -------------------- | ------------------------------- |
-| `ui-defaults_layout.json` | Layout: the dialog height. | `npm run build` writes it into `public/ui-tokens.css` (`scripts/build-ui-tokens.js`). | At the next `npm run build`. |
+| `ui-defaults_layout.json` | Layout: the dialog height. | `npm run build` writes it into `src/client/web/ui-tokens.css` (`scripts/build-ui-tokens.js`). | At the next `npm run build`. |
 | `ui-defaults_non-layout_for-server-down-scenario.json` | The two settings the page uses while it cannot reach the server: how long it gives each startup question (`chainQueryTimeoutMs`), and how many unanswered questions turn the status pill to HALTED (`pollFailuresBeforeHalted`). | `npm run build` bundles the shipped copy into the page's script. | Never. |
 | `ui-defaults_non-layout_for-server-up-scenario.json` | Every other dashboard setting, listed in [Configuration](configuration.md#dashboard-settings-the-server-sends). | The server sends it at `GET /api/ui-defaults`. | After a restart and a page reload. |
 
@@ -2418,18 +3164,18 @@ files under `app-config/app-defaults-for-user-configurable/`.
 the first paint would make the page jump. The server-down settings are
 needed exactly when the server cannot be asked.
 
-**How the server sends the rest.** `src/ui-defaults.js` reads the
+**How the server sends the rest.** `src/lib/ui-defaults.js` reads the
 server-up file once, at startup, with the operator's copy on top. An
 on/off setting must be true or false. A setting the page turns into a
-timer delay must meet the timer rule (`src/timer-bounds.js`). Any other
+timer delay must meet the timer rule (`src/lib/timer-bounds.js`). Any other
 must fall in its range in `setting-bounds.json`. The answer is kept for the life of the
 process, so the server's own copy of the poll interval
-(`src/config.js`, which times "the dashboard has had a chance to poll")
-and the figures the help quotes (`src/resolved-settings.js`) are the
+(`src/lib/config.js`, which times "the dashboard has had a chance to poll")
+and the figures the help quotes (`src/lib/resolved-settings.js`) are the
 values the page is sent.
 
 **How the page uses them.** At startup the page asks the server for its
-blockchain, then for these settings (`public/dashboard-ui-settings.js`),
+blockchain, then for these settings (`src/client/web/dashboard-ui-settings.js`),
 and starts polling and its timers only once they arrive. Each request
 that ends unanswered counts toward HALTED, as the blockchain's does.
 Code reads a setting through `uiSetting(key)`, which refuses a read made
@@ -2452,7 +3198,7 @@ page reads it through `uiSetting`.
 1. **Shipped default for an operator-tunable value** (tracked, never
    rewritten by the app at runtime) →
    `app-config/app-defaults-for-user-configurable/<name>.json`.  Read
-   via `src/load-merged-defaults.js#loadMergedDefaults("<name>.json")`
+   via `src/lib/load-merged-defaults.js#loadMergedDefaults("<name>.json")`
    so per-install operator overrides at
    `app-config/user-configurable/<same-name>.json` are automatically
    layered on top (deep-merged; operator values win).  This is the
@@ -2474,14 +3220,14 @@ page reads it through `uiSetting`.
 5. **Scan cache** (can be deleted with no loss of data; rebuilt on
    demand from the blockchain or an API) →
    `app-data/scan-cache/<name>.json`, its path from `scanCachePath`
-   (`src/scan-cache-dir.js`).  DO NOT put caches in `app-config/` or
+   (`src/lib/scan-cache-dir.js`).  DO NOT put caches in `app-config/` or
    `tmp/`.
 
 ### One-Time Migration from the Legacy Layout
 
 Existing installations prior to this refactor kept runtime files at the
 project root (`.bot-config.json`, `.wallet.json`, `api-keys.json`, etc.).
-On every startup, `src/migrate-app-config.js` runs `migrateAppConfig()`
+On every startup, `src/lib/migrate-app-config.js` runs `migrateAppConfig()`
 which moves any surviving legacy root file into `app-config/`. The
 migration is fully idempotent:
 
@@ -2522,7 +3268,7 @@ exposes, more keys with no input of their own, and nested groups. Where
 a position has no value of its own, the bot reads this file, an
 operator's copy on top, through `readBotConfigDefaults`. The dashboard
 fetches the same defaults from `GET /api/bot-config-defaults`, with
-`.env` on top ([`src/resolved-settings.js`](../src/resolved-settings.js)),
+`.env` on top ([`src/lib/resolved-settings.js`](../src/lib/resolved-settings.js)),
 so its inputs, Default buttons and help show what the bot runs on. A
 position's own values live in `app-config/user-configurable/bot-config.json`.
 
@@ -2541,7 +3287,7 @@ position's own values live in `app-config/user-configurable/bot-config.json`.
 | `gasFeePct` | `1` | A swap, in a rebalance or a compound, is skipped when its gas would cost more than this percent of its value |
 | `rangeOverrideEnabled` | `false` | Bot Configuration → Range "No Override" toggle. `false` re-uses the position's existing on-chain range |
 | `rebalanceRangeWidthPct` | `80` | Value the Price Range Extension row's "Default" button applies. Not auto-populated into the input |
-| `fullRangeRebalanceEnabled` | `false` | Mint the next rebalance across the full tick range, for a position with no Full-Range choice saved, while its Range settings apply. `GET /api/status` publishes it for the checkbox (`fullRangeSetting`, [`src/range-override.js`](../src/range-override.js)) |
+| `fullRangeRebalanceEnabled` | `false` | Mint the next rebalance across the full tick range, for a position with no Full-Range choice saved, while its Range settings apply. `GET /api/status` publishes it for the checkbox (`fullRangeSetting`, [`src/lib/range-override.js`](../src/lib/range-override.js)) |
 
 **Validation bounds.** None live here: every range is in
 `setting-bounds.json`, at the setting's own key (see the file inventory
@@ -2549,7 +3295,7 @@ above).
 
 **No Bot Configuration input.** These have no field in the panel.
 Whether they can be changed at runtime at all depends on membership of
-`GLOBAL_KEYS` in [`src/bot-config-keys.js`](../src/bot-config-keys.js): a key
+`GLOBAL_KEYS` in [`src/lib/bot-config-keys.js`](../src/lib/bot-config-keys.js): a key
 in that list is accepted by `POST /api/config`, and one that is not can
 only be changed by editing
 `app-config/user-configurable/bot-config-defaults.json` and restarting.
@@ -2559,7 +3305,7 @@ only be changed by editing
 | `checkIntervalSec` | `300` | the JSON file or `CHECK_INTERVAL_SEC` in `.env`, then restart | Seconds between the bot's checks of every position. One global value, since the dashboard's idle and wake timing are built on it |
 | `rebalanceGasDeferPct` | `0.5` | the JSON file, then restart | A rebalance waits when its gas would cost more than this percent of the position's value |
 | `gasDeferRetrySec` | `3600` | the JSON file, then restart | How long a waiting rebalance waits before the bot looks again, in place of the poll interval |
-| `moralisEnabled` | `true` | the Moralis API Key dialog | Whether the stored Moralis key is used for price lookups. Separate from whether a key exists, so switching it off stops the calls without discarding the key — which is what an operator wants when a quota runs out. The control is disabled when no key is configured. This default, an operator's copy on top, decides until the switch is saved (`moralisEnabledIn`, [`src/server-moralis.js`](../src/server-moralis.js)) |
+| `moralisEnabled` | `true` | the Moralis API Key dialog | Whether the stored Moralis key is used for price lookups. Separate from whether a key exists, so switching it off stops the calls without discarding the key — which is what an operator wants when a quota runs out. The control is disabled when no key is configured. This default, an operator's copy on top, decides until the switch is saved (`moralisEnabledIn`, [`src/lib/server-moralis.js`](../src/lib/server-moralis.js)) |
 | `priceCacheTtlMs` | `120000` | `POST /api/config` | In-memory token-price cache TTL — see [Idle-Driven Price-Lookup Pause](#idle-driven-price-lookup-pause) |
 | `dustUnitPriceCacheMultiplier` | `30` | `POST /api/config` | Dust-unit-price TTL as a multiple of `priceCacheTtlMs` |
 | `moveCacheTtlMs` | `4000` | `POST /api/config` | Cache TTL for the fresh-price window around a rebalance or compound |
@@ -2568,7 +3314,7 @@ only be changed by editing
 | `globalRPCRequestRateIntervalMS` | `222` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process, 5 to 2000; the low end only against a node of your own |
 
 **`lowGasThresholds`** — drives the Mission Control "Gas Running Low" /
-"Gas Critical" badge in [`src/gas-monitor.js`](../src/gas-monitor.js).
+"Gas Critical" badge in [`src/lib/gas-monitor.js`](../src/lib/gas-monitor.js).
 Not exposed in the UI.
 
 | Key | Default | Description |
@@ -2578,7 +3324,7 @@ Not exposed in the UI.
 | `standardSendGas` | `21000` | EVM constant for a no-calldata native transfer |
 
 **`residualCleanup`** — drives the post-rebalance residual-sweep loop in
-[`src/bot-cycle-residual.js`](../src/bot-cycle-residual.js). Not exposed
+[`src/lib/bot-cycle-residual.js`](../src/lib/bot-cycle-residual.js). Not exposed
 in the UI.
 
 | Key | Default | Description |
@@ -2587,7 +3333,7 @@ in the UI.
 | `thresholdPct` | `5` | Residual share of the pool batch (%) that triggers a sweep |
 
 **`ilGuardRetry`** — paces retries of a rebalance the Impermanent Loss
-Guard has rejected, in [`src/il-guard.js`](../src/il-guard.js). Not
+Guard has rejected, in [`src/lib/il-guard.js`](../src/lib/il-guard.js). Not
 exposed in the UI. Each has a range in `setting-bounds.json`, a minute
 to thirty days, so a mistyped value cannot turn the guard into a
 per-poll retry.
@@ -2598,7 +3344,7 @@ per-poll retry.
 | `maxMs` | `604800000` | Ceiling the doubling ladder holds at (7 days) |
 
 **`throttleDoubling`** — the three numbers behind doubling mode, read by
-[`src/throttle.js`](../src/throttle.js): how many rebalances in how wide
+[`src/lib/throttle.js`](../src/lib/throttle.js): how many rebalances in how wide
 a window switch it on, and how long a quiet spell clears it. No input;
 the dashboard's Doubling Trigger Window label shows the numbers in force.
 Defaults and ranges are in [Configuration](configuration.md).
@@ -2726,7 +3472,7 @@ by a lightweight local HTTP server that uses **[Scalar](https://scalar.com)**
 (`@scalar/api-reference`) as the renderer. Scalar has a polished native
 dark theme that matches the rest of LP Ranger's palette, plus interactive
 "Try it out" support — it's a modern replacement for the old Swagger UI.
-The brief ROUTES list in [`server.js`](../server.js)'s file-header is a
+The brief ROUTES list in [`src/server.js`](../src/server.js)'s file-header is a
 human-readable index, not the full spec.
 
 ### Starting the Local API Reference Server
@@ -2765,7 +3511,7 @@ runtime.
 The spec is a single hand-maintained file at
 [`docs/openapi.json`](openapi.json). There's **no code generation** —
 route handlers do not auto-publish their schemas — so any route change,
-in `server.js` or any `src/` module that registers a route, must be
+in `src/server.js` or any `src/lib/` module that registers a route, must be
 mirrored by hand into `openapi.json`.
 
 Hand-maintenance drifts on its own, so
@@ -2775,8 +3521,8 @@ It is what makes step 8 enforceable rather than aspirational.
 
 Typical workflow when you add, rename, or change an API route:
 
-1. **Make the code change** in the appropriate `src/server-*.js` file
-   and its call-site in `server.js`. Add/update the test in
+1. **Make the code change** in the appropriate `src/lib/server-*.js` file
+   and its call-site in `src/server.js`. Add/update the test in
    `test/server-*.test.js`.
 2. **Open [`docs/openapi.json`](openapi.json)** and find (or add) the
    entry for the affected path under the top-level `paths` object. The
@@ -2836,7 +3582,7 @@ Typical workflow when you add, rename, or change an API route:
      the real `POSITION_KEYS` / `GLOBAL_KEYS` allowlists), every
      dashboard setting `GET /api/ui-defaults` sends appears in its
      response schema and no other (read from `UI_SETTING_KEYS` in
-     `src/ui-defaults.js`), every operation has a summary and at least
+     `src/lib/ui-defaults.js`), every operation has a summary and at least
      one response, and every tag is both declared and used. On failure
      it names each mismatch.
    - [`test/openapi-coverage.test.js`](../test/openapi-coverage.test.js)
@@ -2866,26 +3612,26 @@ dynamic route has to be added there deliberately.
 
 ---
 
-## `server.js`
+## `src/server.js`
 
-`server.js` is the execution entry point for the dashboard+bot process
+`src/server.js` is the execution entry point for the dashboard+bot process
 (`npm start` / `npm run build-and-start`). The headless-bot variant
 (`npm run bot`) is a thin wrapper around the same internals; see
-[`bot.js`](../bot.js) for that path.
+[`src/bot.js`](../src/bot.js) for that path.
 
 What happens when the process starts, in order:
 
 1. **Colored logging is installed.** `installColorLogger()` from
-   [`src/logger.js`](../src/logger.js) wraps `console.log`/`warn`/`error`
+   [`src/lib/logger.js`](../src/lib/logger.js) wraps `console.log`/`warn`/`error`
    so bracketed prefixes like `[server]`, `[bot]`, `[rebalance]` render
    in distinct colors and module-specific emoji IDs.
 2. **`--help` / `-h` short-circuit.** If the flag is on `argv`,
-   [`src/cli-help.js`](../src/cli-help.js) prints the usage text and the
+   [`src/lib/cli-help.js`](../src/lib/cli-help.js) prints the usage text and the
    process exits with status 0 — nothing below runs.
 3. **Core modules are required.** `http`, `fs`, `path`, then the app's
    own modules: `config` (env-var parsing), `walletManager`,
    `position-history`, `rebalance-lock`, `position-manager`,
-   `bot-config-v2`, `migrate-app-config`. Requiring `src/config.js`
+   `bot-config-v2`, `migrate-app-config`. Requiring `src/lib/config.js`
    also loads `app-config/app-defaults-for-user-configurable/chains.json` for the current
    `CHAIN_NAME`, and runs the startup checks that stop the process on a
    setting outside its range (see
@@ -2922,18 +3668,19 @@ What happens when the process starts, in order:
       resolved, which can wait on a prompt, so a signal during a slow
       start still shuts down cleanly. The handler marks the app
       stopping for good, so no position starts and no move begins
-      after it (src/app-phase.js), sends the shutdown alert, starts
+      after it (src/lib/app-phase.js), sends the shutdown alert, starts
       `_positionMgr.stopAll()`, closes the HTTP server,
       and exits within `shutdown.exitTimeoutMs` (three seconds as
       shipped) whether or not a rebalance or compound has finished.
-      `npm run gentle-stop` is the stop that waits for one.
+      `npm run gentle-stop` is the stop that waits for one, and for a
+      scan under way.
    3. `_tryResolveKey()` tries to obtain the wallet private key —
       either from `PRIVATE_KEY` in `.env`, from a
       `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or from
       an interactive prompt.
       - On success: `_autoStartManagedPositions()` spins up one bot
         loop per position whose v2 config has `status: 'running'`, on
-        this chain and in this wallet (src/server-auto-start.js). The
+        this chain and in this wallet (src/lib/server-auto-start.js). The
         starts are staggered by the poll interval divided by the
         number of positions (150 seconds apart for two at the default
         300), so they don't all poll the RPC on the same tick. The
@@ -2946,12 +3693,12 @@ What happens when the process starts, in order:
 9. **If imported as a module (e.g. from a test)**: nothing in step 8
    runs. The caller controls `start()` / `stop()` lifecycle explicitly.
 
-The dashboard is served as static files from `public/` by `serveStatic()`;
+The dashboard is served as static files from `src/client/web/` by `serveStatic()`;
 all JSON APIs are dispatched by `handleRequest()` through a route table
 that maps method+path to handlers defined in
-[`src/server-routes.js`](../src/server-routes.js),
-[`src/server-positions.js`](../src/server-positions.js) and the other
-`src/` route modules. The full route surface is covered by the OpenAPI
+[`src/lib/server-routes.js`](../src/lib/server-routes.js),
+[`src/lib/server-positions.js`](../src/lib/server-positions.js) and the other
+`src/lib/` route modules. The full route surface is covered by the OpenAPI
 spec (see [API Documentation](#api-documentation) above).
 
 ---
@@ -2962,7 +3709,7 @@ spec (see [API Documentation](#api-documentation) above).
 the raw file.** Each shipped-defaults JSON has a reader beside it that
 applies the per-key rules declared next to the values —
 `readBotConfigDefaults()` for `bot-config-defaults.json`, and the
-`parse*` helpers in `src/runtime-flags.js` for `app-runtime.json` and
+`parse*` helpers in `src/lib/runtime-flags.js` for `app-runtime.json` and
 `.env`. `loadMergedDefaults()` is what those readers are built on, not
 an alternative to them: it layers the operator's override over the
 shipped file and stops there.
@@ -2975,7 +3722,7 @@ startup through its reader, it leaves the shipped 300 standing.
 Five rules follow.
 
 **A value that becomes a `setTimeout` or `setInterval` delay is vetted
-by `src/timer-bounds.js`, and by nothing else.** One module, because
+by `src/lib/timer-bounds.js`, and by nothing else.** One module, because
 such a value arrives by more than one road: `.env`, and JSON files an
 operator can override.
 A second copy of the rule would drift, and the half that drifted would
@@ -2984,14 +3731,14 @@ short, a timer asked for more than about 24.8 days does not wait longer,
 it fires after a millisecond, and `NaN` behaves the same way.
 
 **Where the app cannot run on a wrong value, throw rather than fall
-back.** `src/config.js` does this for the three settings that become
+back.** `src/lib/config.js` does this for the three settings that become
 timer delays, for the five Bot Configuration settings `.env` can set, for any setting
 an operator's `bot-config-defaults.json` or
 `ui-defaults_non-layout_for-server-up-scenario.json` puts outside its
 range, and for an unresolvable chain name. A value
 quietly replaced by its default leaves the bot on a schedule, setting or
 chain nobody chose, the last thing anyone would check. The throw comes
-as `src/config.js` loads, stopping the process before any position
+as `src/lib/config.js` loads, stopping the process before any position
 starts, with a message naming the setting and the bound.
 
 **Throw at a boundary a person writes to, never on a hot path.** This is
@@ -3000,7 +3747,7 @@ why `bot-config-defaults.js` has two readers.
 its range, judged by the timer rule for a timer and by
 `setting-bounds.json` for the rest, group members and list entries
 included, and names them in one message. It is called once, by
-`src/config.js`, at startup.
+`src/lib/config.js`, at startup.
 `readBotConfigDefaults()` never throws over a value, and is what
 everything else calls — and those calls include a poll cycle, a price
 lookup, the all-endpoints-down pause, and `GET /api/bot-config-defaults`. A throw from there would turn
@@ -3011,7 +3758,7 @@ refused: at the next start, which is when the operator can act on it.
 **Where the app can carry on, answer rather than throw.** A bad value
 arriving at `POST /api/config` gets a 400 naming the problem; the server
 keeps serving and the dashboard can say what was wrong. This is why
-`_checkTimer()` in `src/config-bounds.js` catches the timer rule's
+`_checkTimer()` in `src/lib/config-bounds.js` catches the timer rule's
 throw and returns its message instead — the startup path throws that
 sentence, the route replies with it, and neither restates the rule.
 
@@ -3021,18 +3768,18 @@ unrelated reason: a malformed request, most often one with no
 `positionKey`, or one whose key names another chain. The dashboard
 raises its dialog and restores the field only for the first. Both
 refusals come before anything in the request is applied
-(`src/server-config-route.js`), so a refused request leaves no trace.
+(`src/lib/server-config-route.js`), so a refused request leaves no trace.
 
 **The browser does not decide whether a value is acceptable.**
-`src/config-bounds.js` is the only place that decision is made, for
+`src/lib/config-bounds.js` is the only place that decision is made, for
 every setting the dashboard lets an operator type into, and
-`public/dashboard-config-save.js` is the only path a save takes. Adding
+`src/client/web/dashboard-config-save.js` is the only path a save takes. Adding
 a settable key means adding its rule to the first and mapping the key
 to its input id in the second; leave either out and the save fails with
 nothing said and the refused value still on screen.
 
 Each setting's rule is a JSON Schema, and the startup check builds
-bot-config.json's schema from the same ones (`src/bot-config-checks.js`),
+bot-config.json's schema from the same ones (`src/lib/bot-config-checks.js`),
 so a value a save refuses stops startup, and one a save takes passes.
 The Telegram alerts chosen work the same way: one schema
 (`ALERT_CHOICES`, beside the alert list) for the Telegram route's save
@@ -3053,7 +3800,7 @@ refuses with no message, which reads as a broken Save button. And no
 check in the browser binds a request that does not come from the form.
 
 Bounds live with the check, not in the browser: every range is in
-`setting-bounds.json`, read through `src/setting-bounds.js` by this
+`setting-bounds.json`, read through `src/lib/setting-bounds.js` by this
 module, the shipped-defaults reader and the timer rule, so no figure is
 restated. No input carries a configured range: the only `min` and
 `max` attributes in the page are a quantity's natural limits, zero for
@@ -3070,7 +3817,7 @@ either would strand a setting the operator could set but never undo.
 ## RPC Failover
 
 All TX-sending paths route through
-[`src/send-transaction.js`](../src/send-transaction.js), which owns the
+[`src/lib/send-transaction.js`](../src/lib/send-transaction.js), which owns the
 single active-endpoint selection over the ordered list in
 `chains.json` → `rpc.urls`. On `estimateGas` failure it probes the
 remaining endpoints and commits only to one that answers; on success it
@@ -3081,7 +3828,7 @@ signer to be a `FailoverNonceManager`, which rebinds on change. No-op
 on a single-endpoint chain.
 
 **What moves selection is a failure rate, not one error.**
-`decideIfCurrentRPCIsOutOfService` (`src/rpc-out-of-service.js`) is the
+`decideIfCurrentRPCIsOutOfService` (`src/lib/rpc-out-of-service.js`) is the
 single decider, and an endpoint is left only once it is failing more
 than `rpcFailoverRatePercentage` of what it is asked inside the last
 `rpcFailoverRateDurationMinutes`. Every RPC outcome in the process
@@ -3113,7 +3860,7 @@ whole list hiding a defect of ours.
 
 **An HTTP 429 is waited out rather than moved off.** It says this
 process is sending too fast, and moving carries the same rate to the
-next endpoint. `_patchRequestPacing` (`src/bot-provider.js`) retries on
+next endpoint. `_patchRequestPacing` (`src/lib/bot-provider.js`) retries on
 the `rpcRetryOn429DelaysMs` schedule and leaves a per-endpoint penalty,
 capped at `rpcMax429PenaltyMs`, that every later request to that
 endpoint honours and any success clears.
@@ -3127,7 +3874,7 @@ signer-bound contract's view functions, and `queryFilter` via
 `runner.provider` — retry and report like any other. No reader keeps an
 endpoint list of its own: `getPoolState` and the can-reopen balance
 check both go through the shared retry loop in
-`src/rpc-read-retry.js`, which asks the same selection and reports to
+`src/lib/rpc-read-retry.js`, which asks the same selection and reports to
 the same rate. What each adds is a bounded attempt budget and the error
 it raises when that budget is spent, because a poll cycle and a dialog
 are both waiting on an answer rather than on an eventual one.
@@ -3135,7 +3882,7 @@ are both waiting on an answer rather than on an eventual one.
 ## RPC Reachability at Startup
 
 Before a position's loop begins, `ensureReachable()`
-(`src/send-transaction.js`) proves that at least one configured endpoint
+(`src/lib/send-transaction.js`) proves that at least one configured endpoint
 answers. It calls `getBlockNumber` against each endpoint in the order
 `chains.json` → `rpc.urls` lists them and stops at the first that
 replies. When that is not the first in the list, the sticky failover
@@ -3187,13 +3934,13 @@ The short version: **an unhealthy endpoint costs time, not data.**
 ### A failed read is retried until it succeeds
 
 Every read in the app goes through `getManagedReadProvider()`
-(`src/send-transaction.js`). When a read fails with an error that
+(`src/lib/send-transaction.js`). When a read fails with an error that
 indicates the endpoint rather than the request (the failover-eligible
 errors listed under [RPC Failover](#rpc-failover)), it is tried again.
 Each failure counts toward the endpoint's failure rate, and once that
 rate crosses `rpcFailoverRatePercentage`, selection moves to the next
 endpoint and the retries follow it. For a scan the loop
-(`src/rpc-read-retry.js`) has no exit condition: it keeps trying until
+(`src/lib/rpc-read-retry.js`) has no exit condition: it keeps trying until
 some endpoint serves the read.
 
 Errors that say the *request* is at fault are not retried. An
@@ -3260,7 +4007,7 @@ operator, a crash, or a restart while reads are still being retried, so
 the work has simply not finished.
 
 The second is a **non-endpoint error**. `_runWindow`
-(`src/get-logs-chunked.js`) rethrows an `AbortError` and a
+(`src/lib/get-logs-chunked.js`) rethrows an `AbortError` and a
 block-range-cap rejection; under `bestEffort` it logs and skips anything
 else that the retry did not treat as endpoint trouble.
 
@@ -3317,7 +4064,7 @@ again keeps its marker parked where it is.
 
 ## `getPoolState` Validation + RPC Retry
 
-`getPoolState` in `src/rebalancer-pools.js` is the single entry point
+`getPoolState` in `src/lib/rebalancer-pools.js` is the single entry point
 for reading pool / token state from on-chain contracts (slot0, decimals,
 tickSpacing, derived price). Because the value it returns flows into
 every downstream P&L, IL, rebalance, and lifetime-deposit calculation,
@@ -3330,7 +4077,7 @@ rescan loop.
 
 Every successful RPC return is validated field-by-field before being
 handed back. Each predicate covers **not-null + correct datatype +
-value range**. Validation logic lives in `src/pool-state-validate.js`
+value range**. Validation logic lives in `src/lib/pool-state-validate.js`
 (error classes + predicates) so `rebalancer-pools.js` stays under the
 500-line cap. Predicates:
 
@@ -3349,7 +4096,7 @@ and which RPC produced it.
 ### Retry
 
 `getPoolState` keeps no endpoint list of its own. It retries through the
-shared loop in `src/rpc-read-retry.js`, which asks
+shared loop in `src/lib/rpc-read-retry.js`, which asks
 `sendTx.getCurrentRPC()` which endpoint is current and reports every
 outcome to the same failure rate that decides when to leave one. A pool
 read is therefore an ordinary participant in process-wide selection:
@@ -3386,10 +4133,10 @@ themselves.
 
 ### User-facing failure path
 
-When `_tryInitPnlTracker` (`src/bot-loop-detect.js`) sees a Pool*Error
+When `_tryInitPnlTracker` (`src/lib/bot-loop-detect.js`) sees a Pool*Error
 from `getPoolState`, it **re-throws** (the catch otherwise swallows
 everything and returns null). The throw propagates to `handleManage`
-in `src/server-positions.js`, which:
+in `src/lib/server-positions.js`, which:
 
 1. Discriminates the error type and returns **`HTTP 503`** with body
    `{ ok: false, error: "pool-info-unavailable", message: err.message, tokenId }`.
@@ -3398,7 +4145,7 @@ in `src/server-positions.js`, which:
    subsequent Manage click starts from a clean slate.
 
 The dashboard's `_handleManageFailure` in
-`public/dashboard-events-manage.js` recognizes the
+`src/client/web/dashboard-events-manage.js` recognizes the
 `pool-info-unavailable` code and renders the warning modal via the
 existing `_createModal` template, injecting the raw `err.message` into
 a 250&times;100 scrollable code block (`.9mm-pos-mgr-err-scroll`) via
@@ -3416,7 +4163,7 @@ restart is needed.
 ## Closed-position Re-open Flow
 
 When a position auto-retires (drained for ≥ 30 min, see
-`src/bot-cycle-drain.js`), its `cfg.positions[key].status` flips to
+`src/lib/bot-cycle-drain.js`), its `cfg.positions[key].status` flips to
 `stopped`, the bot loop stops, and the NFT is left intact (not
 burned). To bring such a position back to life, the user clicks
 **Manage** on its row in the dashboard. For closed positions, the
@@ -3427,7 +4174,7 @@ bot loop directly:
    `/api/position/can-reopen` with the pair's two token addresses.
    Server reads on-chain `balanceOf` + token decimals + current USD price
    for each, compares each to `getDustThresholdUsd()` from
-   `src/dust.js`, and returns `{ canReopen, balances, dustThresholdUsd }`.
+   `src/lib/dust.js`, and returns `{ canReopen, balances, dustThresholdUsd }`.
    `canReopen` is true when at least one of the two tokens is above
    the dust threshold.
 
@@ -3486,8 +4233,8 @@ user knows exactly what they need to fund. No state change.
 
 For a closed position **Rebalance is disabled** (a drained NFT has no
 liquidity to remove), and **Manage is enabled** and routes through the
-flow above. See `public/dashboard-data.js`
-`_updateRebalanceButtons` and `public/dashboard-manage-badge.js` for
+flow above. See `src/client/web/dashboard-data.js`
+`_updateRebalanceButtons` and `src/client/web/dashboard-manage-badge.js` for
 the button-state logic.
 
 ## Error Log & Reload Current Position
@@ -3501,11 +4248,11 @@ can be a small part of the true total.
 
 ### logs/error.log
 
-**Owner:** `src/error-log.js` &mdash; `writeErrorLog(err, context)`.
+**Owner:** `src/lib/error-log.js` &mdash; `writeErrorLog(err, context)`.
 
 **Location:** logging.json → `errorLogPath`, relative to the process CWD
 unless absolute; as shipped, `logs/error.log`, beside the diagnostic
-`lp-ranger.log` from `src/log-file.js`. Auto-created on first append;
+`lp-ranger.log` from `src/lib/log-file.js`. Auto-created on first append;
 gitignored via the project-wide `*.log` rule. The Reload Current
 Position dialog names the configured path (`errorLogPath` in
 `GET /api/status`), and `npm run clean` deletes the file there when it
@@ -3525,9 +4272,9 @@ failures (see Lifecycle below), so copy it before restarting if you mean
 to report one.
 
 **Scope: catastrophic failures only.** The current callers are
-`_recordScanFailure` in `src/bot-recorder-lifetime.js` and the
+`_recordScanFailure` in `src/lib/bot-recorder-lifetime.js` and the
 token-decimals heal (`_handleHealResult`) in
-`src/bot-recorder-decimals-heal.js`. Do NOT add `writeErrorLog()` calls
+`src/lib/bot-recorder-decimals-heal.js`. Do NOT add `writeErrorLog()` calls
 to routine `catch` blocks, retry handlers, or expected transient errors.
 Every added surface dilutes the "unread error.log &rArr; nothing
 catastrophic has happened" invariant that makes the file useful.
@@ -3539,7 +4286,7 @@ error.
 
 **Lifecycle &mdash; deleted on startup, self-clearing on heal.** The file
 holds only the CURRENT session's failures. `resetErrorLog()` &mdash; called
-from the `require.main === module` startup guard in `server.js` and `bot.js`
+from the `require.main === module` startup guard in `src/server.js` and `src/bot.js`
 &mdash; **deletes** `error.log` on every restart (no rotation, no archive),
 logging a one-line confirmation to the console on success. Any problem still
 current is re-logged by the scans on the next run; a problem since fixed
@@ -3566,7 +4313,7 @@ Cleared by `_recordScanSuccess` on the next successful lifetime scan
 Reload Current Position flow completes.
 
 Flows through `/api/status` &rarr; per-position state &rarr;
-`public/dashboard-alerts.js` `_showCatastrophicModal`, which paints a
+`src/client/web/dashboard-alerts.js` `_showCatastrophicModal`, which paints a
 red modal (`.9mm-pos-mgr-modal-danger`) directing the user to Settings
 &rarr; Reload Current Position. Dedup is per-position-key; a dismiss
 keeps the modal down until the server clears the flag, at which point
@@ -3574,37 +4321,46 @@ it can fire again on a fresh failure.
 
 ### `POST /api/position/reload`
 
-**Owner:** `src/server-reload-position.js` &mdash;
+**Owner:** `src/lib/server-reload-position.js` &mdash;
 `createReloadPositionHandler(deps)`. Wired into
 `server-routes.js` and registered as
-`"POST /api/position/reload"` in `server.js`.
+`"POST /api/position/reload"` in `src/server.js`.
 
 **Body:** `{ positionKey }`. CSRF-gated like every other write route.
 
-**In-progress guard:** If the target position has `_scanRunning`,
-`rebalanceInProgress`, or `compoundInProgress` set on its bot state,
-the handler returns `409 Conflict` with `{ error, message }`
-describing which operation is running. The three error codes are:
+**In-progress guard:** If the server holds a stop, or the target
+position has a scan running (`isAscanRunningOnThisPosition`,
+`src/lib/scan-state.js`) or a coin move under way
+(`isAcoinMoveUnderWayOnThisPosition`, the same module), the handler
+returns `409 Conflict` with `{ error, message }` describing why. The
+three error codes are:
 
+- `server-stopping` &mdash; `npm run gentle-stop` asked the server to
+  stop (`POST /api/stop-when-all-clear`), and it waits for the scans
+  running; one started now would be cut off, or hold the stop.
 - `scan-in-progress` &mdash; a full lifetime scan is already running.
-  Starting a second one is not queued because `_triggerScan` gates on
-  `_scanRunning` and would no-op silently, leaving the reload's state
+  Starting a second one is not queued because `_triggerScan` does
+  nothing while a scan runs (`isAscanRunningOnThisPosition`), leaving the reload's state
   clears in place while the pre-existing scan writes stale results
   back to disk. User waits for the current scan to finish (up to
   `reloadMaxWaitMs`, a dashboard setting, four hours as shipped) and
   clicks Reload again.
-- `rebalance-in-progress` / `compound-in-progress` &mdash; the position
-  is mid-TX. Reload would race the transaction and either corrupt the
-  state reconstruction or step on the tracker mid-write.
+- `coin-move-under-way` &mdash; a rebalance or compound of the position
+  has started: a poll is deciding or making it, from its first gate,
+  before it holds the rebalance lock and raises `rebalanceInProgress` or
+  `compoundInProgress`, to its end; or a Rebalance Now or Compound Now
+  waits to be made. The message, the user's words: "A coin move
+  (rebalance or compound) for this position has already started. Try
+  again once it's complete." Re-scan Prices answers the same.
 
 Every 409 falls through to the same yellow retry modal on the client
 (`_showReloadBusyModal` in `dashboard-reload-flow.js`), so all
 "busy" outcomes look identical to the operator. The dashboard's
 Reload button is also disabled by `paintReloadPositionButton`
 whenever `rebalanceInProgress` or `compoundInProgress` is truthy on
-the currently-viewed position; the button is NOT tied to
-`_scanRunning` because a normal startup or post-rebalance scan
-should not permanently disable the escape hatch.
+the currently-viewed position; the button is NOT tied to a running
+scan because a normal startup or post-rebalance scan should not
+permanently disable the escape hatch.
 
 **Steps on success:**
 
@@ -3612,13 +4368,18 @@ should not permanently disable the escape hatch.
    (`cancelPoolScan(token0, token1, fee, wallet)`).
 2. Delete the following on-chain-derived keys from the position's
    disk config, then save via `saveConfig`:
-   `compoundHistory`, `compoundedAmount0`, `compoundedAmount1`,
+   `compoundedAmount0`, `compoundedAmount1`,
    `nftCompoundedAmountsByTokenId`, `nftGasWeiByTokenId`, `hodlBaseline`,
    `lifetimeHodlAmounts`, `totalLifetimeDepositUsd`,
    `depositUsedFallback`. The canonical list is
-   `CHAIN_DERIVED_POSITION_KEYS` in `bot-config-v2.js`, shared with
+   `CHAIN_DERIVED_POSITION_KEYS` in `bot-config-keys.js`, shared with
    `npm run clear-blockchain-scan-cache`, which clears the same keys
-   from every position.
+   from every position. The compound list, `compoundHistory`, is not
+   on it: the rebuild replaces the list whole, and takes from the old
+   one what the chain cannot supply, each compound's trigger (Auto or
+   Manual) and its Activity Log figures (see
+   [Activity Log Figures](#activity-log-figures)). Clearing the
+   compounded totals is what starts that rebuild.
 3. Clear the pool's entry in the epoch cache
    (`_epochCache.clearCacheEntry(keyOpts)`). That drops its saved epochs,
    lifetime HODL amounts and fresh-deposit totals, so the fresh scan
@@ -3637,7 +4398,7 @@ should not permanently disable the escape hatch.
    `reconstructEpochs` would see a full history and do nothing, and the
    next poll would write the untouched set back over the cleared file.
    The flag is consumed
-   once by `_consumeRebuildRequest` (`src/epoch-reconstructor.js`),
+   once by `_consumeRebuildRequest` (`src/lib/epoch-reconstructor.js`),
    which also drops the tracker's closed epochs so a rebuild that
    fails leaves nothing stale behind — the next scan then sees an
    incomplete history and retries on its own. Deliberately not
@@ -3645,9 +4406,11 @@ should not permanently disable the escape hatch.
    rebuild the whole chain from scratch after each one.
 6. `state._triggerScan()` &mdash; called synchronously and deliberately
    not awaited. An async function's body runs to its first `await`
-   synchronously with its caller, so `_scanRunning` is set before the
+   synchronously with its caller, so the scan is running before the
    endpoint returns 200 and the rebalance/compound gates below engage
-   before any later poll can land. The returned promise is dropped so
+   before any later poll can land. Until every move of the position is
+   cleared, the scan waits instead (`_scanWaiting`) and starts when the
+   poll that clears the move ends. The returned promise is dropped so
    the HTTP response does not wait on a scan that runs for minutes.
 7. Respond `200 { ok: true, message: "Reload started", liveKey }`.
 
@@ -3656,56 +4419,88 @@ hatch.
 
 ### Rebalance / compound suppression during the reload window
 
-While a scan is running (`_scanRunning === true`), the bot must not
-rebalance or auto-compound the same position &mdash; that would race
-the state reconstruction and re-corrupt the numbers the reload is
-trying to fix. Instead of a bespoke `reloadInProgress` flag, the
-suppression rides on the existing `_scanRunning` flag that
-`_triggerScan` already sets:
+While a scan runs on a position, no rebalance or compound of that
+position may start &mdash; one would race the state reconstruction and
+re-corrupt the numbers the reload is trying to fix. A rebalance's own
+scan request would be cleared by the scan running, leaving its deposits
+and Activity Log figures out until the next start, and a compound would
+be left out of Fees Compounded until the next rebuild of the compound
+list. Instead of a bespoke `reloadInProgress` flag, the suppression
+rides on the scan's own per-position flag, through the one rule for it
+(`isAscanRunningOnThisPosition`, `src/lib/scan-state.js`):
 
-- **Auto-rebalance:** `_checkRebalanceGates` in `src/bot-cycle.js`
-  returns `{ rebalanced: false, scanRunning: true }` when
-  `!forced && _botState._scanRunning`. Manual (`forced === true`)
-  rebalances still bypass so a user who clicks Rebalance during a
-  scan is not silently ignored.
-- **Auto-compound:** `checkCompound` in `src/bot-cycle-compound.js`
-  early-returns `false` when `!forced && botSt._scanRunning`. Manual
-  compound (`forceCompound === true`) still runs.
+- **Rebalance Now, Compound Now and a re-open retried with Manage** are
+  refused at the server. `POST /api/rebalance` and `POST /api/compound`
+  answer 409 with `scanInProgress: true` and the position's key, and the
+  dialog the request came from waits for the scan to end, then offers
+  its confirm button again (`src/client/web/dashboard-scan-wait.js`; Compound
+  Now has its own dialog for this, which opens on the refusal).
+  `POST /api/position/manage` with `forceRebalance: true` on a running
+  position answers 409, asking for Manage again once the read finishes.
+  The words are `scanRunningRefusal` (`src/lib/scan-refusal.js`).
+- **Automatic rebalance**, the residual cleanup's included:
+  `checkStateGates` in `src/lib/bot-cycle-gates.js` returns
+  `{ rebalanced: false, scanRunning: true }`.
+- **Auto-compound:** `checkCompound` in `src/lib/bot-cycle-compound.js`
+  early-returns `false` when `!forced && isAscanRunningOnThisPosition(botSt)`.
+
+The bot holds no Rebalance Now or Compound Now for a scan, so both gates
+let one through: none is accepted while a scan runs, and the other way
+round, no scan starts until every move of the position is cleared
+(`isItOkayToStartAscan`, the negation of
+`isAcoinMoveUnderWayOnThisPosition`, which Reload Current Position and
+Re-scan Prices are refused on). None starts while a poll decides a rebalance or
+compound, allowed or not (`duringMoveInitiation`, around each move path
+in `src/lib/bot-cycle.js`), and none while a Rebalance Now or Compound Now
+waits to be made (`forceRebalance`, `forceCompound`), however long it
+waits, for gas, say. A scan asked for then waits (`_scanWaiting`), and
+the bot loop starts it when the poll that clears the move ends
+(`_startWaitingScan`). A waiting scan holds back no move: it waits for
+the move, which goes first. Two flags are not a Rebalance Now: the
+residual cleanup raises `forceRebalance` to pass the range check, and is
+an automatic move, decided at each poll; and a dry run that turns a
+Rebalance Now down ends it (`gatesFromGuard`), since left asked for it
+would hold the position's scans until a restart.
+
+Scans held back resolve to one. Each scan is the same whole operation,
+so `_scanWaiting` is one flag however many are asked for, and a scan
+asked for while one runs is not run again.
 
 The invariant applies to every scan &mdash; not just reloads &mdash;
 so a startup scan, a rebalance-triggered rescan, and a Reload
 Current Position scan all get the same protection.
 
-### Dashboard flow (`public/dashboard-events-manage.js`)
+### Dashboard flow (`src/client/web/dashboard-reload-flow.js`)
 
 `_reloadCurrentPosition`:
 
 1. Read the active position from `_posStoreRef.getActive()`. Bail if
-   nothing is active.
-2. Defense-in-depth guard: read `rebalanceInProgress` /
-   `compoundInProgress` from the last poll and short-circuit with an
-   `alert()` if either is set (matches the server's 409 rejection).
-3. Show the blocking modal (`_showReloadBlockingModal`). Uses class
+   nothing is active. No check of the in-progress flags: the server
+   refuses while a coin move is under way, a window they cover only
+   part of, and says so in its own words.
+2. Show the blocking modal (`_showReloadBlockingModal`). Uses class
    `9mm-pos-mgr-blocking-overlay` (deliberately NOT `modal-overlay`)
    so the global Escape-key handler cannot dismiss it; the whole
    point is that the UI stays locked until the page reloads.
-4. `POST /api/position/reload` with the composite key. On a non-OK
-   response, remove the overlay, re-enable the button, and
-   `alert()` the server's user-facing message (`body.message` when
-   present, falling back to `body.error` or HTTP status).
-5. Reset client-side caches (`resetHistoryFlag`, `clearHistory`,
+3. `POST /api/position/reload` with the composite key. On a non-OK
+   response, remove the overlay and re-enable the button. A 409 with a
+   message opens the yellow retry modal with the server's words
+   (`_showReloadServerBusyModal`); any other failure `alert()`s the
+   server's message (`body.message` when present, falling back to
+   `body.error` or HTTP status).
+4. Reset client-side caches (`resetHistoryFlag`, `clearHistory`,
    `resetLastFetchedId`) so the eventual page reload lands on a
    clean surface.
-6. Poll `/api/status` every `dashboardPollIntervalMs` (3 s as shipped)
+5. Poll `/api/status` every `dashboardPollIntervalMs` (3 s as shipped)
    via `_waitForReloadCompletion` until one of:
    - `lifetimeScanComplete === true` on the target position &rarr;
      `outcome = "complete"`.
    - `rebalanceInProgress` or `compoundInProgress` becomes truthy on
      the target position &rarr; `outcome = "raced"`. This is the
      ~500 ms race between the reload endpoint returning 200 and
-     `_triggerScan` setting `_scanRunning=true`; a poll cycle that
-     lands in that window can start an auto-rebalance / auto-compound
-     before the gate engages. The reload dismisses the blocking
+     `_triggerScan` starting the scan; a poll
+     cycle that lands in that window can start an auto-rebalance /
+     auto-compound before the gate engages. The reload dismisses the blocking
      overlay and shows a yellow caution modal
      (`_showReloadRaceModal`) telling the user to wait for the
      operation to finish and click Reload again. No page reload &mdash;
@@ -3718,7 +4513,7 @@ Current Position scan all get the same protection.
      `outcome = "timeout"`. Falls through anyway; the fresh page shows
      the Syncing badge and the 30 min recovery loop takes over from
      there.
-7. `window.location.reload()` for every outcome EXCEPT `raced`
+6. `window.location.reload()` for every outcome EXCEPT `raced`
    (which dismisses to the retry modal and leaves the tab alone).
 
 `paintReloadPositionButton()`:
@@ -3735,7 +4530,7 @@ Current Position scan all get the same protection.
 
 The narrow counterpart to `POST /api/position/reload`. Every USD figure
 is `amount x price`; the amounts come from chain and are reliable, but
-`src/price-source-cascade.js` accepts the first source returning any
+`src/lib/price-source-cascade.js` accepts the first source returning any
 positive number, with no plausibility check. One bad response therefore
 lands in any stored dollar figure — and the lifetime scan deliberately
 refuses to rebuild a figure disk already holds, so a bad one is
@@ -3764,7 +4559,10 @@ Re-scan Prices cannot improve it. The Compound Log's per-event dollars
 are stored (`compoundHistory[].usdValue`), so they can be stale, and
 this is the action that rewrites them — the same pass that reads the
 chain values each event at the fresh prices. A position slot holding no
-coins gets them from the same pass.
+coins gets them from the same pass. The Activity Log figures of a
+compound the bot recorded when it happened stay as they were; those of
+one found only on the chain are worked out again, at prices read past
+the cache ([Activity Log Figures](#activity-log-figures)).
 
 **Nothing is deleted.** Each figure is overwritten only once its
 replacement exists, and each step keeps the saved figure when its price
@@ -3802,7 +4600,7 @@ Body: `{ positionKey }`.
 
 Rejects with 409 `not-managed` unless the position's **disk config**
 says `status: "running"` — `status` lives on the config, not the
-bot-state object, and `src/build-status-positions.js` merges the two for
+bot-state object, and `src/lib/build-status-positions.js` merges the two for
 the API response. Also rejects mid-rebalance, mid-compound, and while a
 scan is already running.
 
@@ -3818,17 +4616,35 @@ file nothing reaches fails the build. `knip.json` declares the entry
 points knip cannot see for itself — `scripts/`, `util/` and `test/` hold
 tools run from a shell, not imported — so that answer can be trusted.
 
-Unused **exports** are deliberately not gated. `public/dashboard-*.js` is
-reached through HTML that knip cannot trace, and `src/` and `util/`
+Unused **exports** are deliberately not gated. `src/client/web/dashboard-*.js` is
+reached through HTML that knip cannot trace, and `src/lib/` and `util/`
 export their internals on purpose so tests and other tools can compose
 them. Run bare `npm run knip` to see those, as information.
+
+knip counts every test as an entry point, as it must, or it would call
+the test helpers, and the packages only the tests use, unused. So a
+module that only its own tests load passes it, though no part of the
+app can ever run it. A second gate,
+[`scripts/check-unused-src-modules.js`](../scripts/check-unused-src-modules.js),
+runs inside `npm run lint` and `npm run check` (its row:
+`unused-src-modules`). It walks the dependencies with madge from the
+app's entry points alone: the files `knip.json`'s `entry` list names,
+`package.json`'s `main`, and each file an npm script runs with `node`,
+every file under `test/` and `util/test/` left out. It fails on each
+`.js` file under `src/` that git tracks, or would track, and the walk
+does not reach. A file the app starts by its path rather than loading
+it, as the server starts `src/telegram-send.js`, goes in `knip.json`'s
+`entry` list, where both gates find it. Its first run, on 2026-10-25,
+found three such modules, `src/lib/position-store.js`, `ui-state.js`
+and `wallet.js`, loaded only by their own tests; they were removed with
+those tests.
 
 ---
 
 ## SVG Assets
 
 **Rule:** every SVG icon in the dashboard lives as a standalone `.svg`
-file under `public/icons/`. No inline `<svg>` markup in HTML or JS.
+file under `src/client/web/icons/`. No inline `<svg>` markup in HTML or JS.
 Two categories exist because two different rendering shapes are needed;
 the file-per-icon convention and the shared validation pipeline are
 identical for both.
@@ -3837,7 +4653,7 @@ identical for both.
 
 Prefix: `act-`. Loaded via **`<img src="icons/act-<name>.svg">`**.
 Registered as URL strings in the `ACT_ICONS` map in
-`public/dashboard-helpers.js`.
+`src/client/web/dashboard-helpers.js`.
 
 **Why `<img>`.** These icons render once per Activity Log entry, so an
 inline `<svg>` would put dozens of clones of the same markup in one
@@ -3856,17 +4672,17 @@ these files — the log renders them via `<img>` and it won't cascade.
 
 ### Category 2 — UI icons (`ui-*.svg`)
 
-Prefix: `ui-`. Inlined into `public/index.html` **at build time** by
+Prefix: `ui-`. Inlined into `src/client/web/index.html` **at build time** by
 `scripts/inline-svgs.js`. `scripts/build-bundles.js` runs it last, after
 esbuild and `cache-bust.js`, so the page it writes carries the stamp; it
 does so for `npm run build` and after each `npm run build:watch`
-rebuild. Source `public/index.html` carries
+rebuild. Source `src/client/web/index.html` carries
 `data-svg="…" data-w=".." data-h=".."` placeholder attributes; the
 build script reads each referenced file, sizes the root `<svg>` per
 the data-attrs, and writes the composed HTML to
-`public/dist/index.html`. The server prefers `public/dist/index.html`
+`src/client/web/dist/index.html`. The server prefers `src/client/web/dist/index.html`
 at `/` when it exists (see the top of the static-file handler in
-`server.js`) and falls back to `public/index.html` when it doesn't —
+`src/server.js`) and falls back to `src/client/web/index.html` when it doesn't —
 so a skipped build degrades gracefully (page still boots, placeholders
 just render as empty elements).
 
@@ -3887,7 +4703,7 @@ on the client. Build-time substitution has none of those failure modes
 **Prefer files over inlining wherever the cascade requirement doesn't
 force our hand.** Inlining defeats browser caching (the SVG bytes ride
 along inside the no-cache HTML on every page load), while `<img
-src="…">` icons served from `public/icons/` get the
+src="…">` icons served from `src/client/web/icons/` get the
 `immutable, max-age=31536000` treatment and download exactly once per
 user forever. The `act-*` category exists because that's the majority
 of the app's icons — small, cacheable, isolated. `ui-*` is the
@@ -3919,7 +4735,7 @@ across the app (e.g. `ui-lock.svg` at 14 in the reveal-key button and
 
 ### Adding a new icon
 
-1. Create `public/icons/<prefix>-<name>.svg` (`act-` for log entries,
+1. Create `src/client/web/icons/<prefix>-<name>.svg` (`act-` for log entries,
    `ui-` for HTML-embedded icons).
    - Root `<svg>` MUST have `xmlns="http://www.w3.org/2000/svg"` and a
      `viewBox`.
@@ -3929,10 +4745,10 @@ across the app (e.g. `ui-lock.svg` at 14 in the reveal-key button and
      inline if you'd otherwise reach for `<defs>` + `<use>`.
 2. Register it:
    - `act-*` → add `<name>: "icons/act-<name>.svg",` to the
-     `ACT_ICONS` object in `public/dashboard-helpers.js`, then call
+     `ACT_ICONS` object in `src/client/web/dashboard-helpers.js`, then call
      `act(ACT_ICONS.<name>, …)` from a call site.
    - `ui-*` → put a `<span data-svg="icons/ui-<name>.svg" data-w=".." data-h="..">…</span>`
-     placeholder into `public/index.html`.
+     placeholder into `src/client/web/index.html`.
 3. Run `npm run check`.
 
 ### Validation
@@ -3953,7 +4769,7 @@ A separate smoke test (`test/icons-files.test.js`) fails if:
 - an `ACT_ICONS` entry has no matching file on disk,
 - a `data-svg="icons/…"` placeholder in `index.html` has no matching
   file on disk, or
-- a file under `public/icons/` isn't referenced from either registry.
+- a file under `src/client/web/icons/` isn't referenced from either registry.
 
 Both checks run under `npm run check`.
 
@@ -3964,7 +4780,7 @@ validation runs in pure Node — CI doesn't need `xmllint` installed.
 
 ## CSS Class-Name Escapes
 
-Every utility class in `public/9mm-pos-mgr.css` starts with a digit, so
+Every utility class in `src/client/web/9mm-pos-mgr.css` starts with a digit, so
 CSS requires that digit to be escaped: the class `9mm-pos-mgr-foo` is
 written `.\39 mm-pos-mgr-foo`. The single space after `\39` is not a
 descendant combinator — it is the escape's *terminator*, and
@@ -4023,14 +4839,14 @@ dropdown (defaults to "Default levels") and enable "Verbose".
 
 ### Node Debugger (Inspector)
 
-For step-through debugging of `server.js` (dashboard + bot) or `bot.js`
+For step-through debugging of `src/server.js` (dashboard + bot) or `src/bot.js`
 (headless), use the `debug` / `debug-bot` npm scripts. Both launch the
 Node inspector bound to `127.0.0.1:9229` &mdash; local-only by design.
 
 | Script | Command | Use when |
 | ------ | ------- | -------- |
-| `npm run debug` | `node --inspect server.js` | Start a fresh dashboard + auto-started bot with the inspector pre-attached |
-| `npm run debug-bot` | `node --inspect bot.js` | Start a fresh headless bot with the inspector pre-attached |
+| `npm run debug` | `node --inspect src/server.js` | Start a fresh dashboard + auto-started bot with the inspector pre-attached |
+| `npm run debug-bot` | `node --inspect src/bot.js` | Start a fresh headless bot with the inspector pre-attached |
 | `npm run debug-attach` | `node scripts/debug-attach.js` | Attach the inspector to an **already-running** dashboard server (no restart) |
 | `npm run debug-attach-bot` | `node scripts/debug-attach-bot.js` | Attach the inspector to an **already-running** headless bot (no restart) |
 
@@ -4059,9 +4875,9 @@ OS process:
 
 | Run mode | What's running | Which attach script applies |
 | -------- | -------------- | --------------------------- |
-| `npm start` | One Node process &mdash; `server.js` serves the dashboard AND auto-starts the bot **in the same V8 isolate** | `npm run debug-attach` (only). The single `server.js` target in `chrome://inspect` already exposes every bot module &mdash; set a breakpoint in `src/bot-loop.js`, `src/bot-cycle.js`, etc. on that target and it hits as the in-process bot polls. `debug-attach-bot` will correctly report "no node bot.js process via pgrep" because there is no separate bot process. |
-| `npm run bot` | One Node process &mdash; `bot.js`, headless, no dashboard | `npm run debug-attach-bot` (only). |
-| `npm start` AND `npm run bot` simultaneously (rare &mdash; two terminals) | Two Node processes that would both try to bind inspector port `9229` &mdash; the second one's inspector start fails silently and stays invisible in `chrome://inspect` | Start one of them with `INSPECTOR_PORT=9230` baked in (`INSPECTOR_PORT=9230 node --inspect-port=9230 bot.js`) so the two inspectors don't collide; then attach each on its own port. |
+| `npm start` | One Node process &mdash; `src/server.js` serves the dashboard AND auto-starts the bot **in the same V8 isolate** | `npm run debug-attach` (only). The single `src/server.js` target in `chrome://inspect` already exposes every bot module &mdash; set a breakpoint in `src/lib/bot-loop.js`, `src/lib/bot-cycle.js`, etc. on that target and it hits as the in-process bot polls. `debug-attach-bot` will correctly report "no node bot.js process via pgrep" because there is no separate bot process. |
+| `npm run bot` | One Node process &mdash; `src/bot.js`, headless, no dashboard | `npm run debug-attach-bot` (only). |
+| `npm start` AND `npm run bot` simultaneously (rare &mdash; two terminals) | Two Node processes that would both try to bind inspector port `9229` &mdash; the second one's inspector start fails silently and stays invisible in `chrome://inspect` | Start one of them with `INSPECTOR_PORT=9230` baked in (`INSPECTOR_PORT=9230 node --inspect-port=9230 src/bot.js`) so the two inspectors don't collide; then attach each on its own port. |
 
 #### Connecting from `chrome://inspect`
 
@@ -4076,7 +4892,7 @@ OS process:
    appear, click **Configure...** and confirm `localhost:9229` is in the
    discovery list.
 4. **Sources** tab &rarr; navigate the project tree (`src/`,
-   `public/`, etc.) and set breakpoints. They hit on the next code
+   `src/client/web/`, etc.) and set breakpoints. They hit on the next code
    path that runs (e.g. the next poll cycle for bot code).
 
 Stale entries in the **Target discovery settings** dialog (e.g. a
@@ -4086,13 +4902,13 @@ underneath. Remove them with the X next to each entry or ignore them.
 
 #### Log timestamp prefix
 
-The `src/log.js` module exports an opt-in `log` object with `info` /
+The `src/lib/log.js` module exports an opt-in `log` object with `info` /
 `warn` / `error` methods that prepend a UTC timestamp to every line
 &mdash; `log.info("[bot] OOR but within 5% threshold")` emits
 `[bot] [2026-06-16 20:32:02] OOR but within 5% threshold`. When the
 first argument doesn't start with a `[tag]` prefix, the timestamp is
 prepended bare. The browser-side dashboard ships an ES-module mirror
-at `public/dashboard-log.js`.
+at `src/client/web/dashboard-log.js`.
 
 The wrapper is **opt-in** &mdash; modules that want timestamped output
 `require("./log")` and call `log.info(...)` instead of
@@ -4111,8 +4927,8 @@ Chrome or Chromium tab on that same machine.
 
 1. In the Pi terminal: `npm run debug-attach` attaches to the running
    server with no restart. To start fresh instead, stop LP Ranger with
-   `npm run gentle-stop`, which waits for any rebalance or compound
-   under way, then run `npm run debug`.
+   `npm run gentle-stop`, which waits for any rebalance, compound or
+   scan under way, then run `npm run debug`.
 2. In the Pi's local Chromium: `chrome://inspect` → **inspect** under
    Remote Target.
 
@@ -4243,8 +5059,8 @@ semver string as input. Summary of its steps:
    lockfile's top-level ranges now match the pinned `package.json`.
    `--ignore-scripts` prevents lifecycle scripts from running during
    lockfile regeneration (relevant for supply-chain safety).
-8. **Build the bundles** — `npm run build` produces `public/dist/bundle.js`
-   and the User Manual's `public/dist/manual-figures.js`.
+8. **Build the bundles** — `npm run build` produces `src/client/web/dist/bundle.js`
+   and the User Manual's `src/client/web/dist/manual-figures.js`.
 9. **Bump `package.json` version** via `npm version --no-git-tag-version`.
 10. **Commit** the pinned `package.json`, regenerated lockfile, the
     new `.npmrc`, and the built bundle to the release branch.
@@ -4271,10 +5087,10 @@ A user who downloads `lp-ranger-X.Y.Z.tar.gz` gets:
   `package.json`, so the entire transitive graph is also frozen.
 - `.npmrc` — `save-exact=true`, so any subsequent local
   `npm install` also produces exact pins.
-- `public/dist/` — **prebuilt** browser bundles, the dashboard's and
+- `src/client/web/dist/` — **prebuilt** browser bundles, the dashboard's and
   the User Manual's, so the user's machine never runs esbuild on
   potentially compromised source.
-- All `src/`, `public/`, `docs/`, config — as committed to the
+- All `src/`, `src/client/web/`, `docs/`, config — as committed to the
   release branch.
 
 #### End-User Install Path
@@ -4347,7 +5163,7 @@ required in branch protection.
 `package.json` declares two lifecycle scripts:
 
 - **`postinstall: node scripts/copy-fonts.js`** — copies self-hosted
-  WOFF2 fonts from `node_modules/@fontsource/*` into `public/fonts/`
+  WOFF2 fonts from `node_modules/@fontsource/*` into `src/client/web/fonts/`
   so the dashboard serves them without a CDN dependency. Runs on
   both `npm install` and `npm ci`.
 - **`prepare: husky`** — installs the git hooks configured under
@@ -4400,7 +5216,7 @@ shipped to users at runtime:
   `eslint-plugin-security`, `eslint-plugin-no-secrets` — ESLint flat
   config in [`eslint.config.js`](../eslint.config.js).
 - `stylelint` + `stylelint-config-standard` — CSS linter.
-- `html-validate` — HTML linter for `public/*.html`.
+- `html-validate` — HTML linter for `src/client/web/*.html`.
 - `markdownlint-cli2` — Markdown linter.
 - `prettier` — formatter (integrated via `eslint-config-prettier`).
 - `secretlint` + `@secretlint/secretlint-rule-preset-recommend` —
@@ -4420,5 +5236,7 @@ shipped to users at runtime:
 - `@xmldom/xmldom` — XML parsing for `scripts/lint-svg.js`.
 - `github-actionlint` — linter for `.github/workflows/*.yml`.
 - `jsdom` + `global-jsdom` — a DOM for the dashboard modules' tests.
-- `madge` — dependency-cycle finder.
+- `madge` — dependency-cycle finder, and the walk that finds a module
+  under `src/` no part of the app loads
+  (`scripts/check-unused-src-modules.js`).
 - `yaml` — parses `.github/pages-site.yml` for the Pages builder.

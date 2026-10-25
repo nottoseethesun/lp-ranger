@@ -3,6 +3,7 @@ name: Log-to-file feature (nice-to-have, deferred)
 description: Auto-write server console output to app-config/lp-ranger.log so Pi 5 scrollback truncation doesn't lose diagnostic context
 type: project
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
+modified: 2026-10-24T04:55:08.964Z
 ---
 Add automatic log-to-file capture: tee server stdout/stderr to
 `app-config/lp-ranger.log` (with size-based rotation) so a full log
@@ -24,7 +25,7 @@ Workaround in the meantime: `npm start 2>&1 | tee -a app-config/lp-ranger.log`.
   and any code change risks resetting the burn-in clock.
 - **Expose as a CLI flag** (e.g. `node server.js --log-file` or
   `--log-file=<path>`), opt-in. Off by default so existing users see
-  no behavior change. Wire through `src/cli-help.js`.
+  no behavior change. Wire through `src/lib/cli-help.js`.
 - **Also switchable from Settings** in the dashboard — toggle
   persisted to `.bot-config.json` (global section). Settings toggle
   and CLI flag should compose: either one enables it. CLI flag wins

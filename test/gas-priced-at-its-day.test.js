@@ -54,13 +54,16 @@ before(() => {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/bot-pnl-updater")];
-  ({ actualGasCostUsd, pastGasCostUsd } = require("../src/bot-pnl-updater"));
+  delete require.cache[require.resolve("../src/lib/bot-pnl-updater")];
+  ({
+    actualGasCostUsd,
+    pastGasCostUsd,
+  } = require("../src/lib/bot-pnl-updater"));
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/bot-pnl-updater")];
+  delete require.cache[require.resolve("../src/lib/bot-pnl-updater")];
 });
 
 beforeEach(() => {

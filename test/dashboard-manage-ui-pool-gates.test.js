@@ -21,7 +21,7 @@ require("global-jsdom/register");
 
 const { test, before } = require("node:test");
 const assert = require("node:assert");
-const { GUARANTEED_DASHBOARD_HAS_POLLED_MS } = require("../src/config");
+const { GUARANTEED_DASHBOARD_HAS_POLLED_MS } = require("../src/lib/config");
 const { learnActiveChain } = require("./helpers/active-chain");
 
 let computeManageUI;
@@ -33,7 +33,7 @@ let _poolKeyOf;
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a pool.
   await learnActiveChain();
-  const mod = await import("../public/dashboard-manage-ui.js");
+  const mod = await import("../src/client/web/dashboard-manage-ui.js");
   computeManageUI = mod.computeManageUI;
   MANAGE_SYNCING_HELP = mod.MANAGE_SYNCING_HELP;
   _newerClosedInPool = mod._newerClosedInPool;
@@ -71,7 +71,7 @@ function ins(overrides) {
 // ── One-position-per-pool branch ─────────────────────────────────────
 
 /*- The authoritative gate is server-side (`rejectIfPoolManaged` in
- *  src/pool-already-managed.js).  These cases pin the dashboard's half:
+ *  src/lib/pool-already-managed.js).  These cases pin the dashboard's half:
  *  do not offer a button whose click the server will refuse, and say
  *  which position holds the pool so the operator knows what to stop. */
 

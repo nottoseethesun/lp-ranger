@@ -1,8 +1,9 @@
 /**
  * @file test/helpers/lifetime-hodl-fixtures.js
- * @description Shared fixtures for the `src/lifetime-hodl.js` test files:
- * the three NFT event shapes, a chain of two NFTs, and the provider and
- * ethers stubs the fresh-deposit scan reads through. Each file used to
+ * @description Shared fixtures for the `src/lib/lifetime-hodl.js` test files:
+ * the three NFT event shapes, a chain of two NFTs, an addition's receipt,
+ * and the provider and ethers stubs the fresh-deposit scan and the
+ * receipt check read through. Each file used to
  * carry its own copy, which drifted the moment one grew a case the
  * others did not have — the wrap tests needed an `id()` that tells the
  * `Deposit` event from `Transfer`, and only their copy had it.
@@ -78,12 +79,15 @@ function _topicsMatch(lt, ft) {
 }
 
 /**
- * A provider that serves canned logs, transactions and balances.
+ * A provider that serves canned logs, transactions, receipts and
+ * balances. Each receipt asked for is noted in `receiptsAsked`.
  *
  * @param {object} [opts]
  * @param {object[]} [opts.logs]  Logs, filtered by address, block range
  *   and topics exactly as a node would.
  * @param {object} [opts.txs]  Transactions by hash.
+ * @param {object} [opts.receipts]  Receipts by hash; any other hash
+ *   answers null, as a node does for a transaction it does not have.
  * @param {object} [opts.balances]  `balanceOf` answers, by token address
  *   then block tag.
  * @returns {object}
@@ -92,7 +96,14 @@ function mockProvider(opts = {}) {
   const balances = opts.balances || {};
   const logs = opts.logs || [];
   const txs = opts.txs || {};
+  const receipts = opts.receipts || {};
+  const receiptsAsked = [];
   return {
+    receiptsAsked,
+    getTransactionReceipt(hash) {
+      receiptsAsked.push(hash);
+      return Promise.resolve(receipts[hash] ?? null);
+    },
     getLogs(filter) {
       return Promise.resolve(
         logs.filter(
@@ -140,6 +151,25 @@ function mockEthers() {
 }
 
 /**
+ * The receipt of an addition of liquidity: each payer's transfer of a
+ * coin to the pool.
+ *
+ * @param {Array<{token: string, from: string}>} payments  Who sent which
+ *   coin.
+ * @returns {{logs: object[]}}
+ */
+function additionReceipt(payments) {
+  const pad = mockEthers().zeroPadValue;
+  return {
+    logs: payments.map((p) => ({
+      address: p.token,
+      topics: [TRANSFER_TOPIC0, pad(p.from, 32), pad("0xPool", 32)],
+      data: "0x" + "1".padStart(64, "0"),
+    })),
+  };
+}
+
+/**
  * A two-NFT chain: #50 drains into #100.
  *
  * @param {bigint|number|string} drain0  Token0 collected on the drain.
@@ -172,5 +202,6 @@ module.exports = {
   dlEvent,
   mockProvider,
   mockEthers,
+  additionReceipt,
   twoNftFixture,
 };

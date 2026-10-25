@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-10-18T00:01:23.625Z
+  modified: 2026-10-24T04:54:43.132Z
 ---
 
 When writing a condition, ask: **is this testing the thing I actually
@@ -56,7 +56,7 @@ log-path test had the same blind spot.
 **How to apply:** a test that a value comes from configuration sets
 that value to something other than its default first, in an override
 directory of the test's own (`LP_RANGER_USER_CONFIG_DIR`, set before
-anything under `src/` loads), and asserts the moved value. Then prove it
+anything under `src/lib/` loads), and asserts the moved value. Then prove it
 with a mutation that hard-codes the default
 ([[feedback_always_test_a_regression]]).
 

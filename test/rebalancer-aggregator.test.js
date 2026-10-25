@@ -4,7 +4,7 @@
  *   _gasLimit, _baseSigner, and _getGasPrice.
  *
  * The gas-cost helper's cases moved to test/receipt-gas.test.js with the
- * function itself, which is now `receiptGasWei` in src/receipt-gas.js and
+ * function itself, which is now `receiptGasWei` in src/lib/receipt-gas.js and
  * shared by every path that records a charge.
  *
  * `_handleSwapError` is covered by test/aggregator-nonce-settlement.test.js,
@@ -21,7 +21,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const SHIPPED_CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
 const SETTINGS_DIR = makeTestTempFolder("aggregator-settings");
@@ -47,7 +47,7 @@ const {
   _gasLimit,
   _baseSigner,
   _getGasPrice,
-} = require("../src/rebalancer-aggregator");
+} = require("../src/lib/rebalancer-aggregator");
 
 // ── _gasLimit ───────────────────────────────────────────────────────
 
@@ -120,7 +120,7 @@ describe("_getGasPrice", () => {
 // ── _fetchQuote error path (via swapViaAggregator) ──────────────────
 
 describe("swapViaAggregator — API error handling", () => {
-  const { swapViaAggregator } = require("../src/rebalancer-aggregator");
+  const { swapViaAggregator } = require("../src/lib/rebalancer-aggregator");
 
   it("throws with parsed validation error from API", async () => {
     const origFetch = globalThis.fetch;

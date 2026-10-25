@@ -4,7 +4,7 @@
  * @file test/one-move-at-a-time.test.js
  * @description Only one position moves at a time. Every managed
  *   position's bot loop is given the same lock (`attachMultiPosDeps`,
- *   src/server-positions.js, for the server and the headless bot alike),
+ *   src/lib/server-positions.js, for the server and the headless bot alike),
  *   and the loop hands it to each poll. A rebalance or a compound holds
  *   it from its first transaction until its last confirms, so a second
  *   position's move waits rather than starting while the first one's
@@ -23,8 +23,8 @@ const fs = require("fs");
 const path = require("path");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const { executeCompound } = require("../src/bot-cycle-compound");
-const { createRebalanceLock } = require("../src/rebalance-lock");
+const { executeCompound } = require("../src/lib/bot-cycle-compound");
+const { createRebalanceLock } = require("../src/lib/rebalance-lock");
 
 /**
  * Run a manual compound of one position, recording what it reports.
@@ -65,7 +65,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 describe("one position moves at a time", () => {
   it("the bot loop hands every poll the lock its position was given", () => {
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "bot-loop.js"),
+      path.join(__dirname, "..", "src", "lib", "bot-loop.js"),
       "utf8",
     );
     assert.match(src, /_rebalanceLock: botState\._rebalanceLock \?\? null,/);

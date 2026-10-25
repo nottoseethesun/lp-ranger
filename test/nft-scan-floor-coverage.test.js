@@ -16,7 +16,7 @@
  * Five files scan a chain of NFTs, and nothing in the code connects
  * them, so this is a structural guard rather than a per-file rule. Any
  * file that scans one NFT's events must route its floor through
- * `src/nft-mint-blocks.js`, or be listed in `EXEMPT` below with a
+ * `src/lib/nft-mint-blocks.js`, or be listed in `EXEMPT` below with a
  * reason. A new scan site fails CI until one of those is true.
  *
  * Sites are identified two ways, by helper name and by shape — see the
@@ -32,7 +32,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const SRC = path.join(__dirname, "..", "src");
+const SRC = path.join(__dirname, "..", "src", "lib");
 
 /*-
  *  Named calls that scan NFT event history — one NFT at a time, or a
@@ -71,7 +71,7 @@ const EXEMPT = {
     "searches FOR the chain's oldest NFT's mint block, so cannot be bounded by one",
 };
 
-/** Every src/ file that scans one NFT's events. */
+/** Every src/lib/ file that scans one NFT's events. */
 function scanSites() {
   return fs
     .readdirSync(SRC)
@@ -122,7 +122,7 @@ describe("per-NFT scan floors", () => {
       unbounded,
       [],
       `these scan NFT events without a per-NFT floor: ${unbounded.join(", ")}. ` +
-        "Use nftScanFrom() from src/nft-mint-blocks.js, or add an entry to " +
+        "Use nftScanFrom() from src/lib/nft-mint-blocks.js, or add an entry to " +
         "EXEMPT in this test saying why the NFT's mint block is not the " +
         "right lower bound.",
     );

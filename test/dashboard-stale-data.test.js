@@ -4,13 +4,13 @@
  * @file test/dashboard-stale-data.test.js
  * @description From the moment a position comes on screen until an answer
  *   about it has been shown, the dashboard's figures may still be another
- *   position's. public/dashboard-stale-data.js keeps that one flag, and
+ *   position's. src/client/web/dashboard-stale-data.js keeps that one flag, and
  *   its watch shows it on the page every `staleDataCheckIntervalMs`: the
  *   body's `data-position-data-stale` attribute, which the stylesheet
  *   dashes the figures from, and every part of the page inert but the
  *   disclaimer and the wallet unlock.
  *
- *   Driven on the page's own markup from public/index.html, with the
+ *   Driven on the page's own markup from src/client/web/index.html, with the
  *   watch's timer mocked so a test can step through its checks.
  */
 
@@ -50,8 +50,8 @@ let store, stale;
 
 before(async () => {
   await learnActiveChain("pulsechain", "PulseChain");
-  store = await import("../public/dashboard-positions-store.js");
-  stale = await import("../public/dashboard-stale-data.js");
+  store = await import("../src/client/web/dashboard-positions-store.js");
+  stale = await import("../src/client/web/dashboard-stale-data.js");
   for (const p of [A, B, C]) store.posStore.add(p);
 });
 
@@ -235,7 +235,7 @@ describe("the watch", () => {
      *  starting the watch is read rather than run.
      */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "public", "dashboard-init.js"),
+      path.join(__dirname, "..", "src", "client", "web", "dashboard-init.js"),
       "utf8",
     );
     assert.match(
@@ -297,7 +297,7 @@ describe("the page's markup", () => {
      */
     const css = fs
       .readFileSync(
-        path.join(__dirname, "..", "public", "9mm-pos-mgr.css"),
+        path.join(__dirname, "..", "src", "client", "web", "9mm-pos-mgr.css"),
         "utf8",
       )
       .replace(/\s+/g, " ");

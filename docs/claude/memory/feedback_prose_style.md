@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-10-18T03:11:54.563Z
+  modified: 2026-10-24T04:54:38.388Z
 ---
 
 # Prose style
@@ -179,7 +179,7 @@ upper-casing common tech initials."*
 
 ## paused vs aborted
 
-The bot has an internal flag `botState.rebalancePaused: true` that gets set in `src/bot-loop.js`'s `_handleError` when a swap aborts on slippage. The flag name suggests "paused with intent to resume" but the actual semantics are:
+The bot has an internal flag `botState.rebalancePaused: true` that gets set in `src/lib/bot-loop.js`'s `_handleError` when a swap aborts on slippage. The flag name suggests "paused with intent to resume" but the actual semantics are:
 
 - The rebalance effort has **terminated**, not paused.
 - The bot will NOT retry on its own. Slippage problems require user action 99.9% of the time.

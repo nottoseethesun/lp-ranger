@@ -26,10 +26,10 @@ const {
   notify,
   testConnection,
   buildHeader,
-} = require("../src/telegram-notifications/telegram");
+} = require("../src/lib/telegram-notifications/telegram");
 const {
   EVENT_DEFAULTS,
-} = require("../src/telegram-notifications/telegram-events");
+} = require("../src/lib/telegram-notifications/telegram-events");
 
 describe("telegram — configuration", () => {
   beforeEach(() => {
@@ -417,7 +417,7 @@ describe("telegram — Markdown refused", () => {
      *  it into the refusal message, and nothing noticed — this project
      *  greps log phrases. */
     const lines = [];
-    const restore = require("../src/log")._setSinkForTests({
+    const restore = require("../src/lib/log")._setSinkForTests({
       warn: (first, ...rest) => lines.push([first, ...rest].join(" ")),
       log: () => {},
       error: () => {},

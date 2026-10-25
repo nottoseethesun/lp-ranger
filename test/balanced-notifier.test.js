@@ -19,7 +19,7 @@ const {
   formatMessage,
   BALANCED_THRESHOLD,
   BALANCED_COOLDOWN_MS,
-} = require("../src/telegram-notifications/balanced-notifier");
+} = require("../src/lib/telegram-notifications/balanced-notifier");
 
 const COOLDOWN = BALANCED_COOLDOWN_MS;
 

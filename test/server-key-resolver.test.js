@@ -1,7 +1,7 @@
 /**
  * @file test/server-key-resolver.test.js
  * @description Unit tests for `resolveLiveKey` + `wasMigratedFrom` in
- * src/server-key-resolver.js.  Pure-function coverage; no DOM, no fs.
+ * src/lib/server-key-resolver.js.  Pure-function coverage; no DOM, no fs.
  */
 
 "use strict";
@@ -11,7 +11,7 @@ const assert = require("node:assert/strict");
 const {
   resolveLiveKey,
   wasMigratedFrom,
-} = require("../src/server-key-resolver");
+} = require("../src/lib/server-key-resolver");
 
 /*- Minimal positionMgr stub: backed by a plain Map keyed by composite
  *  key; entry objects carry { key, tokenId, status } only. */

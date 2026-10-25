@@ -28,12 +28,12 @@
 const { describe, it, beforeEach, afterEach, mock } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { initHodlBaseline } = require("../src/hodl-baseline");
-const { _resetForTest } = require("../src/gecko-rate-limit");
-const { _setRetryDelayForTests } = require("../src/rebalancer-pools");
-const sendTx = require("../src/send-transaction");
-const rpcQueue = require("../src/rpc-request-manager");
-const outOfService = require("../src/rpc-out-of-service");
+const { initHodlBaseline } = require("../src/lib/hodl-baseline");
+const { _resetForTest } = require("../src/lib/gecko-rate-limit");
+const { _setRetryDelayForTests } = require("../src/lib/rebalancer-pools");
+const sendTx = require("../src/lib/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const outOfService = require("../src/lib/rpc-out-of-service");
 const {
   POSITION,
   mockEthersLib,

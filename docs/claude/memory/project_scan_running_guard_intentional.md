@@ -5,9 +5,10 @@ metadata:
   node_type: memory
   type: project
   originSessionId: ee80f1a7-2778-41af-8f18-a3f5993e9278
+  modified: 2026-10-24T04:55:09.163Z
 ---
 
-`src/bot-loop.js#_triggerScan`:
+`src/lib/bot-loop.js#_triggerScan`:
 
 ```js
 botState._triggerScan = async () => {

@@ -93,19 +93,21 @@ const path = require("path");
 process.chdir(path.resolve(__dirname, "..", ".."));
 
 const { ethers } = require("ethers");
-const config = require("../../../src/config");
-const { PM_ABI } = require("../../../src/pm-abi");
-const { topicForTokenId } = require("../../../src/nft-token-topic");
-const { parseCompositeKey } = require("../../../src/composite-key");
-const { _DEFAULT_CHUNK_SIZE } = require("../../../src/get-logs-chunked");
-const { readBotConfigDefaults } = require("../../../src/bot-config-defaults");
+const config = require("../../../src/lib/config");
+const { PM_ABI } = require("../../../src/lib/pm-abi");
+const { topicForTokenId } = require("../../../src/lib/nft-token-topic");
+const { parseCompositeKey } = require("../../../src/lib/composite-key");
+const { _DEFAULT_CHUNK_SIZE } = require("../../../src/lib/get-logs-chunked");
+const {
+  readBotConfigDefaults,
+} = require("../../../src/lib/bot-config-defaults");
 const { Command } = require("commander");
 const { sleep, addrTopic } = require("../_helpers");
 const render = require("./render");
 const {
   readPositionRecords,
   mergePositionRecords,
-} = require("../../../src/position-records");
+} = require("../../../src/lib/position-records");
 
 /**
  * Describe the command line, so Commander both parses it and renders

@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-kpi-dom.test.js
- * @description Tests for `setLeadingText` in `public/dashboard-kpi-dom.js`.
+ * @description Tests for `setLeadingText` in `src/client/web/dashboard-kpi-dom.js`.
  *   Pins the DOM-write contract that live KPIs (dashboard-data-kpi) and
  *   closed-position historical KPIs (dashboard-closed-pos) share.  A
  *   stray text-node insertion here would leave a duplicate value beside
@@ -21,7 +21,7 @@ const assert = require("node:assert/strict");
 let setLeadingText;
 
 before(async () => {
-  ({ setLeadingText } = await import("../public/dashboard-kpi-dom.js"));
+  ({ setLeadingText } = await import("../src/client/web/dashboard-kpi-dom.js"));
 });
 
 beforeEach(() => {

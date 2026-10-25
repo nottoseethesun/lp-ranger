@@ -23,6 +23,9 @@ const Module = require("module");
 
 const _origRequire = Module.prototype.require;
 let _cachedHodlWrites = [];
+let _freshWrites = [];
+// The saved fresh-deposit record, read when the scan starts and when it writes.
+let _freshReads = () => null;
 let _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
 let _historicalImpl = async () => ({ price0: 0, price1: 0 });
 let _blockTsImpl = async () => 0;
@@ -53,7 +56,7 @@ function _installMocks() {
   Module.prototype.require = function (id) {
     if (id === "./epoch-cache") {
       return {
-        getCachedFreshDeposits: () => null,
+        getCachedFreshDeposits: () => _freshReads(),
         setCachedLifetimeHodl: (key, hodl) => {
           // Deep-clone so later mutations to `hodl` don't leak into the
           // assertion — we want to verify the state AT CACHE TIME.
@@ -62,7 +65,8 @@ function _installMocks() {
             hodl: JSON.parse(JSON.stringify(hodl)),
           });
         },
-        setCachedFreshDeposits: () => {},
+        setCachedFreshDeposits: (_key, data) =>
+          _freshWrites.push(JSON.parse(JSON.stringify(data))),
       };
     }
     if (id === "./rebalancer-pools") {
@@ -96,12 +100,12 @@ function _installMocks() {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/bot-hodl-scan")];
+  delete require.cache[require.resolve("../src/lib/bot-hodl-scan")];
 }
 
 function _restoreMocks() {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/bot-hodl-scan")];
+  delete require.cache[require.resolve("../src/lib/bot-hodl-scan")];
 }
 
 // ── computeAndCacheHodl ordering ────────────────────────────────────────
@@ -113,7 +117,7 @@ describe("computeAndCacheHodl — poolAddress ordering", () => {
     _cachedHodlWrites = [];
     _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
     _installMocks();
-    ({ computeAndCacheHodl } = require("../src/bot-hodl-scan"));
+    ({ computeAndCacheHodl } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(_restoreMocks);
@@ -175,6 +179,131 @@ describe("computeAndCacheHodl — poolAddress ordering", () => {
   });
 });
 
+// ── A deposit count saved while the scan ran ──────────────────────────────
+
+describe("computeAndCacheHodl — the compounds this install made", () => {
+  /*-
+   *  The tally reads no receipt for a compound LP Ranger recorded, which
+   *  paid from the wallet (src/lib/lifetime-hodl.js), so it is handed the
+   *  compound list as saved
+   *  when it runs: after this pass's rebuild of it, which keeps every
+   *  compound the bot recorded.
+   */
+  let computeAndCacheHodl;
+
+  beforeEach(() => {
+    _cachedHodlWrites = [];
+    _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
+    _installMocks();
+    ({ computeAndCacheHodl } = require("../src/lib/bot-hodl-scan"));
+  });
+
+  afterEach(_restoreMocks);
+
+  it("hands the tally the compound list as saved when it runs", async () => {
+    const saved = [{ txHash: "0xc", trigger: "auto" }];
+    let handed;
+    const computeFn = async (_events, o) => {
+      handed = o.compoundHistory;
+      return {
+        amount0: 1,
+        amount1: 2,
+        raw0: "0",
+        raw1: "0",
+        lastBlock: 0,
+        deposits: [],
+      };
+    };
+    await computeAndCacheHodl(
+      computeFn,
+      [],
+      [],
+      { token0: "0xA", token1: "0xB", fee: 500, tokenId: 2 },
+      { decimals0: 18, decimals1: 18, savedCompoundHistory: () => saved },
+      "0xW",
+      null,
+    );
+    assert.strictEqual(handed, saved);
+  });
+});
+
+describe("computeAndCacheHodl — a deposit count saved while the scan ran", () => {
+  /*-
+   *  The scan read the saved results when it started. A Compound Now
+   *  during the scan counted a deposit and saved it. The scan's own write
+   *  must keep that deposit, rather than drop it with the stale copy it
+   *  started from.
+   */
+  let computeAndCacheHodl;
+  const COUNTED = {
+    raw0: "40",
+    raw1: "0",
+    block: 900,
+    kind: "fresh",
+    txHash: "0xcounted",
+  };
+  const scanned = () => ({
+    amount0: 1,
+    amount1: 2,
+    raw0: "0",
+    raw1: "0",
+    lastBlock: 50,
+    deposits: [{ raw0: "100", raw1: "200", block: 10 }],
+  });
+
+  beforeEach(() => {
+    _cachedHodlWrites = [];
+    _freshWrites = [];
+    _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
+    _installMocks();
+    ({ computeAndCacheHodl } = require("../src/lib/bot-hodl-scan"));
+  });
+
+  afterEach(() => {
+    _freshReads = () => null;
+    _restoreMocks();
+  });
+
+  /** Run the scan with `computed` as its result, reads answering in turn. */
+  function scan(reads) {
+    let n = 0;
+    _freshReads = () => reads[Math.min(n++, reads.length - 1)];
+    return computeAndCacheHodl(
+      async () => scanned(),
+      [],
+      [],
+      { token0: "0xA", token1: "0xB", fee: 3000, tokenId: 1 },
+      { decimals0: 2, decimals1: 2 },
+      "0xW",
+      "epoch-key-3",
+    );
+  }
+
+  it("keeps the count, its coins and how far it read", async () => {
+    const atStart = { raw0: "0", raw1: "0", lastBlock: 50, deposits: [] };
+    const atWrite = { ...atStart, deposits: [COUNTED], countedThrough: 950 };
+    const hodl = await scan([atStart, atWrite]);
+    assert.deepEqual(
+      hodl.deposits.map((d) => d.txHash ?? d.block),
+      [10, "0xcounted"],
+    );
+    assert.equal(hodl.amount0, 1.4);
+    assert.equal(hodl.raw0, "40");
+    assert.equal(hodl.countedThrough, 950);
+    assert.equal(_cachedHodlWrites[0].hodl.countedThrough, 950);
+    assert.equal(_freshWrites.length, 1, "the saved list is the scan's");
+    assert.equal(_freshWrites[0].countedThrough, 950);
+  });
+
+  it("writes the scan's own results when nothing landed meanwhile", async () => {
+    const saved = { raw0: "0", raw1: "0", lastBlock: 50, deposits: [] };
+    const hodl = await scan([saved, saved]);
+    assert.equal(hodl.deposits.length, 1);
+    assert.equal(hodl.countedThrough, undefined);
+    assert.equal(_freshWrites.length, 0, "nothing new to save there");
+  });
+});
+
 // ── _ensureHodlPoolAddress pool-address resolution ─────────────────────────────────────
 
 describe("_ensureHodlPoolAddress", () => {
@@ -184,7 +313,7 @@ describe("_ensureHodlPoolAddress", () => {
     _cachedHodlWrites = [];
     _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
     _installMocks();
-    ({ _ensureHodlPoolAddress } = require("../src/bot-hodl-scan"));
+    ({ _ensureHodlPoolAddress } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(_restoreMocks);
@@ -287,7 +416,7 @@ describe("revalueHodlBaseline", () => {
     _poolStateImpl = () => ({ poolAddress: "0xPOOL" });
     _historicalImpl = async () => ({ price0: 2, price1: 3 });
     _installMocks();
-    ({ revalueHodlBaseline } = require("../src/bot-hodl-scan"));
+    ({ revalueHodlBaseline } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(_restoreMocks);
@@ -384,7 +513,7 @@ describe("computeDepositUsd — a deposit block with no readable time", () => {
       return { price0: 2, price1: 3 };
     };
     _installMocks();
-    ({ computeDepositUsd } = require("../src/bot-hodl-scan"));
+    ({ computeDepositUsd } = require("../src/lib/bot-hodl-scan"));
   });
 
   afterEach(() => {
@@ -408,5 +537,67 @@ describe("computeDepositUsd — a deposit block with no readable time", () => {
       { pool: "0xPOOL", ts: 1_700_000_000, block: 555 },
     ]);
     assert.strictEqual(state.totalLifetimeDepositUsd, 2);
+  });
+});
+
+describe("computeDepositUsd — a newer list saved while one is priced", () => {
+  /*-
+   *  A Compound Now's deposit count can save a newer deposit list while a
+   *  Lifetime scan prices the one it holds, and the other way round. The
+   *  total written is the standing list's: an older list's would leave
+   *  out what the newer one added, until the next pricing.
+   */
+  let computeDepositUsd;
+  const POSITION = { fee: 3000, tokenId: 7 };
+  const OPTS = { decimals0: 18, decimals1: 18 };
+  const ONE = "1000000000000000000";
+  const first = () => ({ raw0: ONE, raw1: "0", block: 555 });
+
+  beforeEach(() => {
+    _blockTsImpl = async () => 1_700_000_000;
+    _installMocks();
+    ({ computeDepositUsd } = require("../src/lib/bot-hodl-scan"));
+  });
+
+  afterEach(() => {
+    _blockTsImpl = async () => 0;
+    _historicalImpl = async () => ({ price0: 0, price1: 0 });
+    _restoreMocks();
+  });
+
+  it("writes the total of the list standing when its pricing ends", async () => {
+    const entry = first();
+    const state = {
+      lifetimeHodlAmounts: { poolAddress: "0xPOOL", deposits: [entry] },
+    };
+    const blocks = [];
+    _historicalImpl = async (_pool, _ts, opts) => {
+      blocks.push(opts.blockNumber);
+      if (blocks.length === 1)
+        state.lifetimeHodlAmounts = {
+          ...state.lifetimeHodlAmounts,
+          deposits: [
+            entry,
+            { raw0: ONE, raw1: "0", block: 600, txHash: "0xd" },
+          ],
+        };
+      return { price0: 2, price1: 3 };
+    };
+    await computeDepositUsd(state, () => {}, POSITION, OPTS, "epoch-key");
+    assert.strictEqual(state.totalLifetimeDepositUsd, 4, "both coins, at $2");
+    assert.deepStrictEqual(blocks, [555, 600], "no price asked for twice");
+  });
+
+  it("writes nothing once Reload cleared the results meanwhile", async () => {
+    const state = {
+      lifetimeHodlAmounts: { poolAddress: "0xPOOL", deposits: [first()] },
+      totalLifetimeDepositUsd: 0,
+    };
+    _historicalImpl = async () => {
+      state.lifetimeHodlAmounts = null;
+      return { price0: 2, price1: 3 };
+    };
+    await computeDepositUsd(state, () => {}, POSITION, OPTS, "epoch-key");
+    assert.strictEqual(state.totalLifetimeDepositUsd, 0);
   });
 });

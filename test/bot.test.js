@@ -12,9 +12,9 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const { pollCycle } = require("../src/bot-loop");
+const { pollCycle } = require("../src/lib/bot-loop");
 const { ADDR, buildPollDeps } = require("./_bot-loop-helpers");
-const showHelp = require("../src/cli-help");
+const showHelp = require("../src/lib/cli-help");
 
 // ── pollCycle — OOR detection ────────────────────────────────────────────────
 

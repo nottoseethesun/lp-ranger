@@ -3,8 +3,9 @@ name: Event-cache scoping rationale (asset-config, not pool hash)
 description: Why event-cache files key on blockchain+nftFactory+wallet+token0+token1+fee instead of pool address — ideal for Lifetime P&L reporting
 type: project
 originSessionId: ca6cd238-0010-4f82-88ce-354f7a7bc54e
+modified: 2026-10-24T04:55:01.277Z
 ---
-`src/cache-store.js` `eventCachePath` deliberately scopes event-cache
+`src/lib/cache-store.js` `eventCachePath` deliberately scopes event-cache
 filenames by **blockchain + nftFactory + wallet + token0 + token1 + fee**
 rather than by the specific pool contract address.
 

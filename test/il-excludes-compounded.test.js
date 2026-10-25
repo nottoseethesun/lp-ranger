@@ -14,7 +14,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { _computeIL } = require("../src/bot-pnl-il");
+const { _computeIL } = require("../src/lib/bot-pnl-il");
 
 /*-
  *  Every number here is distinct, deliberately.
@@ -68,10 +68,10 @@ describe("IL/G excludes compounded fees", () => {
   it("removes only this NFT's compounds from the current figure", () => {
     /*- The current-NFT comparison starts at its own mint, which already
      *  contained the earlier compounds — 25 of them, not the lifetime 60.
-     *  (290 − 25 + 10) − 200 = 75. Against the LIFETIME total it would
-     *  be 40, and against the lifetime DEPOSIT 35, so this one figure
-     *  separates all three. */
-    assert.equal(run({ lpValue: 290, compounded: 60, perNft: 25 }).totalIL, 75);
+     *  (290 − 25) − 200 = 65. Against the LIFETIME total it would be 30,
+     *  and against the lifetime DEPOSIT 25, so this one figure separates
+     *  all three. */
+    assert.equal(run({ lpValue: 290, compounded: 60, perNft: 25 }).totalIL, 65);
   });
 
   it("reports the same IL however much was compounded", () => {
@@ -87,12 +87,16 @@ describe("IL/G excludes compounded fees", () => {
     assert.equal(run({ lpValue: 150 }).lifetimeIL, -80);
   });
 
-  it("credits the wallet residual to the LP side", () => {
+  it("credits the wallet residual to the lifetime figure's LP side only", () => {
     /*- Coins the LP handed back and will fold in on the next rebalance.
-     *  Without the credit, IL/G overstates the loss by exactly them. */
+     *  Without the credit, the lifetime IL/G overstates the loss by
+     *  exactly them. The current figure compares only the coins the NFT
+     *  was minted with, so it counts no coin in the wallet (the user's
+     *  ruling on the Impermanent Loss Guard, 2026-10-23). */
     const snap = run({ lpValue: 150 });
     assert.equal(snap.ilInputs.residualValueUsd, RESIDUAL);
     assert.equal(snap.lifetimeIL, 150 + RESIDUAL - 240);
+    assert.equal(snap.totalIL, 150 - 200);
   });
 
   it("publishes what it removed, for the IL/G popover", () => {
@@ -108,10 +112,11 @@ describe("IL/G excludes compounded fees", () => {
   });
 
   it("compares each figure against its own deposits", () => {
-    /*- The lifetime deposit is larger than this NFT's, so the two
-     *  figures must differ by exactly that difference. */
+    /*- The lifetime deposit is larger than this NFT's, and only the
+     *  lifetime figure credits the residual, so the two figures must
+     *  differ by exactly the deposits' difference less the residual. */
     const snap = run({ lpValue: 290 });
-    assert.equal(snap.totalIL - snap.lifetimeIL, 240 - 200);
+    assert.equal(snap.totalIL - snap.lifetimeIL, 240 - 200 - RESIDUAL);
   });
 
   it("treats a missing per-NFT entry as nothing compounded", () => {
@@ -123,14 +128,14 @@ describe("IL/G excludes compounded fees", () => {
     /*-
      *  Both prices doubled: token0 $2, token1 $4, so this NFT's deposit
      *  is worth 400. What is saved is 25 coins of token0, now $50.
-     *  (450 − 50 + 10) − 400 = 10.
+     *  (460 − 50) − 400 = 10.
      *
      *  Reading the saved number as dollars — which is what a stored
      *  total amounts to — would remove $25 and report $35. That error
      *  is the whole reason the app stores coins: it grows with every
      *  move the pair makes after the compound.
      */
-    const snap = run({ lpValue: 450, perNft: 25, p0: 2, p1: 4 });
+    const snap = run({ lpValue: 460, perNft: 25, p0: 2, p1: 4 });
     assert.equal(snap.ilInputs.cur.compoundedRemoved, 50);
     assert.equal(snap.totalIL, 10);
   });

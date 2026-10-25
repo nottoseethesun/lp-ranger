@@ -26,6 +26,6 @@ not started at this launch; it starts at the next one.
 
 Ask again within the same launch, the way the app asks for pool data: a
 few tries at each endpoint, moving to the next endpoint after a failure
-(the bounded read in `src/rpc-read-retry.js`, sized by
+(the bounded read in `src/lib/rpc-read-retry.js`, sized by
 `boundedReadAttemptsPerEndpoint`). Only when every try fails does the
 position wait for the next launch.

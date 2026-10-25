@@ -14,7 +14,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { computeLifetimeHodl } = require("../src/lifetime-hodl");
+const { computeLifetimeHodl } = require("../src/lib/lifetime-hodl");
 
 /*- Shared with the other lifetime-HODL test files. The wrap-aware `id()`
  *  these tests need lives there too, so the stubs cannot drift apart. */

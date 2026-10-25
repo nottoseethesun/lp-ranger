@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-09-20T22:28:49.522Z
+  modified: 2026-10-24T05:23:58.455Z
 ---
 
 # Dashboard cleanup — nice-to-haves
@@ -14,13 +14,13 @@ Polish, not bugs. Merged from: project_dashboard_cycle_cleanup, project_dashboar
 
 ## dashboard cycle cleanup
 
-`npm run show-dependency-cycles` (added 2026-05-03 on `add-madge-cycle-check`) reports 31 circular dependencies, all in `public/dashboard-*.js`. None in the CJS server-side code.
+`npm run show-dependency-cycles` (added 2026-05-03 on `add-madge-cycle-check`) reports 31 circular dependencies, all in `src/client/web/dashboard-*.js`. None in the CJS server-side code.
 
-**Why:** Cycles are real but masked by esbuild bundling at build time. The longer-term goal is to wire `madge --circular` into `npm run check` so new cycles are caught in CI; that requires the existing `public/` cycles to be cleaned up first or grandfathered with an allow-list.
+**Why:** Cycles are real but masked by esbuild bundling at build time. The longer-term goal is to wire `madge --circular` into `npm run check` so new cycles are caught in CI; that requires the existing `src/client/web/` cycles to be cleaned up first or grandfathered with an allow-list.
 
 **How to apply:** When the user wants to tackle this, the cycle clusters break down into roughly 10 atomic groups (some 2-module, some up to 7-module chains around `dashboard-positions ↔ dashboard-data ↔ dashboard-events` and `dashboard-data-status ↔ throttle ↔ compound`). Standard tactics: extract a shared state/types module, invert one direction via callback/parameter, or (last resort) lazy `import()`. No automated tool recommends fixes — `madge` only diagnoses. Order of operations: trivial 2-module cycles first (`wallet ↔ wallet-import`, `data ↔ closed-pos`, `data-status ↔ alerts`), then the data-kpi cluster, then the load-bearing positions/data hubs, then the events chain, then throttle/compound chain. Manual UI verification after each cluster — no automated dashboard tests exist.
 
-After cleanup is done, add `madge --circular --extensions js src/ bot.js server.js scripts/ eslint-rules/ test/ public/` as a step in `scripts/check.js` so future cycles are blocked.
+After cleanup is done, add `madge --circular --extensions js src/ scripts/ eslint-rules/ test/ src/client/web/` as a step in `scripts/check.js` so future cycles are blocked.
 
 ## dashboard state cleanup — RESOLVED 2026-09-02
 
@@ -40,7 +40,7 @@ applying to caches added in future.
 
 After fixing the `_poolFirstDate` sticking-across-pools bug (branch `fix-lifetime-days-sticking-across-pools`, 2026-04-28), the user noted there are likely more dashboard module-level caches that mirror per-poll data and could leak across position/pool switches the same way.
 
-**Candidates flagged for later** (all in `public/`):
+**Candidates flagged for later** (all in `src/client/web/`):
 - `dashboard-data.js:105` — `_lastStatus`, `_historyPopulated`, `_configSynced`
 - `dashboard-data.js:205` — `_scanWasComplete` (derivable from `data.rebalanceScanComplete`)
 - `dashboard-il-debug.js:23` — `_lastData`
@@ -59,7 +59,7 @@ DI slots (`let _pollNow = null` etc.) are a different pattern — leave them.
 ## unused html ids audit
 
 **One-shot HTML id audit** run 2026-07-23 found **47 provably-unused
-ids** in `public/index.html` (plus zero orphan `data-tpl` slots — a
+ids** in `src/client/web/index.html` (plus zero orphan `data-tpl` slots — a
 useful reassurance).  Same fingerprint as the dblWindowLabel bug that
 motivated the audit — HTML subtrees gutted from the code but the
 shell left behind.

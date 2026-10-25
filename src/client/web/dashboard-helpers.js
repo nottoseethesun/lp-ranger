@@ -1,0 +1,831 @@
+/**
+ * @file dashboard-helpers.js
+ * @description Shared utility functions and bot configuration state for the
+ * LP Ranger dashboard.  Provides DOM access, activity logging,
+ * time-formatting helpers, and the shared {@link botConfig} object used by
+ * every other dashboard module.
+ *
+ * Root module — imports no dashboard file but the logger, the chain
+ * module, the dashboard settings and the Activity Log figures, none of
+ * which imports this one, directly or otherwise.
+ */
+
+import { log } from "./dashboard-log.js";
+import { activeChainId } from "./dashboard-chain.js";
+/*- The zone designator the `Date` itself emits, not a spelled-out
+ *  name. See `src/lib/utc-timestamp.js` for why "UTC" cannot be derived. */
+import { UTC_LABEL } from "../../lib/utc-timestamp.js";
+/*-
+ *  The security-token refresh cadence before the server has sent its
+ *  own; see `_csrfRefreshIntervalMs`.
+ */
+import CSRF_DEFAULTS from "../../../app-config/app-defaults-for-user-configurable/csrf.json" with { type: "json" };
+// The server's reasons for refusing a token; see `fetchWithCsrf`.
+import { CSRF_REFUSALS } from "../../lib/csrf-refusals.js";
+import {
+  uiSetting,
+  uiSettingsLoaded,
+  withUiSettings,
+} from "./dashboard-ui-settings.js";
+import {
+  isActivityEntryDrawn,
+  fillActivityFigures,
+  forgetActivityEntry,
+} from "./dashboard-activity-figures.js";
+/**
+ * Get a DOM element by its ID.
+ * @param {string} id  The element's id attribute.
+ * @returns {HTMLElement|null}
+ */
+export function g(id) {
+  return document.getElementById(id);
+}
+
+/**
+ * Clone the content of a <template> by id and return the resulting
+ * DocumentFragment. Caller fills [data-tpl="..."] slots via textContent
+ * (or sets href/src/etc.) and then appends the fragment to the DOM.
+ *
+ * This is the project-wide replacement for innerHTML assignments from
+ * JS: the static markup lives in src/client/web/index.html, and JS only owns
+ * the dynamic values. See feedback_no_new_html_in_js for the rule.
+ *
+ * @param {string} id  The <template> element's id attribute.
+ * @returns {DocumentFragment|null}
+ */
+export function cloneTpl(id) {
+  const tpl = document.getElementById(id);
+  if (!tpl || !("content" in tpl)) return null;
+  return tpl.content.cloneNode(true);
+}
+
+const _EMOJI = [
+  "🌵",
+  "🔥",
+  "⚡",
+  "🌊",
+  "🎯",
+  "💎",
+  "🚀",
+  "🌙",
+  "⭐",
+  "🎪",
+  "🦅",
+  "🐎",
+  "🌻",
+  "🍀",
+  "🎲",
+  "🔔",
+];
+/**
+ * Convert a string to a 3-emoji fingerprint (browser-side).
+ * Uses the same emoji set and algorithm as src/lib/logger.js emojiId
+ * so server and browser logs show matching fingerprints.
+ * @param {string} str  Input string (e.g. NFT token ID).
+ * @returns {string}  3-emoji string.
+ */
+export function emojiId(str) {
+  const s = String(str);
+  let h0 = 0,
+    h1 = 0,
+    h2 = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h0 = (h0 * 31 + c) | 0;
+    h1 = (h1 * 37 + c) | 0;
+    h2 = (h2 * 41 + c) | 0;
+  }
+  return (
+    _EMOJI[Math.abs(h0) % 16] +
+    _EMOJI[Math.abs(h1) % 16] +
+    _EMOJI[Math.abs(h2) % 16]
+  );
+}
+
+/**
+ * Append an entry to the on-screen activity log.
+ * Newest entries appear at the top; the list is capped at the
+ * `activityLogMaxEntries` setting the server sends.
+ * @param {string} icon   Emoji icon for the entry.
+ * @param {string} type   CSS class suffix for colouring (e.g. 'fee', 'alert').
+ * @param {string} title  Short heading text.
+ * @param {string} detail Longer description text.
+ */
+/**
+ * Activity-log icon references.  Each value is a relative URL to the
+ * standalone SVG file under `src/client/web/icons/`.  Every icon must have a
+ * matching file (see test/icons-files.test.js) and the whole
+ * directory is XML-well-formedness-validated via `npm run lint:svg`
+ * (see docs/engineering.md § "SVG Assets" for the full policy).
+ * @see docs/engineering.md#svg-assets
+ */
+export const ACT_ICONS = {
+  grid: "icons/act-grid.svg",
+  target: "icons/act-target.svg",
+  cross: "icons/act-cross.svg",
+  scan: "icons/act-scan.svg",
+  link: "icons/act-link.svg",
+  play: "icons/act-play.svg",
+  lock: "icons/act-lock.svg",
+  diamond: "icons/act-diamond.svg",
+  clear: "icons/act-clear.svg",
+  gear: "icons/act-gear.svg",
+  warn: "icons/act-warn.svg",
+  swap: "icons/act-swap.svg",
+  acorn: "icons/act-acorn.svg",
+  lasso: "icons/act-lasso.svg",
+};
+
+/*- Per-icon render-size override.  Default is 40 (fits the 54×54
+ *  `.aico` chip with ~7 px padding on each side); an entry here
+ *  scales that specific icon larger or smaller without touching the
+ *  SVG file or the rest of the icons. */
+const _ICON_SIZE_PX = {
+  "icons/act-acorn.svg": 50,
+};
+const _ICON_DEFAULT_SIZE_PX = 40;
+
+/*- Human-readable label per icon URL.  Applied as both `alt=` (screen
+ *  readers) and `title=` (browser-native hover tooltip) so a mouse
+ *  user and an assistive-tech user both learn what the shape means.
+ *  Missing entry → empty alt (icon renders as decorative). */
+const _ICON_ALT = {
+  "icons/act-grid.svg": "Grid Icon (4 squares) — Position Browser",
+  "icons/act-target.svg": "Bullseye Icon — Target",
+  "icons/act-cross.svg": "X Icon — Close or Cancel",
+  "icons/act-scan.svg": "Magnifying-Glass Icon — Scan",
+  "icons/act-link.svg": "Square-with-Plus Icon — Deep Link",
+  "icons/act-play.svg":
+    "Triangle Icon Pointing Right To Indicate a Ready-to-Go State",
+  "icons/act-lock.svg": "Padlock Icon — Locked",
+  "icons/act-diamond.svg": "Diamond Icon for Finished-Loading",
+  "icons/act-clear.svg": "Square Icon — Cleared",
+  "icons/act-gear.svg": "Icon of a Settings Gear",
+  "icons/act-warn.svg": "Warning-Triangle Icon — Alert",
+  "icons/act-swap.svg": "Bidirectional-Arrows Icon — Swap",
+  "icons/act-acorn.svg": "Icon of an Acorn",
+  "icons/act-lasso.svg": "Icon of a Lasso",
+};
+
+/**
+ * Populate an icon container.  An `icon` starting with `icons/` is
+ * rendered as an `<img>` referencing a standalone SVG file (the
+ * canonical shape — see docs/engineering.md § "SVG Assets"); anything
+ * else falls through to `textContent` so callers can still pass plain
+ * emoji/text.  `<img>` isolates each rendered icon in its own document
+ * context, so the id/defs collisions that inline `<svg>` copies would
+ * cause when the same icon renders across dozens of log entries never
+ * arise.
+ */
+function _setActIcon(el, icon) {
+  if (!icon) return;
+  if (icon.startsWith("icons/")) {
+    const img = document.createElement("img");
+    img.src = icon;
+    const size = _ICON_SIZE_PX[icon] || _ICON_DEFAULT_SIZE_PX;
+    img.width = size;
+    img.height = size;
+    const label = _ICON_ALT[icon] || "";
+    img.alt = label;
+    if (label) img.title = label;
+    el.appendChild(img);
+    return;
+  }
+  el.textContent = icon;
+}
+
+/** Append a short TX hash + copy icon to the main detail element. */
+function _appendTxAffordance(adt, txHash) {
+  adt.appendChild(document.createElement("br"));
+  const wrap = document.createElement("span");
+  const short = document.createElement("span");
+  short.textContent = txHash.slice(0, 4) + "\u2026" + txHash.slice(-4) + " ";
+  const copy = document.createElement("span");
+  copy.className = "9mm-pos-mgr-copy-icon";
+  copy.title = "Copy full TX hash";
+  copy.setAttribute("data-copy-tx", txHash);
+  copy.textContent = "\u274F";
+  wrap.appendChild(short);
+  wrap.appendChild(copy);
+  adt.appendChild(wrap);
+}
+
+/**
+ * Append an entry to the Activity Log.
+ * @param {string} icon    SVG markup (ACT_ICONS.*) or plain text/emoji.
+ * @param {string} type    CSS modifier class for the icon (e.g. "start", "alert").
+ * @param {string} title   Plain-text title.
+ * @param {string} detail  Plain-text detail; first line is main, remainder is ctx.
+ * @param {Date}   [when]  Timestamp; defaults to now.
+ * @param {string} [txHash] Optional TX hash — appended as short hash + copy icon.
+ * @param {object} [figures] A Rebalance or Compound entry's figures, from
+ *   `rebalanceFigures` or `compoundFigures` (dashboard-activity-figures.js),
+ *   shown under the date. An entry the log already shows is not drawn
+ *   again.
+ */
+export function act(icon, type, title, detail, when, txHash, figures) {
+  if (figures !== undefined && isActivityEntryDrawn(figures)) return;
+  const list = g("actList");
+  const ts = (when || new Date()).getTime();
+  const frag = cloneTpl("tplActItem");
+  if (!frag) return;
+  const div = frag.querySelector(".ai");
+  div.dataset.ts = ts;
+  const nl = detail.indexOf("\n");
+  const main = nl >= 0 ? detail.slice(0, nl) : detail;
+  const ctx = nl >= 0 ? detail.slice(nl + 1) : "";
+  const aico = div.querySelector('[data-tpl="aico"]');
+  aico.classList.add(type);
+  _setActIcon(aico, icon);
+  div.querySelector('[data-tpl="title"]').textContent = title;
+  const adt = div.querySelector('[data-tpl="main"]');
+  adt.textContent = main;
+  if (txHash) _appendTxAffordance(adt, txHash);
+  div.querySelector('[data-tpl="when"]').textContent = fmtDateTime(
+    when || new Date(),
+  );
+  const ctxEl = div.querySelector('[data-tpl="ctx"]');
+  if (ctx) {
+    ctxEl.textContent = ctx;
+    ctxEl.hidden = false;
+  } else {
+    ctxEl.remove();
+  }
+  const fin = div.querySelector('[data-tpl="fin"]');
+  if (figures === undefined) fin.remove();
+  else fillActivityFigures(div, figures);
+  let ref = list.firstChild;
+  while (ref && Number(ref.dataset?.ts) > ts) ref = ref.nextSibling;
+  list.insertBefore(div, ref);
+  /*-
+   *  The cap is `activityLogMaxEntries`, a setting the server sends.
+   *  Entries logged at startup, before it has, stay until the first entry
+   *  after, which trims the log to the cap. A trimmed entry is forgotten,
+   *  so its figures stop being kept up to date.
+   */
+  if (!uiSettingsLoaded()) return;
+  const max = uiSetting("activityLogMaxEntries");
+  while (list.children.length > max) {
+    const trimmed = list.removeChild(list.lastChild);
+    forgetActivityEntry(trimmed);
+  }
+}
+
+/**
+ * Format milliseconds as minutes and seconds.
+ * @param {number} ms  Duration in milliseconds.
+ * @returns {string}  e.g. "10m", "30s", "10m 30s"
+ */
+export function fmtMs(ms) {
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  if (m === 0) return s + "s";
+  if (s === 0) return m + "m";
+  return m + "m " + s + "s";
+}
+
+/**
+ * Format a countdown as MM:SS, returning "READY" when expired.
+ * @param {number} ms  Remaining milliseconds.
+ * @returns {string}  e.g. "02:15" or "READY"
+ */
+export function fmtCountdown(ms) {
+  if (ms <= 0) return "READY";
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+
+/**
+ * Get the local timezone 3-letter code (e.g. "EST", "PST", "CET").
+ * Falls back to the IANA timezone name if no abbreviation is available.
+ * @returns {string}
+ */
+export function tzCode() {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZoneName: "short",
+    }).formatToParts(new Date());
+    const tz = parts.find((p) => p.type === "timeZoneName");
+    return tz ? tz.value : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "local";
+  }
+}
+
+/**
+ * Format a date/time string showing both UTC and local time with TZ code.
+ * @param {string|number|Date} input  ISO string, Unix ms, or Date object.
+ * @param {object} [opts]
+ * @param {boolean} [opts.dateOnly]  If true, show only the date (no time).
+ * @returns {string}  e.g. "2026-03-15 14:30 UTC (3/15/2026 10:30 AM EST)"
+ */
+export function fmtDateTime(input, opts) {
+  if (!input) return "\u2014";
+  const d = input instanceof Date ? input : new Date(input);
+  if (isNaN(d.getTime())) return "\u2014";
+
+  const dateOnly = opts && opts.dateOnly;
+  const utcDate = d.toISOString().slice(0, 10);
+  const utcTime = d.toISOString().slice(11, 16);
+  const localDate = d.toLocaleDateString();
+  const localTime = d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const tz = tzCode();
+
+  if (dateOnly) {
+    return utcDate + UTC_LABEL + " (" + localDate + " " + tz + ")";
+  }
+  return (
+    utcDate +
+    " " +
+    utcTime +
+    UTC_LABEL +
+    " (" +
+    localDate +
+    " " +
+    localTime +
+    " " +
+    tz +
+    ")"
+  );
+}
+
+/** Format a daily-reset timestamp as "Resets HH:MM UTC (HH:MM TZ)". */
+export function fmtReset(r) {
+  if (!r) return "";
+  const d = new Date(r);
+  const u = d.toISOString().slice(11, 16) + UTC_LABEL;
+  const l = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const z = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" })
+    .formatToParts(d)
+    .find((p) => p.type === "timeZoneName");
+  return "Resets " + u + " (" + l + " " + (z ? z.value : "local") + ")";
+}
+
+// ── Composite key ────────────────────────────────────────────────────────────
+
+/**
+ * Build a composite key matching the server's format: blockchain-wallet-contract-tokenId.
+ * Returns null if any component is missing, the chain included: there is
+ * no chain to assume, and a key on the wrong one reaches no position.
+ * @param {string} blockchain  The active chain's id (`activeChainId()`).
+ * @param {string} wallet      Wallet address.
+ * @param {string} contract    NFT contract address.
+ * @param {string} tokenId     NFT token ID.
+ * @returns {string|null}
+ */
+export function compositeKey(blockchain, wallet, contract, tokenId) {
+  if (!blockchain || !wallet || !contract || !tokenId) return null;
+  return blockchain + "-" + wallet + "-" + contract + "-" + tokenId;
+}
+
+// ── Bot configuration state ─────────────────────────────────────────────────
+
+/**
+ * Shared configuration and live-position state for the dashboard.
+ * Updated by the bot config panel and position selection.
+ *
+ * `oorThreshold` starts as `undefined` and is populated from the
+ * shipped JSON (via `/api/bot-config-defaults`) once the AJAX fetch
+ * resolves and `setConfigInputDefault('rebalanceOutOfRangeThresholdPercent',
+ * ...)` lands.  No literal default lives here per
+ * feedback_one_literal_per_shipped_default; consumers MUST handle
+ * the undefined case (gracefully skip rendering until data arrives).
+ * Price/range fields are placeholders until live on-chain data is wired.
+ */
+export const botConfig = {
+  oorThreshold: undefined,
+  /*-
+   *  logging.json → errorLogPath, as the operator wrote it, from each
+   *  /api/status poll; blank until the first one lands.
+   */
+  errorLogPath: "",
+  price: 0,
+  lower: 0,
+  upper: 0,
+  tL: 0,
+  tU: 0,
+  oorSince: null,
+};
+
+/** Truncate a string with ellipsis if longer than max. */
+export function truncName(name, max) {
+  return name && name.length > max ? name.slice(0, max) + "\u2026" : name;
+}
+
+/**
+ * Copy `text` to the clipboard and give visual feedback by swapping
+ * `iconEl`'s textContent to a checkmark for `copyFeedbackMs`, a setting
+ * the server sends. A click before the server has sent it keeps the
+ * checkmark until it has, then times it as usual.
+ *
+ * A second click while the checkmark shows copies again and leaves the
+ * checkmark alone: the first click's timer puts the icon back. Taking
+ * the checkmark as the icon to restore would leave it showing for good.
+ *
+ * @param {HTMLElement} iconEl  The clicked copy-icon element.
+ * @param {string} text  The text to copy.
+ */
+export function copyWithFeedback(iconEl, text) {
+  if (!iconEl || !text) return;
+  navigator.clipboard.writeText(text).catch(() => {});
+  if (iconEl.textContent === "✓") return;
+  const orig = iconEl.textContent;
+  iconEl.textContent = "\u2713";
+  withUiSettings((settings) =>
+    setTimeout(() => {
+      iconEl.textContent = orig;
+    }, settings.copyFeedbackMs),
+  );
+}
+
+/** Copy textContent of element `tId` via icon `bId` with checkmark feedback. */
+export function copyElText(tId, bId) {
+  const t = g(tId),
+    b = g(bId);
+  if (t && b) copyWithFeedback(b, t.textContent.trim());
+}
+
+/** Format a number: up to 6 decimals for normal, compact for huge/tiny, dash for non-finite. */
+export function fmtNum(n) {
+  if (!Number.isFinite(n)) return "\u2014";
+  const a = Math.abs(n);
+  if (a === 0) return "0";
+  if (a >= 1e12) return n.toExponential(4);
+  if (a >= 1)
+    return n.toFixed(Math.min(6, Math.max(0, 6 - Math.floor(Math.log10(a)))));
+  return n.toPrecision(6);
+}
+
+/** Detect full-range positions (ticks near ±887272 produce astronomical prices). */
+export function isFullRange(lo, hi) {
+  return lo < 1e-30 || hi > 1e30;
+}
+
+/*- V3 min/max tick is [-887272, 887272], so the full-range tick spread
+ *  is ~1,774,544 (nearest-usable-tick rounding by fee tier drops it to
+ *  ~1,774,400 at worst — fee=10000, tickSpacing=200).  A threshold of
+ *  1,700,000 comfortably admits every full-range position without
+ *  false-flagging genuinely wide-but-not-full positions.  Used by the
+ *  Range Width display to short-circuit the widthPct formula, which
+ *  otherwise returns astronomical values (~6.65e32) that overflow the
+ *  input's visible width and confuse the user. */
+const FULL_RANGE_TICK_SPREAD_THRESHOLD = 1_700_000;
+
+/** Detect a full-range V3 position from its tick spread. */
+export function isFullRangeSpread(spread) {
+  return Number.isFinite(spread) && spread >= FULL_RANGE_TICK_SPREAD_THRESHOLD;
+}
+
+// ── Disclaimer cookie helpers ───────────────────────────────────────────────
+
+/** Cookie name for the "Don't show this again" preference. */
+// ── Per-position localStorage helpers ────────────────────────────────────────
+
+/** localStorage key prefix for per-position OOR threshold. */
+const POS_RANGE_PREFIX = "9mm_oorThreshold_";
+
+/**
+ * Build a unique storage key for a position, on the active chain: the
+ * chain, the wallet and the position's contract, and for an NFT its
+ * number too, so no two positions share a value. The contract is the
+ * position manager for an NFT and the LP token for an ERC-20.
+ * @param {object} pos  Position entry from posStore.
+ * @returns {string|null}  Storage key, or null when the chain is not yet
+ *   known or the position lacks an identifying field.
+ */
+function posStorageKey(pos) {
+  if (!pos) return null;
+  const chain = activeChainId();
+  if (typeof chain !== "string") return null;
+  const { walletAddress, contractAddress } = pos;
+  for (const part of [walletAddress, contractAddress])
+    if (typeof part !== "string" || part.length === 0) return null;
+  const owner =
+    chain +
+    "_" +
+    walletAddress.toLowerCase() +
+    "_" +
+    contractAddress.toLowerCase();
+  if (pos.positionType === "nft") {
+    const id = pos.tokenId;
+    if (typeof id !== "string" || id.length === 0) return null;
+    return POS_RANGE_PREFIX + "nft_" + owner + "_" + id;
+  }
+  return POS_RANGE_PREFIX + "erc20_" + owner;
+}
+
+/**
+ * Save the OOR threshold % for a position to localStorage.
+ * @param {object} pos       Position entry.
+ * @param {number} oorPct    OOR threshold percentage.
+ */
+export function savePositionOorThreshold(pos, oorPct) {
+  const key = posStorageKey(pos);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, String(oorPct));
+  } catch (_) {
+    /* private browsing */
+  }
+}
+
+/**
+ * Load the OOR threshold % for a position from localStorage.
+ *
+ * Returns `undefined` when no per-position value is stored (or the
+ * stored value is invalid), so the caller can fall back to the shipped
+ * default sourced from the AJAX-populated
+ * `_CONFIG_INPUT_DEFAULTS.rebalanceOutOfRangeThresholdPercent` (via
+ * `getInputDefault()` in dashboard-config-inputs.js).  No literal fallback per
+ * feedback_one_literal_per_shipped_default — the shipped default lives
+ * only in `bot-config-defaults.json` and nowhere else in code.
+ *
+ * @param {object} pos  Position entry.
+ * @returns {number|undefined}
+ */
+export function loadPositionOorThreshold(pos) {
+  const key = posStorageKey(pos);
+  if (!key) return undefined;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return undefined;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+
+import { DISCLOSURE_HTML, DISCLOSURE_VERSION } from "./disclosure-content.js";
+
+/**
+ * Populate the disclosure modal body from the single-source module and
+ * log the disclosure version.  Called once before first show.
+ */
+function _populateDisclosure() {
+  const body = g("disclaimerBody");
+  if (body && !body.innerHTML.trim()) body.innerHTML = DISCLOSURE_HTML;
+  log.info("[lp-ranger] Disclosure version: %s", DISCLOSURE_VERSION);
+}
+
+/**
+ * Show the disclosure modal on every app launch and return a Promise that
+ * resolves when the user affirmatively acknowledges it.  No suppression
+ * mechanism — the disclosure must appear on every launch so users always
+ * see the current version.
+ * @returns {Promise<void>}
+ */
+export function initDisclaimer() {
+  _populateDisclosure();
+  const overlay = g("disclaimerOverlay");
+  const disabled = g("appDisabledOverlay");
+  if (!overlay) return Promise.resolve();
+
+  overlay.classList.remove("hidden");
+
+  const acceptBtn = g("disclaimerAccept");
+  const declineBtn = g("disclaimerDecline");
+
+  return new Promise((resolve) => {
+    if (acceptBtn) {
+      acceptBtn.onclick = function () {
+        overlay.classList.add("hidden");
+        resolve();
+      };
+    }
+    if (declineBtn) {
+      declineBtn.onclick = function () {
+        overlay.classList.add("hidden");
+        if (disabled) disabled.classList.add("active");
+        // Don't resolve — app stays disabled
+      };
+    }
+  });
+}
+
+/**
+ * Open the disclosure modal from the Settings menu.
+ * Same modal, same content, same dismiss button.
+ */
+export function showDisclosure() {
+  _populateDisclosure();
+  const overlay = g("disclaimerOverlay");
+  if (overlay) {
+    overlay.classList.remove("hidden");
+    requestAnimationFrame(() => {
+      overlay.scrollTop = 0;
+    });
+  }
+}
+
+/** Toggle the settings popover visibility. */
+export function toggleSettingsPopover() {
+  const pop = g("settingsPopover");
+  if (!pop) return;
+  const opening = !pop.classList.contains("9mm-pos-mgr-visible");
+  pop.classList.toggle("9mm-pos-mgr-visible");
+  if (opening) checkMoralisKeyStatus();
+}
+
+/** Ping the server to check Moralis API key status and update the dot. */
+export async function checkMoralisKeyStatus() {
+  const dot = g("moralisKeyDot");
+  if (!dot) return "none";
+  try {
+    const res = await fetch("/api/api-keys/status");
+    const data = await res.json();
+    const s = data.moralis || "none";
+    dot.classList.remove(
+      "9mm-pos-mgr-api-dot--valid",
+      "9mm-pos-mgr-api-dot--invalid",
+      "9mm-pos-mgr-api-dot--quota",
+    );
+    void dot.offsetWidth; // force reflow to restart animation
+    if (s === "valid") {
+      dot.classList.add("9mm-pos-mgr-api-dot--valid");
+      dot.title = "Moralis API key is active and valid";
+    } else if (s === "quota") {
+      dot.classList.add("9mm-pos-mgr-api-dot--quota");
+      dot.title =
+        "Moralis API key is valid but daily quota exhausted — resets tomorrow";
+    } else if (s === "invalid") {
+      dot.classList.add("9mm-pos-mgr-api-dot--invalid");
+      dot.title = "Moralis API key is invalid — check your key";
+    } else if (s === "locked") {
+      dot.title = "Moralis API key stored but wallet is locked";
+    } else if (s === "disabled") {
+      /*- A key IS configured — it is simply switched off.  Falling
+       *  through to the "no key" text below would tell the operator
+       *  their key had vanished. */
+      dot.title = "Moralis API key stored but Use Moralis Key is off";
+    } else if (s === "unsupported") {
+      // A key IS configured; this chain is one Moralis is not asked about.
+      dot.title =
+        "Moralis API key stored, but Moralis does not cover this chain";
+    } else {
+      dot.title = "No Moralis API key configured";
+    }
+    const stored = ["valid", "quota", "locked", "disabled", "unsupported"];
+    const inp = g("moralisKeyInput");
+    if (inp)
+      inp.placeholder = stored.includes(s)
+        ? "Paste replacement key"
+        : "Paste key here";
+    return s;
+  } catch {
+    /* network error — leave dot in default state */
+    return "none";
+  }
+}
+
+/**
+ * Clear all localStorage and cookies, then reload.
+ *
+ * Unconditional: confirmation is the caller's job, so this stays a plain
+ * action helper and this module keeps taking no dialog dependency (it is
+ * imported by nearly every dashboard file, so reaching for a dialog here
+ * would close an import cycle). See `confirmClearStorage` in
+ * dashboard-settings-dialogs.js for the guarded entry point the Settings
+ * menu actually calls.
+ */
+export function clearLocalStorageAndCookies() {
+  localStorage.clear();
+  for (const c of document.cookie.split(";")) {
+    const name = c.split("=")[0].trim();
+    if (name)
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+  }
+  location.reload();
+}
+
+/** Format a duration in ms as "Xd Yh Zm". */
+export function fmtDuration(ms) {
+  const d = Math.floor(ms / 86400000),
+    h = Math.floor((ms % 86400000) / 3600000),
+    m = Math.floor((ms % 3600000) / 60000);
+  return (d > 0 ? d + "d " : "") + (h > 0 || d > 0 ? h + "h " : "") + m + "m";
+}
+
+// ── CSRF token management ───────────────────────────────────────────────────
+
+let _csrfToken = null;
+/*-
+ *  Refresh cadence, from app-config/app-defaults-for-user-configurable/csrf.json.
+ *  The server sends its own reading of that file (an operator override
+ *  included) with every token, and that replaces this one; the copy
+ *  bundled here covers only the time before the first token arrives.
+ *  The shipped 5 min gives ~11 missed firings of slack against the
+ *  60 min server-side TTL — survives Chrome tab discards, silent network
+ *  failures, and main-thread stalls during long pool scans on hardware
+ *  like Raspberry Pi 5 (recommended configuration: with Heat Sink and
+ *  Fan, 5GB RAM, and Ethernet cable Internet connection instead of
+ *  Wi-Fi).
+ */
+let _csrfRefreshIntervalMs = CSRF_DEFAULTS.refreshIntervalMs;
+
+/**
+ * Fetch a fresh CSRF token from the server. Called on init and
+ * on a repeating timer set up in dashboard-init.js. Logs success
+ * and failure, so a missed refresh leaves a visible signal in the
+ * browser console. Without one, the next symptom is a 403 on an
+ * auto-fired background POST, which names the token rather than the
+ * refresh that did not happen.
+ * @returns {Promise<void>}
+ */
+export async function refreshCsrfToken() {
+  try {
+    const res = await fetch("/api/csrf-token");
+    if (!res.ok) {
+      log.warn(
+        "[csrf] refresh failed: HTTP %d — token may expire before next attempt",
+        res.status,
+      );
+      return;
+    }
+    const data = await res.json();
+    _csrfToken = data.token;
+    if (typeof data.refreshIntervalMs === "number")
+      _csrfRefreshIntervalMs = data.refreshIntervalMs;
+    log.info(
+      "[csrf] token refreshed (next in %dm)",
+      Math.round(_csrfRefreshIntervalMs / 60000),
+    );
+  } catch (err) {
+    log.warn(
+      "[csrf] refresh failed: %s — token may expire before next attempt",
+      err.message,
+    );
+  }
+}
+
+/**
+ * Return headers object with the current CSRF token.  Internal helper
+ * used by `fetchWithCsrf` below — external callers go through that
+ * wrapper so they pick up the on-403 retry.
+ * @returns {Record<string, string>}
+ */
+function _csrfHeaders() {
+  return _csrfToken ? { "x-csrf-token": _csrfToken } : {};
+}
+
+/**
+ * Return the server-configured refresh interval (ms). Used by
+ * dashboard-init.js to schedule periodic refreshes.
+ * @returns {number}
+ */
+export function csrfRefreshIntervalMs() {
+  return _csrfRefreshIntervalMs;
+}
+
+/*-
+ *  fetch wrapper that attaches the CSRF token and, on a 403 refusing
+ *  that token, fetches a fresh token and sends the request once more,
+ *  at once. Every refusal the server gives (`CSRF_REFUSALS`,
+ *  src/lib/csrf-refusals.js) means the page holds no token this server
+ *  process accepts: none yet, one signed by a secret the server no
+ *  longer has (a restart makes a new one), or one past its lifetime,
+ *  forgotten or not. A fresh token cures each, so each gets the retry.
+ *  A token can outlive its lifetime because Chrome slows a hidden tab's
+ *  timers, which can hold off the page's own refresh.
+ *
+ *  GET callers use plain `fetch`: the server checks the token only on
+ *  other methods.
+ *
+ *  The retry reads the answer's `error`, not only its status, so a 403
+ *  for any other reason is returned as it came.
+ */
+const _CSRF_RETRY_REASONS = new Set(Object.values(CSRF_REFUSALS));
+
+export async function fetchWithCsrf(url, init = {}) {
+  const initWithToken = {
+    ...init,
+    headers: { ...(init.headers || {}), ..._csrfHeaders() },
+  };
+  const res = await fetch(url, initWithToken);
+  if (res.status !== 403) return res;
+  /*- Clone before .json(): we may return `res` to the caller on the
+   *  "wrong reason" early-return path, and `await res.json()` here
+   *  would otherwise consume the body stream — leaving the caller's
+   *  own `await res.json()` to throw "body stream already read". */
+  let body;
+  try {
+    body = await res.clone().json();
+  } catch {
+    return res;
+  }
+  if (!body || !_CSRF_RETRY_REASONS.has(body.error)) return res;
+  log.info(
+    "[csrf] 403 %s — refreshing and retrying once",
+    body.error.toLowerCase().replace(/ csrf token$/, "-token"),
+  );
+  await refreshCsrfToken();
+  const retryInit = {
+    ...init,
+    headers: { ...(init.headers || {}), ..._csrfHeaders() },
+  };
+  return fetch(url, retryInit);
+}

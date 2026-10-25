@@ -3,11 +3,11 @@
 /**
  * @file test/il-guard-holding.test.js
  * @description What the Impermanent Loss Guard measures, from a poll's
- *   own figures: the position, with the coins in the wallet a rebalance
- *   would add and without the fees this NFT compounded, against holding
- *   the coins the NFT was minted with, at today's prices. That is the
+ *   own figures: the position, without the fees this NFT compounded and
+ *   without any coin in the wallet, against holding the coins the NFT was
+ *   minted with, at today's prices. That is the
  *   Current panel's IL/G for the NFT, so each snapshot here is built by
- *   `_computeIL` (src/bot-pnl-il.js), the code that works out the
+ *   `_computeIL` (src/lib/bot-pnl-il.js), the code that works out the
  *   panel's figure, and the Guard is then asked about it, as a poll does.
  *
  *   Holding is valued at today's prices, not at the minted coins' worth
@@ -20,8 +20,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { checkIlGuard } = require("../src/il-guard");
-const { _computeIL } = require("../src/bot-pnl-il");
+const { checkIlGuard } = require("../src/lib/il-guard");
+const { _computeIL } = require("../src/lib/bot-pnl-il");
 
 const TOKEN_ID = "164418";
 
@@ -40,7 +40,7 @@ const TOKEN_ID = "164418";
 function guardAt({ lpUsd, price0, price1, residualUsd = 0, compounded }) {
   const published = [];
   const deps = {
-    position: { tokenId: TOKEN_ID },
+    position: { tokenId: TOKEN_ID, liquidity: "1000" },
     _getConfig: (k) => (k === "impermanentLossGuardPct" ? 15 : undefined),
     _botState: {
       /*-
@@ -98,17 +98,23 @@ describe("the Impermanent Loss Guard measures against holding", () => {
     assert.equal(verdict?.ilGuardRejected, true);
   });
 
-  it("counts the coins in the wallet a rebalance would add", () => {
-    // $820 alone is 18% below $1,000 of holding; with $60 more, 12%.
-    const without = guardAt({ lpUsd: 820, price0: 1, price1: 1 });
-    assert.equal(without.verdict?.ilGuardRejected, true);
-    const withCoins = guardAt({
-      lpUsd: 820,
-      price0: 1,
-      price1: 1,
-      residualUsd: 60,
-    });
-    assert.equal(withCoins.verdict, null);
+  it("counts no coin in the wallet, so the comparison stays even", () => {
+    /*-
+     *  The user's ruling (2026-10-23): the Guard compares the position as
+     *  minted against the same position rebalanced, and "if you add in
+     *  residual coins, it's not an even comparison". $820 is 18% below
+     *  $1,000 of holding; $60 of leftovers or a deposit waiting in the
+     *  wallet would have made it 12%, and let the rebalance through.
+     */
+    for (const residualUsd of [0, 60]) {
+      const { verdict } = guardAt({
+        lpUsd: 820,
+        price0: 1,
+        price1: 1,
+        residualUsd,
+      });
+      assert.equal(verdict?.ilGuardRejected, true, `$${residualUsd} in wallet`);
+    }
   });
 
   it("reports the figures it measured, today's holding value included", () => {

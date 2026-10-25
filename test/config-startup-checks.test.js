@@ -1,6 +1,6 @@
 /**
  * @file test/config-startup-checks.test.js
- * @description `src/config.js` refuses to start on a setting it cannot
+ * @description `src/lib/config.js` refuses to start on a setting it cannot
  * use, naming it, rather than supplying a value of its own. Covered here:
  * the names of the two swap routes, the aggregator url and the token
  * list's url, everything a chain's entry describes about the chain (its
@@ -9,13 +9,13 @@
  * reposition window, and the dashboard poll interval, which is read from
  * the shipped file alone.
  *
- * Each case loads the real `src/config.js` against overrides of its own,
+ * Each case loads the real `src/lib/config.js` against overrides of its own,
  * through test/helpers/config-with-overrides.js.
  */
 
 "use strict";
 
-// Required first: it points the settings folder at its own, before src/ loads.
+// Required first: it points the settings folder at its own, before src/lib/ loads.
 const {
   USER_DIR,
   loadConfigWith,
@@ -363,17 +363,11 @@ describe("the bot's retry, follow-up and retire timings", () => {
   it("are app-runtime.json's, an override included", () => {
     const config = loadConfigWith({
       "app-runtime.json": {
-        tx: {
-          swapBackoffBaseMs: 7000,
-          swapBackoffMaxMs: 90000,
-          midwayRetryLimit: 6,
-        },
+        tx: { midwayRetryLimit: 6 },
         poll: { afterActionMs: 3000, lifetimeRescanCheckMs: 900000 },
         retire: { drainedAfterMs: 3600000 },
       },
     });
-    assert.equal(config.SWAP_BACKOFF_BASE_MS, 7000);
-    assert.equal(config.SWAP_BACKOFF_MAX_MS, 90000);
     assert.equal(config.MIDWAY_RETRY_LIMIT, 6);
     assert.equal(config.POLL_AFTER_ACTION_MS, 3000);
     assert.equal(config.LIFETIME_RESCAN_CHECK_MS, 900000);
@@ -381,8 +375,6 @@ describe("the bot's retry, follow-up and retire timings", () => {
   });
 
   for (const [group, key, bad] of [
-    ["tx", "swapBackoffBaseMs", 999],
-    ["tx", "swapBackoffMaxMs", 86400001],
     ["tx", "midwayRetryLimit", 0],
     ["tx", "midwayRetryLimit", 1.5],
     ["retire", "drainedAfterMs", 59999],
@@ -429,7 +421,7 @@ describe("how long the dashboard is given to see a change", () => {
 
 describe("price-service urls", () => {
   /**
-   * Load src/price-service-urls.js as startup would, with `override` as
+   * Load src/lib/price-service-urls.js as startup would, with `override` as
    * the operator's price-services.json, which is removed again after.
    * @param {object} [override]
    * @returns {object} The loaded module.
@@ -439,8 +431,8 @@ describe("price-service urls", () => {
     if (override) fs.writeFileSync(file, JSON.stringify(override));
     try {
       for (const mod of ["load-merged-defaults", "price-service-urls"])
-        delete require.cache[require.resolve(`../src/${mod}`)];
-      return require("../src/price-service-urls");
+        delete require.cache[require.resolve(`../src/lib/${mod}`)];
+      return require("../src/lib/price-service-urls");
     } finally {
       fs.rmSync(file, { force: true });
     }

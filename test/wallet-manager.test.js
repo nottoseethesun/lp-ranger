@@ -2,7 +2,7 @@
 
 /**
  * @file test/wallet-manager.test.js
- * @description Tests for the server-side wallet manager (src/wallet-manager.js).
+ * @description Tests for the server-side wallet manager (src/lib/wallet-manager.js).
  */
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
@@ -20,7 +20,7 @@ const {
   clearWallet,
   getAddress,
   hasWallet,
-} = require("../src/wallet-manager");
+} = require("../src/lib/wallet-manager");
 
 const SAMPLE = {
   address: "0xAbCdEf0000000000000000000000000000000001",

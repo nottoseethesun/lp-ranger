@@ -33,7 +33,7 @@ const { ethers } = require("ethers");
 /*-
  *  A name this file reads is a fixture. It goes to a symbol cache of this
  *  file's own, not the operator's, which nothing expires. Set before
- *  src/server-scan.js loads src/token-symbol-cache.js, which reads it
+ *  src/lib/server-scan.js loads src/lib/token-symbol-cache.js, which reads it
  *  once.
  */
 const SYMBOL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "stood-in-sym-"));
@@ -42,13 +42,13 @@ process.env.TOKEN_SYMBOL_CACHE_PATH = path.join(
   "token-symbol-cache.json",
 );
 
-const config = require("../src/config");
-const sendTx = require("../src/send-transaction");
-const { createScanHandlers } = require("../src/server-scan");
+const config = require("../src/lib/config");
+const sendTx = require("../src/lib/send-transaction");
+const { createScanHandlers } = require("../src/lib/server-scan");
 const {
   saveLpPositionCache,
   loadLpPositionCache,
-} = require("../src/lp-position-cache");
+} = require("../src/lib/lp-position-cache");
 
 const WALLET = "0x" + "d".repeat(39) + "1";
 const TOKEN0 = "0x1234567890abcdef1234567890abcdef12345678";
@@ -70,7 +70,7 @@ describe("a token saved under its address", () => {
 
   /*-
    *  The saved list lives in the scan-cache folder, which under
-   *  `node --test` is the test process's own (src/scan-cache-dir.js), so
+   *  `node --test` is the test process's own (src/lib/scan-cache-dir.js), so
    *  the install's caches are never touched; the cases run in a scratch
    *  directory of their own too.
    */

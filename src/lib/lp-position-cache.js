@@ -1,0 +1,216 @@
+/**
+ * @file lp-position-cache.js
+ * @module lpPositionCache
+ * @description
+ * Disk-backed cache for LP position enumeration results.  Stores immutable
+ * position data (tokenId, token0/token1, fee, ticks, symbols) plus mutable
+ * liquidity, with a `lastBlock` cursor for freshness checks.
+ *
+ * On restart, the cache lets the LP Browser display positions instantly.
+ * A lightweight freshness check (Transfer + IncreaseLiquidity +
+ * DecreaseLiquidity events since lastBlock) determines whether a full
+ * re-enumeration is needed.
+ */
+
+"use strict";
+const { scanChunked } = require("./get-logs-chunked");
+const { topicForTokenId } = require("./nft-token-topic");
+
+const { log } = require("./log");
+const { chainCacheTag } = require("./cache-store");
+const fs = require("fs");
+const path = require("path");
+const { scanCachePath } = require("./scan-cache-dir");
+
+const _C = "\x1b[38;5;118;48;5;94m";
+const _R = "\x1b[0m";
+
+/**
+ * Build deterministic cache file path for a wallet's LP positions.
+ * @param {string} walletAddress  Checksummed 0x-prefixed address.
+ * @param {string} blockchain    The chain's key in chains.json; its
+ *   `chainCacheTag` names the file.
+ * @param {string} [contract]    NFT factory / position manager address.
+ * @returns {string}  Absolute path in the scan-cache folder
+ *   (src/lib/scan-cache-dir.js).
+ * @throws {Error} When the chain has no usable cache tag.
+ */
+function lpPositionCachePath(walletAddress, blockchain, contract) {
+  const bc = chainCacheTag(blockchain);
+  const pm = (contract || "").slice(2, 8).toLowerCase();
+  const w = walletAddress.slice(2, 8).toLowerCase();
+  return scanCachePath(`lp-position-cache-${bc}-${pm}-${w}.json`);
+}
+
+/**
+ * Load cached LP positions from disk.
+ * @param {string} walletAddress
+ * @param {object} opts
+ * @param {string} opts.blockchain   The chain's key in chains.json.
+ * @param {string} [opts.contract]   NFT factory / position manager address.
+ * @param {object} [opts.fsModule]  Injected fs for testing.
+ * @returns {{ positions: object[], lastBlock: number } | null}
+ * @throws {Error} When the chain has no usable cache tag: a cache that
+ *   cannot be named must not read as one that is merely empty.
+ */
+function loadLpPositionCache(walletAddress, opts) {
+  const _fs = opts.fsModule || fs;
+  const filePath = lpPositionCachePath(
+    walletAddress,
+    opts.blockchain,
+    opts.contract,
+  );
+  try {
+    const raw = _fs.readFileSync(filePath, "utf8");
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.positions) && typeof data.lastBlock === "number") {
+      return data;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save LP positions to disk cache with block cursor.
+ * @param {string} walletAddress
+ * @param {object[]} positions  Array of position objects.
+ * @param {number} lastBlock  Block number at time of scan/check.
+ * @param {object} opts
+ * @param {string} opts.blockchain   The chain's key in chains.json.
+ * @param {string} [opts.contract]   NFT factory / position manager address.
+ * @param {object} [opts.fsModule]  Injected fs for testing.
+ */
+function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
+  const _fs = opts.fsModule || fs;
+  const filePath = lpPositionCachePath(
+    walletAddress,
+    opts.blockchain,
+    opts.contract,
+  );
+  const dir = path.dirname(filePath);
+  try {
+    _fs.mkdirSync(dir, { recursive: true });
+    _fs.writeFileSync(
+      filePath,
+      JSON.stringify(
+        { positions, lastBlock },
+        (_k, v) => (typeof v === "bigint" ? String(v) : v),
+        2,
+      ),
+      "utf8",
+    );
+  } catch (err) {
+    log.warn(_C + "[lp-cache] Failed to persist cache: " + err.message + _R);
+  }
+}
+
+/**
+ * Delete the LP position cache for a wallet.  Called after rebalance
+ * mints a new NFT (tokenId list changed, balance didn't).
+ *
+ * Logs on success so operators can confirm post-rebalance invalidation
+ * happened — without this signal the only way to verify the cache was
+ * cleared was inferential (no `[lp-cache] Cache hit` on the next
+ * `/api/positions/scan`).  Helps diagnose the
+ * `LP-browser stale until manual scan` failure mode that surfaced
+ * during burn-in.  ENOENT (cache file didn't exist — first rebalance
+ * for this wallet, or already cleared) stays silent; other errors are
+ * surfaced so a permission/disk-full issue can't masquerade as a
+ * successful clear.
+ *
+ * @param {string} walletAddress
+ * @param {object} opts
+ * @param {string} opts.blockchain   The chain's key in chains.json.
+ * @param {string} [opts.contract]   NFT factory / position manager address.
+ * @param {object} [opts.fsModule]  Injected fs for testing.
+ */
+function clearLpPositionCache(walletAddress, opts) {
+  const _fs = opts.fsModule || fs;
+  const filePath = lpPositionCachePath(
+    walletAddress,
+    opts.blockchain,
+    opts.contract,
+  );
+  try {
+    _fs.unlinkSync(filePath);
+    log.info(
+      _C +
+        "[lp-cache] Cache cleared for wallet " +
+        walletAddress.slice(0, 8) +
+        "… (post-rebalance)" +
+        _R,
+    );
+  } catch (err) {
+    if (err && err.code !== "ENOENT") {
+      log.warn(
+        _C +
+          "[lp-cache] Failed to clear cache for wallet " +
+          walletAddress.slice(0, 8) +
+          "…: " +
+          err.message +
+          _R,
+      );
+    }
+  }
+}
+
+/**
+ * Check whether any position-affecting events occurred since lastBlock.
+ * Queries Transfer (ownership), IncreaseLiquidity, and DecreaseLiquidity
+ * events on the NonfungiblePositionManager.  Returns true if ANY activity
+ * is found — caller should invalidate the cache and do a full rescan.
+ *
+ * @param {object} contract  ethers Contract bound to NonfungiblePositionManager.
+ * @param {string} walletAddress  Checksummed wallet address.
+ * @param {string[]} cachedTokenIds  TokenIds from the cached positions.
+ * @param {number} fromBlock  Start of range (lastBlock + 1).
+ * @param {number} toBlock  End of range (current block).
+ * @returns {Promise<boolean>}  True if any activity detected.
+ */
+async function hasPositionActivitySince(
+  contract,
+  walletAddress,
+  cachedTokenIds,
+  fromBlock,
+  toBlock,
+) {
+  if (fromBlock > toBlock) return false;
+
+  const tokenIdTopics = cachedTokenIds.map((id) => topicForTokenId(id));
+
+  /*- Chunked.  Normally this is a narrow incremental window (last
+   *  cached block -> head), but it is unbounded when the cache is stale
+   *  — an install offline for weeks asks for every block since. */
+  const scan = (filter, label) =>
+    scanChunked({
+      fromBlock,
+      toBlock,
+      label,
+      query: (f, t) => contract.queryFilter(filter, f, t),
+    });
+
+  const queries = [
+    scan(contract.filters.Transfer(walletAddress, null), "lp-cache xfer-out"),
+    scan(contract.filters.Transfer(null, walletAddress), "lp-cache xfer-in"),
+  ];
+
+  if (tokenIdTopics.length > 0) {
+    queries.push(
+      scan(contract.filters.IncreaseLiquidity(tokenIdTopics), "lp-cache il"),
+      scan(contract.filters.DecreaseLiquidity(tokenIdTopics), "lp-cache dl"),
+    );
+  }
+
+  const results = await Promise.all(queries);
+  return results.some((events) => events.length > 0);
+}
+
+module.exports = {
+  lpPositionCachePath,
+  loadLpPositionCache,
+  saveLpPositionCache,
+  clearLpPositionCache,
+  hasPositionActivitySince,
+};

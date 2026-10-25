@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
+  modified: 2026-10-24T04:54:43.090Z
 ---
 
 When a value can be fetched live, fetch it live. Don't introduce new caching unless there's a concrete reason that fetching live is unworkable (RPC quota, latency budget, etc.).
@@ -16,4 +17,4 @@ When a value can be fetched live, fetch it live. Don't introduce new caching unl
 - When you need a value, check whether an existing resolver in the codebase fetches it. Route through that resolver.
 - Don't add a new cache layer to skip the resolver. Even if the resolver doesn't cache, prefer re-resolving on next call over introducing a cache.
 - If you genuinely cannot avoid caching (quota cliff, latency hard requirement), call it out explicitly when proposing the change.
-- The exception: caching that's already there (e.g. `getTokenSymbol` / `setTokenSymbol` in `src/token-symbol-cache.js`, `resolveSymbolMap` in `src/server-scan.js`, disk caches in `src/cache-store.js`) is fine to *read from* — just don't add additional write sites.
+- The exception: caching that's already there (e.g. `getTokenSymbol` / `setTokenSymbol` in `src/lib/token-symbol-cache.js`, `resolveSymbolMap` in `src/lib/server-scan.js`, disk caches in `src/lib/cache-store.js`) is fine to *read from* — just don't add additional write sites.

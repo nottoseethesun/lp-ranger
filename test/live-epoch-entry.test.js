@@ -20,7 +20,7 @@ const assert = require("node:assert/strict");
 const {
   resolveLiveEntryValue,
   ensureLiveEpoch,
-} = require("../src/live-epoch-entry");
+} = require("../src/lib/live-epoch-entry");
 
 /** Tracker double that records what it was opened with. */
 function tracker(live) {

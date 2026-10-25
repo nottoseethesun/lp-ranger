@@ -9,12 +9,12 @@
  *   operator's copy of that file may say false. Nothing read that
  *   default: with no choice saved in bot-config.json, the key was used at
  *   every unlock and after a save that cleared the choice, and the switch
- *   showed on. Now one rule (`moralisEnabledIn`, src/server-moralis.js)
+ *   showed on. Now one rule (`moralisEnabledIn`, src/lib/server-moralis.js)
  *   answers for the unlock, the save and the status the switch reads.
  *
  *   The operator's copy here says false, so a server that ignored it
  *   would answer true. It is set, and the working directory moved to a
- *   scratch one, before anything under src/ loads: the loader reads the
+ *   scratch one, before anything under src/lib/ loads: the loader reads the
  *   override directory's path at load, and the saves and key files these
  *   cases reach are under the working directory, so the install's own
  *   are never touched.
@@ -41,12 +41,12 @@ after(() => {
   fs.rmSync(_SCRATCH, { recursive: true, force: true });
 });
 
-const holder = require("../src/api-key-holder");
-const { moralisEnabledIn } = require("../src/server-moralis");
-const { createRouteHandlers } = require("../src/server-routes");
-const { createApiStatusHandler } = require("../src/handle-api-status");
-const { primaryRouteLabel } = require("../src/rebalancer-swap");
-const config = require("../src/config");
+const holder = require("../src/lib/api-key-holder");
+const { moralisEnabledIn } = require("../src/lib/server-moralis");
+const { createRouteHandlers } = require("../src/lib/server-routes");
+const { createApiStatusHandler } = require("../src/lib/handle-api-status");
+const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
+const config = require("../src/lib/config");
 
 /** The smallest set of route dependencies, with `global` as given. */
 function routeDeps(global, body = {}) {

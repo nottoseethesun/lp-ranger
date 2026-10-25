@@ -8,17 +8,17 @@ duplicated API calls during a chain reconstruction.
 Reconstructing a chain asks for historical prices along two separate
 paths, and they cannot see each other's answers.
 
-The **pair** path, `fetchHistoricalPriceGecko` in `src/price-fetcher.js`,
+The **pair** path, `fetchHistoricalPriceGecko` in `src/lib/price-fetcher.js`,
 prices a pool's token0 and token1 for one epoch. It is given a block, so
 it caches under a block-scoped key — `@27123456`.
 
 The **single-token** path, `fetchHistoricalTokenPriceUsd` in
-`src/historical-token-price.js`, prices the chain's native token so an
+`src/lib/historical-token-price.js`, prices the chain's native token so an
 epoch's gas can be valued at the day it was spent. It caches under a
 day-scoped key — `2026-03-16T00:00`.
 
 Both write into `app-data/scan-cache/historical-price-cache.json` through
-`src/price-cache.js`. Same token, same moment, two entries, neither a hit
+`src/lib/price-cache.js`. Same token, same moment, two entries, neither a hit
 for the other. The two also restate the same cascade: read cache, try
 Moralis by block, fall back to GeckoTerminal, write the answer back.
 
@@ -50,7 +50,7 @@ details decide whether it lands cleanly:
   merged primitive needs to accept a caller-supplied pool and only
   resolve one when it is not given.
 
-Not difficult, but it is surgery on `src/price-fetcher.js`, which
+Not difficult, but it is surgery on `src/lib/price-fetcher.js`, which
 everything that shows a dollar figure depends on — so it wants its own
 branch and a full reconstruction to verify against known totals.
 

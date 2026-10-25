@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-rebalance-confirm.test.js
  * @description Tests for the pure helpers in
- *   `public/dashboard-rebalance-confirm.js`, plus the request-body
+ *   `src/client/web/dashboard-rebalance-confirm.js`, plus the request-body
  *   shape for the two POST call sites.  Uses jsdom (via
  *   `global-jsdom/register`) so the browser module can be imported
  *   directly; the two previously-private helpers
@@ -32,8 +32,8 @@ let mod;
 let helpers;
 
 before(async () => {
-  mod = await import("../public/dashboard-rebalance-confirm.js");
-  helpers = await import("../public/dashboard-helpers.js");
+  mod = await import("../src/client/web/dashboard-rebalance-confirm.js");
+  helpers = await import("../src/client/web/dashboard-helpers.js");
 });
 
 // ── _computePreservedWidthPct — centered (offset=50) ──────────────────
@@ -305,7 +305,7 @@ describe("_rangeWidthPreviewText", () => {
      *  Matching the server: with the toggle on, the offset is pinned to
      *  centred so preserveRange() re-centres the existing spread, and
      *  the server publishes that centre whatever skew is saved
-     *  (src/range-override.js). The preview follows what it publishes.
+     *  (src/lib/range-override.js). The preview follows what it publishes.
      */
     const active = { tickLower: -500, tickUpper: 500 };
     const suppressed = mod._rangeWidthPreviewText(

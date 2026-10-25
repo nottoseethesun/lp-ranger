@@ -13,7 +13,7 @@ Rebalances holds.
 
 ## Detail
 
-`rehydrate(count)` in `src/throttle.js` takes only a count and sets
+`rehydrate(count)` in `src/lib/throttle.js` takes only a count and sets
 `state.dailyCount = count`. It does not restore `state.rebTimestamps`.
 
 `_evaluateDoubling()` is the only reader of `rebTimestamps`. It counts
@@ -28,13 +28,13 @@ both `dailyCount` and `rebTimestamps` current at every rebalance.
 
 ## Fix sketch
 
-- `src/throttle.js`: change `rehydrate(count)` →
+- `src/lib/throttle.js`: change `rehydrate(count)` →
   `rehydrate({ timestamps })`. Set both
   `state.rebTimestamps = [...timestamps]` and
   `state.dailyCount = timestamps.length`, then call
   `_evaluateDoubling()` once, so the state after a restart reflects any
   doubling the day's rebalances had already triggered.
-- `src/bot-recorder.js`, where it calls `throttle.rehydrate`: it
+- `src/lib/bot-recorder.js`, where it calls `throttle.rehydrate`: it
   already filters the found events to today's; map those to
   `e.timestamp * 1000` and pass the list.
 - Keep the daily-count rehydration working; that part is correct.

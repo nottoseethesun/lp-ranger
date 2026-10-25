@@ -15,16 +15,16 @@
  *   transaction a receipt with its own gas, fails a later step, and
  *   checks the failure carries the sum.
  *
- *   `carryingGas` (src/spent-gas.js) is the piece the steps share.
+ *   `carryingGas` (src/lib/spent-gas.js) is the piece the steps share.
  */
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const logModule = require("../src/log");
-const { carryingGas, spentGasOf } = require("../src/spent-gas");
-const { mintPosition, executeRebalance } = require("../src/rebalancer");
-const { swapViaRouter } = require("../src/rebalancer-router");
+const logModule = require("../src/lib/log");
+const { carryingGas, spentGasOf } = require("../src/lib/spent-gas");
+const { mintPosition, executeRebalance } = require("../src/lib/rebalancer");
+const { swapViaRouter } = require("../src/lib/rebalancer-router");
 const {
   ADDR,
   mockSigner,
@@ -38,7 +38,7 @@ const {
   withPopulate,
   POPULATED,
 } = require("./helpers/send-tx-mock");
-const { executeCompound } = require("../src/compounder");
+const { executeCompound } = require("../src/lib/compounder");
 
 /** A transaction whose receipt says it used `gasUsed` at a gas price of 1. */
 const paid = (hash, gasUsed) => ({

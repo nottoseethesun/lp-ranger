@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-09-28T23:59:33.908Z
+  modified: 2026-10-24T04:57:19.723Z
 ---
 
 Release **0.9.6** cut and deployed to Production 2026-09-28, hours after
@@ -66,7 +66,7 @@ confirming on the ~133-NFT chain, the install's heaviest scan
 
 `util/diagnostic/check-rpc-health.js` — probes one endpoint and prints
 seven timed checks. Defaults to `g4mm4`, `--rpc-endpoint <url>` points
-it elsewhere, and it imports nothing from `src/`, so it is safe to run
+it elsewhere, and it imports nothing from `src/lib/`, so it is safe to run
 while Production is up. Every `util/` CLI now parses with `commander`,
 and a file nothing reaches fails the build.
 

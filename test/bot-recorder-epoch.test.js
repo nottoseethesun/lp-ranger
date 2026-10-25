@@ -9,7 +9,7 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
-const { createPnlTracker } = require("../src/pnl-tracker");
+const { createPnlTracker } = require("../src/lib/pnl-tracker");
 
 describe("_closePnlEpoch", () => {
   let _closePnlEpoch;
@@ -32,13 +32,13 @@ describe("_closePnlEpoch", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-recorder")];
-    ({ _closePnlEpoch } = require("../src/bot-recorder"));
+    delete require.cache[require.resolve("../src/lib/bot-recorder")];
+    ({ _closePnlEpoch } = require("../src/lib/bot-recorder"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/bot-recorder")];
+    delete require.cache[require.resolve("../src/lib/bot-recorder")];
   });
 
   it("returns early when no tracker", async () => {
@@ -96,7 +96,7 @@ describe("_closePnlEpoch", () => {
     /*- A rebalance sweeps unclaimed fees into the new position, so
      *  `_lastUnclaimedFeesUsd` is zeroed to say they are no longer
      *  owed. The token amounts behind it must go with it: they are what
-     *  `_freshFeesUsd` (src/bot-cycle-compound.js) re-values when
+     *  `_freshFeesUsd` (src/lib/bot-cycle-compound.js) re-values when
      *  deciding whether to compound, and left standing they describe
      *  fees this rebalance already collected as still available —
      *  which is a compound spending gas to collect nothing.
@@ -312,8 +312,8 @@ describe("_closePnlEpoch", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/bot-recorder")];
-    const { _closePnlEpoch: fn } = require("../src/bot-recorder");
+    delete require.cache[require.resolve("../src/lib/bot-recorder")];
+    const { _closePnlEpoch: fn } = require("../src/lib/bot-recorder");
     const deps = {
       _pnlTracker: tracker,
       position: { token0: "0xA", token1: "0xB" },

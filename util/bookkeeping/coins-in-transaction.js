@@ -27,7 +27,7 @@
  * `util/bookkeeping/coins-in-transactions-on-wallet` calls it for every
  * transaction of a wallet's rebalances and compounds. Run from a shell,
  * this tool prints the object as json. Its configuration is LP Ranger's
- * own, from the app's resolver (src/config.js), which reads the install's
+ * own, from the app's resolver (src/lib/config.js), which reads the install's
  * `.env` and settings. That gives the chain, LP Ranger's own unless
  * `--blockchain <name>` names another the configuration names
  * (./blockchain.js settles it before the resolver loads); the endpoint
@@ -50,7 +50,8 @@
 const { Command, InvalidArgumentError } = require("commander");
 const { ethers } = require("ethers");
 const { parseBlockchain, oneChainNotice } = require("./blockchain");
-const config = require("../../src/config");
+const config = require("../../src/lib/config");
+const { sameHex } = require("../../src/lib/nft-move-rules");
 const { parseEndpoint } = require("../diagnostic/check-rpc-health");
 
 /**
@@ -201,13 +202,14 @@ function buildProgram() {
 }
 
 /**
- * Whether two addresses are the same, whatever their letters' case.
+ * Whether two addresses are the same, whatever their letters' case, by
+ * LP Ranger's own comparison (`sameHex`, src/lib/nft-move-rules.js).
  * @param {string} a  An address.
  * @param {string} b  Another address.
  * @returns {boolean}
  */
 function sameAddress(a, b) {
-  return a.toLowerCase() === b.toLowerCase();
+  return sameHex(a, b);
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * @file test/bot-loop.test.js
- * @description Tests for src/bot-loop.js — resolvePrivateKey, startBotLoop,
+ * @description Tests for src/lib/bot-loop.js — resolvePrivateKey, startBotLoop,
  * pollCycle, appendLog, forceRebalance.  RPC boot-fallback semantics
  * and feeData-patch coverage live in test/send-transaction.test.js and
  * against `buildProvider` directly, because `send-transaction.js` owns
@@ -13,9 +13,9 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const { resolvePrivateKey } = require("../src/bot-private-key");
-const { wireBotStateGetConfig } = require("../src/bot-state-init");
-const { CHAIN } = require("../src/config");
+const { resolvePrivateKey } = require("../src/lib/bot-private-key");
+const { wireBotStateGetConfig } = require("../src/lib/bot-state-init");
+const { CHAIN } = require("../src/lib/config");
 const { ADDR, _poll } = require("./_bot-loop-helpers");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,8 +49,8 @@ describe("bot-provider: _patchFeeData via buildProvider", () => {
   it("returns original feeData when gasPrice > 0", async () => {
     /*- Fresh require so the per-process log throttle starts at 0 and
      *  doesn't suppress the feeData log line in unrelated tests above. */
-    delete require.cache[require.resolve("../src/bot-provider")];
-    const { buildProvider } = require("../src/bot-provider");
+    delete require.cache[require.resolve("../src/lib/bot-provider")];
+    const { buildProvider } = require("../src/lib/bot-provider");
     const p = buildProvider(
       PRI,
       _feeLib(async () => ({
@@ -64,7 +64,7 @@ describe("bot-provider: _patchFeeData via buildProvider", () => {
     assert.strictEqual((await p.getFeeData()).gasPrice, expected);
   });
   it("falls back to maxFeePerGas when gasPrice is 0", async () => {
-    const { buildProvider } = require("../src/bot-provider");
+    const { buildProvider } = require("../src/lib/bot-provider");
     const p = buildProvider(
       PRI,
       _feeLib(async () => ({
@@ -80,7 +80,7 @@ describe("bot-provider: _patchFeeData via buildProvider", () => {
     assert.strictEqual((await p.getFeeData()).maxFeePerGas, null);
   });
   it("falls back to eth_gasPrice when feeData returns all zeros", async () => {
-    const { buildProvider } = require("../src/bot-provider");
+    const { buildProvider } = require("../src/lib/bot-provider");
     const p = buildProvider(
       PRI,
       _feeLib(
@@ -98,7 +98,7 @@ describe("bot-provider: _patchFeeData via buildProvider", () => {
     assert.strictEqual((await p.getFeeData()).gasPrice, 10_000_000_000n);
   });
   it("returns original zero feeData when eth_gasPrice also returns 0", async () => {
-    const { buildProvider } = require("../src/bot-provider");
+    const { buildProvider } = require("../src/lib/bot-provider");
     const p = buildProvider(
       PRI,
       _feeLib(
@@ -113,7 +113,7 @@ describe("bot-provider: _patchFeeData via buildProvider", () => {
     assert.strictEqual((await p.getFeeData()).gasPrice, 0n);
   });
   it("skips patching when provider has no getFeeData", async () => {
-    const { buildProvider } = require("../src/bot-provider");
+    const { buildProvider } = require("../src/lib/bot-provider");
     const p = buildProvider(PRI, mockEthersLib());
     assert.strictEqual(p.getFeeData, undefined);
   });
@@ -121,8 +121,8 @@ describe("bot-provider: _patchFeeData via buildProvider", () => {
   it("throttles feeData log to at most once per hour (non-verbose)", async () => {
     /*- Fresh require so the module-level _lastFeeDataLogAt starts at 0.
         We can't clear state on the cached copy used by earlier tests. */
-    delete require.cache[require.resolve("../src/bot-provider")];
-    const { _patchFeeData } = require("../src/bot-provider");
+    delete require.cache[require.resolve("../src/lib/bot-provider")];
+    const { _patchFeeData } = require("../src/lib/bot-provider");
     const provider = {
       getFeeData: async () => ({
         gasPrice: 1000n,
@@ -151,7 +151,7 @@ describe("bot-provider: _patchFeeData via buildProvider", () => {
 // ── resolvePrivateKey ────────────────────────────────────────────────────────
 
 describe("bot-loop: resolvePrivateKey", () => {
-  const cfg = require("../src/config");
+  const cfg = require("../src/lib/config");
   let orig;
   let origEnvWp;
   beforeEach(() => {
@@ -231,7 +231,7 @@ describe("bot-loop: pollCycle", () => {
     assert.match(r.pollError, /timeout/i);
   });
   it("overrides pnlSnapshot with real on-chain values when tracker is present", async () => {
-    const { createPnlTracker } = require("../src/pnl-tracker");
+    const { createPnlTracker } = require("../src/lib/pnl-tracker");
     const tracker = createPnlTracker({ initialDeposit: 100 });
     tracker.openEpoch({
       entryValue: 100,
@@ -259,10 +259,10 @@ describe("bot-loop: pollCycle", () => {
   });
   it("counts the gas failed moves paid, from the position's records", async () => {
     /*-
-     *  The records are that gas's only home (src/spent-gas.js); the poll
+     *  The records are that gas's only home (src/lib/spent-gas.js); the poll
      *  hands them to the snapshot, which adds each to its period's row.
      */
-    const { createPnlTracker } = require("../src/pnl-tracker");
+    const { createPnlTracker } = require("../src/lib/pnl-tracker");
     const tracker = createPnlTracker({ initialDeposit: 100 });
     tracker.openEpoch({
       entryValue: 100,

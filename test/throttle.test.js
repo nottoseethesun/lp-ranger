@@ -8,7 +8,7 @@
 const { describe, it } = require("node:test");
 
 const assert = require("assert");
-const { createThrottle, nextMidnight } = require("../src/throttle");
+const { createThrottle, nextMidnight } = require("../src/lib/throttle");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 /**
  * @file test/lp-providers.test.js
- * @description Unit tests for src/lp-providers.js and the
+ * @description Unit tests for src/lib/lp-providers.js and the
  * GET /api/lp-providers route handler.  Covers happy-path canonical
  * lookup, case-insensitive lookup via ethers.getAddress, invalid
  * address rejection, unknown-pair handling with dedup'd warning,
@@ -23,7 +23,7 @@ const { useShippedDefaultsCopy } = require("./helpers/shipped-defaults-copy");
  */
 const _FILE = path.join(useShippedDefaultsCopy(), "lp-providers.json");
 
-const { _setSinkForTests } = require("../src/log");
+const { _setSinkForTests } = require("../src/lib/log");
 
 // Canonical EIP-55 checksummed addresses used across tests.
 const _F = "0xe50DbDC88E87a2C92984d794bcF3D1d76f619C68";
@@ -34,11 +34,11 @@ let _warnings = [];
 let _restoreSink = null;
 
 function _clearModuleCache() {
-  delete require.cache[require.resolve("../src/lp-providers")];
+  delete require.cache[require.resolve("../src/lib/lp-providers")];
   /*- The loader reads each config file once and keeps it, so a case
    *  that writes an override has to drop that memo as well; the module
    *  alone would come back and be handed the first read. */
-  require("../src/load-merged-defaults")._resetMemoForTests();
+  require("../src/lib/load-merged-defaults")._resetMemoForTests();
 }
 
 function _captureWarnings() {
@@ -75,7 +75,7 @@ describe("lp-providers.readLpProviders", () => {
         },
       }),
     );
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     const out = readLpProviders();
     assert.equal(out[`${_F}_${_P}`].displayName, "9mm v3");
     assert.deepEqual(
@@ -95,7 +95,7 @@ describe("lp-providers.readLpProviders", () => {
         },
       }),
     );
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     const out = readLpProviders();
     assert.equal(out._comment, undefined);
     assert.equal(out[`${_F}_${_P}`].displayName, "9mm v3");
@@ -111,7 +111,7 @@ describe("lp-providers.readLpProviders", () => {
         },
       }),
     );
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     assert.equal(readLpProviders()[`${_F}_${_P}`].displayName, "9mm v3");
   });
 
@@ -124,7 +124,7 @@ describe("lp-providers.readLpProviders", () => {
         "0xCC_0xDD": { displayName: 42 },
       }),
     );
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     const out = readLpProviders();
     assert.equal(Object.keys(out).length, 0);
   });
@@ -136,7 +136,7 @@ describe("lp-providers.readLpProviders", () => {
         [`${_F}_${_P}`]: { displayName: "9mm v3" },
       }),
     );
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     assert.deepEqual(
       readLpProviders()[`${_F}_${_P}`]
         .supportedBlockchainsByLpRangerAndLpProvider,
@@ -154,7 +154,7 @@ describe("lp-providers.readLpProviders", () => {
         },
       }),
     );
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     assert.deepEqual(
       readLpProviders()[`${_F}_${_P}`]
         .supportedBlockchainsByLpRangerAndLpProvider,
@@ -178,7 +178,7 @@ describe("lp-providers.readLpProviders", () => {
         },
       }),
     );
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     assert.deepEqual(
       readLpProviders()[`${_F}_${_P}`]
         .supportedBlockchainsByLpRangerAndLpProvider,
@@ -188,13 +188,13 @@ describe("lp-providers.readLpProviders", () => {
 
   it("returns empty map when file is missing", () => {
     fs.unlinkSync(_FILE);
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     assert.deepEqual(readLpProviders(), {});
   });
 
   it("returns empty map when JSON is malformed", () => {
     fs.writeFileSync(_FILE, "{ not valid json");
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     assert.deepEqual(readLpProviders(), {});
   });
 });
@@ -213,12 +213,12 @@ describe("lp-providers.getLpProvider", () => {
   });
 
   it("resolves canonical addresses", () => {
-    const { getLpProvider } = require("../src/lp-providers");
+    const { getLpProvider } = require("../src/lib/lp-providers");
     assert.equal(getLpProvider(_F, _P).displayName, "9mm v3");
   });
 
   it("resolves lowercase input (checksums internally)", () => {
-    const { getLpProvider } = require("../src/lp-providers");
+    const { getLpProvider } = require("../src/lib/lp-providers");
     assert.equal(
       getLpProvider(_F.toLowerCase(), _P.toLowerCase()).displayName,
       "9mm v3",
@@ -226,7 +226,7 @@ describe("lp-providers.getLpProvider", () => {
   });
 
   it("returns undefined for invalid EIP-55 addresses (no warn — caller error)", () => {
-    const { getLpProvider } = require("../src/lp-providers");
+    const { getLpProvider } = require("../src/lib/lp-providers");
     assert.equal(getLpProvider("0xnotanaddress", _P), undefined);
     assert.equal(
       _warnings.filter((w) => w.includes("no entry")).length,
@@ -236,14 +236,14 @@ describe("lp-providers.getLpProvider", () => {
   });
 
   it("returns undefined for null / undefined inputs (no warn)", () => {
-    const { getLpProvider } = require("../src/lp-providers");
+    const { getLpProvider } = require("../src/lib/lp-providers");
     assert.equal(getLpProvider(null, _P), undefined);
     assert.equal(getLpProvider(_F, undefined), undefined);
     assert.equal(_warnings.length, 0);
   });
 
   it("logs dedup'd warning for a valid but unknown (factory, PM) pair", () => {
-    const { getLpProvider } = require("../src/lp-providers");
+    const { getLpProvider } = require("../src/lib/lp-providers");
     const UNKNOWN_F = "0x0000000000000000000000000000000000000001";
     const UNKNOWN_P = "0x0000000000000000000000000000000000000002";
     assert.equal(getLpProvider(UNKNOWN_F, UNKNOWN_P), undefined);
@@ -267,13 +267,13 @@ describe("lp-providers.getLpProviderDisplayName", () => {
         },
       }),
     );
-    const { getLpProviderDisplayName } = require("../src/lp-providers");
+    const { getLpProviderDisplayName } = require("../src/lib/lp-providers");
     assert.equal(getLpProviderDisplayName(_F, _P), "9mm v3");
   });
 
   it("returns undefined for an unknown pair", () => {
     fs.writeFileSync(_FILE, JSON.stringify({}));
-    const { getLpProviderDisplayName } = require("../src/lp-providers");
+    const { getLpProviderDisplayName } = require("../src/lib/lp-providers");
     assert.equal(getLpProviderDisplayName(_F, _P), undefined);
   });
 });
@@ -292,7 +292,7 @@ describe("lp-providers.isChainSupported", () => {
   });
 
   it("returns true when the chain is in the supported list", () => {
-    const { isChainSupported } = require("../src/lp-providers");
+    const { isChainSupported } = require("../src/lib/lp-providers");
     assert.equal(isChainSupported(_F, _P, "pulsechain"), true);
     assert.equal(
       _warnings.filter((w) => w.includes("not in supportedBlockchains")).length,
@@ -301,7 +301,7 @@ describe("lp-providers.isChainSupported", () => {
   });
 
   it("returns false + dedup'd warn when the chain isn't supported", () => {
-    const { isChainSupported } = require("../src/lp-providers");
+    const { isChainSupported } = require("../src/lib/lp-providers");
     assert.equal(isChainSupported(_F, _P, "ethereum"), false);
     assert.equal(isChainSupported(_F, _P, "ethereum"), false);
     const unsupportedWarns = _warnings.filter((w) =>
@@ -314,7 +314,7 @@ describe("lp-providers.isChainSupported", () => {
   });
 
   it("logs distinct warns for different chains against the same entry", () => {
-    const { isChainSupported } = require("../src/lp-providers");
+    const { isChainSupported } = require("../src/lib/lp-providers");
     isChainSupported(_F, _P, "ethereum");
     isChainSupported(_F, _P, "polygon");
     const unsupportedWarns = _warnings.filter((w) =>
@@ -324,7 +324,7 @@ describe("lp-providers.isChainSupported", () => {
   });
 
   it("returns false for an unknown pair (no chain warn)", () => {
-    const { isChainSupported } = require("../src/lp-providers");
+    const { isChainSupported } = require("../src/lib/lp-providers");
     const UNKNOWN_F = "0x0000000000000000000000000000000000000001";
     const UNKNOWN_P = "0x0000000000000000000000000000000000000002";
     assert.equal(isChainSupported(UNKNOWN_F, UNKNOWN_P, "pulsechain"), false);
@@ -335,7 +335,7 @@ describe("lp-providers.isChainSupported", () => {
   });
 
   it("returns false for invalid chainId input", () => {
-    const { isChainSupported } = require("../src/lp-providers");
+    const { isChainSupported } = require("../src/lib/lp-providers");
     assert.equal(isChainSupported(_F, _P, ""), false);
     assert.equal(isChainSupported(_F, _P, null), false);
     assert.equal(isChainSupported(_F, _P, 42), false);
@@ -353,7 +353,7 @@ describe("lp-providers.handleLpProviders", () => {
         },
       }),
     );
-    const { handleLpProviders } = require("../src/lp-providers");
+    const { handleLpProviders } = require("../src/lib/lp-providers");
     let gotStatus = null;
     let gotBody = null;
     const jsonResponse = (_res, status, body) => {
@@ -371,7 +371,7 @@ describe("lp-providers.handleLpProviders", () => {
 
   it("returns 200 with empty map when file missing", () => {
     fs.unlinkSync(_FILE);
-    const { handleLpProviders } = require("../src/lp-providers");
+    const { handleLpProviders } = require("../src/lib/lp-providers");
     let gotStatus = null;
     let gotBody = null;
     const jsonResponse = (_res, status, body) => {

@@ -1,20 +1,20 @@
 /**
  * @file scripts/build-info.js
- * @description Generates public/build-info.js AND src/build-info.json at
+ * @description Generates src/client/web/build-info.js AND src/lib/build-info.json at
  * build time with the current git commit hash, commit date, and release
  * tag (if HEAD is tagged). Values are frozen at build time so they work
  * under any deployment scenario — even without the .git directory.
  *
  * Two outputs:
- *   * `public/build-info.js` — ES-module consumed by the dashboard bundle.
- *   * `src/build-info.json`  — read by `src/build-info.js` at server
+ *   * `src/client/web/build-info.js` — ES-module consumed by the dashboard bundle.
+ *   * `src/lib/build-info.json`  — read by `src/lib/build-info.js` at server
  *     startup, so a release tarball (which excludes `.git`) can still log
  *     its version banner without shelling out to git.
  */
 
 "use strict";
 
-const { log } = require("../src/log");
+const { log } = require("../src/lib/log");
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -43,7 +43,7 @@ const pkg = JSON.parse(
 );
 const packageVersion = pkg.version || "unknown";
 
-const out = path.join(__dirname, "..", "public", "build-info.js");
+const out = path.join(__dirname, "..", "src", "client", "web", "build-info.js");
 const content = `/**
  * @file build-info.js
  * @description Auto-generated at build time by scripts/build-info.js.
@@ -59,9 +59,9 @@ export const BUILD_PACKAGE_VERSION = ${JSON.stringify(packageVersion)};
 fs.writeFileSync(out, content);
 
 /*- Server-side sidecar. Mirrors the four fields above as plain JSON so
- *  `src/build-info.js` can read them at startup inside a release tarball
+ *  `src/lib/build-info.js` can read them at startup inside a release tarball
  *  that has no `.git` directory. Gitignored — regenerated on every build. */
-const jsonOut = path.join(__dirname, "..", "src", "build-info.json");
+const jsonOut = path.join(__dirname, "..", "src", "lib", "build-info.json");
 fs.writeFileSync(
   jsonOut,
   JSON.stringify(

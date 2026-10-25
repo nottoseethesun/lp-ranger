@@ -11,7 +11,7 @@ const {
   _currentPnl,
   _applyPriceOverrides,
   _baselineSummary,
-} = require("../src/position-details-quick");
+} = require("../src/lib/position-details-quick");
 
 // ── _currentPnl ─────────────────────────────────────────────────────
 
@@ -21,7 +21,6 @@ describe("_currentPnl", () => {
     assert.strictEqual(r.priceGainLoss, null);
     assert.strictEqual(r.netPnl, null);
     assert.strictEqual(r.il, null);
-    assert.strictEqual(r.profit, null);
   });
 
   it("computes priceGainLoss and netPnl when entryValue > 0", () => {
@@ -29,7 +28,18 @@ describe("_currentPnl", () => {
     assert.strictEqual(r.priceGainLoss, 20);
     assert.strictEqual(r.netPnl, 23); // pgl + fees
     assert.strictEqual(r.il, null);
-    assert.strictEqual(r.profit, null);
+  });
+
+  it("sends no Profit, since an unmanaged position can never have its records", () => {
+    /*-
+     *  The user, 2026-10-23: "An Unmanaged Position should not show any
+     *  Profit figure, because it simply can never have the required
+     *  info." Profit needs LP Ranger's record of each compound.
+     */
+    const baseline = { hodlAmount0: 1000, hodlAmount1: 500 };
+    const r = _currentPnl(baseline, 100, 110, 2, 0.05, 0.04);
+    assert.equal(r.il, 30, "the IL/G is still sent");
+    assert.equal(Object.hasOwn(r, "profit"), false);
   });
 
   it("computes IL from baseline when provided", () => {
@@ -43,7 +53,6 @@ describe("_currentPnl", () => {
     assert.strictEqual(r.il, 30);
     assert.strictEqual(r.priceGainLoss, -10);
     assert.strictEqual(r.netPnl, -8); // pgl + fees = -10 + 2
-    assert.strictEqual(r.profit, 32); // fees + il = 2 + 30
   });
 
   it("reports no IL when the baseline carries no deposited amounts", () => {
@@ -55,12 +64,11 @@ describe("_currentPnl", () => {
      *
      *  So the figure is withheld and the dashboard shows a dash, which
      *  is what the managed path has always done: the same guard in
-     *  `_ilFor` (src/bot-pnl-il.js) is now the one both tiers use.
+     *  `_ilFor` (src/lib/bot-pnl-il.js) is now the one both tiers use.
      */
     const baseline = { hodlAmount0: 0, hodlAmount1: 0 };
     const r = _currentPnl(baseline, 200, 200, 10, 1, 1);
     assert.strictEqual(r.il, null);
-    assert.strictEqual(r.profit, null);
   });
 
   it("handles negative price gain with fees", () => {
@@ -74,10 +82,10 @@ describe("_currentPnl", () => {
   // GeckoTerminal to have OHLCV (or pre-pool-creation), the historical price
   // fetch returns 0 → entryValue = 0. But the on-chain mint amounts are still
   // available in baseline.hodlAmount0/1. The Current panel must still show
-  // value, IL/G, profit, and fees (only priceGainLoss/netPnl can be null since
-  // they require entryValue). If a future change collapses these to all-null,
+  // value, IL/G and fees (only priceGainLoss/netPnl can be null since they
+  // require entryValue). If a future change collapses these to all-null,
   // unmanaged old LPs will display as solid dashes and this test will fail.
-  it("returns numeric value/il/profit when entryValue=0 but baseline has hodl amounts", () => {
+  it("returns numeric value and il when entryValue=0 but baseline has hodl amounts", () => {
     const baseline = { hodlAmount0: 1000, hodlAmount1: 500 };
     const r = _currentPnl(baseline, 100, 0, 5, 0.05, 0.04);
     // hodlValue = 1000*0.05 + 500*0.04 = 70; il = 100 - 70 = 30
@@ -85,8 +93,6 @@ describe("_currentPnl", () => {
     assert.strictEqual(r.value, 100);
     assert.strictEqual(typeof r.il, "number", "il must be a number");
     assert.strictEqual(r.il, 30);
-    assert.strictEqual(typeof r.profit, "number", "profit must be a number");
-    assert.strictEqual(r.profit, 35); // fees + il
     // priceGainLoss / netPnl require entryValue, so these are null
     assert.strictEqual(r.priceGainLoss, null);
     assert.strictEqual(r.netPnl, null);

@@ -9,7 +9,7 @@
  *   The user, 2026-10-17: "All help text should just quote whatever is the
  *   final resolved json value, which means, of course, it should include
  *   overrides done by the user", and "include .env too". Each layer is set
- *   here before anything under `src/` loads: an override file of the
+ *   here before anything under `src/lib/` loads: an override file of the
  *   test's own, and an environment variable, which dotenv leaves alone
  *   once it is set, so the operator's own `.env` cannot reach these cases.
  */
@@ -64,16 +64,18 @@ process.env.TX_SPEEDUP_SEC = "90";
 process.env.TX_CANCEL_SEC = "7200";
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const config = require("../src/config");
+const config = require("../src/lib/config");
 const {
   resolvedBotDefaults,
   resolvedHelpFigures,
   handleBotConfigDefaults,
   handleHelpFigures,
-} = require("../src/resolved-settings");
-const { userConfigurableRoutes } = require("../src/user-configurable-routes");
-const mergedLoader = require("../src/load-merged-defaults");
-const defaultsReader = require("../src/bot-config-defaults");
+} = require("../src/lib/resolved-settings");
+const {
+  userConfigurableRoutes,
+} = require("../src/lib/user-configurable-routes");
+const mergedLoader = require("../src/lib/load-merged-defaults");
+const defaultsReader = require("../src/lib/bot-config-defaults");
 
 const SHIPPED = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
 

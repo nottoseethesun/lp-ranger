@@ -9,8 +9,10 @@
  * A release can move a file, split one, or retire a setting. The files
  * Step Six copies are the old release's, so each such change is a step
  * here, in the order the releases made them, and each says what it
- * changed. Every step is safe to run again: one that finds nothing left
- * to change says nothing.
+ * changed. Each step is a file in a folder named for the release it
+ * updates from (`from-0.9.9/`, `from-0.9.10/`); what steps share is in
+ * this folder (`settings-copies.js`, `env-file.js`). Every step is safe
+ * to run again: one that finds nothing left to change says nothing.
  *
  * Runs on Node built-ins only, so it works before `npm ci` has installed
  * anything, as Step Six's copy does.
@@ -22,10 +24,19 @@
 "use strict";
 
 const path = require("path");
-const { moveScanCaches } = require("./move-scan-caches");
-const { movePositionRecords } = require("./move-position-records");
-const { update099SettingCopies } = require("./update-099-setting-copies");
-const { update099Env } = require("./update-099-env");
+const { moveScanCaches } = require("./from-0.9.9/move-scan-caches");
+const { movePositionRecords } = require("./from-0.9.9/move-position-records");
+const {
+  update099SettingCopies,
+} = require("./from-0.9.9/update-099-setting-copies");
+const { update099Env } = require("./from-0.9.9/update-099-env");
+const {
+  retirePriceMoveRetries,
+} = require("./from-0.9.10/retire-price-move-retries");
+const {
+  dropOldGentleStopInterval,
+} = require("./from-0.9.10/drop-old-gentle-stop-interval");
+const { dropOldDepositLists } = require("./from-0.9.10/drop-old-deposit-lists");
 
 /** The steps, in the order the releases made their changes. */
 const STEPS = Object.freeze([
@@ -46,6 +57,21 @@ const STEPS = Object.freeze([
   {
     title: ".env, as 0.9.9 read it, is written as this release reads it",
     run: update099Env,
+  },
+  {
+    title:
+      "The settings for retrying a rebalance the price outran come out of app-runtime.json and .env",
+    run: retirePriceMoveRetries,
+  },
+  {
+    title:
+      "A gentle-stop interval longer than this release allows comes out of app-runtime.json",
+    run: dropOldGentleStopInterval,
+  },
+  {
+    title:
+      "A deposit list that priced each rebalance's deposits at that rebalance's day, or counted coins the wallet paid with as money put in a second time, comes out, with the Total Lifetime Deposit priced from it, for the first start to build and price again",
+    run: dropOldDepositLists,
   },
 ]);
 

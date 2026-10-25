@@ -73,11 +73,11 @@
 const fs = require("fs");
 const path = require("path");
 const { Command } = require("commander");
-const { scanCachePath } = require("../../src/scan-cache-dir");
+const { scanCachePath } = require("../../src/lib/scan-cache-dir");
 const {
   readPositionRecords,
   mergePositionRecords,
-} = require("../../src/position-records");
+} = require("../../src/lib/position-records");
 
 /**
  * Describe the command line, so Commander both parses it and renders

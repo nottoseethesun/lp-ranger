@@ -8,12 +8,12 @@
  *   the server first and calls `stopServer` below once nothing is.
  *
  *   Primary: read the PID from `tmp/lp-ranger.pid` (written on startup by
- *   `src/server-pid.js`) and send SIGTERM — the same clean shutdown as Ctrl+C
+ *   `src/lib/server-pid.js`) and send SIGTERM — the same clean shutdown as Ctrl+C
  *   (stops all positions, closes the HTTP server, removes the PID file). If
  *   the process is still alive once the server's own exit timeout has
  *   passed, plus a margin, escalate to SIGKILL and clear the now-stale PID
  *   file. Both waits come from the `shutdown` group of app-runtime.json,
- *   read through `src/shutdown-timing.js`, which keeps the kill the later
+ *   read through `src/lib/shutdown-timing.js`, which keeps the kill the later
  *   of the two.
  *
  *   Fallback: when there is no PID file (the server was started by an older
@@ -22,7 +22,7 @@
  *   listeners on the port via lsof and signal the one that is this
  *   install's `server.js`, by the same test the PID file is held to. The
  *   port is resolved as the server resolves it, from `.env` or
- *   app-runtime.json (src/server-address.js), and only then: no other
+ *   app-runtime.json (src/lib/server-address.js), and only then: no other
  *   setting is read, so one an operator has just got wrong does not keep
  *   this from stopping the server that is running.
  *
@@ -33,10 +33,14 @@
 
 "use strict";
 
-const { log } = require("../src/log");
-const { readPid, getPidFilePath, removePidFile } = require("../src/server-pid");
-const { serverPort } = require("../src/server-address");
-const { readShutdownTimings } = require("../src/shutdown-timing");
+const { log } = require("../src/lib/log");
+const {
+  readPid,
+  getPidFilePath,
+  removePidFile,
+} = require("../src/lib/server-pid");
+const { serverPort } = require("../src/lib/server-address");
+const { readShutdownTimings } = require("../src/lib/shutdown-timing");
 const {
   findListenerPids,
   serverProcessState,

@@ -1,6 +1,8 @@
 /**
  * @file test/pool-scanner.test.js
- * @description Tests for pool-scanner: appendToPoolCache, clearPoolCache.
+ * @description Tests for pool-scanner: appendToPoolCache, clearPoolCache,
+ * and the Activity Log figures it keeps in the event cache
+ * (updateCachedEvents).
  */
 
 "use strict";
@@ -9,13 +11,14 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const config = require("../src/config");
-const { eventCachePath } = require("../src/cache-store");
-const poolScanner = require("../src/pool-scanner");
+const config = require("../src/lib/config");
+const { eventCachePath } = require("../src/lib/cache-store");
+const poolScanner = require("../src/lib/pool-scanner");
 
 const {
   scanPoolHistory,
   appendToPoolCache,
+  updateCachedEvents,
   getPoolScanLock,
   clearPoolCache,
   cancelPoolScan,
@@ -64,6 +67,7 @@ describe("appendToPoolCache", () => {
       txHashes: ["0xaaa", "0xbbb"],
       blockNumber: 5000,
       swapSources: "9mm Aggregator (PulseX V2, 9mm V3)",
+      trigger: "manual",
     });
     const raw = JSON.parse(fs.readFileSync(cachePath, "utf8"));
     const key = Object.keys(raw).find((k) => k.startsWith("rebalance:"));
@@ -74,6 +78,8 @@ describe("appendToPoolCache", () => {
     assert.equal(entry.events[0].newTokenId, "200");
     assert.equal(entry.events[0].txHash, "0xbbb");
     assert.equal(entry.events[0].blockNumber, 5000);
+    // What started it, which its Activity Log entry names after a reload.
+    assert.equal(entry.events[0].trigger, "manual");
     /*-
      *  No scan has read the chain yet, so there is no last block read,
      *  and the next scan reads the pool's history in full.
@@ -121,6 +127,7 @@ describe("module exports", () => {
     for (const fn of [
       "scanPoolHistory",
       "appendToPoolCache",
+      "updateCachedEvents",
       "getPoolScanLock",
       "clearPoolCache",
       "cancelPoolScan",
@@ -353,4 +360,108 @@ describe("cancelPoolScan", () => {
       assert.equal(lock.isLocked(), false, "mutex released after abort");
     },
   );
+});
+
+describe("the Activity Log figures in the event cache", () => {
+  const pos = {
+    token0: "0x3333333333333333333333333333333333333333",
+    token1: "0x4444444444444444444444444444444444444444",
+    fee: 3000,
+  };
+  const wallet = "0xABCDEF0000000000000000000000000000000002";
+  const READINGS = {
+    beforeDrain: { amount0: 100, amount1: 50 },
+    afterDrain: { amount0: 1100, amount1: 50 },
+    beforeMint: { amount0: 600, amount1: 545 },
+  };
+  const FINISHED = {
+    walletReadings: READINGS,
+    beforeRebalance: { amount0: 1020, amount1: 50 },
+    afterRebalance: { amount0: 558, amount1: 507 },
+    historical: { impermanentLossGainPct: -0.44 },
+  };
+  let cachePath;
+
+  /** The cached events, as a later scan or a restart reads them. */
+  const cached = () => {
+    const raw = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    const key = Object.keys(raw).find((k) => k.startsWith("rebalance:"));
+    return raw[key].value.events;
+  };
+
+  before(() => {
+    fs.mkdirSync(TMP, { recursive: true });
+    cachePath = eventCachePath(
+      pos,
+      "pulsechain",
+      "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2",
+      wallet,
+    );
+    try {
+      fs.unlinkSync(cachePath);
+    } catch {
+      /* */
+    }
+  });
+
+  after(() => {
+    try {
+      fs.unlinkSync(cachePath);
+    } catch {
+      /* */
+    }
+  });
+
+  it("come with a new rebalance's entry, its coin figures still due", async () => {
+    await appendToPoolCache(pos, wallet, {
+      oldTokenId: "6",
+      newTokenId: "7",
+      txHashes: ["0xdrain", "0xmint"],
+      blockNumber: 1000,
+      walletReadings: READINGS,
+      historical: { impermanentLossGainPct: -0.44 },
+      figuresDue: true,
+    });
+    const [ev] = cached();
+    assert.deepEqual(ev.walletReadings, READINGS);
+    assert.deepEqual(ev.historical, { impermanentLossGainPct: -0.44 });
+    assert.equal(ev.figuresDue, true);
+  });
+
+  it("are finished in the entry with the same transaction, and nowhere else", async () => {
+    await appendToPoolCache(pos, wallet, {
+      oldTokenId: "7",
+      newTokenId: "8",
+      txHashes: ["0xlater"],
+      blockNumber: 2000,
+    });
+    const key = _recentKey(pos, wallet);
+    _recentScansForTests.set(key, { events: [], at: Date.now() });
+    await updateCachedEvents(pos, wallet, new Map([["0xmint", FINISHED]]));
+    const [first, second] = cached();
+    assert.equal(first.figuresDue, undefined);
+    assert.deepEqual(first.beforeRebalance, FINISHED.beforeRebalance);
+    assert.deepEqual(first.afterRebalance, FINISHED.afterRebalance);
+    assert.equal(first.newTokenId, "7", "the rest of the entry is kept");
+    assert.equal(second.txHash, "0xlater");
+    assert.equal("beforeRebalance" in second, false);
+    // The next caller reads the finished records, not a scan from before.
+    assert.equal(_recentScansForTests.has(key), false);
+  });
+
+  it("change nothing when nothing is finished, or the pool has no cache", async () => {
+    const was = fs.readFileSync(cachePath, "utf8");
+    await updateCachedEvents(pos, wallet, new Map());
+    await updateCachedEvents(pos, wallet, undefined);
+    assert.equal(fs.readFileSync(cachePath, "utf8"), was);
+    const other = { ...pos, fee: 500 };
+    const otherPath = eventCachePath(
+      other,
+      "pulsechain",
+      "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2",
+      wallet,
+    );
+    await updateCachedEvents(other, wallet, new Map([["0xmint", FINISHED]]));
+    assert.equal(fs.existsSync(otherPath), false);
+  });
 });

@@ -3,7 +3,7 @@ name: Pi 5 recommendation phrasing (exact text)
 description: Whenever Raspberry Pi 5 is mentioned in user-facing or doc text, follow it with "(recommended configuration: with Heat Sink and Fan, 5GB RAM, and Ethernet cable Internet connection instead of Wi-Fi)".
 type: project
 originSessionId: 2026-05-04-pause-fetch-fix
-modified: 2026-09-19T16:50:52.565Z
+modified: 2026-10-24T05:23:58.901Z
 ---
 
 **Standardized phrasing (verbatim, revised 2026-09-19):**
@@ -24,13 +24,13 @@ This is the canonical form for **every** Pi 5 mention — README, help/manual pa
 - Notable: "5GB" (no space) and "Wi-Fi" (hyphenated, capital W and F) are how the user wrote it — preserve spelling.
 - On 2026-09-19 the sweep to the revised form finished. Every mention
   carrying the old wording now uses it: `README.md`, `docs/security.md`,
-  `public/dashboard-helpers.js`, `public/help-and-user-manual.html`
+  `src/client/web/dashboard-helpers.js`, `src/client/web/help-and-user-manual.html`
   (three spots), and `app-config/app-defaults-for-user-configurable/csrf.json`.
   Grep the whole repo before assuming a location is current — the
   csrf.json one was missed by an earlier inventory that listed only four.
 - Bare mentions ("e.g. a Pi 5", "arm64 / Raspberry Pi") were left bare,
-  pending the user's call: `public/dashboard-init.js`,
-  `public/dashboard-data-poll.js`, `docs/engineering.md` (a heading),
+  pending the user's call: `src/client/web/dashboard-init.js`,
+  `src/client/web/dashboard-data-poll.js`, `docs/engineering.md` (a heading),
   `docs/configuration.md`, `README.md` line 85, and the issue template.
   Some are platform references rather than hardware advice, and line 85
   sits one line under the full phrase.

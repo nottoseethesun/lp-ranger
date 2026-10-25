@@ -3,14 +3,14 @@
 /**
  * @file test/dashboard-csrf-fetch.test.js
  * @description Tests for the `fetchWithCsrf` wrapper in
- *   `public/dashboard-helpers.js`.  Uses jsdom (via
+ *   `src/client/web/dashboard-helpers.js`.  Uses jsdom (via
  *   `global-jsdom/register`) to populate `document` + `fetch`, then
  *   imports the real browser module.  Every test controls the token
  *   state and the fetch responses through a `globalThis.fetch` stub.
  *
  *   The wrapper attaches the cached CSRF token to every mutating
  *   request and, on a 403 refusing that token for any reason the server
- *   gives (src/csrf-refusals.js), refreshes the token and sends the
+ *   gives (src/lib/csrf-refusals.js), refreshes the token and sends the
  *   request once more. A restart is the common case: the server's new
  *   secret makes every token the page held invalid. A 403 for any other
  *   reason is returned as it came.
@@ -20,7 +20,7 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { CSRF_REFUSALS } = require("../src/csrf-refusals");
+const { CSRF_REFUSALS } = require("../src/lib/csrf-refusals");
 
 let mod;
 
@@ -70,7 +70,7 @@ async function _setCsrfToken(token) {
 before(async () => {
   _fetchCalls = [];
   _installFetch();
-  mod = await import("../public/dashboard-helpers.js");
+  mod = await import("../src/client/web/dashboard-helpers.js");
 });
 
 beforeEach(async () => {

@@ -14,7 +14,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { computeDesiredAmounts } = require("../src/rebalancer-swap");
+const { computeDesiredAmounts } = require("../src/lib/rebalancer-swap");
 
 const NO_SWAP = {
   needsSwap: false,

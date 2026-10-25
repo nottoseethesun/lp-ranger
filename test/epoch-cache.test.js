@@ -21,7 +21,7 @@ describe("epoch-cache", () => {
   const _isolatedPath = path.join(TMP, `pnl-epochs-cache${U}.json`);
 
   before(() => {
-    const mod = require("../src/epoch-cache");
+    const mod = require("../src/lib/epoch-cache");
     ({ getCachedEpochs, setCachedEpochs } = mod);
     mod._setCachePath(_isolatedPath);
   });
@@ -112,7 +112,7 @@ describe("epoch-cache", () => {
     const {
       setCachedLifetimeHodl,
       getCachedLifetimeHodl,
-    } = require("../src/epoch-cache");
+    } = require("../src/lib/epoch-cache");
     const key = {
       contract: `0xHODL${U}`,
       wallet: `0xABC${U}`,
@@ -140,7 +140,7 @@ describe("epoch-cache", () => {
       getCachedLifetimeHodl,
       setCachedFreshDeposits,
       getCachedFreshDeposits,
-    } = require("../src/epoch-cache");
+    } = require("../src/lib/epoch-cache");
     const key = {
       contract: `0xMERGE${U}`,
       wallet: "0xW",
@@ -203,7 +203,7 @@ describe("epoch-cache", () => {
       getCachedLifetimeHodl,
       setCachedFreshDeposits,
       getCachedFreshDeposits,
-    } = require("../src/epoch-cache");
+    } = require("../src/lib/epoch-cache");
     const key = {
       contract: `0xCLR${U}`,
       wallet: "0xCLRWALLET",
@@ -229,7 +229,7 @@ describe("epoch-cache", () => {
   });
 
   it("clearCacheEntry is a no-op when the key is not present", () => {
-    const { clearCacheEntry } = require("../src/epoch-cache");
+    const { clearCacheEntry } = require("../src/lib/epoch-cache");
     /*- Must not throw. */
     clearCacheEntry({
       contract: `0xNONE${U}`,

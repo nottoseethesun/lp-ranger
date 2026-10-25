@@ -44,13 +44,12 @@ test("JS_TARGETS — covers every linted source root", () => {
   /*- Any root ESLint checks must also be Prettier-checked, or the two
    *  gates disagree about what "the code" is. */
   for (const root of [
-    "src/**/*.js",
+    "src/*.js",
+    "src/lib/**/*.js",
     "test/**/*.js",
     "scripts/**/*.js",
     "util/**/*.js",
-    "server.js",
-    "bot.js",
-    "public/dashboard-*.js",
+    "src/client/web/dashboard-*.js",
     "eslint-rules/**/*.js",
   ]) {
     assert.ok(JS_TARGETS.includes(root), `JS_TARGETS must include ${root}`);

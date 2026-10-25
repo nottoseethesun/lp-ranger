@@ -3,173 +3,120 @@
 /**
  * @file test/gentle-stop.test.js
  * @description `npm run gentle-stop` (scripts/gentle-stop.js): ask the
- *   server whether a rebalance or compound is under way, and only once
- *   the answer is no, ask the server to stop itself, which lets a move
- *   begun meanwhile finish; then wait until it has exited.
+ *   server to stop once nothing is under way, a stop the server holds
+ *   until then; keep asking, printing what the stop still waits for; and
+ *   once the server stops answering, wait until it has exited.
  *
- *   The loop is driven with scripted answers and a scripted clock. The
- *   question and the stop request are sent to real local HTTP servers:
- *   one per kind of answer, one that never answers, and a port nothing
- *   listens on.
+ *   The loop is driven with scripted answers and a scripted clock, its
+ *   log lines caught through the log module's test sink. The stop request
+ *   is sent to real local HTTP servers: one per kind of answer, one that
+ *   never answers, and a port nothing listens on.
  */
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("http");
+const { format } = require("node:util");
+const { _setSinkForTests } = require("../src/lib/log");
 const {
-  askAdjusting,
   askToStop,
   waitForServerExit,
   runGentleStop,
 } = require("../scripts/gentle-stop");
 
-const POLL_MS = 300_000;
+const POLL_MS = 2_000;
+
+/** A stop the server holds, waiting for what `waitingFor` names. */
+const holding = (...waitingFor) => ({ state: "holding", waitingFor });
+const scanOf = (position) => ({ position, activity: "scan" });
 
 /**
- * Run the loop over `answers`, one per question, on a clock that each
- * question moves on by `askTakesMs`. Each stop request is answered from
- * `stopAnswers`, and taken once it runs out.
+ * Run the loop over `answers`, one per request, then refused connections:
+ * the server gone. Each request moves the clock on by `askTakesMs`.
  */
-async function runOver(answers, askTakesMs = 0, stopAnswers = []) {
+async function runOver(answers, askTakesMs = 0) {
   let clock = 1_000_000;
   const sleeps = [];
-  let stops = 0;
+  const said = [];
+  let exits = 0;
   const left = [...answers];
-  const stopLeft = [...stopAnswers];
-  const outcome = await runGentleStop({
-    ask: async () => {
-      clock += askTakesMs;
-      return left.shift();
-    },
-    stop: async () => {
-      stops++;
-      return stopLeft.shift() ?? { state: "stopping" };
-    },
-    sleep: async (ms) => {
-      sleeps.push(ms);
-      clock += ms;
-    },
-    now: () => clock,
-    pollMs: POLL_MS,
-    address: "127.0.0.1:5555",
+  const restore = _setSinkForTests({
+    log: (...a) => said.push(format(...a)),
   });
-  return { outcome, sleeps, stops, unasked: left.length };
+  try {
+    const outcome = await runGentleStop({
+      stop: async () => {
+        clock += askTakesMs;
+        return left.shift() ?? { state: "refused" };
+      },
+      waitForExit: async () => {
+        exits++;
+      },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      now: () => clock,
+      pollMs: POLL_MS,
+      address: "127.0.0.1:5555",
+    });
+    return { outcome, sleeps, said, exits };
+  } finally {
+    restore();
+  }
 }
 
+/** The lines that say a given thing. */
+const saying = (said, text) => said.filter((l) => l.includes(text));
+
 describe("runGentleStop", () => {
-  it("waits while a rebalance or compound is under way, then stops the server once", async () => {
+  it("asks the server to stop, says what it waits for, then waits for it to exit", async () => {
     const r = await runOver([
-      { state: "busy" },
-      { state: "busy" },
-      { state: "clear" },
+      holding(scanOf("PulseX/WPLS NFT #167040")),
+      holding(scanOf("PulseX/WPLS NFT #167040")),
+      holding(),
     ]);
     assert.equal(r.outcome, "stopped");
-    assert.equal(r.stops, 1);
-    assert.deepEqual(r.sleeps, [POLL_MS, POLL_MS]);
+    assert.equal(r.exits, 1);
+    assert.equal(
+      saying(r.said, "Waiting for: scan of PulseX/WPLS NFT #167040").length,
+      1,
+      "the same answer is said once",
+    );
+    assert.equal(saying(r.said, "the server is exiting").length, 1);
+    assert.equal(saying(r.said, "✔ Stopped").length, 1);
   });
 
-  it("stops at once when nothing is under way at the first question", async () => {
-    const r = await runOver([{ state: "clear" }]);
-    assert.equal(r.stops, 1);
-    assert.deepEqual(r.sleeps, []);
-  });
-
-  it("never takes no answer as the all-clear", async () => {
-    /*-
-     *  A server too busy to answer may be busy with a rebalance, so a
-     *  silent server is asked again rather than stopped.
-     */
-    const r = await runOver([
-      { state: "silent", detail: "no answer within 300000 ms" },
-      { state: "silent", detail: "HTTP 500" },
-      { state: "busy" },
-      { state: "clear" },
-    ]);
-    assert.equal(r.stops, 1);
-    assert.equal(r.sleeps.length, 3);
+  it("says a long wait again once a minute", async () => {
+    // Thirty-one answers two seconds apart: a minute and two seconds.
+    const r = await runOver(
+      Array.from({ length: 31 }, () => holding(scanOf("A/B NFT #7"))),
+    );
+    const lines = saying(r.said, "Waiting for: scan of A/B NFT #7");
+    assert.equal(lines.length, 2);
+    assert.match(lines[1], /\(1 min so far\)/);
   });
 
   it("stops nothing when no server is listening", async () => {
-    const r = await runOver([{ state: "refused" }, { state: "clear" }]);
+    const r = await runOver([]);
     assert.equal(r.outcome, "absent");
-    assert.equal(r.stops, 0);
-    assert.equal(r.unasked, 1, "asks nothing after the refusal");
+    assert.equal(r.exits, 0);
+    assert.equal(saying(r.said, "nothing to stop").length, 1);
   });
 
-  it("asks one interval after the last question, however long its answer took", async () => {
-    const r = await runOver([{ state: "busy" }, { state: "clear" }], 40_000);
-    assert.deepEqual(r.sleeps, [POLL_MS - 40_000]);
-  });
-
-  it("asks again at the next interval when the server does not take the stop", async () => {
-    const r = await runOver([{ state: "clear" }, { state: "clear" }], 0, [
-      { state: "silent", detail: "HTTP 403" },
+  it("asks again when the server gives no answer, and stops once it takes the stop", async () => {
+    const r = await runOver([
+      { state: "silent", detail: "no answer within 2000 ms" },
+      holding(),
     ]);
     assert.equal(r.outcome, "stopped");
-    assert.equal(r.stops, 2);
-    assert.deepEqual(r.sleeps, [POLL_MS]);
-  });
-});
-
-describe("askToStop", () => {
-  it("asks the server to stop itself, with a CSRF token, and sends no signal", async () => {
-    /*-
-     *  The server's own stop lets a rebalance or compound that began
-     *  after the all-clear finish, where a signal's three-second exit
-     *  would cut it off.
-     */
-    const seen = [];
-    const srv = await serverAnswering((req, res) => {
-      seen.push(`${req.method} ${req.url} ${req.headers["x-csrf-token"]}`);
-      if (req.url === "/api/csrf-token") json(200, { token: "t0k" })(req, res);
-      else json(200, { ok: true })(req, res);
-    });
-    try {
-      const answer = await askToStop({
-        host: "127.0.0.1",
-        port: srv.address().port,
-        timeoutMs: 2000,
-      });
-      assert.deepEqual(answer, { state: "stopping" });
-      assert.deepEqual(seen, [
-        "GET /api/csrf-token undefined",
-        "POST /api/shutdown t0k",
-      ]);
-    } finally {
-      srv.close();
-    }
+    assert.equal(saying(r.said, "The server gave no answer").length, 1);
+    assert.equal(saying(r.said, "The server took the stop").length, 1);
   });
 
-  it("reports a stop the server refused, with its status", async () => {
-    const srv = await serverAnswering((req, res) =>
-      req.url === "/api/csrf-token"
-        ? json(200, { token: "t0k" })(req, res)
-        : json(403, { ok: false })(req, res),
-    );
-    try {
-      const answer = await askToStop({
-        host: "127.0.0.1",
-        port: srv.address().port,
-        timeoutMs: 2000,
-      });
-      assert.deepEqual(answer, { state: "silent", detail: "HTTP 403" });
-    } finally {
-      srv.close();
-    }
-  });
-});
-
-describe("waitForServerExit", () => {
-  it("returns only once the server has exited", async () => {
-    let checks = 0;
-    const slept = [];
-    await waitForServerExit({
-      isRunning: () => ++checks < 4,
-      sleep: async (ms) => slept.push(ms),
-      intervalMs: 100,
-    });
-    assert.equal(checks, 4);
-    assert.deepEqual(slept, [100, 100, 100]);
+  it("asks one interval after the last request, however long its answer took", async () => {
+    const r = await runOver([holding(), holding()], 500);
+    assert.deepEqual(r.sleeps, [POLL_MS - 500, POLL_MS - 500]);
   });
 });
 
@@ -180,42 +127,56 @@ async function serverAnswering(handler) {
   return srv;
 }
 
+const json = (status, body) => (req, res) => {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(typeof body === "string" ? body : JSON.stringify(body));
+};
+
+/** A server that gives a CSRF token, and answers the stop with `stop`. */
+function stopServer(stop, seen = []) {
+  return serverAnswering((req, res) => {
+    seen.push(`${req.method} ${req.url} ${req.headers["x-csrf-token"]}`);
+    if (req.url === "/api/csrf-token") json(200, { token: "t0k" })(req, res);
+    else stop(req, res);
+  });
+}
+
 /** Ask the server `srv` once, with a short time limit. */
 function askOf(srv, timeoutMs = 2000) {
-  return askAdjusting({
+  return askToStop({
     host: "127.0.0.1",
     port: srv.address().port,
     timeoutMs,
   });
 }
 
-const json = (status, body) => (req, res) => {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(typeof body === "string" ? body : JSON.stringify(body));
-};
-
-describe("askAdjusting", () => {
-  it("asks the being-adjusted route and reads both answers", async () => {
-    let path = null;
-    const busy = await serverAnswering((req, res) => {
-      path = req.url;
-      json(200, { adjusting: true })(req, res);
-    });
-    const clear = await serverAnswering(json(200, { adjusting: false }));
+describe("askToStop", () => {
+  it("asks the server to stop once all is clear, with a CSRF token, and reads what it waits for", async () => {
+    const seen = [];
+    const srv = await stopServer(
+      json(200, {
+        ok: true,
+        stopping: true,
+        waitingFor: [scanOf("A/B NFT #7"), { junk: true }],
+      }),
+      seen,
+    );
     try {
-      assert.deepEqual(await askOf(busy), { state: "busy" });
-      assert.equal(path, "/api/is-position-being-adjusted");
-      assert.deepEqual(await askOf(clear), { state: "clear" });
+      assert.deepEqual(await askOf(srv), holding(scanOf("A/B NFT #7")));
+      assert.deepEqual(seen, [
+        "GET /api/csrf-token undefined",
+        "POST /api/stop-when-all-clear t0k",
+      ]);
     } finally {
-      busy.close();
-      clear.close();
+      srv.close();
     }
   });
 
   it("takes anything else as no answer", async () => {
     const servers = [
-      await serverAnswering(json(404, { ok: false })),
-      await serverAnswering(json(200, "<!doctype html>")),
+      await stopServer(json(403, { ok: false })),
+      await stopServer(json(200, "<!doctype html>")),
+      await stopServer(json(200, { ok: true })),
       await serverAnswering(json(200, { ok: true })),
     ];
     try {
@@ -240,14 +201,28 @@ describe("askAdjusting", () => {
   });
 
   it("reports a refused connection where nothing listens", async () => {
-    const srv = await serverAnswering(json(200, { adjusting: false }));
+    const srv = await serverAnswering(json(200, {}));
     const port = srv.address().port;
     await new Promise((resolve) => srv.close(resolve));
-    const answer = await askAdjusting({
+    const answer = await askToStop({
       host: "127.0.0.1",
       port,
       timeoutMs: 2000,
     });
     assert.deepEqual(answer, { state: "refused" });
+  });
+});
+
+describe("waitForServerExit", () => {
+  it("returns only once the server has exited", async () => {
+    let checks = 0;
+    const slept = [];
+    await waitForServerExit({
+      isRunning: () => ++checks < 4,
+      sleep: async (ms) => slept.push(ms),
+      intervalMs: 100,
+    });
+    assert.equal(checks, 4);
+    assert.deepEqual(slept, [100, 100, 100]);
   });
 });

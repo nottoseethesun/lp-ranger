@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-01T16:39:47.473Z
+  modified: 2026-10-24T04:54:43.268Z
 ---
 
 **Fixed**, shipped in 0.9.8 (Production 2026-10-01). Confirmed on
@@ -33,7 +33,7 @@ refused the message. The parse failure is the whole cause.
 
 ## Root cause
 
-`_send` (`src/telegram-notifications/telegram.js:149`) posts every
+`_send` (`src/lib/telegram-notifications/telegram.js:149`) posts every
 message with `parse_mode: "Markdown"` and **never escapes the text**.
 
 The `compoundFail` body interpolates `err.message`, which here was a raw
@@ -56,7 +56,7 @@ messages that report a problem.
 
 A refusal naming a parse error resends the same words with no
 `parse_mode` at all (`_send` / `_isParseFailure`,
-`src/telegram-notifications/telegram.js`). The formatting is what gets
+`src/lib/telegram-notifications/telegram.js`). The formatting is what gets
 sacrificed, never the alert.
 
 Escaping the values was considered and rejected. It would be tidier if

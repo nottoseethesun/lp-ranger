@@ -8,8 +8,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { mintPosition, executeRebalance } = require("../src/rebalancer");
-const { removeLiquidity } = require("../src/rebalancer-pools");
+const { mintPosition, executeRebalance } = require("../src/lib/rebalancer");
+const { removeLiquidity } = require("../src/lib/rebalancer-pools");
 
 // ── Shared helpers (from test/helpers/rebalancer-mocks.js) ──────────────────
 const {

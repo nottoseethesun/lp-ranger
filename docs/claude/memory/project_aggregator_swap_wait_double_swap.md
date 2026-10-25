@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-03T18:37:43.200Z
+  modified: 2026-10-24T05:24:12.711Z
 ---
 
 Found 2026-10-03, auditing for the control-flow class that
@@ -19,7 +19,7 @@ The aggregator broadcasts the swap itself — it does not go through
 `sendTx.sendTransaction`, so it gets neither the four-phase speed-up
 pipeline nor the receipt re-ask. It waits for confirmation with a bare
 `tx.wait()` against the endpoint that broadcast it, raced against its
-own timer (`src/rebalancer-aggregator.js`):
+own timer (`src/lib/rebalancer-aggregator.js`):
 
 ```js
 const r = await Promise.race([
@@ -43,7 +43,7 @@ out, so the nonce stays held by a swap still sitting in the mempool. And
 the error leaves **unflagged** — it never reaches `settleNonce`, so it
 carries no `nonceUnsettled`.
 
-`swapIfNeeded` (`src/rebalancer-swap.js`) stops its fallback on exactly
+`swapIfNeeded` (`src/lib/rebalancer-swap.js`) stops its fallback on exactly
 one condition:
 
 ```js
@@ -107,7 +107,7 @@ with the bare race restored.
 
 Exactly two places in the app race a rejecting timer against real work:
 `tx-speedup.js` (fixed 2026-10-03) and this one. Inventory taken across
-`src/`, `public/dashboard-*.js`, `server.js` and `bot.js`. The other
+`src/` and `src/client/web/dashboard-*.js`. The other
 abort-signal users — the pool-creation finder, pool scanner, event
 scanner and chunked log reader — use signals for cancellation and do not
 race a rejecting timeout.

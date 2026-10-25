@@ -23,7 +23,14 @@ describe("the User Manual", () => {
   it("states every figure it quotes as the table has it", () => {
     const figures = shippedFigures();
     const html = fs.readFileSync(
-      path.join(__dirname, "..", "public", "help-and-user-manual.html"),
+      path.join(
+        __dirname,
+        "..",
+        "src",
+        "client",
+        "web",
+        "help-and-user-manual.html",
+      ),
       "utf8",
     );
     const spans = [

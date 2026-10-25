@@ -16,7 +16,7 @@
  *
  *   Runs the real module under jsdom against the markup index.html ships,
  *   with a scripted fetch answering what the server would: the table
- *   `src/help-figures.js` works out, here from the shipped files.
+ *   `src/lib/help-figures.js` works out, here from the shipped files.
  */
 
 require("global-jsdom/register");
@@ -29,11 +29,11 @@ const path = require("path");
 const UI = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-up-scenario.json");
 const BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
 const BOT = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
-const { duration } = require("../src/help-figures");
+const { duration } = require("../src/lib/help-figures");
 const { shippedFigures } = require("../scripts/build-manual-content");
 
 const INDEX = fs.readFileSync(
-  path.join(__dirname, "..", "public", "index.html"),
+  path.join(__dirname, "..", "src", "client", "web", "index.html"),
   "utf8",
 );
 const FIGURES = shippedFigures();
@@ -42,7 +42,7 @@ const ANSWER = { figures: FIGURES, botDefaults: BOT };
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-help-figures.js");
+  mod = await import("../src/client/web/dashboard-help-figures.js");
 });
 
 /** Every `data-figure` span in index.html as `{name, text}`. */

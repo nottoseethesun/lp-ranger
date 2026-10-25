@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-01T05:32:43.638Z
+  modified: 2026-10-25T00:43:30.548Z
 ---
 
 Two passes belong at the end of any non-trivial change, and neither is
@@ -88,6 +88,42 @@ an outstanding wipe is only dangerous while a server is running, which is
 the condition [[feedback_test_commands]] actually names. Restore it
 because leaving state displaced compounds if the next call is interrupted
 too, not because something is burning.
+
+## The audit runs before the gate, and the report names what it checked (2026-10-24)
+
+**Why:** on 2026-10-24 I finished Bug #11 (a compound's fees worked out
+from the chain), passed the Node 24 gate, started the Node 22 one, and
+was about to report it done. The user stopped it: *"double-check that
+this is a clean, correct fix."* Pass two found a real bug with a few
+searches. #11 wrote fee fields onto compound-list entries that had never
+had them, and that list holds every addition after the mint, another
+wallet's included. Two readers of those fields (Initial Deposit for This
+LP, and the split of a waiting deposit between positions) then counted
+another wallet's addition as the wallet's own coins, the first of them
+twice. Every test passed: they checked what I designed, and the bug was
+in code that reads what I wrote. Then the user: *"I shouldn't always have
+to tell you to go back and check your work, but somehow, I still have to
+do that."*
+
+This file already said the user should not have to ask. Knowing the rule
+was not the problem: a green gate felt like the end, so the audit never
+ran.
+
+**How to apply:**
+
+- **Order:** code and tests, then both passes, then fixes for what they
+  find, then the gate, once. The gate is the last step, not the sign the
+  work is done, and the user does not want it run twice for nothing
+  ([[feedback_check_before_push]]).
+- **Pass two for a change that writes data:** grep every reader of each
+  field or function whose values change, old records that newly gain a
+  field included, and say what each reader now does with them. Ask too
+  which records the list holds: here "every addition after the mint",
+  not "every compound".
+- **The report of a finished fix carries a short "Checked" list:** the
+  readers swept, the docs grepped, the state and sequence questions
+  answered. A skipped audit then shows in the report, instead of being
+  found by the user.
 
 Related: [[feedback_verify_before_claiming]], [[feedback_finish_logic]],
 [[feedback_no_extra_state]], [[feedback_ci_protocol]].

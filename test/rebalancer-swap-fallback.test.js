@@ -15,7 +15,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const { swapIfNeeded } = require("../src/rebalancer-swap");
+const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
 const {
   ADDR,
   makeTx,

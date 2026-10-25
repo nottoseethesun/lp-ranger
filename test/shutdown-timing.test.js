@@ -7,7 +7,7 @@
  *   after that plus `stopKillMarginMs`. The kill is the backup, so it must
  *   never come first, and a mistyped figure must refuse to run rather
  *   than leave a stop that kills at once. `npm run gentle-stop` waits
- *   `gentleStopPollMs` between two questions, checked the same way.
+ *   `gentleStopPollMs` between two stop requests, checked the same way.
  *
  *   The group read is an operator's own, each figure moved off what
  *   ships, so a figure written into the code fails.
@@ -15,7 +15,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const SETTINGS_DIR = makeTestTempFolder("shutdown-settings");
 fs.writeFileSync(
@@ -25,7 +25,7 @@ fs.writeFileSync(
       exitTimeoutMs: 4000,
       stopKillMarginMs: 1500,
       stopCheckIntervalMs: 250,
-      gentleStopPollMs: 240000,
+      gentleStopPollMs: 30000,
     },
   }),
 );
@@ -37,8 +37,8 @@ const assert = require("node:assert/strict");
 const {
   readShutdownTimings,
   shutdownTimingsFrom,
-} = require("../src/shutdown-timing");
-const { SETTING_BOUNDS } = require("../src/setting-bounds");
+} = require("../src/lib/shutdown-timing");
+const { SETTING_BOUNDS } = require("../src/lib/setting-bounds");
 const shipped = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
 describe("shutdown timings", () => {
@@ -48,7 +48,7 @@ describe("shutdown timings", () => {
       exitTimeoutMs: 4000,
       killAfterMs: 5500,
       checkIntervalMs: 250,
-      gentleStopPollMs: 240000,
+      gentleStopPollMs: 30000,
     });
     assert.ok(t.killAfterMs > t.exitTimeoutMs);
   });

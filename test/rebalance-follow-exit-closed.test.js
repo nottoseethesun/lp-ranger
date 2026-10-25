@@ -4,7 +4,7 @@
  * @file test/rebalance-follow-exit-closed.test.js
  * @description Tests the rebalance-follow side-effect in
  *   `posStore.updateActiveTokenId()` from
- *   `public/dashboard-positions-store.js`.  Uses jsdom + real
+ *   `src/client/web/dashboard-positions-store.js`.  Uses jsdom + real
  *   posStore + registered spy callbacks via the module's public
  *   `setSyncRouteToState` and `setExitClosedPosView` seams.  No
  *   mirror.
@@ -34,8 +34,8 @@ let storage;
 
 before(async () => {
   await learnActiveChain();
-  mod = await import("../public/dashboard-positions-store.js");
-  storage = await import("../public/dashboard-chain-storage.js");
+  mod = await import("../src/client/web/dashboard-positions-store.js");
+  storage = await import("../src/client/web/dashboard-chain-storage.js");
 });
 
 let _syncRouteCalls;

@@ -13,7 +13,7 @@
  *   confirmation tiers and
  *   app-runtime.json for the compound minimum and the transaction
  *   timings, with anything worked out from them taken from
- *   src/help-figures.js. These cases read the same files and check the
+ *   src/lib/help-figures.js. These cases read the same files and check the
  *   copy says what they say: a copy of them with every value the help
  *   quotes moved (`helpers/help-settings-moved.js`), so copy that typed
  *   a shipped figure in fails.
@@ -29,8 +29,8 @@ const { useMovedHelpSettings } = require("./helpers/help-settings-moved");
 
 const { BOT, UI, RUNTIME } = useMovedHelpSettings();
 const BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
-const SHARED = require("../public/shared-help-content.json");
-const { count } = require("../src/help-figures");
+const SHARED = require("../src/lib/shared-help-content.json");
+const { count } = require("../src/lib/help-figures");
 const { shippedFigures } = require("../scripts/build-manual-content");
 
 /*-
@@ -42,7 +42,8 @@ const HELP_FIGURES = shippedFigures();
 let PARAM_HELP;
 
 before(async () => {
-  const { buildParamHelp } = await import("../public/param-help-content.js");
+  const { buildParamHelp } =
+    await import("../src/client/web/param-help-content.js");
   PARAM_HELP = buildParamHelp(HELP_FIGURES);
 });
 
@@ -206,7 +207,8 @@ describe("defaults and timings the help quotes", () => {
 
   it("Approval Multiple states its default, as the install resolves it", async () => {
     // Moved off the shipped value, so a literal in the copy cannot pass.
-    const { buildParamHelp } = await import("../public/param-help-content.js");
+    const { buildParamHelp } =
+      await import("../src/client/web/param-help-content.js");
     const moved = buildParamHelp({
       ...HELP_FIGURES,
       approvalMultipleDefault: String(BOT.approvalMultiple + 17),

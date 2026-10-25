@@ -2,7 +2,7 @@
   "pulsechain": {
     "chainId": 369,
     "displayName": "PulseChain",
-    "_description_comment": "How the app names and describes this chain. homepage and logo (a file under public/) make the chain link in the dashboard header. blockTimeSec, the chain's average seconds per block, turns spans of time into block counts. nativeCurrencySymbol names the native token in messages and logs. cacheTag names the chain in cache file names and cache keys: lower-case letters and digits, and distinct from every other chain's, since two chains with one tag would share their caches. PulseChain's is pulse, the tag its existing caches carry, so changing it orphans them and forces a full re-scan. None of these has a fallback: an entry that leaves one out stops the app at startup, naming it.",
+    "_description_comment": "How the app names and describes this chain. homepage and logo (a file under src/client/web/) make the chain link in the dashboard header. blockTimeSec, the chain's average seconds per block, turns spans of time into block counts. nativeCurrencySymbol names the native token in messages and logs. cacheTag names the chain in cache file names and cache keys: lower-case letters and digits, and distinct from every other chain's, since two chains with one tag would share their caches. PulseChain's is pulse, the tag its existing caches carry, so changing it orphans them and forces a full re-scan. None of these has a fallback: an entry that leaves one out stops the app at startup, naming it.",
     "homepage": "https://pulsechain.com/",
     "logo": "pulsechain-logo-transparent.png",
     "tokenList": {
@@ -27,7 +27,7 @@
     "cancelGasBump": 2,
     "gasLimitFloor": 300000,
     "estimatedRebalanceGasUnits": 800000,
-    "_rpc_comment": "Ordered RPC endpoints. Index 0 is the primary; failover walks the list in order and sticks to whichever answers. Note the layered-defaults loader REPLACES arrays wholesale rather than merging them, so a user override of this array must list every endpoint it wants, not just additions. rpc.pulsechain.box is a free tier limited to 50 requests per 10 seconds per IP; src/rpc-request-manager.js paces the whole process well inside that.",
+    "_rpc_comment": "Ordered RPC endpoints. Index 0 is the primary; failover walks the list in order and sticks to whichever answers. Note the layered-defaults loader REPLACES arrays wholesale rather than merging them, so a user override of this array must list every endpoint it wants, not just additions. rpc.pulsechain.box is a free tier limited to 50 requests per 10 seconds per IP; src/lib/rpc-request-manager.js paces the whole process well inside that.",
     "rpc": {
       "urls": [
         "https://rpc-pulsechain.g4mm4.io",
@@ -56,7 +56,7 @@
       "gasPriceMultiplier": 1.5,
       "cancelGasMultiplier": 1.5,
       "waitMs": 180000,
-      "_quoteTimeoutMs_comment": "How long a swap waits for the aggregator's quote. A quote that has not arrived by then counts as failed, so the swap goes through the V3 router in the position's own pool instead, as after any other aggregator failure. This limit is what keeps a quote server that accepts the request but never answers from holding up the swap while the position's coins sit outside the pool. 15000 is more than twice the slowest ordinary quote measured on 2026-10-16 (6.5 s). Checked at startup by src/timer-bounds.js; an unusable value stops the app, naming this setting.",
+      "_quoteTimeoutMs_comment": "How long a swap waits for the aggregator's quote. A quote that has not arrived by then counts as failed, so the swap goes through the V3 router in the position's own pool instead, as after any other aggregator failure. This limit is what keeps a quote server that accepts the request but never answers from holding up the swap while the position's coins sit outside the pool. 15000 is more than twice the slowest ordinary quote measured on 2026-10-16 (6.5 s). Checked at startup by src/lib/timer-bounds.js; an unusable value stops the app, naming this setting.",
       "quoteTimeoutMs": 15000,
       "maxAttempts": 4,
       "estimatedSwapGasUnits": 500000,

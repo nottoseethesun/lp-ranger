@@ -31,8 +31,8 @@ const path = require("path");
 const {
   SETTING_POSITION_KEYS,
   GLOBAL_KEYS,
-} = require("../src/bot-config-keys");
-const { UI_SETTING_KEYS } = require("../src/ui-defaults");
+} = require("../src/lib/bot-config-keys");
+const { UI_SETTING_KEYS } = require("../src/lib/ui-defaults");
 
 const ROOT = path.join(__dirname, "..");
 const SPEC_PATH = path.join(ROOT, "docs", "openapi.json");
@@ -54,10 +54,10 @@ const normalize = (s) =>
  */
 function registeredRoutes() {
   const files = fs
-    .readdirSync(path.join(ROOT, "src"))
+    .readdirSync(path.join(ROOT, "src", "lib"))
     .filter((f) => f.endsWith(".js"))
-    .map((f) => path.join(ROOT, "src", f))
-    .concat([path.join(ROOT, "server.js")]);
+    .map((f) => path.join(ROOT, "src", "lib", f))
+    .concat([path.join(ROOT, "src", "server.js")]);
   const routes = new Set();
   for (const file of files) {
     const text = fs.readFileSync(file, "utf8");

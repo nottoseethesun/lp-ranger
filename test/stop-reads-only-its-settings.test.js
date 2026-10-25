@@ -4,7 +4,7 @@
  * @file test/stop-reads-only-its-settings.test.js
  * @description `npm stop` (scripts/stop.js) and `npm run gentle-stop`
  *   (scripts/gentle-stop.js) read only the settings they use: where the
- *   server listens (src/server-address.js) and the shutdown timings. An
+ *   server listens (src/lib/server-address.js) and the shutdown timings. An
  *   operator may have just got another setting wrong, about to restart,
  *   and that must not keep them from stopping the server that is
  *   running; it is why both skip the settings check too. The port is
@@ -29,7 +29,7 @@ describe("the stop scripts", () => {
 
   it("refuse a wrong port when they read it, naming it", () => {
     process.env.PORT = "not-a-port";
-    const { serverPort } = require("../src/server-address");
+    const { serverPort } = require("../src/lib/server-address");
     assert.throws(() => serverPort(), /PORT in \.env must be/);
   });
 });

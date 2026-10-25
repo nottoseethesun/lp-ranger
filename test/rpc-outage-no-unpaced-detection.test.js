@@ -11,7 +11,7 @@
  *
  * How it got out is worth following, because it decides how the test has
  * to be built.  Every JSON-RPC request the app makes is meant to pass
- * through one process-wide queue, `src/rpc-request-manager.js`.  The
+ * through one process-wide queue, `src/lib/rpc-request-manager.js`.  The
  * queue paces requests, and when failover runs out of endpoints it holds
  * every one of them for an hour — the halt.  It is wired into ethers at
  * `send()`, the method ethers puts its traffic through, and that single
@@ -31,7 +31,7 @@
  * holds its promise chain and payload, roughly 11 KB, and nothing
  * releases it.
  *
- * `src/bot-provider.js` closes the route by handing every provider a
+ * `src/lib/bot-provider.js` closes the route by handing every provider a
  * `staticNetwork` from chains.json, so detection answers from config and
  * never reaches the wire.
  *
@@ -49,8 +49,8 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 
-const rpcQueue = require("../src/rpc-request-manager");
-const sendTx = require("../src/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const sendTx = require("../src/lib/send-transaction");
 
 /**
  * How long to leave the endpoints refusing before taking the counts.

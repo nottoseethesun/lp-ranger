@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-10-21T16:34:27.760Z
+  modified: 2026-10-24T04:55:01.208Z
 ---
 
 # Running tests
@@ -110,10 +110,10 @@ said they started it.
 
 ## ad-hoc scripts count too (2026-09-17)
 
-A scratch script that `require`s anything under `src/` needs the same
+A scratch script that `require`s anything under `src/lib/` needs the same
 wipe as a test run.
 
-**Why:** `src/price-fetcher-gate.js` calls `loadConfig()` when it loads.
+**Why:** `src/lib/price-fetcher-gate.js` calls `loadConfig()` when it loads.
 `loadConfig` copies the live `bot-config.json` over
 `bot-config.backup.json`, the config-stomp safety net. Most server
 modules reach it (`bot-recorder.js` and `server-rescan-prices.js` both
@@ -121,19 +121,19 @@ do). An audit script run without a wipe rewrote the backup. No harm that
 time: the live config was healthy, so the copy matched it. After a
 stomp, the same copy would destroy the only good version.
 
-**How to apply:** wipe before a script that loads `src/`, restore after
+**How to apply:** wipe before a script that loads `src/lib/`, restore after
 it, as separate tool calls. Check that the server is down first. A
 one-line `node -e` counts.
 
 **Since 2026-10-21** the gate reads nothing as it loads: its settings are
 read when a program calls `readPriceCacheSettings`, so loading it no
 longer copies the backups. The rule
-stands: a script that calls into `src/` can still write the operator's
+stands: a script that calls into `src/lib/` can still write the operator's
 caches and records, and `scripts/clear-blockchain-scan-cache.js` still
 loads with backups.
 
 **Repeated 2026-10-18,** with harm: a `node -e` that required
-`src/server-positions.js` to compare key lists rewrote the backup. The
+`src/lib/server-positions.js` to compare key lists rewrote the backup. The
 old backup differed from the live config and no copy existed, so it was
 lost. The live config was healthy, and the next `npm start` would have
 made the same copy. Answer such a question by reading source with grep,
@@ -152,7 +152,7 @@ NEVER run `npm run check` (or any command that touches production files via chec
 **Since 2026-10-19 the two cover the same files:** the scan caches moved
 from `tmp/` to `app-data/scan-cache/`, which both back up whole, and
 under `node --test` every scan cache resolves to the test process's own
-folder (src/scan-cache-dir.js). The rule stands: the full suite runs only
+folder (src/lib/scan-cache-dir.js). The rule stands: the full suite runs only
 through `npm run check`. What follows is how it was before the move.
 
 Wrapping a raw `node --test` in wipe/restore does **not** give it the
@@ -229,7 +229,7 @@ did this until 2026-10-16, after a fix that same day claimed it no
 longer did.
 
 **How to apply:** set the redirect once, at the top of the file, into
-`makeTestTempFolder("<name>")` (src/test-temp-folders.js, 2026-10-18),
+`makeTestTempFolder("<name>")` (src/lib/test-temp-folders.js, 2026-10-18),
 which removes the folder when the process exits, failed or not, and
 which `npm run check` sweeps if a run was killed. Prove a cleanup claim
 by listing the temp directory before and after a run, not by reading

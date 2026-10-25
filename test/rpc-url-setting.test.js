@@ -25,8 +25,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { readGlobalSetting } = require("../src/bot-config-v2");
-const { composeRpcUrls } = require("../src/rpc-url-list");
+const { readGlobalSetting } = require("../src/lib/bot-config-v2");
+const { composeRpcUrls } = require("../src/lib/rpc-url-list");
 
 /** Write a bot-config.json into a throwaway directory. */
 function withConfigDir(contents) {
@@ -199,8 +199,8 @@ describe("composeRpcUrls", () => {
 });
 
 describe("an added RPC takes effect without a restart", () => {
-  const sendTx = require("../src/send-transaction");
-  const config = require("../src/config");
+  const sendTx = require("../src/lib/send-transaction");
+  const config = require("../src/lib/config");
 
   class StubProvider {
     constructor(url) {
@@ -240,7 +240,7 @@ describe("an added RPC takes effect without a restart", () => {
     sendTx.setRpcUrls(urls, LIB);
     /*- Selection moves on a failure RATE, so the added endpoint has to
      *  actually be failing before the shipped list behind it is used. */
-    const { noteRpcResult } = require("../src/rpc-out-of-service");
+    const { noteRpcResult } = require("../src/lib/rpc-out-of-service");
     for (let i = 0; i < 4; i++) noteRpcResult("https://my-node.local", false);
     assert.strictEqual(sendTx.failoverToNextRPC(), true);
     assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS_BASE[0]);
@@ -270,8 +270,8 @@ describe("config.setRpcUrls keeps the live list truthful", () => {
    *  walking the endpoints the process started with — which is exactly
    *  the "saved but not in use" failure this whole feature exists to
    *  remove. */
-  const config = require("../src/config");
-  const { readRpcEndpoints } = require("../src/rpc-endpoints");
+  const config = require("../src/lib/config");
+  const { readRpcEndpoints } = require("../src/lib/rpc-endpoints");
 
   it("updates what the endpoints route reports", () => {
     const original = [...config.RPC_URLS];
@@ -314,7 +314,7 @@ describe("config.setRpcUrls keeps the live list truthful", () => {
      *  Driven through the real modules, in the real order, because the
      *  failure is an interaction between them and neither one looks
      *  wrong on its own. */
-    const sendTx = require("../src/send-transaction");
+    const sendTx = require("../src/lib/send-transaction");
     class StubProvider {
       constructor(url) {
         this._url = url;
@@ -350,14 +350,14 @@ describe("config.setRpcUrls keeps the live list truthful", () => {
 
 describe("the live config", () => {
   it("exposes a non-empty ordered endpoint list", () => {
-    const config = require("../src/config");
+    const config = require("../src/lib/config");
     assert.ok(Array.isArray(config.RPC_URLS));
     assert.ok(config.RPC_URLS.length > 0);
     assert.strictEqual(config.RPC_URL, config.RPC_URLS[0]);
   });
 
   it("contains no duplicate endpoints", () => {
-    const config = require("../src/config");
+    const config = require("../src/lib/config");
     assert.strictEqual(
       new Set(config.RPC_URLS).size,
       config.RPC_URLS.length,
@@ -370,7 +370,7 @@ describe("the live config", () => {
      *  became the same array as RPC_URLS, every save would re-seed the
      *  operator's own endpoints into the base and they could never be
      *  removed. */
-    const config = require("../src/config");
+    const config = require("../src/lib/config");
     assert.ok(Array.isArray(config.RPC_URLS_BASE));
     assert.ok(config.RPC_URLS_BASE.length > 0);
     assert.notStrictEqual(config.RPC_URLS_BASE, config.RPC_URLS);

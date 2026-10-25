@@ -8,8 +8,8 @@ Smell: docstrings that say `Mirror of …`, `In-test replica`, or "mirror is sma
 
 **Correct pattern** — when a function is module-private and needs testing, **extract it as an exported pure decision** and drive the export directly:
 
-- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `public/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../public/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`.
-- **Server tests** (`src/*.js`): direct `require("../src/<module>.js")`. No import obstacle — mirrors have no excuse.
+- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `src/client/web/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../src/client/web/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`.
+- **Server tests** (`src/lib/*.js`): direct `require("../src/lib/<module>.js")`. No import obstacle — mirrors have no excuse.
 
 When the private helper's logic is entangled with I/O (DOM writes, network, module-singleton state), extract only the **pure decision** (accepts state as parameters, returns the intended action) and leave the I/O in the wrapper. See PRs #167–#172 for the extract-then-test pattern applied across ~30 dashboard helpers.
 
@@ -43,18 +43,18 @@ Every swap a rebalance or a compound makes runs through these files:
 
 | File | What it does |
 | --- | --- |
-| `src/rebalancer-swap.js` | The ratio math, and the order swaps are tried in: aggregator, aggregator in chunks, V3 router |
-| `src/rebalancer-aggregator.js` | Quote, approve, send and confirm through the aggregator, with its retries and its cancel on timeout |
-| `src/aggregator-quote-request.js` | One quote request under its time limit, with the aggregator's reasons on a refusal |
-| `src/aggregator-nonce-settle.js` | Works out what mined once a swap's wait has run out |
-| `src/rebalancer-router.js` | The V3 router swap, in the position's own pool |
-| `src/rebalancer-swap-impact.js` | The price-impact check against the slippage setting, and the refusal of a quote that names no impact |
-| `src/rebalancer-correct.js` | Corrective swaps, after the main swap moves the tick |
-| `src/rebalancer-execute.js` | Swap and adjust: the range shift, the pre-mint check, the result |
-| `src/compounder-swap.js` | The compound's ratio-correcting swap |
-| `src/swap-gates.js` | The dust and gas checks in front of every swap |
-| `src/slippage-resolver.js` | Which slippage figure a swap uses |
-| `src/rebalancer-pools.js` | The shared swap helpers: impact check, approvals, send retries |
+| `src/lib/rebalancer-swap.js` | The ratio math, and the order swaps are tried in: aggregator, aggregator in chunks, V3 router |
+| `src/lib/rebalancer-aggregator.js` | Quote, approve, send and confirm through the aggregator, with its retries and its cancel on timeout |
+| `src/lib/aggregator-quote-request.js` | One quote request under its time limit, with the aggregator's reasons on a refusal |
+| `src/lib/aggregator-nonce-settle.js` | Works out what mined once a swap's wait has run out |
+| `src/lib/rebalancer-router.js` | The V3 router swap, in the position's own pool |
+| `src/lib/rebalancer-swap-impact.js` | The price-impact check against the slippage setting, and the refusal of a quote that names no impact |
+| `src/lib/rebalancer-correct.js` | Corrective swaps, after the main swap moves the tick |
+| `src/lib/rebalancer-execute.js` | Swap and adjust: the range shift, the pre-mint check, the result |
+| `src/lib/compounder-swap.js` | The compound's ratio-correcting swap |
+| `src/lib/swap-gates.js` | The dust and gas checks in front of every swap |
+| `src/lib/slippage-resolver.js` | Which slippage figure a swap uses |
+| `src/lib/rebalancer-pools.js` | The shared swap helpers: impact check, approvals, send retries |
 
 Measured 2026-10-18, on Node 24 and Node 22:
 
@@ -124,7 +124,7 @@ pin a meaningless input as if it were correct:
 
 The `app-config/app-defaults-for-user-configurable/` subdir (including the tracked `api-keys.example.json` format template) is shipped repo content and is excluded from backup/delete. Each operator-state directory (`app-config/user-configurable/` and `app-data/`) is tracked via its own `README.md`; the gitignored contents are protected by the backup pass on the same "operator state" footing as `.env`.
 
-**`app-data/scan-cache/` directory (`src/scan-cache-dir.js`; under `node --test` each test process has its own instead):**
+**`app-data/scan-cache/` directory (`src/lib/scan-cache-dir.js`; under `node --test` each test process has its own instead):**
 
 - `pnl-epochs-cache.json` — reconstructed P&L epochs (expensive to rebuild)
 - `historical-price-cache.json` — GeckoTerminal OHLCV prices (rate-limited API)
@@ -164,7 +164,7 @@ That file is the operator's own log — `--log-file` opens it in append
 mode, so it accumulates across runs and a delete is permanent. It is
 gitignored, so its loss is reported nowhere and the suite still exits 0.
 
-The path that reaches it is `_DEFAULT_PATH` in `src/boot-log-file.js`:
+The path that reaches it is `_DEFAULT_PATH` in `src/lib/boot-log-file.js`:
 it is the relative `"logs/lp-ranger.log"`, and `enableLogFile` resolves
 it against `process.cwd()`. Any test that boots the logger from the
 repo root without supplying an explicit path therefore opens the live
@@ -177,7 +177,7 @@ asserts in an `after` hook that the file survived the suite.
 
 When adding a new disk-backed cache or config file:
 
-1. If it's a scan cache → name its file with `scanCachePath` (`src/scan-cache-dir.js`), which puts it in `app-data/scan-cache/`, or under `node --test` in the test process's own folder. Protected by the backup pass, and out of every test's reach.
+1. If it's a scan cache → name its file with `scanCachePath` (`src/lib/scan-cache-dir.js`), which puts it in `app-data/scan-cache/`, or under `node --test` in the test process's own folder. Protected by the backup pass, and out of every test's reach.
 2. If it's runtime state (managed by the app, may include user secrets) → put it in `app-config/` (top level). Automatically protected by the `find app-config -maxdepth 1 -type f` scan.
 3. If it's a tracked shipped default → put it in `app-config/app-defaults-for-user-configurable/`. Excluded from the protection scan (it's committed to git). Operators override at the matching `app-config/user-configurable/<same-name>.json` (gitignored, protected by the backup pass). Every value in a file there is checked for type and range by `test/shipped-config-values.test.js`: by its range in `setting-bounds.json`, by the timer rule, or by the kind of value its entry in that test's `RULES` names. A value, or a file, with no rule fails that test, naming it, until it is given one; a file that holds no defaults is named in `NOT_DEFAULTS` instead. `npm run check` runs that test and `test/setting-bounds.test.js` before every other test (`configValueTests()` in `scripts/check.js`), so a wrong shipped value is reported as the cause before the failures it causes.
 4. Document new files in this file under "Protected files".
@@ -191,13 +191,13 @@ Before tests run, `check.js` deletes all production config and cache files so th
 Tests that need config files should either:
 
 - Make a temp folder with `makeTestTempFolder` (see "Temp folders" below) and pass it as the `dir` parameter to `loadConfig(dir)` / `saveConfig(cfg, dir)`
-- Or call them with no directory: under `node --test` that resolves to the test process's own temp folder, never the operator's `bot-config.json` (`_appConfigDir`, `src/bot-config-v2.js`)
+- Or call them with no directory: under `node --test` that resolves to the test process's own temp folder, never the operator's `bot-config.json` (`_appConfigDir`, `src/lib/bot-config-v2.js`)
 
 Default/vanilla config values come from `.env.example` and the shipped JSON files under `app-config/app-defaults-for-user-configurable/` in the repository.
 
 ### Temp folders
 
-A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so is the scan-cache folder. A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
+A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so is the scan-cache folder. A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
 
 A process stopped outright (Ctrl+C, kill -9) cannot remove its folders, so `npm run check` removes them before its tests start: each `lp-ranger-test-` folder whose process, named in the folder's name, is no longer running. A running process's folder is left alone, so a test run under way elsewhere keeps its files.
 
@@ -205,7 +205,7 @@ Why the system's temp directory and not the project's `tmp/`: anything left in t
 
 ### Settings moved off what ships
 
-A test of a configured value runs on a value other than the shipped one. At the shipped value, code with that figure typed in passes too. There are three ways to move one, each set up before anything under `src/` loads, since the loader reads its folders' paths as it loads:
+A test of a configured value runs on a value other than the shipped one. At the shipped value, code with that figure typed in passes too. There are three ways to move one, each set up before anything under `src/lib/` loads, since the loader reads its folders' paths as it loads:
 
 - **An operator's override.** Write the file into a `makeTestTempFolder` folder and point `LP_RANGER_USER_CONFIG_DIR` at it. Most tests do this.
 - **`.env`.** Set the variable in `process.env`; dotenv leaves a set variable alone.
@@ -217,7 +217,7 @@ A test that checks the shipped values themselves, such as the manual on disk, re
 
 A test asks no service outside the machine. A result that depends on a third party fails when that party changes its answer, and the app's own budget of calls a minute to GeckoTerminal can make a test wait out a whole minute. Two stand-ins cover what the tests reach:
 
-- **Prices.** A test that reaches a price lookup, through a poll, a rebalance, a compound or a swap gate, requires `test/helpers/price-stand-ins.js` before anything under `src/` that reads a price, since those modules take the lookups when they load. A token's current price and the dust unit's then answer from a fixed table: the chain's wrapped native coin and the dust unit at steady prices, and every other token unpriced.
+- **Prices.** A test that reaches a price lookup, through a poll, a rebalance, a compound or a swap gate, requires `test/helpers/price-stand-ins.js` before anything under `src/lib/` that reads a price, since those modules take the lookups when they load. A token's current price and the dust unit's then answer from a fixed table: the chain's wrapped native coin and the dust unit at steady prices, and every other token unpriced.
 - **The aggregator.** A test whose swap asks for a quote but is not about the aggregator's own handling starts a local aggregator (`startLocalAggregator`, `test/helpers/local-aggregator.js`) and points the chain's aggregator url at it. It refuses every quote, as the live aggregator refuses the fixtures' made-up tokens, or answers as a case scripts it. A test of the aggregator's own handling stages it with `test/helpers/aggregator-harness.js`.
 - **A Manage's pool check.** The Manage route reads the position's pool from the chain and refuses the position when it cannot, so a test that drives a Manage past that check passes `poolReadStandIn()` (`test/helpers/pool-read-stand-in.js`) as the route's `ethersLib` and `readProvider`: each NFT open, alone in a pool of its own.
 

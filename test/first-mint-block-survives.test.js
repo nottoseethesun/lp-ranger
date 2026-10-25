@@ -29,7 +29,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { chainScanFloor } = require("../src/nft-mint-blocks");
+const { chainScanFloor } = require("../src/lib/nft-mint-blocks");
 
 describe("the hazard itself", () => {
   it("spread and push really do drop a non-index property", () => {
@@ -65,7 +65,7 @@ describe("bot-recorder carries the properties across the copy", () => {
    *  long scan function with no seam to drive, and the failure mode is
    *  a missing line rather than a wrong value. */
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "src", "bot-recorder.js"),
+    path.join(__dirname, "..", "src", "lib", "bot-recorder.js"),
     "utf8",
   );
 

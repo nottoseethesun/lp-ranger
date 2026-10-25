@@ -26,12 +26,15 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { classifyCompounds, _fetchCompoundGas } = require("../src/compounder");
-const { applyCurrentNftFigures } = require("../src/bot-pnl-current-nft");
-const sendTx = require("../src/send-transaction");
-const rpcQueue = require("../src/rpc-request-manager");
-const outOfService = require("../src/rpc-out-of-service");
-const logModule = require("../src/log");
+const {
+  classifyCompounds,
+  _fetchCompoundGas,
+} = require("../src/lib/compounder");
+const { applyCurrentNftFigures } = require("../src/lib/bot-pnl-current-nft");
+const sendTx = require("../src/lib/send-transaction");
+const rpcQueue = require("../src/lib/rpc-request-manager");
+const outOfService = require("../src/lib/rpc-out-of-service");
+const logModule = require("../src/lib/log");
 
 const MINT_TX = "0xmint";
 const COMPOUND_TX = "0xcompound";

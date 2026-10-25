@@ -54,7 +54,7 @@
  * prints the list, and every refusal of a time zone points to it.
  *
  * Every configuration value is LP Ranger's own, from the app's resolver
- * (src/config.js), as in coins-in-transaction.js, whose option parsers it
+ * (src/lib/config.js), as in coins-in-transaction.js, whose option parsers it
  * shares: the chain, LP Ranger's own unless `--blockchain` names another
  * (../blockchain.js settles it before the resolver loads), the endpoint,
  * the position manager, and the chain's coins. A run reads one
@@ -83,7 +83,7 @@ const fs = require("fs");
 const path = require("path");
 const { Command } = require("commander");
 const { parseBlockchain, oneChainNotice } = require("../blockchain");
-const config = require("../../../src/config");
+const config = require("../../../src/lib/config");
 const { parseEndpoint } = require("../../diagnostic/check-rpc-health");
 const {
   RPC_ADVICE,

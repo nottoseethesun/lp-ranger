@@ -90,13 +90,13 @@ before(() => {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/epoch-reconstructor")];
-  ({ reconstructEpochs } = require("../src/epoch-reconstructor"));
+  delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
+  ({ reconstructEpochs } = require("../src/lib/epoch-reconstructor"));
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/epoch-reconstructor")];
+  delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
 });
 
 beforeEach(() => {

@@ -3,9 +3,9 @@
 /**
  * @file test/alerts-per-position.test.js
  * @description Tests the per-position dispatch decisions extracted
- *   from `showPerPositionAlerts` in `public/dashboard-alerts.js` and
+ *   from `showPerPositionAlerts` in `src/client/web/dashboard-alerts.js` and
  *   `showPostRebalanceWarnings` in
- *   `public/dashboard-post-rebalance-modal.js`.  The prior file
+ *   `src/client/web/dashboard-post-rebalance-modal.js`.  The prior file
  *   mirrored the full dispatch + dedup + label derivation.  Extracts
  *   let the tests drive the real modules directly under jsdom.
  *
@@ -34,8 +34,8 @@ let alerts;
 let postReb;
 
 before(async () => {
-  alerts = await import("../public/dashboard-alerts.js");
-  postReb = await import("../public/dashboard-post-rebalance-modal.js");
+  alerts = await import("../src/client/web/dashboard-alerts.js");
+  postReb = await import("../src/client/web/dashboard-post-rebalance-modal.js");
 });
 
 function _emptyCoreDedup() {
@@ -303,7 +303,7 @@ describe("_computeCoreAlertDispatch — Impermanent Loss Guard", () => {
    *  position is let through again. */
 
   /*- The real published shape: the server composes the wording once
-   *  (src/il-guard.js `_publishBlocked`) and the modal renders it, so
+   *  (src/lib/il-guard.js `_publishBlocked`) and the modal renders it, so
    *  the phone alert and the dialog cannot word one rejection two
    *  different ways.  Nothing else travels — a figure the modal does
    *  not render would be dead weight on every /api/status poll. */
@@ -385,7 +385,14 @@ describe("showPerPositionAlerts — Impermanent Loss Guard modal", () => {
    *  than retyped, so a change to the shell is felt here. */
   const TPL = (() => {
     const html = require("node:fs").readFileSync(
-      require("node:path").join(__dirname, "..", "public", "index.html"),
+      require("node:path").join(
+        __dirname,
+        "..",
+        "src",
+        "client",
+        "web",
+        "index.html",
+      ),
       "utf8",
     );
     const m = html.match(/<template id="tplStatusModal"[\s\S]*?<\/template>/);
@@ -436,5 +443,79 @@ describe("showPerPositionAlerts — Impermanent Loss Guard modal", () => {
       document.getElementsByClassName("9mm-pos-mgr-modal-overlay"),
     ).filter((el) => el.id.startsWith("ilGuardBlockedModal"));
     assert.equal(overlays.length, 1);
+  });
+});
+
+describe("showPerPositionAlerts — a rebalance the price outran", () => {
+  /*- The user's ruling, 2026-10-23: a yellow warning advising the owner
+   *  to weigh the impermanent loss and, if acceptable, click Rebalance
+   *  Now; the same words the Telegram alert sends. The real template, as
+   *  for the Guard's dialog above. */
+  const TPL = (() => {
+    const html = require("node:fs").readFileSync(
+      require("node:path").join(
+        __dirname,
+        "..",
+        "src",
+        "client",
+        "web",
+        "index.html",
+      ),
+      "utf8",
+    );
+    return html.match(/<template id="tplStatusModal"[\s\S]*?<\/template>/)[0];
+  })();
+  const { priceMovedStopMessage } = require("../src/lib/price-moved-stop");
+
+  /** Open the dialog for a held position whose error is `message`. */
+  function open(message) {
+    alerts._resetAlertsState();
+    document.body.innerHTML = TPL;
+    alerts.showPerPositionAlerts({
+      _allPositionStates: {
+        [KEY_A]: {
+          rebalancePaused: true,
+          rebalanceError: message,
+          activePosition: {},
+        },
+      },
+    });
+    return Array.from(
+      document.getElementsByClassName("9mm-pos-mgr-modal-overlay"),
+    ).find((el) => el.id.startsWith("rebalanceErrorModal"));
+  }
+
+  it("opens as a warning, with the bot's advice and no footer of its own", () => {
+    const overlay = open(priceMovedStopMessage());
+    assert.ok(overlay, "the dialog opened");
+    assert.ok(
+      overlay.getElementsByClassName("9mm-pos-mgr-warning-modal").length > 0 ||
+        overlay.classList.contains("9mm-pos-mgr-warning-modal"),
+      "the yellow warning shell",
+    );
+    assert.ok(
+      overlay.textContent.includes("Rebalance stopped — the price moved"),
+    );
+    assert.ok(overlay.textContent.includes("click Rebalance Now"));
+    assert.equal(
+      overlay.getElementsByClassName("9mm-pos-mgr-text-muted").length,
+      0,
+      "the advice is the bot's, said once",
+    );
+  });
+
+  it("shows the server's words as text, never as markup", () => {
+    const overlay = open("Price moved out of the new range <b>x</b>");
+    assert.equal(overlay.getElementsByTagName("b").length, 0);
+    assert.ok(overlay.textContent.includes("<b>x</b>"));
+  });
+
+  it("keeps the plain shell and its footer for other stops", () => {
+    const overlay = open("Swap aborted: price impact 3% exceeds slippage 1%");
+    assert.equal(
+      overlay.getElementsByClassName("9mm-pos-mgr-warning-modal").length,
+      0,
+    );
+    assert.ok(overlay.textContent.includes("Adjust the slippage setting"));
   });
 });

@@ -18,8 +18,8 @@ const assert = require("assert");
 const {
   buildDexDetailPageUrlTemplate,
   readDexDetailPageName,
-} = require("../src/dex-detail-page-url-generator");
-const { _withDexDetailPage } = require("../src/lp-providers");
+} = require("../src/lib/dex-detail-page-url-generator");
+const { _withDexDetailPage } = require("../src/lib/lp-providers");
 
 /** A provider entry shaped like the shipped 9mm v3 one. */
 function entry(overrides = {}) {
@@ -235,7 +235,7 @@ describe("shipped config wires end to end", () => {
      *  is the 9mm app's own pool page, because dex.9mm.pro's pair page
      *  redirects to the app's home page and drops the pool.
      */
-    const { readLpProviders } = require("../src/lp-providers");
+    const { readLpProviders } = require("../src/lib/lp-providers");
     const enriched = _withDexDetailPage(readLpProviders(), "pulsechain");
     const hit = Object.values(enriched).find(
       (e) => typeof e.dexDetailPageUrlTemplate === "string",

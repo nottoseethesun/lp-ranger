@@ -4,7 +4,7 @@
  * @file test/helpers/pool-read-stand-in.js
  * @description The chain as the Manage route's pool check reads it: each
  *   NFT open, alone in a pool of its own. The route refuses a position
- *   whose pool it cannot read (src/pool-already-managed.js), so a test
+ *   whose pool it cannot read (src/lib/pool-already-managed.js), so a test
  *   that drives a Manage past that check passes these as the route's
  *   `ethersLib` and `readProvider`.
  */

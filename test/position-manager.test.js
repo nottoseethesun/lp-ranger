@@ -7,8 +7,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createPositionManager } = require("../src/position-manager");
-const { createRebalanceLock } = require("../src/rebalance-lock");
+const { createPositionManager } = require("../src/lib/position-manager");
+const { createRebalanceLock } = require("../src/lib/rebalance-lock");
 
 /** Create a fake startLoop that returns a stoppable handle. */
 function fakeStartLoop() {

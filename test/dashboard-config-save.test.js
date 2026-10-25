@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-config-save.test.js
- * @description Tests for `public/dashboard-config-save.js`, the one path
+ * @description Tests for `src/client/web/dashboard-config-save.js`, the one path
  *   a Bot Settings value takes to the server and the one way a refused
  *   value comes back.
  *
@@ -32,7 +32,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-config-save.js");
+  mod = await import("../src/client/web/dashboard-config-save.js");
 });
 
 describe("the field a save's answer refuses", () => {

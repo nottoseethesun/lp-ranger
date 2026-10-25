@@ -14,7 +14,7 @@
  *   The stub answers every id with null: history unknown.
  */
 
-/** The module id `src/epoch-reconstructor.js` requires the read from. */
+/** The module id `src/lib/epoch-reconstructor.js` requires the read from. */
 const CHAIN_HISTORY_MODULE = "./position-history-scan-helpers";
 
 /**

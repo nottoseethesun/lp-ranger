@@ -34,19 +34,19 @@ function _installMocks() {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/bot-cycle-drain")];
+  delete require.cache[require.resolve("../src/lib/bot-cycle-drain")];
 }
 
 function _restoreMocks() {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/bot-cycle-drain")];
+  delete require.cache[require.resolve("../src/lib/bot-cycle-drain")];
 }
 
 describe("checkRetireRequest", () => {
   let checkRetireRequest;
   beforeEach(() => {
     _installMocks();
-    ({ checkRetireRequest } = require("../src/bot-cycle-drain"));
+    ({ checkRetireRequest } = require("../src/lib/bot-cycle-drain"));
   });
   afterEach(() => {
     _restoreMocks();

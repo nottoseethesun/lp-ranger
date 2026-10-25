@@ -16,7 +16,7 @@
  *   runner sets it rather than the test author.
  *
  *   The config folder is one of the temp folders a test process makes
- *   (src/test-temp-folders.js). Each goes when its process exits, and
+ *   (src/lib/test-temp-folders.js). Each goes when its process exits, and
  *   `npm run check` removes any a stopped process left, so none piles up
  *   in the system's temp directory.
  */
@@ -34,11 +34,11 @@ const {
   loadConfig,
   saveConfig,
   botConfigPath,
-} = require("../src/bot-config-v2");
+} = require("../src/lib/bot-config-v2");
 const {
   makeTestTempFolder,
   removeLeftoverTestTempFolders,
-} = require("../src/test-temp-folders");
+} = require("../src/lib/test-temp-folders");
 
 const LIVE = path.join(
   process.cwd(),
@@ -125,7 +125,8 @@ describe("undirected config writes never reach the operator's file", () => {
  *   it wrote.
  */
 function testProcess(body) {
-  const src = (name) => JSON.stringify(path.join(__dirname, "..", "src", name));
+  const src = (name) =>
+    JSON.stringify(path.join(__dirname, "..", "src", "lib", name));
   const res = spawnSync(
     process.execPath,
     [

@@ -1,6 +1,6 @@
 /**
  * @file test/bot-cycle-residual.test.js
- * @description Tests for src/bot-cycle-residual.js — automatic
+ * @description Tests for src/lib/bot-cycle-residual.js — automatic
  *   residual-cleanup rebalance detection.
  */
 
@@ -14,7 +14,7 @@ const {
   updateCleanupState: _updateCleanupState,
   computeWalletResidualUsd,
   TUNABLES,
-} = require("../src/bot-cycle-residual");
+} = require("../src/lib/bot-cycle-residual");
 
 /** Build a deps object with a fresh botState and a throttle mock. */
 function mkDeps(overrides = {}) {

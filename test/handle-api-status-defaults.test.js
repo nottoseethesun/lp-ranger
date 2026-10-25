@@ -22,7 +22,7 @@ const path = require("path");
  *  An operator's logging.json of this file's own, moving the error log
  *  away from its default, so a status that named the default could not
  *  pass for one that names the configured path. Set before anything
- *  under src/ loads, because the loader reads the override directory's
+ *  under src/lib/ loads, because the loader reads the override directory's
  *  path at load. Nothing else is overridden.
  */
 const _MOVED_ERROR_LOG = "logs/elsewhere/errors.log";
@@ -34,12 +34,12 @@ fs.writeFileSync(
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const { createApiStatusHandler } = require("../src/handle-api-status");
-const { primaryRouteLabel } = require("../src/rebalancer-swap");
-const { moralisEnabledIn } = require("../src/server-moralis");
-const config = require("../src/config");
-const { configuredErrorLogPath } = require("../src/error-log");
-const logFile = require("../src/log-file");
+const { createApiStatusHandler } = require("../src/lib/handle-api-status");
+const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/lib/server-moralis");
+const config = require("../src/lib/config");
+const { configuredErrorLogPath } = require("../src/lib/error-log");
+const logFile = require("../src/lib/log-file");
 
 /** Drive the real handler with the smallest viable dependency set. */
 async function statusPayload(overrides = {}) {

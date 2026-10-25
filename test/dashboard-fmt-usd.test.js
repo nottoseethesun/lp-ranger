@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-fmt-usd.test.js
- * @description Tests for `public/dashboard-fmt-usd.js` — the USD
+ * @description Tests for `src/client/web/dashboard-fmt-usd.js` — the USD
  *   formatter used by the Current and Lifetime panels.  Uses jsdom
  *   (via `global-jsdom/register`) so `navigator.language` and other
  *   browser globals the module inspects at load time are populated
@@ -22,7 +22,7 @@ const assert = require("node:assert/strict");
 let _fmtUsd;
 
 before(async () => {
-  ({ _fmtUsd } = await import("../public/dashboard-fmt-usd.js"));
+  ({ _fmtUsd } = await import("../src/client/web/dashboard-fmt-usd.js"));
 });
 
 describe("_fmtUsd()", () => {

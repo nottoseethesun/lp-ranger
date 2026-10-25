@@ -21,8 +21,8 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 const { format } = require("node:util");
-const { _setSinkForTests } = require("../src/log");
-const { collectTokenIds } = require("../src/bot-recorder-scan-helpers");
+const { _setSinkForTests } = require("../src/lib/log");
+const { collectTokenIds } = require("../src/lib/bot-recorder-scan-helpers");
 
 /** #100 → #200 → #300, the chain's first mint at 4,000. */
 function chain() {
@@ -53,7 +53,7 @@ function load() {
     }
     return orig.apply(this, arguments);
   };
-  const file = require.resolve("../src/bot-recorder-lifetime-read");
+  const file = require.resolve("../src/lib/bot-recorder-lifetime-read");
   delete require.cache[file];
   try {
     return { mod: require(file), reads };
@@ -150,6 +150,26 @@ describe("prepareChainRead", () => {
     assert.equal(s.calls.length, 1);
     assert.strictEqual(a, b);
     assert.strictEqual(a, c);
+  });
+
+  it("records when the read began, once it runs", async () => {
+    /*-
+     *  A rebuild of the compound list keeps a compound the bot recorded
+     *  after this moment, since the read could not have seen it.
+     */
+    const { mod } = load();
+    const prepared = mod.prepareChainRead({
+      position: position(),
+      rebalanceEvents: chain(),
+      start: startAt(1_000).start,
+    });
+    assert.equal(prepared.startedAt, null);
+    const before = Date.now();
+    await prepared.read();
+    assert.ok(
+      prepared.startedAt >= before && prepared.startedAt <= Date.now(),
+      String(prepared.startedAt),
+    );
   });
 
   it("tries again after a failed read", async () => {

@@ -10,7 +10,7 @@
  *   info".
  *
  *   Driven through the page's own handlers on its markup from
- *   public/index.html, with the server's answers scripted: the import's
+ *   src/client/web/index.html, with the server's answers scripted: the import's
  *   confirm, the unlock dialog and Reveal Key. A refused request keeps
  *   what was typed, so it can be sent again.
  */
@@ -71,8 +71,8 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  walletMod = await import("../public/dashboard-wallet.js");
-  importMod = await import("../public/dashboard-wallet-import.js");
+  walletMod = await import("../src/client/web/dashboard-wallet.js");
+  importMod = await import("../src/client/web/dashboard-wallet-import.js");
 });
 
 const el = (id) => document.getElementById(id);

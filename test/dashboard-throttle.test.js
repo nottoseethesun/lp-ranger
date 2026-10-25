@@ -3,20 +3,20 @@
 /**
  * @file test/dashboard-throttle.test.js
  * @description Tests for throttle math, doubling window derivation, and DOM
- *   sync in `public/dashboard-throttle.js`.  Uses jsdom (via
+ *   sync in `src/client/web/dashboard-throttle.js`.  Uses jsdom (via
  *   `global-jsdom/register`) to populate Node with real browser globals
  *   (`document`, `window`, `HTMLElement`, …) so the browser ES module
  *   can be imported directly and driven end-to-end.  No hand-rolled
  *   DOM stubs; no mirrored copy of the SUT — the test targets the real
- *   module, so any edit to `public/dashboard-throttle.js` that changes
+ *   module, so any edit to `src/client/web/dashboard-throttle.js` that changes
  *   behaviour is observed by these assertions.
  *
  *   Regression under test (`dblWindowLabel`): commit e22536c deleted
  *   both writers of `#dblWindowLabel` in a "remove-dead-throttle-UI"
  *   cleanup pass.  The `#dblWindowLabel` element was NOT removed from
- *   `public/index.html`, so it lived on as a hardcoded `"40 min"`
+ *   `src/client/web/index.html`, so it lived on as a hardcoded `"40 min"`
  *   string.  The doubling trigger window is `triggerWindowMultiple`
- *   times the minimum interval, the rule `src/throttle.js` enforces from
+ *   times the minimum interval, the rule `src/lib/throttle.js` enforces from
  *   bot-config-defaults.json → `throttleDoubling` — anyone changing Min
  *   Time Between
  *   Rebalances from the default 10 min saw a wrong window label.  Silent
@@ -29,7 +29,7 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { loadShippedDefaults } = require("../src/load-merged-defaults");
+const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
 const { learnUiSettings } = require("./helpers/ui-settings");
 
 /*-
@@ -46,7 +46,7 @@ const TRIGGER_WINDOW_MULTIPLE = BOT.throttleDoubling.triggerWindowMultiple;
 let mod;
 
 before(async () => {
-  mod = await import("../public/dashboard-throttle.js");
+  mod = await import("../src/client/web/dashboard-throttle.js");
   await learnUiSettings({ throttleNearLimitPct: NEAR_LIMIT_PCT });
   /*-
    *  The label takes the doubling rule from the defaults the server
@@ -54,7 +54,7 @@ before(async () => {
    *  overrides included. A server running on the shipped settings
    *  stands in for it.
    */
-  const figures = await import("../public/dashboard-help-figures.js");
+  const figures = await import("../src/client/web/dashboard-help-figures.js");
   await figures.loadHelpFigures({
     fetchFn: async () => ({
       ok: true,
@@ -187,7 +187,7 @@ describe("dblWindowLabel — regression pin for e22536c", () => {
   });
 
   it("follows the doubling rule the server sends, an override included", async () => {
-    const figures = await import("../public/dashboard-help-figures.js");
+    const figures = await import("../src/client/web/dashboard-help-figures.js");
     const load = (botDefaults) =>
       figures.loadHelpFigures({
         fetchFn: async () => ({
@@ -424,7 +424,7 @@ describe("saveMinInterval() — the server's answer, not the click, moves the di
   });
 });
 
-/*- A refused save is `public/dashboard-config-save.js`'s job now, and
+/*- A refused save is `src/client/web/dashboard-config-save.js`'s job now, and
  *  is covered by test/dashboard-config-save.test.js. */
 
 describe("the OOR timeout badge", () => {

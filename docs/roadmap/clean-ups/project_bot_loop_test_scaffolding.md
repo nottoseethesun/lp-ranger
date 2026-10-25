@@ -4,7 +4,7 @@
 > correctly today. Funds are never at risk.
 
 No test runs the bot's poll loop as a whole. `startBotLoop`
-(`src/bot-loop.js`) builds a provider, a signer and the position, then
+(`src/lib/bot-loop.js`) builds a provider, a signer and the position, then
 polls on a timer. Nothing in the test suite can stand up that stack with
 the timer under the test's control, so how a poll, `stop()` and the
 timer interleave is checked only by reading the code.
@@ -14,7 +14,7 @@ timer interleave is checked only by reading the code.
 The parts taken out of the loop are tested on their own:
 `resolvePrivateKey`, `pollCycle`, `forceRebalance` and
 `wireBotStateGetConfig` in `test/bot-loop.test.js`; the timer and its
-wake-up, `createBotPollScheduler` (`src/bot-loop-scheduler.js`), in
+wake-up, `createBotPollScheduler` (`src/lib/bot-loop-scheduler.js`), in
 `test/bot-loop-kick-poll.test.js`; and the wait before the next poll,
 `nextCheckDelayMs`, in `test/bot-loop-gas-wait.test.js`.
 

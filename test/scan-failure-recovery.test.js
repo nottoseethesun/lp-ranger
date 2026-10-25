@@ -27,7 +27,7 @@ const assert = require("node:assert/strict");
 let sync;
 
 before(async () => {
-  sync = await import("../public/dashboard-sync-decisions.js");
+  sync = await import("../src/client/web/dashboard-sync-decisions.js");
 });
 
 /*- The startup shape: a wallet is loaded, the position list has not
@@ -107,8 +107,8 @@ describe("the scan handler records a terminal status when it fails", () => {
   /*- Drives the REAL handler.  An earlier version of this test rebuilt
    *  the handler's try/catch locally, which proves nothing about the
    *  handler: the copy would keep passing after the real one changed. */
-  const { createScanHandlers } = require("../src/server-scan");
-  const sendTx = require("../src/send-transaction");
+  const { createScanHandlers } = require("../src/lib/server-scan");
+  const sendTx = require("../src/lib/send-transaction");
 
   /**
    * Run the real scan handler with the RPC layer uninitialised, so the
@@ -190,7 +190,7 @@ describe("a partial scan must not claim ground it never read", () => {
   /*- Drives the real _resolveLastBlock.  Re-implementing it here would
    *  be a mirror: the copy would keep passing after the real rule
    *  changed, which is the one thing a test must never do. */
-  const { _resolveLastBlock } = require("../src/event-scanner");
+  const { _resolveLastBlock } = require("../src/lib/event-scanner");
 
   /** The scan result carries the first hole, or none. */
   const result = (firstGapFrom) => {

@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-abort-reason.test.js
  * @description Why a rebalance stopped, read from the error the bot
- *   published (public/dashboard-abort-reason.js): the kind the alert
+ *   published (src/client/web/dashboard-abort-reason.js): the kind the alert
  *   dialog words its title and advice by, and the main reason the Manage
  *   tooltip names.
  */
@@ -14,7 +14,7 @@ const assert = require("node:assert/strict");
 let reason;
 
 before(async () => {
-  reason = await import("../public/dashboard-abort-reason.js");
+  reason = await import("../src/client/web/dashboard-abort-reason.js");
 });
 
 describe("abortKind", () => {
@@ -24,11 +24,18 @@ describe("abortKind", () => {
       ["the pool liquidity is too thin to mint", "thin"],
       ["Swap aborted: price impact 3% exceeds slippage 1%", "slip"],
       ["insufficient gas for the mint", "gas"],
-      ["price too volatile to rebalance", "volatile"],
+      ["the price moved out of the new range", "volatile"],
       ["something else", ""],
       [undefined, ""],
     ])
       assert.equal(reason.abortKind(message), kind, String(message));
+  });
+
+  it("knows the bot's own words for a rebalance the price outran", () => {
+    /*- Read from the server module, so a change to its words that the
+     *  dashboard would no longer recognise fails here. */
+    const { priceMovedStopMessage } = require("../src/lib/price-moved-stop");
+    assert.equal(reason.abortKind(priceMovedStopMessage()), "volatile");
   });
 });
 

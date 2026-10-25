@@ -116,11 +116,11 @@ async function history(decimals) {
   try {
     const { getPositionHistory } = origRequire.call(
       module,
-      "../src/position-history",
+      "../src/lib/position-history",
     );
     /*-
      *  Dated today, so the history is priced from the fallback prices: an
-     *  earlier day's unread price stays unread (src/position-history.js),
+     *  earlier day's unread price stays unread (src/lib/position-history.js),
      *  and decimals are read only for a priced history.
      */
     const today = Math.floor(Date.now() / 1000);
@@ -138,7 +138,7 @@ async function history(decimals) {
     });
   } finally {
     Module.prototype.require = origRequire;
-    const pcb = origRequire.call(module, "../src/pool-creation-block");
+    const pcb = origRequire.call(module, "../src/lib/pool-creation-block");
     if (typeof pcb._resetForTests === "function") pcb._resetForTests();
   }
 }

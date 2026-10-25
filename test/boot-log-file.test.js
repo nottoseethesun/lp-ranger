@@ -1,8 +1,8 @@
 /**
  * @file test/boot-log-file.test.js
- * @description Unit tests for src/boot-log-file.js — verifies the
+ * @description Unit tests for src/lib/boot-log-file.js — verifies the
  * --log-file CLI flag parser, the static-tunable JSON reader, and the
- * end-to-end bootLogFile() integration with src/log-file.js.
+ * end-to-end bootLogFile() integration with src/lib/log-file.js.
  *
  * The cases rewrite and remove logging.json, so they do it in a copy of
  * the shipped folder that the loader reads in its place
@@ -17,7 +17,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 const { useShippedDefaultsCopy } = require("./helpers/shipped-defaults-copy");
-const { makeTestTempFolder } = require("../src/test-temp-folders");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const CFG_PATH = path.join(useShippedDefaultsCopy(), "logging.json");
 const TMP = makeTestTempFolder("boot-log");
@@ -32,7 +32,7 @@ const _origCfg = fs.readFileSync(CFG_PATH, "utf8");
 const _SHIPPED_LOG_PATH = JSON.parse(_origCfg).path;
 
 /*-
- *  Absolute path of the shipped log, resolved the way src/log-file.js
+ *  Absolute path of the shipped log, resolved the way src/lib/log-file.js
  *  resolves it (relative to the project root).
  */
 function _absDefaultLog() {
@@ -78,7 +78,7 @@ before(() => {
 
 after(() => {
   /*- Always tear down any tee that survived a failing test. */
-  const { disableLogFile } = require("../src/log-file");
+  const { disableLogFile } = require("../src/lib/log-file");
   disableLogFile();
   const abs = _absDefaultLog();
   const now = _readIfPresent(abs);
@@ -100,7 +100,7 @@ after(() => {
 });
 
 describe("_parseCliFlag", () => {
-  const { _parseCliFlag } = require("../src/boot-log-file");
+  const { _parseCliFlag } = require("../src/lib/boot-log-file");
 
   it("returns present=false when --log-file is absent", () => {
     const r = _parseCliFlag(["--verbose", "--help"]);
@@ -140,11 +140,11 @@ describe("_parseCliFlag", () => {
 });
 
 describe("_readLoggingConfig", () => {
-  const { _readLoggingConfig } = require("../src/boot-log-file");
+  const { _readLoggingConfig } = require("../src/lib/boot-log-file");
 
   beforeEach(() => {
     fs.writeFileSync(CFG_PATH, _origCfg);
-    require("../src/load-merged-defaults")._resetMemoForTests();
+    require("../src/lib/load-merged-defaults")._resetMemoForTests();
   });
 
   it("reads enabled + path from logging.json", () => {
@@ -179,15 +179,18 @@ describe("_readLoggingConfig", () => {
 });
 
 describe("bootLogFile end-to-end", () => {
-  const { bootLogFile } = require("../src/boot-log-file");
-  const { disableLogFile, getActiveLogFilePath } = require("../src/log-file");
+  const { bootLogFile } = require("../src/lib/boot-log-file");
+  const {
+    disableLogFile,
+    getActiveLogFilePath,
+  } = require("../src/lib/log-file");
 
   let _origArgv;
   beforeEach(() => {
     _origArgv = process.argv;
     disableLogFile();
     fs.writeFileSync(CFG_PATH, _origCfg);
-    require("../src/load-merged-defaults")._resetMemoForTests();
+    require("../src/lib/load-merged-defaults")._resetMemoForTests();
   });
 
   after(() => {
@@ -277,15 +280,15 @@ describe("bootLogFile end-to-end", () => {
 });
 
 describe("--delete-pre-existing-log-file", () => {
-  const { bootLogFile, DELETE_FLAG } = require("../src/boot-log-file");
-  const { disableLogFile } = require("../src/log-file");
+  const { bootLogFile, DELETE_FLAG } = require("../src/lib/boot-log-file");
+  const { disableLogFile } = require("../src/lib/log-file");
 
   let _origArgv;
   beforeEach(() => {
     _origArgv = process.argv;
     disableLogFile();
     fs.writeFileSync(CFG_PATH, _origCfg);
-    require("../src/load-merged-defaults")._resetMemoForTests();
+    require("../src/lib/load-merged-defaults")._resetMemoForTests();
   });
 
   after(() => {
@@ -355,7 +358,7 @@ describe("--delete-pre-existing-log-file", () => {
         CFG_PATH,
         JSON.stringify({ enabled: false, path: null }),
       );
-      require("../src/load-merged-defaults")._resetMemoForTests();
+      require("../src/lib/load-merged-defaults")._resetMemoForTests();
       process.argv = ["node", "server.js", DELETE_FLAG];
 
       assert.equal(bootLogFile(), null, "log-to-file stayed off");

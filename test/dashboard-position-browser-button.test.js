@@ -31,7 +31,7 @@ before(async () => {
   });
   await learnActiveChain();
   await learnUiSettings();
-  const events = await import("../public/dashboard-events.js");
+  const events = await import("../src/client/web/dashboard-events.js");
   document.body.innerHTML = indexHtmlDocument().body.innerHTML;
   events.bindAllEvents();
 });

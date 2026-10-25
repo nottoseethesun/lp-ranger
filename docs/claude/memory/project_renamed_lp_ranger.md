@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: bfeda952-67a5-48dd-8d26-636cedf739e4
+  modified: 2026-10-24T05:23:58.470Z
 ---
 
 As of 2026-07-27 the project is branded **LP Ranger** everywhere the old
@@ -21,7 +22,7 @@ JSDoc, CLI `--help`, CLAUDE.md title, PDF report author), package identifier
   - `9mm Pro` / `9mm v3` — the DEX (Uniswap v3 fork) the tool integrates with,
     including the package.json `description` ("...for 9mm v3 (Uniswap v3 fork)").
   - `9mm-pos-mgr` — the CSS class namespace (`9mm-pos-mgr-*`) and the filename
-    `public/9mm-pos-mgr.css`, intentionally left as-is.
+    `src/client/web/9mm-pos-mgr.css`, intentionally left as-is.
 - Display contexts → `LP Ranger`; identifiers/package → `lp-ranger`.
 - No code reads `package.json.name` (only `.version`), so the package rename is
   runtime-safe; keep package.json and package-lock.json name fields in sync

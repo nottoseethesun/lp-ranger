@@ -14,9 +14,9 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { makeTestTempFolder } = require("../../src/test-temp-folders");
+const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 const { runMigration, report } = require("../migration");
-const { isOldScanCache } = require("../migration/move-scan-caches");
+const { isOldScanCache } = require("../migration/from-0.9.9/move-scan-caches");
 
 /** Write `text` to `rel` in `root`, making its folders. */
 function put(root, rel, text = "{}") {

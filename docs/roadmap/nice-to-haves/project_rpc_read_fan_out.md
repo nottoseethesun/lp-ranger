@@ -23,7 +23,7 @@ without asking any one of them for more than it allows today.
 
 ## Detail
 
-The single queue is justified in `src/rpc-request-manager.js` like this:
+The single queue is justified in `src/lib/rpc-request-manager.js` like this:
 
 > Rate limits are published per IP, not per endpoint object. This
 > process may hold three providers … and every one of those shares the
@@ -46,7 +46,7 @@ to "any endpoint" is wrong.
 
 The request manager decides, because it is the only thing that sees
 every lane's depth. It cannot do so in its present shape: `acquire()` is
-called from `_patchRequestPacing` (`src/bot-provider.js`), which wraps a
+called from `_patchRequestPacing` (`src/lib/bot-provider.js`), which wraps a
 single provider's `send()` — below the point where a provider is chosen.
 So pacing and routing split:
 

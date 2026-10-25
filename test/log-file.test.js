@@ -1,6 +1,6 @@
 /**
  * @file test/log-file.test.js
- * @description Unit tests for src/log-file.js — verifies that
+ * @description Unit tests for src/lib/log-file.js — verifies that
  * enableLogFile() tees process.stdout/stderr writes to a file with
  * ANSI escapes stripped, and that disableLogFile() restores the
  * originals cleanly.  Each test wraps its enable/disable in
@@ -30,7 +30,7 @@ after(() => {
 });
 
 describe("_stripAnsi", () => {
-  const { _stripAnsi } = require("../src/log-file");
+  const { _stripAnsi } = require("../src/lib/log-file");
   it("removes simple color codes", () => {
     assert.equal(_stripAnsi("\x1b[31mred\x1b[0m"), "red");
   });
@@ -62,7 +62,7 @@ describe("enableLogFile + tee", () => {
       enableLogFile,
       disableLogFile,
       getActiveLogFilePath,
-    } = require("../src/log-file");
+    } = require("../src/lib/log-file");
     const file = path.join(TMP, "tee-stdout.log");
     try {
       fs.unlinkSync(file);
@@ -95,7 +95,7 @@ describe("enableLogFile + tee", () => {
   });
 
   it("appends stderr writes to the file (ANSI stripped)", () => {
-    const { enableLogFile, disableLogFile } = require("../src/log-file");
+    const { enableLogFile, disableLogFile } = require("../src/lib/log-file");
     const file = path.join(TMP, "tee-stderr.log");
     try {
       fs.unlinkSync(file);
@@ -113,7 +113,7 @@ describe("enableLogFile + tee", () => {
   });
 
   it("appends to existing file across multiple enable cycles", () => {
-    const { enableLogFile, disableLogFile } = require("../src/log-file");
+    const { enableLogFile, disableLogFile } = require("../src/lib/log-file");
     const file = path.join(TMP, "tee-append.log");
     try {
       fs.unlinkSync(file);
@@ -142,7 +142,7 @@ describe("enableLogFile + tee", () => {
   });
 
   it("disableLogFile restores the originals", () => {
-    const { enableLogFile, disableLogFile } = require("../src/log-file");
+    const { enableLogFile, disableLogFile } = require("../src/lib/log-file");
     const file = path.join(TMP, "tee-restore.log");
     const beforeStdout = process.stdout.write;
     const beforeStderr = process.stderr.write;
@@ -171,7 +171,7 @@ describe("enableLogFile + tee", () => {
   });
 
   it("idempotent for the same path", () => {
-    const { enableLogFile, disableLogFile } = require("../src/log-file");
+    const { enableLogFile, disableLogFile } = require("../src/lib/log-file");
     const file = path.join(TMP, "tee-idempotent.log");
     try {
       fs.unlinkSync(file);
@@ -199,7 +199,7 @@ describe("enableLogFile + tee", () => {
       enableLogFile,
       disableLogFile,
       getActiveLogFilePath,
-    } = require("../src/log-file");
+    } = require("../src/lib/log-file");
     const rel = path.join("tmp", "log-file-test", "rel.log");
     const abs = path.resolve(process.cwd(), rel);
     try {
@@ -217,14 +217,14 @@ describe("enableLogFile + tee", () => {
   });
 
   it("throws on missing path", () => {
-    const { enableLogFile } = require("../src/log-file");
+    const { enableLogFile } = require("../src/lib/log-file");
     assert.throws(() => enableLogFile(), { name: "TypeError" });
     assert.throws(() => enableLogFile(""), { name: "TypeError" });
     assert.throws(() => enableLogFile(null), { name: "TypeError" });
   });
 
   it("creates parent directories", () => {
-    const { enableLogFile, disableLogFile } = require("../src/log-file");
+    const { enableLogFile, disableLogFile } = require("../src/lib/log-file");
     const file = path.join(TMP, "nested", "subdir", "deep.log");
     enableLogFile(file);
     try {
@@ -240,7 +240,7 @@ describe("enableLogFile + tee", () => {
 
 describe("tee preserves passthrough", () => {
   it("the original write is still called (terminal still sees output)", () => {
-    const { enableLogFile, disableLogFile } = require("../src/log-file");
+    const { enableLogFile, disableLogFile } = require("../src/lib/log-file");
     const file = path.join(TMP, "tee-passthrough.log");
     /*- Stub out the underlying stdout write to a sink we can inspect,
      *  then enable tee.  After tee runs, both the file AND the sink

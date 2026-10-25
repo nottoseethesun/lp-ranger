@@ -52,11 +52,11 @@ function _installMocks() {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/bot-pnl-current-nft")];
+  delete require.cache[require.resolve("../src/lib/bot-pnl-current-nft")];
 }
 function _restoreMocks() {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/bot-pnl-current-nft")];
+  delete require.cache[require.resolve("../src/lib/bot-pnl-current-nft")];
 }
 
 describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
@@ -64,7 +64,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
   beforeEach(() => {
     _detectCalls = [];
     _installMocks();
-    ({ applyCurrentNftFigures } = require("../src/bot-pnl-current-nft"));
+    ({ applyCurrentNftFigures } = require("../src/lib/bot-pnl-current-nft"));
   });
   afterEach(_restoreMocks);
 
@@ -86,6 +86,150 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     assert.strictEqual(snap.currentCompoundedUsd, 8.39);
     assert.ok(snap.currentGasUsd > 0);
     assert.strictEqual(_detectCalls.length, 0, "no chain scan expected");
+    assert.strictEqual(snap.currentFeesLeftUsd, 0, "no compound left any");
+  });
+
+  it("publishes the fees this NFT's compounds left in the wallet, at this poll's prices", async () => {
+    /*-
+     *  Fees Compounded stays the coins put back, which the Current IL/G
+     *  takes off the position's side; the fees left wait in the wallet,
+     *  earned by this NFT. 2 of token0 at $2 and 3 of token1 at $1, from
+     *  this NFT's compounds only, at decimals 18 and 6.
+     */
+    const snap = {};
+    const deps = {
+      _botState: {
+        nftGasWeiByTokenId: { 12345: "1000000000000000" },
+        nftCompoundedAmountsByTokenId: { 12345: { amount0: 4, amount1: 0 } },
+        compoundHistory: [
+          {
+            tokenId: "12345",
+            amount0FeesLeft: "1500000000000000000",
+            amount1FeesLeft: "3000000",
+          },
+          {
+            tokenId: "12345",
+            amount0FeesLeft: "500000000000000000",
+            amount1FeesLeft: "0",
+          },
+          { tokenId: "999", amount0FeesLeft: "9", amount1FeesLeft: "9" },
+        ],
+      },
+      _lastPrice0: 2,
+      _lastPrice1: 1,
+    };
+    await applyCurrentNftFigures(
+      snap,
+      deps,
+      { tokenId: 12345 },
+      { decimals0: 18, decimals1: 6 },
+    );
+    assert.strictEqual(snap.currentFeesLeftUsd, 7);
+    assert.strictEqual(snap.currentCompoundedUsd, 8, "the coins put back");
+  });
+
+  it("publishes what Initial Deposit for This LP adds for liquidity another wallet put into the NFT", async () => {
+    /*-
+     *  The pool's deposit list holds the Lifetime scan's entry for it,
+     *  priced at its block; another NFT's entry and the deposits to the
+     *  wallet are not this NFT's additions.
+     */
+    const snap = {};
+    const deps = {
+      _botState: {
+        nftGasWeiByTokenId: { 12345: "1000000000000000" },
+        nftCompoundedAmountsByTokenId: { 12345: { amount0: 0, amount1: 0 } },
+        lifetimeHodlAmounts: {
+          deposits: [
+            { raw0: "9", raw1: "0", block: 5, kind: "fresh", usd: 900 },
+            {
+              raw0: "3",
+              raw1: "3",
+              block: 50,
+              kind: "external",
+              txHash: "0xe1",
+              tokenId: "12345",
+              usd: 25,
+              fallback: false,
+            },
+            {
+              raw0: "3",
+              raw1: "3",
+              block: 40,
+              kind: "external",
+              txHash: "0xe0",
+              tokenId: "999",
+              usd: 70,
+            },
+          ],
+        },
+      },
+      _lastPrice0: 2,
+      _lastPrice1: 1,
+    };
+    await applyCurrentNftFigures(
+      snap,
+      deps,
+      { tokenId: 12345 },
+      { decimals0: 0, decimals1: 0 },
+    );
+    assert.strictEqual(snap.currentDepositAddedUsd, 25);
+    assert.strictEqual(snap.currentDepositAddedFallback, false);
+  });
+
+  it("publishes what Initial Deposit for This LP adds for the wallet's coins its compounds took in, each at its compound's prices", async () => {
+    /*-
+     *  The first compound deposited 10 of token0 and took 6 of it as its
+     *  fees, so 4 came from the wallet, at the $3 recorded with it. The
+     *  second recorded no prices and none is found here, so its 2 coins
+     *  go in at today's $2, flagged. One that tells no fees apart, and
+     *  another NFT's, add nothing.
+     */
+    const snap = {};
+    const deps = {
+      _botState: {
+        nftGasWeiByTokenId: { 12345: "1000000000000000" },
+        nftCompoundedAmountsByTokenId: { 12345: { amount0: 0, amount1: 0 } },
+        compoundHistory: [
+          {
+            tokenId: "12345",
+            amount0Deposited: "10",
+            amount1Deposited: "0",
+            amount0Compounded: "6",
+            amount1Compounded: "0",
+            price0: 3,
+            price1: 1,
+          },
+          {
+            tokenId: "12345",
+            amount0Deposited: "2",
+            amount1Deposited: "0",
+            amount0Compounded: "0",
+            amount1Compounded: "0",
+          },
+          { tokenId: "12345", amount0Deposited: "50", amount1Deposited: "0" },
+          {
+            tokenId: "999",
+            amount0Deposited: "9",
+            amount1Deposited: "0",
+            amount0Compounded: "0",
+            amount1Compounded: "0",
+            price0: 3,
+            price1: 1,
+          },
+        ],
+      },
+      _lastPrice0: 2,
+      _lastPrice1: 1,
+    };
+    await applyCurrentNftFigures(
+      snap,
+      deps,
+      { tokenId: 12345 },
+      { decimals0: 0, decimals1: 0 },
+    );
+    assert.strictEqual(snap.currentDepositAddedUsd, 12 + 4);
+    assert.strictEqual(snap.currentDepositAddedFallback, true);
   });
 
   it("derives compounded from compoundHistory when comp cache missing", async () => {
@@ -134,6 +278,118 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
       "sums only this NFT's entries, scaled by each token's own decimals",
     );
     assert.strictEqual(_detectCalls.length, 0, "no scan when gas is cached");
+  });
+
+  /*-
+   *  The case the user reported: a deposit of 100 + 100 waited in the
+   *  wallet when a compound collected 10 + 10 of fees, and its swap's
+   *  deposit took all 110 + 110. The NFT's Fees Compounded is taken off
+   *  the position's side of the Current IL/G and the Guard, so counting
+   *  the deposit there reads as a $200 loss.
+   */
+  const sweptRecord = {
+    txHash: "0xAB",
+    tokenId: "12345",
+    trigger: "auto",
+    amount0Deposited: "110000000000000000000",
+    amount1Deposited: "110000000",
+    amount0Compounded: "10000000000000000000",
+    amount1Compounded: "10000000",
+  };
+
+  it("counts the fees a compound's record names, from compoundHistory", async () => {
+    const snap = {};
+    const deps = {
+      _botState: {
+        nftGasWeiByTokenId: { 12345: "1" },
+        compoundHistory: [sweptRecord],
+      },
+      _lastPrice0: 1,
+      _lastPrice1: 1,
+    };
+    const poolState = { decimals0: 18, decimals1: 6 };
+    await applyCurrentNftFigures(snap, deps, { tokenId: 12345 }, poolState);
+    assert.strictEqual(snap.currentCompoundedUsd, 20);
+  });
+
+  it("counts the fees a compound's record names, from the chain", async () => {
+    /*-
+     *  The chain shows the whole deposit. The record of the compound the
+     *  bot made, matched by transaction whatever the case of its hash,
+     *  names the fees; a compound it did not record counts its whole
+     *  deposit.
+     */
+    _detectImpl = async () => ({
+      compounds: [
+        {
+          txHash: "0xab",
+          amount0Deposited: "110000000000000000000",
+          amount1Deposited: "110000000",
+        },
+        {
+          txHash: "0xcd",
+          amount0Deposited: "1000000000000000000",
+          amount1Deposited: "0",
+        },
+      ],
+      totalCompoundedUsd: 0,
+      totalGasWei: "0",
+      totalNftGasWei: "1",
+    });
+    const updates = [];
+    const snap = {};
+    const deps = {
+      _botState: { compoundHistory: [sweptRecord] },
+      signer: { getAddress: async () => "0xWALLET" },
+      _lastPrice0: 1,
+      _lastPrice1: 1,
+      updateBotState: (patch) => updates.push(patch),
+    };
+    const position = { tokenId: 12345, token0: "0xA", token1: "0xB" };
+    const poolState = { decimals0: 18, decimals1: 6 };
+    await applyCurrentNftFigures(snap, deps, position, poolState);
+    assert.deepStrictEqual(updates[0].nftCompoundedAmountsByTokenId, {
+      12345: { amount0: 11, amount1: 10 },
+    });
+    assert.strictEqual(snap.currentCompoundedUsd, 21);
+  });
+
+  it("counts the fees a rebuild worked out from the chain, as it counts the bot's own record", async () => {
+    /*-
+     *  An entry a rebuild of the compound list wrote, its trigger
+     *  `unknown`, names the fees it read from the chain
+     *  (src/lib/compound-fees-on-chain.js). The scan that fills this NFT's
+     *  coins after a compound must count them too, or every compound
+     *  would put the whole deposit back on the panel.
+     */
+    _detectImpl = async () => ({
+      compounds: [
+        {
+          txHash: "0xab",
+          amount0Deposited: "110000000000000000000",
+          amount1Deposited: "110000000",
+        },
+      ],
+      totalCompoundedUsd: 0,
+      totalGasWei: "0",
+      totalNftGasWei: "1",
+    });
+    const updates = [];
+    const deps = {
+      _botState: { compoundHistory: [{ ...sweptRecord, trigger: "unknown" }] },
+      signer: { getAddress: async () => "0xWALLET" },
+      _lastPrice0: 1,
+      _lastPrice1: 1,
+      updateBotState: (patch) => updates.push(patch),
+    };
+    const position = { tokenId: 12345, token0: "0xA", token1: "0xB" };
+    await applyCurrentNftFigures({}, deps, position, {
+      decimals0: 18,
+      decimals1: 6,
+    });
+    assert.deepStrictEqual(updates[0].nftCompoundedAmountsByTokenId, {
+      12345: { amount0: 10, amount1: 10 },
+    });
   });
 
   it("triggers a chain scan and persists both caches on full miss", async () => {
@@ -243,7 +499,7 @@ describe("applyCurrentNftFigures — where the NFT's history read starts", () =>
   beforeEach(() => {
     _detectCalls = [];
     _installMocks();
-    ({ applyCurrentNftFigures } = require("../src/bot-pnl-current-nft"));
+    ({ applyCurrentNftFigures } = require("../src/lib/bot-pnl-current-nft"));
   });
   afterEach(_restoreMocks);
 
