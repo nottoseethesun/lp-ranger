@@ -299,6 +299,28 @@ fs.writeFileSync(
  *  can render rather than a parse error. */
 ensureOrWrite(path.join(RAW_DIR, "knip.json"), '{"files":[],"issues":[]}');
 
+// ── Dead code (madge) — a module under src/ no part of the app loads ─────
+/*-
+ *  knip counts the tests as entry points, so a module only its own tests
+ *  load passes it. This walk starts from the app's entry points alone.
+ */
+const unusedSrcModulesRun = run("node", [
+  path.join(ROOT, "scripts", "check-unused-src-modules.js"),
+  "--json",
+]);
+fs.writeFileSync(
+  path.join(RAW_DIR, "unused-src-modules.json"),
+  unusedSrcModulesRun.stdout + unusedSrcModulesRun.stderr,
+);
+/*-
+ *  A crashed checker leaves an empty file; give the aggregator a shape
+ *  it can render rather than a parse error.
+ */
+ensureOrWrite(
+  path.join(RAW_DIR, "unused-src-modules.json"),
+  '{"ok":false,"entryPoints":0,"modules":0,"unused":[],"error":"checker did not run"}',
+);
+
 // ── Docs (OpenAPI) — spec-vs-code sync ────────────────────────────────────
 // Its own row rather than a line buried in the test rollup: "is the API
 // reference still true?" is a question a reviewer should be able to
@@ -543,6 +565,7 @@ function reportRun({ configValuesExit, testsExit }) {
     actionlint: actionlintRun.status,
     lintSvg: lintSvgRun.status,
     knip: knipRun.status,
+    unusedSrcModules: unusedSrcModulesRun.status,
     openapiSync: openapiSyncRun.status,
     auditDeps: npmAuditRun.status,
     securityLint: securityLintRun.status,

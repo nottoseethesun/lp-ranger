@@ -101,7 +101,7 @@ resetting local state.
 | `format` | — | Prettier write pass over the tracked file set. | `npm run format` |
 | `knip` | — | Dead-code report, for information: also lists unused exports, which are not gated (the dashboard's modules are reached through HTML `<script>` tags knip cannot trace, and `src/lib/` exports internals for tests). | `npm run knip` |
 | `knip:files` | — | The gating dead-code check: fails on any file nothing reaches. `lint` and `check` run it. | `npm run knip:files` |
-| `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint. | `npm run lint` |
+| `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint, knip's unused files, and the walk that fails on a module under `src/` no part of the app loads (`scripts/check-unused-src-modules.js`). | `npm run lint` |
 | `lint:fix` | — | The same set with autofix where each tool supports it. | `npm run lint:fix` |
 | `nuke` | — | Delete `node_modules` and `package-lock.json` for a clean reinstall. Run `npm install` afterwards. | `npm run nuke` |
 | `reset-wallet` | — | Delete `wallet.json` and scrub `WALLET_PASSWORD` from `.env`. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run reset-wallet` |

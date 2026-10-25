@@ -2657,13 +2657,13 @@ wallet already held, the alert names their value apart, and the
 $usd amount.
 
 The figure matters beyond the alert text. `recordCompound` in
-`src/lib/bot-cycle-compound.js` adds the **fees** among the same compound's
-coins to the position's `compoundedAmount0` / `compoundedAmount1`, and
-those coins
-priced at the current poll are half of the dashboard's lifetime
-fee-earnings figure (`currentFeesUsd + snap.totalCompoundedUsd`, see
-`src/lib/ui-state.js`). That total is only ever accumulated incrementally
-once disk holds a non-zero value — the on-chain rescan in
+`src/lib/bot-cycle-compound.js` adds every **fee** the same compound
+collected to the position's `compoundedAmount0` / `compoundedAmount1`,
+and those coins priced at the current poll are half of the fee earnings
+the Lifetime panel's Profit adds (Current Fees plus Fees Compounded,
+`src/client/web/dashboard-data-kpi.js`). That total is only ever
+accumulated incrementally once disk holds a non-zero value — the
+on-chain rescan in
 `src/lib/bot-recorder-lifetime.js` is deliberately gated off by
 `_resolveDiskState`. A bad compound figure therefore persists in
 lifetime P&L until it is corrected by hand.
@@ -4621,6 +4621,24 @@ reached through HTML that knip cannot trace, and `src/lib/` and `util/`
 export their internals on purpose so tests and other tools can compose
 them. Run bare `npm run knip` to see those, as information.
 
+knip counts every test as an entry point, as it must, or it would call
+the test helpers, and the packages only the tests use, unused. So a
+module that only its own tests load passes it, though no part of the
+app can ever run it. A second gate,
+[`scripts/check-unused-src-modules.js`](../scripts/check-unused-src-modules.js),
+runs inside `npm run lint` and `npm run check` (its row:
+`unused-src-modules`). It walks the dependencies with madge from the
+app's entry points alone: the files `knip.json`'s `entry` list names,
+`package.json`'s `main`, and each file an npm script runs with `node`,
+every file under `test/` and `util/test/` left out. It fails on each
+`.js` file under `src/` that git tracks, or would track, and the walk
+does not reach. A file the app starts by its path rather than loading
+it, as the server starts `src/telegram-send.js`, goes in `knip.json`'s
+`entry` list, where both gates find it. Its first run, on 2026-10-25,
+found three such modules, `src/lib/position-store.js`, `ui-state.js`
+and `wallet.js`, loaded only by their own tests; they were removed with
+those tests.
+
 ---
 
 ## SVG Assets
@@ -5218,5 +5236,7 @@ shipped to users at runtime:
 - `@xmldom/xmldom` — XML parsing for `scripts/lint-svg.js`.
 - `github-actionlint` — linter for `.github/workflows/*.yml`.
 - `jsdom` + `global-jsdom` — a DOM for the dashboard modules' tests.
-- `madge` — dependency-cycle finder.
+- `madge` — dependency-cycle finder, and the walk that finds a module
+  under `src/` no part of the app loads
+  (`scripts/check-unused-src-modules.js`).
 - `yaml` — parses `.github/pages-site.yml` for the Pages builder.

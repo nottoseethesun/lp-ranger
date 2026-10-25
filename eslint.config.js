@@ -141,7 +141,6 @@ module.exports = [
       sourceType: "commonjs",
       globals: {
         ...globals.node,
-        ...globals.browser, // ui-state.js uses document with typeof guards
         module: "writable",
         require: "readonly",
         process: "readonly",

@@ -29,7 +29,7 @@
     "check": "node scripts/check.js",
     "view-report": "xdg-open test/report-artifacts/report.pdf",
     "prelint": "npm run clean:reports && node scripts/build-info.js && node scripts/build-manual-content.js && node scripts/build-disclosure-content.js && node scripts/build-ui-tokens.js",
-    "lint": "eslint src/*.js src/lib/ test/ scripts/ util/ src/client/web/dashboard-*.js eslint-rules/ stylelint-rules/ --max-warnings 0 && stylelint src/client/web/*.css && html-validate src/client/web/*.html && node scripts/lint-svg.js && node scripts/check-openapi-sync.js && node scripts/markdownlint.js && npm run format:check && prettier --check \"**/*.json\" && prettier --check \"**/*.{yml,yaml}\" && github-actionlint .github/workflows/*.yml && npm run knip:files",
+    "lint": "eslint src/*.js src/lib/ test/ scripts/ util/ src/client/web/dashboard-*.js eslint-rules/ stylelint-rules/ --max-warnings 0 && stylelint src/client/web/*.css && html-validate src/client/web/*.html && node scripts/lint-svg.js && node scripts/check-openapi-sync.js && node scripts/markdownlint.js && npm run format:check && prettier --check \"**/*.json\" && prettier --check \"**/*.{yml,yaml}\" && github-actionlint .github/workflows/*.yml && npm run knip:files && node scripts/check-unused-src-modules.js",
     "prelint:fix": "npm run clean:reports",
     "lint:fix": "eslint src/*.js src/lib/ test/ scripts/ util/ src/client/web/dashboard-*.js eslint-rules/ --fix && stylelint src/client/web/*.css --fix && html-validate src/client/web/*.html && node scripts/markdownlint.js --fix && prettier --write \"**/*.json\" && prettier --write \"**/*.{yml,yaml}\" && github-actionlint .github/workflows/*.yml",
     "preaudit:deps": "npm run clean:reports",

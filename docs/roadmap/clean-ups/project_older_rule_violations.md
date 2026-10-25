@@ -71,8 +71,9 @@ finds:
 - 511 checks on an element, such as `if (el)` and
   `if (!frag) return null`, all but three on what `g()`,
   `getElementById`, `querySelector`, `closest` or `cloneTpl` found. Of
-  these, 501 are in 50 dashboard files, 8 in `src/lib/ui-state.js` and 2 in
-  `scripts/lint-svg.js`.
+  these, 501 are in 50 dashboard files, 8 were in `src/lib/ui-state.js`
+  and 2 are in `scripts/lint-svg.js`. That module was removed on
+  2026-10-25, since no part of the app loaded it.
 - 57 on the active position, `posStore.getActive()`, in the dashboard.
 - Dozens on another object: a `Map`'s entry, a `find` result, a
   regular expression's match, a caught error. Some values checked this

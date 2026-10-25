@@ -31,10 +31,11 @@
  * `usdValue` checked here is the whole deposit's.
  *
  * Why the figure matters beyond the alert text: `recordCompound` in
- * `src/lib/bot-cycle-compound.js` adds the fees among the same coins to the
- * position's `compoundedAmount0` / `compoundedAmount1`, which priced at
- * the current poll are half of the dashboard's lifetime fee-earnings
- * figure (`currentFeesUsd + totalCompoundedUsd`, see `src/lib/ui-state.js`).
+ * `src/lib/bot-cycle-compound.js` adds every fee the same compound collected
+ * to the position's `compoundedAmount0` / `compoundedAmount1`, which priced
+ * at the current poll are half of the fee earnings the Lifetime panel's
+ * Profit adds (Current Fees plus Fees Compounded,
+ * `src/client/web/dashboard-data-kpi.js`).
  * That total is only ever accumulated
  * incrementally once disk holds a non-zero value — the on-chain
  * rescan in `src/lib/bot-recorder-lifetime.js` is deliberately gated off

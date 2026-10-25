@@ -35,7 +35,10 @@
 "use strict";
 
 const { log } = require("./log");
-/** Maximum NFT positions to scan per wallet (matches position-store MAX). */
+/**
+ * Maximum NFT positions to scan per wallet: the dashboard's position
+ * store holds as many (`MAX_POS`, src/client/web/dashboard-positions-store.js).
+ */
 const MAX_NFT_SCAN = 300;
 
 /**
