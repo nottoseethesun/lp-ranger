@@ -40,7 +40,7 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [flag operational side effects](feedback_flag_operational_side_effects.md) — Flag restarts; never say hard-reload
 - [hardening minimal scope](feedback_hardening_minimal_scope.md) — Hardening = no refactor beyond the fix
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Such lists need a "not bugs" note
-- [filing a nice-to-have](feedback_filing_a_nice_to_have.md) — File it: page, README row, pointer; don't investigate as if building it
+- [filing a nice-to-have](feedback_filing_a_nice_to_have.md) — File it: page, README row, pointer; operator terms, no investigating
 - [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Not a finding
 - [dead code removed](feedback_dead_code_removed.md) — Can never fire → delete it now; prove it first
 - [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line; record each at once
