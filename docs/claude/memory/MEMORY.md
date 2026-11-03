@@ -1,69 +1,71 @@
 # Memory Index
 
-Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open only what you need. This file holds the rules for HOW to work (`feedback_*`), and is loaded every session.
+Durable knowledge **not derivable from the code**: the rules for HOW to work (`feedback_*`), loaded every session. Open only what you need.
 
-**State and open items live in [PROJECT-STATE.md](PROJECT-STATE.md)**, which is not auto-loaded. Open it before any status report, audit, release or burn-in write-up, and before proposing a change to an area it covers. New `project_*` and `reference_*` pointers go there; new `feedback_*` pointers go here.
+**State and open items: [PROJECT-STATE.md](PROJECT-STATE.md)**, not auto-loaded. Open it before a status report, audit, release or burn-in write-up, or a change to an area it covers. New `project_*`/`reference_*` pointers go there; `feedback_*` here.
 
-`CLAUDE.md` covers architecture; `private/` is machine-local, `archive/` is resolved history. New here? Read [renamed lp ranger](project_renamed_lp_ranger.md) first.
+`CLAUDE.md` covers architecture; `private/` is machine-local, `archive/` resolved history. New here? Read [renamed lp ranger](project_renamed_lp_ranger.md) first.
 
 ## Workflow, git, CI & testing
 - [always build](feedback_always_build.md) — Edited src/client/web/? Run `npm run build`
 - [branching](feedback_branching.md) — Never push to main: branch + PR, ONE branch at a time
-- [check before push](feedback_check_before_push.md) — Full local lint+test+coverage before every push; not again for code that just passed
-- [check both Node versions](feedback_check_both_node_versions.md) — `npm run check` runs one Node; CI runs 22 and 24. Run the gate under 22 too (`PATH=` Node 22 first), never the raw suite
-- [ci protocol](feedback_ci_protocol.md) — Never skip the local merge-to-main check; "full c.i. to main" means all eight steps, the PR merge included
+- [check before push](feedback_check_before_push.md) — Full local check before every push; not again for code that just passed
+- [check both Node versions](feedback_check_both_node_versions.md) — Run the gate under Node 22 too; CI runs 22 and 24
+- [ci protocol](feedback_ci_protocol.md) — "Full c.i." = all eight steps, the local merge check and the PR merge included
 - [full repo grep](feedback_full_repo_grep.md) — Renames and pattern audits grep the WHOLE repo
 - [git workflow](feedback_git_workflow.md) — No push/merge/rebase/delete-branch/release without OK
 - [never revert cache-bust stamps](feedback_never_revert_cache_bust_stamps.md) — The `?v=` stamp IS the invalidation; ship it
 - [never stash to compare](feedback_never_stash_to_compare.md) — Never `git stash`; read another ref with `git show` or `git diff`
-- [no separate checkout](feedback_no_separate_checkout.md) — Work in the user's checkout; a git worktree or second copy only when the user asks
+- [no separate checkout](feedback_no_separate_checkout.md) — Never change the workflow on my own; no worktree or second copy unless asked
 - [never pattern-kill](feedback_never_pattern_kill.md) — pkill -f kills the caller; kill by port
 - [no flaky push](feedback_no_flaky_push.md) — Fix flaky tests before CI sees them
 - [no npx](feedback_no_npx.md) — Never npx; check package.json first
 - [Edit tool, not python](feedback_edit_tool_not_python.md) — Patch with Edit/Write, never python3 or sed
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
 - [one lint target list](feedback_one_lint_target_list.md) — File lists live only in scripts/lint-targets.js
-- [Prettier only JS, JSON, YAML](feedback_prettier_only_js_json_yaml.md) — Never `prettier --write` Markdown or HTML; it rewrites the whole file
-- [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile + node_modules, `npm i` first
-- [reset --keep, not --hard](feedback_reset_keep_not_hard.md) — Protocol step 4's `--hard` destroys uncommitted work; use `--keep` on a dirty tree
-- [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap anything loading `src/lib/` in wipe/restore-settings
-- [test suite checks only what ships](feedback_test_suite_checks_only_what_ships.md) — Never an operator's `.env` or overrides; local and CI must agree; the diagnostic tool and startup check those
+- [Prettier only JS, JSON, YAML](feedback_prettier_only_js_json_yaml.md) — Never `prettier --write` Markdown or HTML
+- [regenerate lockfile](feedback_regenerate_lockfile.md) — Advisories: stop server, delete lockfile + node_modules, `npm i`
+- [reset --keep, not --hard](feedback_reset_keep_not_hard.md) — Step 4 on a dirty tree: `--keep`, never `--hard`
+- [test commands](feedback_test_commands.md) — Never raw `node --test`; wrap src/lib/ loads in wipe/restore-settings
+- [test suite checks only what ships](feedback_test_suite_checks_only_what_ships.md) — Never an operator's `.env` or overrides; local and CI agree
 - [use linter to locate issues](feedback_use_linter_to_locate_issues.md) — Run the linter to find where a rule fires; don't guess
-- [tag format, no v](project_tag_format_no_v.md) — Strict semver; latest tag needs `--sort=-v:refname` plus `grep -v '^v'`
+- [tag format, no v](project_tag_format_no_v.md) — Strict semver tags, no `v`
 
 ## How to work with the user
 - [bug only if current stack breaks](feedback_bug_only_if_current_stack_breaks.md) — Not a bug if only a hypothetical stack fails
 - [burn-in probe](feedback_burn_in_probe.md) — Ask "anything felt off, even small?"
 - [chat, don't AskUserQuestion](feedback_chat_dont_askuserquestion.md) — Open-ended discussion wants plain chat
 - [don't modify tested code before commit](feedback_dont_modify_tested_code_before_commit.md) — User tested it → commit exactly that
-- [fix only what was asked](feedback_fix_only_what_was_asked.md) — "Fix X" changes only X; no adjacent sweeps; a change X needs to work in the reported case is part of X, listed as a choice
+- [fix only what was asked](feedback_fix_only_what_was_asked.md) — "Fix X" changes only X
 - [flag operational side effects](feedback_flag_operational_side_effects.md) — Flag restarts; never say hard-reload
 - [hardening minimal scope](feedback_hardening_minimal_scope.md) — Hardening = no refactor beyond the fix
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Such lists need a "not bugs" note
-- [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Delete it; "inert" means delete; an audit report shows only bugs and significant optimizations; minor issues wait for a later release (neither fixed nor reported)
-- [dead code removed](feedback_dead_code_removed.md) — Can never fire → delete it now, pre-existing or not; prove it first
-- [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line; record each one durably at once
+- [filing a nice-to-have](feedback_filing_a_nice_to_have.md) — File it: page, README row, pointer; operator terms, no investigating
+- [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Not a finding
+- [dead code removed](feedback_dead_code_removed.md) — Can never fire → delete it now; prove it first
+- [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line; record each at once
 - [no internal constants in design talk](feedback_no_internal_constants_in_design_talk.md) — Operator-facing behavior, not implementation constants
 - [operator sees UI, not logs](feedback_operator_sees_ui_not_logs.md) — Answer in badge/dialog terms; the log is your instrument
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — Don't ask which
 - [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Only what was asked; yes/no means yes/no
-- [report that resolved](feedback_report_that_resolved.md) — "It finally went" closes the report: acknowledge it, don't investigate; read the whole message first
-- [branch data never meets main](feedback_branch_data_never_meets_main.md) — Server stopped through all of CI, restarted after the merge; never check main against what a branch writes
+- [report that resolved](feedback_report_that_resolved.md) — "It finally went" closes it: acknowledge, don't investigate
+- [server is a layer on the bot](feedback_server_is_a_layer_on_the_bot.md) — Separation of concerns: the bot behind a small interface; a result at odds with the design is the finding
+- [branch data never meets main](feedback_branch_data_never_meets_main.md) — Server down through all of CI; never test main on branch data
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
-- [general to specific](feedback_general_to_specific.md) — Open by naming the thing in operator terms; heading + problem statement first; name the operator's action in a full sentence, never shorthand like "a refused save"
-- [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens and what a reader would see; function names come last, if at all
-- [prose style](feedback_prose_style.md) — Short sentences, no slop words, spell out small numbers, lowercase tech initials, no gwei; an editing pass removes bulk (point buried in detail) and gaps (steps replaced by vague words)
-- [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Meet a word limit by dropping points, never steps or context; "waiting" says for what and until when; think out what the feature promises before offering options
-- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; no ambiguous pronouns; a question names what its "both" means, and never asks what the spec already decides; no coined metaphors ("the server's loaded copy"); use the user's name for a thing
-- [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes — but "fixes bug" already is one
+- [general to specific](feedback_general_to_specific.md) — Name the thing in operator terms first
+- [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens; function names last
+- [prose style](feedback_prose_style.md) — Short sentences, no slop words, lowercase tech initials
+- [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Cut points, never steps
+- [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; the user's names; no coined metaphors
+- [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes
 - [revert means code](feedback_revert_means_code.md) — "Revert" = repo edits only, never the plan
-- [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups noticed in review (suspended for audits since 2026-10-19)
+- [take up minor cleanups](feedback_take_up_minor_cleanups.md) — Take up small cleanups seen in review, not during audits
 - [try before commit](feedback_try_before_commit.md) — Browser-observable changes wait for sign-off
 - [user launches app](feedback_user_launches_app.md) — The user launches it during manual testing
-- [never test against Production](feedback_never_test_against_production.md) — Nothing that can transact on mainnet; live tests on the testnet only
-- [wait for sign-off](feedback_wait_for_signoff.md) — Offered options mean WAIT; a message mixing approvals with requests to explain is one gate, explanations first
+- [never test against Production](feedback_never_test_against_production.md) — Live tests on the testnet only; nothing that can transact on mainnet
+- [wait for sign-off](feedback_wait_for_signoff.md) — Offered options mean WAIT; explanations before the work
 - [instrument before inferring](feedback_instrument_before_inferring.md) — Two wrong models = add logging, stop guessing
 - [grep before writing](feedback_grep_before_writing.md) — Grep existing usage before coding to a shape or API
 - [tests cover full contract before manual](feedback_tests_cover_full_contract_before_manual.md) — Cover the user-visible contract first
@@ -71,42 +73,42 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [tests with implementation](feedback_tests_with_implementation.md) — Write tests as you implement
 - [use the path being tested](feedback_use_the_path_being_tested.md) — Validate through the exact entry point
 - [prove the revert applied](feedback_prove_the_revert_applied.md) — A silently-failed revert reports green
-- [verify runtime before rediagnosing](feedback_verify_runtime_before_rediagnosing.md) — "Still broken" but green? Check what's actually running
-- [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check; a partial sample proves nothing; an audit plan presents verified items only
-- [trace the claim, not just the code](feedback_trace_the_claim_not_just_the_code.md) — Follow a value to the screen and a condition to every writer before putting the consequence in writing
-- [audit before declaring done](feedback_audit_before_declaring_done.md) — Re-read the rules and audit state + sequence before saying done; a green check is not sufficient; the audit runs before the gate (every reader of what the change writes), and the report lists what it checked
+- [verify runtime before rediagnosing](feedback_verify_runtime_before_rediagnosing.md) — "Still broken" but green? Check what's running
+- [verify before claiming](feedback_verify_before_claiming.md) — Run the falsifying check; a partial sample proves nothing
+- [trace the claim, not just the code](feedback_trace_the_claim_not_just_the_code.md) — Follow a value to the screen, a condition to every writer
+- [audit before declaring done](feedback_audit_before_declaring_done.md) — Audit every reader of a change before the gate; list what was checked
 - [verify symbols a comment names](feedback_verify_symbols_a_comment_names.md) — Grep every symbol a comment names
-- [check state before explaining design](feedback_check_state_before_explaining_design.md) — "Why does it do X?" → check PROJECT-STATE for a known-duplication entry before calling X deliberate
-- [check history before changing a design](feedback_check_history_before_changing_a_design.md) — A test pins it as a fix? Read its commit; a user-specified design waits for the user's word
+- [check state before explaining design](feedback_check_state_before_explaining_design.md) — "Why X?" → check PROJECT-STATE before calling X deliberate
+- [check history before changing a design](feedback_check_history_before_changing_a_design.md) — Read the commit a test pins; a user's design waits for their word
 
 ## Engineering, code, UI & docs rules
-- **[NEVER PUT CACHE DATA IN A CONFIGURATION FILE](feedback_never_cache_in_config.md) — ABSOLUTE. `app-config/` holds only what the operator chooses. Caches → `app-data/scan-cache/` (`scanCachePath`); the bot's per-position records → `app-data/position-records.json`; `tmp/` → nothing worth keeping. test/data-homes.test.js enforces it.**
-- [ask what withholding costs](feedback_ask_what_withholding_costs.md) — A withheld key in a wholesale-replaced container is a deletion, not an abstention
+- **[NEVER PUT CACHE DATA IN A CONFIGURATION FILE](feedback_never_cache_in_config.md) — ABSOLUTE: `app-config/` holds only operator choices; caches and records go in `app-data/`.**
+- [ask what withholding costs](feedback_ask_what_withholding_costs.md) — A withheld key in a wholesale-replaced container is a deletion
 - [audit program state](feedback_audit_program_state.md) — Audit for needless state; derive from what exists
 - [basic fix first](feedback_basic_fix_first.md) — Look for a one-line or reordering fix first
 - [defense in depth must be slower](feedback_defense_in_depth_must_be_slower.md) — A backup must be strictly slower than the primary
 - [dotenv/api-keys not layered](feedback_dotenv_apikeys_not_for_layered_pattern.md) — `.env` stays outside the layered-defaults pattern
 - [EIP-55 checksum URL segments](feedback_eip55_checksum_url_segments.md) — Addresses checksummed, URL segments included
 - [engineering invariants](feedback_engineering_invariants.md) — Never break single-source-of-truth or singletons for expedience
-- [signal substitution](feedback_signal_substitution.md) — Test the thing asked about, not a cheaper proxy; a test of a configured value moves it off its default
+- [signal substitution](feedback_signal_substitution.md) — Test the thing asked about, not a cheaper proxy
 - [event origin vs viewed tab](feedback_event_origin_vs_viewed_tab.md) — Label from the event's origin, not the viewed tab
 - [explicit null/undefined checks](feedback_explicit_null_undefined_checks.md) — Write the checks; never lean on coercion
 - [finish logic](feedback_finish_logic.md) — Trace every path to completion before calling it done
 - [keep browser logs](feedback_keep_browser_logs.md) — Dashboard console.log is permanent
 - [KISS](feedback_kiss.md) — One clean heuristic beats layered complexity
-- [numbers stay numbers](feedback_numbers_stay_numbers.md) — Hold numbers as numbers; convert to text only where they leave the process (json at the send)
+- [numbers stay numbers](feedback_numbers_stay_numbers.md) — Hold numbers as numbers; convert only where they leave the process
 - [logging](feedback_logging.md) — Token symbols, NFT id + emoji, full context on every move
 - [minimize caching](feedback_minimize_caching.md) — No new caching layers; reuse existing resolvers
 - [generic chain cache keys](feedback_generic_chain_cache_keys.md) — Key chain caches generically (e.g. by pool) so all positions share
-- [cache keys lead with the chain](feedback_cache_keys_lead_with_the_chain.md) — Every cache key starts with the chain (`cacheKey`); the chain can't change while a server runs
-- [never hard-code a chain](feedback_never_hard_code_a_chain.md) — Nothing in code true of one blockchain; chain facts live in chains.json, no fallbacks
-- [module self-announcement](feedback_module_self_announcement.md) — A module announces itself from its own start, never its load; B doesn't reach into A
+- [cache keys lead with the chain](feedback_cache_keys_lead_with_the_chain.md) — Every cache key starts with the chain (`cacheKey`)
+- [never hard-code a chain](feedback_never_hard_code_a_chain.md) — Chain facts live in chains.json, no fallbacks
+- [module self-announcement](feedback_module_self_announcement.md) — A module announces itself from its own start, never its load
 - [Moralis first](feedback_moralis_first.md) — Moralis is primary for historical prices when a key exists
-- [multiline comment style](feedback_multiline_comment_style.md) — `/*-` alone, text, `*/` alone; never stacked `//`; nearby code is no guide
-- [JSDoc style](feedback_jsdoc_style.md) — What it does, how it works, how it integrates: one flowing argument, terms defined before use, never a bug post-mortem
+- [multiline comment style](feedback_multiline_comment_style.md) — `/*-` alone, text, `*/` alone; never stacked `//`
+- [JSDoc style](feedback_jsdoc_style.md) — One flowing argument: what, how, how it integrates
 - [never compact code](feedback_never_compact_code.md) — Extract a file; don't compress to fit max-lines
 - [no delay patches](feedback_no_delay_patches.md) — Never setTimeout where flow control belongs
-- [no duplication](feedback_no_duplication.md) — Fetch once, pass it down; extract the pure part both tiers import
+- [no duplication](feedback_no_duplication.md) — Fetch once, pass it down; share the pure part
 - [no computation in params](feedback_no_computation_in_params.md) — Hoist any await/lookup out of an argument
 - [no extra state](feedback_no_extra_state.md) — No new tracker/Map/flag when existing state can serve
 - [no genesis chain scans](feedback_no_genesis_chain_scans.md) — Every getLogs scan needs a tight lower bound
@@ -116,10 +118,10 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [never clear to force a recompute](feedback_never_clear_to_force_a_recompute.md) — Ask for the rebuild with a flag; overwrite, never delete first
 - [don't persist a correction](feedback_dont_persist_a_correction.md) — Ask whether the wrong value should be written at all
 - [no lazy loading](feedback_no_lazy_loading.md) — No `require()` inside functions
-- [only the entry point runs at load](feedback_only_the_entry_point_runs_at_load.md) — A module's top level only declares; files, env, argv, logs, timers and calls wait for the entry point's calls; breaches fixed one at a time, when asked
+- [only the entry point runs at load](feedback_only_the_entry_point_runs_at_load.md) — A module's top level only declares
 - [no re-exports](feedback_no_reexports.md) — Import from the owning module
-- [unused exports are fine](feedback_unused_exports_are_fine.md) — An export nothing imports yet is composability, not a gap; never a finding, never deleted for knip
-- [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in the defaults file; no fallback values in JS or HTML; sweep any found into config JSON; ranges live in `setting-bounds.json`
+- [unused exports are fine](feedback_unused_exports_are_fine.md) — An unimported export is composability; never a finding
+- [one literal per shipped default](feedback_one_literal_per_shipped_default.md) — One literal per config value, in its defaults file
 - [price API, no pool](feedback_price_api_no_pool.md) — Let the price service pick the pool
 - [slippage lowest floor](feedback_slippage_lowest_floor.md) — `_bestAttemptError` taking the LOWEST impact is intentional
 - [think ahead](feedback_think_ahead.md) — Consider fetch → cache → invalidate → incremental first
@@ -127,25 +129,25 @@ Durable LP Ranger knowledge **not derivable from the code** — scan hooks, open
 - [trace semantic coherence](feedback_trace_semantic_coherence.md) — Trace a display convention end-to-end
 - [util subdir per utility](feedback_util_subdir_per_utility.md) — Two or more files becomes a directory with index.js
 - [canonical info icon](feedback_canonical_info_icon.md) — Circle-i is `.9mm-pos-mgr-il-info-btn` + a literal "i"
-- [CSS rules](feedback_css_rules.md) — No inline styles, no zoom, no !important; name colors; layout values ship in the build (bundled JSON or CSS), never from the server, or the page flickers
+- [CSS rules](feedback_css_rules.md) — No inline styles, zoom or !important; layout values ship in the build
 - [help cursor on title](feedback_help_cursor_on_title.md) — An inert element with a title shows the help cursor
 - [inline-edit dialog button set](feedback_inline_edit_dialog_button_set.md) — Save / Return to Automatic X / Cancel, distinct styling
 - [no classList for state](feedback_no_classlist_for_state.md) — Never read the DOM to determine program state
 - [no data in presentation](feedback_no_data_in_presentation.md) — No defaults, config or business data in HTML/CSS
 - [validate in the core, not the UI](feedback_validate_in_the_core_not_the_ui.md) — Bounds go on the server; one core, many frontends
-- [JSON Schema for settings](feedback_json_schema_for_settings.md) — Settings JSON validated by Ajv, every object refusing unnamed keys, bot-config.json too, from the Save check's schemas; ranges from `setting-bounds.json`; `.env` against an allowlist; a new key in an app-config file is a question for the user; LP Ranger's schemas are its own, never modeled on supe-ons
-- [where data lives](feedback_where_data_lives.md) — bot-config.json: settings only; records in `app-data/position-records.json`; scan caches in `app-data/scan-cache/`; `tmp/` disposable only
-- [docs don't restate checks](feedback_docs_dont_restate_checks.md) — A setting's entry gives its meaning and range once; no lists of refused values; "stops startup" said once
-- [docs always updated](feedback_docs_always_updated.md) — A doc a change makes stale is updated in the same change, without asking
-- [one home per fact in a doc set](feedback_doc_set_one_home_per_fact.md) — Quick Start in the user manual; an engineering doc's Commands section only points; user-facing rules live in the manual, the others refer
-- [util tool docs in docs/util](feedback_util_tool_docs_in_docs_util.md) — A util/ tool's docs: `docs/util/<folder>/` with user-manual.md, commands.md, engineering.md; move and rewrite in two commits
-- [terminal secrets never shown](feedback_terminal_secrets_never_shown.md) — Passwords, keys and api keys typed at a terminal never echo; always `src/lib/ask-password.js`
-- [built-in before package](feedback_builtin_before_package.md) — Node's own way first, confirmed in its docs; else only a widely used npm package
-- [util tools keep to their own folders](feedback_util_tools_keep_to_their_own_folders.md) — A util/ tool writes only app-data/util/<tool>/, caches in its scan-cache/; never the app's files, except a secret the app also uses, kept only in the app's store
-- [util tools use core settings only](feedback_util_tools_use_core_settings_only.md) — A util/ tool reads core settings (chains, endpoints, keys), never app preferences such as the Moralis on/off switch
-- [one active position per pool](feedback_one_active_position_per_pool.md) — Period: no fallback between positions of a pool; every start and re-open path enforces it in the core, bot.js included
+- [JSON Schema for settings](feedback_json_schema_for_settings.md) — Ajv; every object refuses unnamed keys
+- [where data lives](feedback_where_data_lives.md) — bot-config.json: settings only; records and scan caches in `app-data/`
+- [docs don't restate checks](feedback_docs_dont_restate_checks.md) — A setting's meaning and range once; no lists of refused values
+- [docs always updated](feedback_docs_always_updated.md) — A doc a change makes stale is updated in the same change
+- [one home per fact in a doc set](feedback_doc_set_one_home_per_fact.md) — User-facing rules live in the manual; the other docs point there
+- [util tool docs in docs/util](feedback_util_tool_docs_in_docs_util.md) — Each util/ tool's docs in `docs/util/<folder>/`
+- [terminal secrets never shown](feedback_terminal_secrets_never_shown.md) — Secrets typed at a terminal never echo
+- [built-in before package](feedback_builtin_before_package.md) — Node's own way first; else only a widely used npm package
+- [util tools keep to their own folders](feedback_util_tools_keep_to_their_own_folders.md) — A util/ tool writes only `app-data/util/<tool>/`
+- [util tools use core settings only](feedback_util_tools_use_core_settings_only.md) — Chains, endpoints and keys; never app preferences
+- [one active position per pool](feedback_one_active_position_per_pool.md) — Period; enforced in the core on every start
 - [no HTML in Markdown](feedback_no_html_in_markdown.md) — Pure Markdown, no inline HTML (MD033)
-- [links go direct](feedback_links_go_direct.md) — A redirecting link is replaced by its final address; check with curl's `%{redirect_url}`
+- [links go direct](feedback_links_go_direct.md) — Replace a redirecting link with its final address
 - [no new HTML in JS](feedback_no_new_html_in_js.md) — No interpolated innerHTML in dashboard JS
 - [sound gate scope](feedback_sound_gate_scope.md) — Jingles gated on the browser idle timer is correct
-- [help page](project_help_page.md) — The User Manual is src/client/web/help-and-user-manual.html, its own CSS; never call it "Help"
+- [help page](project_help_page.md) — The User Manual, never "Help"
