@@ -336,7 +336,8 @@ A restart after a completed scan is fast, and the reason is that almost
 everything the slow run produced was written to disk.
 
 **Managed positions come back on their own; unmanaged ones wait for a
-browser.** Starting managed positions is server-side and automatic.
+browser.** Starting managed positions is the bot's own start-up, and
+automatic.
 Everything about an unmanaged position is browser-initiated and cannot
 begin until someone opens the dashboard.
 
@@ -370,6 +371,21 @@ every position and the server refuses a Manage or a wallet import, since
 either would start positions alongside the ones still waiting their
 turn (`src/bot/app-phase.js`).
 
+A wallet import is a Syncing state too. It stops every position, swaps
+the wallet and the key the bot signs with, and ends with a start-up of
+the new wallet's saved positions. From its first step until that
+start-up has finished, `GET /api/status` reports `importingWallet`, the
+badge reads Syncing, and the server refuses a Manage or a second import
+(`beginWalletImport`, `src/bot/app-phase.js`). A Manage already past its
+first check when the import begins waits on two things before its loop
+starts: the pool check's chain reads, then the shared signer. After each,
+it is checked again (`_lateRefusal`, `src/bot/position-lifecycle.js`),
+and refused if an import has begun, or if the key it began with is no
+longer the one held, as after an import that began and ended while it
+waited. So no loop starts signing with the key of a wallet the import has
+swapped out, and no such key is left behind for the new wallet's
+positions.
+
 Each position then runs the same sequence as a fresh one, with two
 differences that account for the speed:
 
@@ -396,7 +412,7 @@ does a lifetime scan's chain read.
 
 A managed position's history belongs to the bot, which keeps it current.
 An unmanaged one has nobody working on it, so opening it is the first
-time that work has been asked for and the server starts from nothing.
+time that work has been asked for and the bot starts from nothing.
 That is the scan you see, and the Sync badge describes the position in
 front of you rather than the install.
 
@@ -586,8 +602,8 @@ clicks, and any click is itself an activity event that flips
 runs.
 
 The browser idle flag is independent of the move-scope bypass
-(`withFreshPricesAllowed`). That bypass lives entirely server-side in
-`src/bot/price-fetcher-gate.js` and never touches the browser, so an auto-
+(`withFreshPricesAllowed`). That bypass lives entirely in the bot, in
+`src/bot/price-fetcher-gate.js`, and never touches the browser, so an auto-
 rebalance or compound that runs while the user is away leaves the
 browser still paused and the gate suppresses the corresponding sound
 until the user returns.
@@ -763,7 +779,7 @@ from `/api/bot-config-defaults`: `buildStatusPositions` spreads
 `posDefaults` into every position payload, so the first `/api/status`
 poll overwrites the box with the same `config.*` figure the badge and the
 bot use. The endpoint value only paints the field in the moment before
-position data arrives. Retry pacing is the server-internal
+position data arrives. Retry pacing is the bot's own
 `ilGuardRetry` group (`baseMs`, `maxMs`), operator-tunable through the
 layered defaults file only, like `residualCleanup`.
 
@@ -1068,8 +1084,9 @@ scan** is answered by three layered bounds, resolved in order by
    its `lastBlock` below the mint block (`depositsBehind`,
    `lifetimeScanPlan` in `src/bot/bot-recorder-lifetime.js`), so the coins
    that rebalance swept in still reach Total Lifetime Deposit.
-   `clearPoolCache()` runs only from the Reload Current Position handler
-   (`src/bot/reload-position.js`).
+   `clearPoolCache()` runs only from Reload Current Position
+   (`src/bot/reload-position.js`, which the server's reload route asks
+   for).
 
 In short: **we start as far back as the lookback (five years as
 shipped), but never before the pool itself was created, and never before
@@ -1692,16 +1709,16 @@ the history pass draws them again from the records the scan left
 amount and its "(historical $usd)" mark, as the scan left them. No
 answer before that one changes such an entry.
 
-The log finds a position's entries by its pool key, which the server
-sends only with a managed position's second data load. The first
-brings the position's saved records, as the server starts it; the
-second brings its pair, fee tier and pool key, once the server has read
-it from the blockchain. So neither the live event check
+The log finds a position's entries by its pool key, which the status
+answer carries only from a managed position's second data load. The
+first brings the position's saved records, as the bot starts it; the
+second brings its pair, fee tier and pool key, once the bot has read it
+from the blockchain. So neither the live event check
 (`src/client/web/js/dashboard-data-events.js`) nor the history pass draws a
 managed position's Rebalance or Compound entries before the second
 (`canDrawPositionEntries`): each is drawn with its position line and
 filed under its pool. The history pass's own gate, which waits for a
-running position's scan, could not hold this alone: while the server
+running position's scan, could not hold this alone: while the bot
 starts a position, its loop is not yet running.
 
 Both formulas are in `src/lib/coin-value.js`, which
@@ -2207,7 +2224,7 @@ has landed, and that response reports the position as managed.
 `hasPolled` is required because `isPositionManaged()` reads a Set that
 is restored from `localStorage` on page load for instant badge render.
 Before the first response arrives that Set is a carry-over from a
-previous session, and the server may have retired the position while
+previous session, and the bot may have retired the position while
 the page was closed. Suppressing on it would leave a genuinely
 unmanaged position with nothing to populate its KPIs.
 
@@ -2320,9 +2337,9 @@ Two deliberate failure choices:
 `manualBaseUrl` plus an entry's `manualAnchor` is also where
 [`src/bot/il-guard.js`](../src/bot/il-guard.js) builds the deep link its Telegram
 alert carries, so the anchor exists in exactly one place. That read is
-guarded: an unguarded `require` of a file under `src/client/web/` would let a
-malformed help file take `bot-cycle` down with it and stop the bot from
-starting at all. A missing or broken file degrades to an alert without a
+guarded: an unguarded read of `src/lib/shared-help-content.json` would
+let a malformed help file take `bot-cycle` down with it and stop the bot
+from starting at all. A missing or broken file degrades to an alert without a
 link.
 
 ### Figures the help quotes
@@ -3080,10 +3097,13 @@ One home for each kind of data:
 - **`app-defaults-for-user-configurable/setting-bounds.json`** —
   Tracked. The range every checked setting must fall in, at the setting's
   own path; `timers` holds the timer rule. Read through
-  `src/lib/setting-bounds.js` by the save check (`src/lib/config-bounds.js`) and
-  the startup check (`src/lib/config.js`, through `src/lib/bot-config-defaults.js`,
-  `src/lib/ui-defaults.js`, `src/lib/runtime-flags.js` and
-  `src/lib/timer-bounds.js`). The dashboard bundles it for the figures its
+  `src/lib/setting-bounds.js` by the save check (`src/lib/config-bounds.js`),
+  the startup check (`src/lib/settings-check.js`, through
+  `src/lib/settings-file-rules.js`), `src/lib/config.js` as it loads
+  (through `src/lib/bot-config-defaults.js`, `src/lib/runtime-flags.js`
+  and `src/lib/timer-bounds.js`), the dashboard settings' reader
+  (`src/lib/ui-defaults.js`), and the bot's own checks of a value it
+  uses. The dashboard bundles it for the figures its
   help quotes and for its token-decimals check. **Not overridable:** a
   range an override could widen would bound nothing.
 - **`app-defaults-for-user-configurable/api-keys.example.json`** —
@@ -3115,9 +3135,10 @@ One home for each kind of data:
   and the bot call it once as they start, so the snapshot holds the file
   as it was before that run saved anything. The price library's three
   cache lifetimes are read through it too (`readPriceCacheSettings`,
-  `src/bot/price-fetcher-gate.js`), when a program's entry point asks, never
-  as the library loads. The server and the bot ask as they start, and
-  their reads make the copies. A tool under `util/` that needs the
+  `src/bot/price-fetcher-gate.js`), when the bot's parts are built
+  (`buildBotParts`, `src/bot/bot-interface.js`) as each program starts,
+  never as the library loads; that read makes the copies. A tool under
+  `util/` that needs the
   lifetimes passes `skipBackups`, so its read leaves the snapshot alone
   while LP Ranger runs.
   A safety net: if `bot-config.json` is ever accidentally truncated,
@@ -3167,7 +3188,8 @@ the first paint would make the page jump. The server-down settings are
 needed exactly when the server cannot be asked.
 
 **How the server sends the rest.** `src/lib/ui-defaults.js` reads the
-server-up file once, with the operator's copy on top. An
+server-up file once, with the operator's copy on top, as each program
+starts, right after the startup check (`src/server.js`, `src/bot.js`). An
 on/off setting must be true or false. A setting the page turns into a
 timer delay must meet the timer rule (`src/lib/timer-bounds.js`). Any other
 must fall in its range in `setting-bounds.json`; the startup check
@@ -3640,7 +3662,10 @@ What happens when the process starts, in order:
    `refuseToStartOnBadSettings()`
    ([`src/lib/settings-check.js`](../src/lib/settings-check.js)) names
    every setting that is wrong and stops the process if there is one.
-   Every line goes through [`src/lib/log.js`](../src/lib/log.js), which
+   Right after it, the dashboard settings are read and kept for the life
+   of the process (`readUiDefaults`, `src/lib/ui-defaults.js`), so an
+   edit made while the server runs waits for the next start and its
+   check. Every line goes through [`src/lib/log.js`](../src/lib/log.js), which
    colors bracketed prefixes like `[server]`, `[bot]`, `[rebalance]`.
 3. **Core modules are required.** `http`, `fs`, `path`, then the app's
    own modules: `config` (env-var parsing), `walletManager`,
@@ -3659,16 +3684,17 @@ What happens when the process starts, in order:
    See the [The `app-config` Directory](#the-app-config-directory)
    section for details.
 5. **On-disk bot config is loaded.** `loadConfig()` reads
-   `app-config/user-configurable/bot-config.json`. Every managed position's composite
-   key and `status` is logged so config-stomp incidents are visible in
-   the console at boot. A successful load also writes the sibling
+   `app-config/user-configurable/bot-config.json`. A successful load
+   also writes the sibling
    `app-config/user-configurable/bot-config.backup.json` as a safety net.
 6. **The bot is built.** `createBot()` puts the rpc endpoints into
    service, reads the price library's cache lifetimes, makes the single
    rebalance lock (async mutex) and position manager every bot loop in
    the process shares, and seeds today's per-pool rebalance counts from
    the rebalance log. Every route asks the bot for what it needs through
-   the operations `createBot` returns.
+   the operations `createBot` returns. Then one line per saved position
+   is logged, naming its NFT and its status, so config-stomp incidents
+   are visible in the console at boot.
 7. **The HTTP server is created.** `http.createServer(handleRequest)`
    builds the server object. `requestTimeout` is left at Node's own
    default: it bounds how long a client may take to **send** a request,
@@ -3716,10 +3742,11 @@ What happens when the process starts, in order:
 
 `handleRequest()` takes every request, in this order:
 
-1. CORS, then CSRF (`src/server/server-cors.js`,
-   `src/server/server-csrf.js`). The CSRF check answers
+1. cors, then csrf (`src/server/server-cors.js`,
+   `src/server/server-csrf.js`). The csrf check answers
    `GET /api/csrf-token` itself and refuses every request but a GET
-   without a valid token.
+   without a valid token. Each request under `/api/` then resets the
+   server's idle countdown (`markActivity`, `src/server/server-pause.js`).
 2. The route table, which maps method+path to a handler. Three small
    routes are answered in `src/server.js` itself: `GET /health`,
    `GET /api/wallet/status` and `DELETE /api/wallet`. The rest are
@@ -3735,12 +3762,16 @@ What happens when the process starts, in order:
    `position-routes.js`).
 4. Any other GET: a static file from `src/client/web/`, or
    `index.html` for a client-side route (`_serveStaticOrSpa`).
+5. Anything else: 405.
 
-A route that needs the bot asks it through its interface. The bot's
-refusals become statuses in
-[`src/server/bot-result.js`](../src/server/bot-result.js). The full
-route surface is covered by the OpenAPI spec (see
-[API Documentation](#api-documentation) above).
+A route that needs the bot asks it through its interface, and a bot
+operation's refusal becomes a status in
+[`src/server/bot-result.js`](../src/server/bot-result.js). The one
+refusal a route sets itself is the wallet import's: while the app may
+start nothing (a stop, a start-up or another import under way), the
+import answers 409. The full route surface, the csrf token included, is
+covered by the OpenAPI spec (see [API Documentation](#api-documentation)
+above).
 
 ---
 
@@ -3799,10 +3830,14 @@ refused: at the next start, which is when the operator can act on it.
 
 **Where the app can carry on, answer rather than throw.** A bad value
 arriving at `POST /api/config` gets a 400 naming the problem; the server
-keeps serving and the dashboard can say what was wrong. This is why
-`_checkTimer()` in `src/lib/config-bounds.js` catches the timer rule's
-throw and returns its message instead — the startup path throws that
-sentence, the route replies with it, and neither restates the rule.
+keeps serving and the dashboard can say what was wrong. This is why the
+save check (`src/lib/config-bounds.js`) returns its refusal as a
+sentence instead of throwing it: the route replies with that sentence,
+and the startup check builds bot-config.json's schema from the same
+rules (`src/lib/bot-config-checks.js`), so the two say the same thing
+and neither restates the rule. No setting the dashboard saves is a
+timer, so the timer rule (`src/lib/timer-bounds.js`) never reaches the
+route.
 
 That 400 carries an `invalidValueForKey` field naming the setting whose
 value was refused, because the same route answers 400 for a second,
@@ -4285,7 +4320,7 @@ flow above. See `src/client/web/js/dashboard-data.js`
 ## Error Log & Reload Current Position
 
 Together these are the escape hatch for one class of failure: a silent
-server-side `catch` that leaves saved state subtly wrong, typically the
+`catch` in the bot that leaves saved state subtly wrong, typically the
 first pool-wide lifetime scan aborting before anything reaches disk.
 What it leaves looks plausible: with the first scan's compounds never
 saved, Fees Compounded shows only the compounds made after it, which
@@ -4361,7 +4396,7 @@ Flows through `/api/status` &rarr; per-position state &rarr;
 `src/client/web/js/dashboard-alerts.js` `_showCatastrophicModal`, which paints a
 red modal (`.9mm-pos-mgr-modal-danger`) directing the user to Settings
 &rarr; Reload Current Position. Dedup is per-position-key; a dismiss
-keeps the modal down until the server clears the flag, at which point
+keeps the modal down until the bot clears the flag, at which point
 it can fire again on a fresh failure.
 
 ### `POST /api/position/reload`
@@ -4549,7 +4584,7 @@ Current Position scan all get the same protection.
      overlay and shows a yellow caution modal
      (`_showReloadRaceModal`) telling the user to wait for the
      operation to finish and click Reload again. No page reload &mdash;
-     the server left the position untouched (the racing operation
+     the refused Reload left the position untouched (the racing operation
      owns its own writes) and a refresh would show the same state.
    - A brand-new `_catastrophicScanError` with `at > startedAt` on
      the target position &rarr; `outcome = "failed-again"`. Falls
@@ -4679,10 +4714,7 @@ every file under `test/` and `util/test/` left out. It fails on each
 `.js` file under `src/` that git tracks, or would track, and the walk
 does not reach. A file the app starts by its path rather than loading
 it, as the server starts `src/telegram-send.js`, goes in `knip.json`'s
-`entry` list, where both gates find it. Its first run, on 2026-10-25,
-found three such modules, `src/lib/position-store.js`, `ui-state.js`
-and `wallet.js`, loaded only by their own tests; they were removed with
-those tests.
+`entry` list, where both gates find it.
 
 ---
 

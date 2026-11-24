@@ -34,7 +34,8 @@ function checkStateGates(deps, forced) {
   const st = deps._botState;
   if (!forced && st?.rebalancePaused)
     return { rebalanced: false, paused: true };
-  /*- Reload / initial-scan window: while a scan runs (src/bot/scan-state.js),
+  /*-
+   *  Reload / initial-scan window: while a scan runs (src/bot/scan-state.js),
    *  the position's on-chain-derived state (compound history, HODL
    *  baseline, epochs) is being rebuilt from the chain.  A rebalance
    *  made mid-scan races the reconstruction, and the scan's end clears
@@ -43,7 +44,8 @@ function checkStateGates(deps, forced) {
    *  made then, the residual cleanup's included.  A Rebalance Now never
    *  gets here during a scan: the server refuses it, and no scan starts
    *  while one waits.  A scan waiting to start holds back no rebalance:
-   *  it waits for the move, which goes first. */
+   *  it waits for the move, which goes first.
+   */
   if (!forced && isAscanRunningOnThisPosition(st))
     return { rebalanced: false, scanRunning: true };
   return null;

@@ -3,7 +3,7 @@
  * @module app-phase
  * @description
  * What the app as a whole is doing, where that decides whether anything
- * may start: the single source of truth for two phases, read by every
+ * may start: the single source of truth for three phases, read by every
  * start of a position and by each request that would start one.
  *
  * The first phase is the start-up. Once the wallet is unlocked, the app
@@ -16,12 +16,20 @@
  * is under way, as a second unlock would, it does nothing, since the
  * first covers the same positions.
  *
- * The second phase is the stop for good: Ctrl+C or `npm stop`, which
+ * The second phase is a wallet import. It stops every position, swaps
+ * the wallet and the key the bot signs with, and ends with a start-up of
+ * the new wallet's saved positions. From its first step until that
+ * start-up has finished, a Manage is refused, and so is a second import:
+ * a Manage then could start a loop signing with the old wallet's key, or
+ * leave that key to the new wallet's positions. The dashboard's badge
+ * reads Syncing meanwhile.
+ *
+ * The third phase is the stop for good: Ctrl+C or `npm stop`, which
  * signal the server, or the server's stop route, which
  * `npm run gentle-stop` asks for. From then on no position starts and no
  * rebalance or compound begins, and nothing clears it, since the process
- * ends. A wallet import stops every position too, but starts them again,
- * so it is no stop for good and does not set it.
+ * ends. A wallet import stops every position too, but starts the new
+ * wallet's again, so it is no stop for good and does not set this phase.
  */
 
 "use strict";
@@ -34,6 +42,9 @@ let _stopping = false;
  *  has dealt with, and how many there are; null at any other time.
  */
 let _startUp = null;
+
+// Set while a wallet import is under way, its closing start-up included.
+let _importing = false;
 
 /** Record that the app is stopping for good. */
 function markStopping() {
@@ -84,8 +95,37 @@ function startUpProgress() {
 }
 
 /**
+ * Begin a wallet import, unless the app may start nothing now: while it
+ * is stopping, while a start-up or another import is under way. The
+ * import's own closing start-up still begins, since `beginStartUp` does
+ * not ask about an import.
+ * @returns {string|null} Why the import is refused, or null when this
+ *   call began it, in which case the caller ends it with
+ *   `endWalletImport` however the import goes.
+ */
+function beginWalletImport() {
+  const refusal = refusalToStart();
+  if (refusal === null) _importing = true;
+  return refusal;
+}
+
+/** End the wallet import. */
+function endWalletImport() {
+  _importing = false;
+}
+
+/**
+ * Whether a wallet import is under way, its closing start-up included.
+ * @returns {boolean}
+ */
+function walletImportUnderWay() {
+  return _importing;
+}
+
+/**
  * Why a request that would start positions must be refused now, in the
- * operator's words, or null when it may go ahead.
+ * operator's words, or null when it may go ahead. During an import's
+ * closing start-up, the start-up's progress is named.
  * @returns {string|null}
  */
 function refusalToStart() {
@@ -96,13 +136,19 @@ function refusalToStart() {
       `(${_startUp.done} of ${_startUp.total}). ` +
       "Try again once it has started them."
     );
+  if (_importing)
+    return (
+      "LP Ranger is importing a wallet. " +
+      "Try again once it has started that wallet's positions."
+    );
   return null;
 }
 
-/** Back to a process that has neither started up nor begun stopping. */
+/** Back to a process that has neither started up, imported, nor begun stopping. */
 function _resetAppPhaseForTests() {
   _stopping = false;
   _startUp = null;
+  _importing = false;
 }
 
 module.exports = {
@@ -112,6 +158,9 @@ module.exports = {
   noteStartUpProgress,
   endStartUp,
   startUpProgress,
+  beginWalletImport,
+  endWalletImport,
+  walletImportUnderWay,
   refusalToStart,
   _resetAppPhaseForTests,
 };

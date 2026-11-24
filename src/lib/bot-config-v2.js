@@ -131,9 +131,10 @@ function _empty() {
  * the bot load once as they start, so the copies hold the files as they
  * were before that run saved anything: a way back from a save that went
  * wrong. A caller that only reads a setting passes `skipBackups`, and
- * leaves the copies as the last start made them. The price library does
- * so as it loads (src/bot/price-fetcher-gate.js), since a tool under util/
- * loads it too and must not replace the app's copies.
+ * leaves the copies as the last start made them: a tool under util/ that
+ * reads the price library's settings does
+ * (`readPriceCacheSettings(true)`, src/bot/price-fetcher-gate.js), so it
+ * never replaces the app's copies.
  * @param {string} [dir]  Directory override (default: cwd).
  * @param {boolean} [skipBackups]  True to make no copies. Default false.
  * @returns {object}       Config object (or empty structure if no file).
@@ -211,12 +212,11 @@ function _loadSettingsFile(filePath, skipBackups) {
  * etc.) — by the time a position is started, `_persistPositionConfig`
  * has at minimum written `nftGasWeiByTokenId` or similar.
  *
- * A phantom is a stale composite key. Manage once wrote the key it was
- * called with, so a force-rebalance that migrated the key in between
- * left the old one behind carrying nothing but its status. Manage now
- * writes the live key (`keyRef.current`, in `_start`,
- * src/bot/position-lifecycle.js), but a file an earlier run wrote may
- * still hold one, so the purge runs on load.
+ * A phantom is a slot left under a composite key a force-rebalance has
+ * migrated away from, carrying nothing but its status. Manage writes the
+ * live key (`keyRef.current`, in `_start`, src/bot/position-lifecycle.js),
+ * so it makes none, and the purge runs on load for any a saved file
+ * already holds.
  *
  * Conservative — never touches an entry with any field besides status
  * (no false positives possible for a legitimately-running position).

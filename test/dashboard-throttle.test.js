@@ -426,8 +426,10 @@ describe("saveMinInterval() — the server's answer, not the click, moves the di
   });
 });
 
-/*- A refused save is `src/client/web/js/dashboard-config-save.js`'s job now, and
- *  is covered by test/dashboard-config-save.test.js. */
+/*-
+ *  A refused save is `src/client/web/js/dashboard-config-save.js`'s job,
+ *  covered by test/dashboard-config-save.test.js.
+ */
 
 describe("the OOR timeout badge", () => {
   it("says Turned Off for 0, the minutes otherwise, a dash before it is known", () => {

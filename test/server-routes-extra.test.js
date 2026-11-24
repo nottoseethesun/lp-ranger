@@ -5,8 +5,9 @@
  *   (`createRouteHandlers`): the wallet scan's progress
  *   (`getPositionScanStatus`), `POST /api/config` edge cases
  *   (`_handleApiConfig`, src/server/server-routes.js), the lifetime
- *   route's trigger-scan path (`_handlePositionLifetime`), and the
- *   start-up with no managed keys (`_autoStartManagedPositions`).
+ *   route's trigger-scan path (`_handlePositionLifetime`), the details
+ *   route's error path, a reveal with no seed phrase, and the refresh and
+ *   scan-cancel routes' refusals.
  */
 
 "use strict";

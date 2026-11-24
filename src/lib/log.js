@@ -75,12 +75,13 @@ let _sink = {
   error: (...a) => console.error(...a),
 };
 
-/*- ANSI color table for known log tag prefixes.  Folded in from a
- *  legacy `installColorLogger()`, since removed, so colorization
- *  happens inside the opt-in `log.*` chain instead of via a
- *  `console.*` monkey-patch (see Core Essentials in
- *  docs/claude/CLAUDE-BEST-PRACTICES.md).  Lines that don't begin with
- *  a known tag pass through with ANSI untouched. */
+/*-
+ *  ANSI color table for known log tag prefixes. Colorization happens
+ *  inside the opt-in `log.*` chain, never through a `console.*`
+ *  monkey-patch (see Core Essentials in
+ *  docs/claude/CLAUDE-BEST-PRACTICES.md). Lines that don't begin with a
+ *  known tag pass through with ANSI untouched.
+ */
 const _COLORS = {
   "[server]": "\x1b[38;2;0;191;255m", // azure blue
   "[bot]": "\x1b[38;2;200;160;255m", // light purple

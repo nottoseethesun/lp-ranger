@@ -134,6 +134,14 @@ require("./lib/boot-log-file").bootLogFile();
  */
 require("./lib/settings-check").refuseToStartOnBadSettings();
 
+/*-
+ *  The dashboard settings, read now, just checked, and kept for the life
+ *  of the process (src/lib/ui-defaults.js), so an edit to the operator's
+ *  copy takes effect at the next restart, where the check above refuses
+ *  a bad value.
+ */
+require("./lib/ui-defaults").readUiDefaults();
+
 const { log } = require("./lib/log");
 const { resetErrorLog } = require("./lib/error-log");
 const { writePidFile } = require("./server/server-pid");

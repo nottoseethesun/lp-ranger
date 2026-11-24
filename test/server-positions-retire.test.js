@@ -1,7 +1,7 @@
 /**
  * @file test/server-positions-retire.test.js
- * @description Tests for `createOnRetire(deps)` — the server-side
- * callback fired by the bot loop when it auto-retires a drained
+ * @description Tests for `createOnRetire(deps)` (src/bot/position-states.js)
+ * — the callback the bot loop fires when it auto-retires a drained
  * managed position.  Retirement is a pure software state flip:
  * status `running`→`stopped`, autoCompoundEnabled cleared, in-memory
  * bot-state dropped, position manager entry removed.  The NFT is

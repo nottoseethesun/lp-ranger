@@ -124,12 +124,13 @@ function _persistPositionConfig(patch, diskConfig, key, dir) {
   const changed = PERSISTED_STATE_KEYS.filter((k) => patch[k] !== undefined);
   const needsSave = !!patch.activePositionId || changed.length > 0;
   if (!needsSave) return;
-  /*- Non-lazy lookup: a slot SHOULD exist by now (Manage's `_start` in
-   *  position-lifecycle.js created it before starting the bot loop).  If it's missing, refuse to
-   *  create — the previous lazy-create produced phantom entries under
-   *  stale keys whenever a patch was persisted for a position whose
-   *  key had since migrated.  Warn loudly so the caller can investigate
-   *  rather than silently re-creating the phantom. */
+  /*-
+   *  Non-lazy lookup: a slot SHOULD exist by now (Manage's `_start` in
+   *  position-lifecycle.js created it before starting the bot loop).
+   *  If it's missing, refuse to create one: a patch persisted under a
+   *  key that has since migrated would otherwise leave a phantom entry
+   *  under the stale key. Warn loudly so the caller can investigate.
+   */
   const pos = getPositionConfig(diskConfig, key);
   if (!pos) {
     log.warn(

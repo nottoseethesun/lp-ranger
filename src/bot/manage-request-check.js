@@ -7,7 +7,8 @@
  * position manager, a loaded wallet and a key to sign with, each
  * `invalid` when missing. It is also `refused` while the app may start
  * nothing: during the start-up, since a saved position it has yet to
- * reach may be in the same pool, and once the app is stopping
+ * reach may be in the same pool; during a wallet import, since the wallet
+ * and its key are being swapped; and once the app is stopping
  * (src/bot/app-phase.js). Refused here, the request starts no bot loop and
  * creates no slot. The reasons are the bot's; the server turns each into
  * its HTTP status (src/server/bot-result.js).

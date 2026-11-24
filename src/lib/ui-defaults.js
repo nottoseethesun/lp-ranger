@@ -26,13 +26,14 @@
  * `ui-defaults_non-layout_for-server-down-scenario.json` into the page,
  * which needs it while it cannot reach the server.
  *
- * **Read once.** A value an operator wrote outside its rule has stopped the
- * app before it got this far: the startup check
- * (`src/lib/settings-check.js`) names each one. The first read is kept, and
- * every later read returns it, so an edit takes effect on restart and the
- * poll interval the server sends cannot drift from the one the bot waits
- * on. A file that cannot be read or parsed leaves the shipped values
- * standing, with a warning, so the route never fails.
+ * **Read once, as each program starts.** A value an operator wrote outside
+ * its rule has stopped the app before it got this far: the startup check
+ * (`src/lib/settings-check.js`) names each one. The server and the bot
+ * make the first read right after that check (src/server.js, src/bot.js),
+ * and it is kept: every later read returns it, so an edit takes effect on
+ * restart and the poll interval the server sends cannot drift from the
+ * one the bot waits on. A file that cannot be read or parsed leaves the
+ * shipped values standing, with a warning, so the route never fails.
  */
 
 "use strict";

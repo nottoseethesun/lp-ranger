@@ -1,6 +1,6 @@
 /**
  * @file test/server-manage-reopen.test.js
- * @description The Manage route's re-open path in src/bot/position-lifecycle.js
+ * @description Manage's re-open path (src/bot/position-lifecycle.js)
  *   (`POST /api/position/manage` with `forceRebalance: true`): the flag a
  *   re-open stamps on the position's bot state before its first poll, the
  *   retry on a position already running, and that retry refused while a

@@ -64,7 +64,7 @@ const REQUIRED = [
   },
   {
     rel: "src/client/web/js/disclosure-content.js",
-    role: "disclaimer modal content (extracted from docs/disclosure.md)",
+    role: "disclaimer modal content (extracted from src/client/web/disclosure.html)",
   },
   {
     rel: "src/server/build-info.json",

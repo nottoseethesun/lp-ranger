@@ -49,8 +49,10 @@
  *     `src/bot/position-states.js`), which is why a restart is required.
  *   - Any other position or pool.
  *
- * It imports nothing from `src/lib/`, so loading it neither opens the app's
- * log file nor reads operator settings. The cost is the default chain:
+ * It imports from `src/lib/` only three modules that open no log and read
+ * no setting (`composite-key.js`, `scan-cache-dir.js` and
+ * `util/position-records.js`), so loading it neither opens the app's log
+ * file nor reads operator settings. The cost is the default chain:
  * it is the shipped `app-runtime.json` value, read as data, so neither
  * `CHAIN_NAME` in `.env` nor an operator's override of that file is
  * seen. An install running another chain passes `--blockchain`.

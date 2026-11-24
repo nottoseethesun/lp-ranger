@@ -42,6 +42,15 @@ require("./lib/boot-log-file").bootLogFile();
  */
 require("./lib/settings-check").refuseToStartOnBadSettings();
 
+/*-
+ *  The dashboard settings, which the bot's wait for the dashboard is
+ *  built on: read now, just checked, and kept for the life of the
+ *  process (src/lib/ui-defaults.js), so an edit to the operator's copy
+ *  takes effect at the next restart, where the check above refuses a bad
+ *  value.
+ */
+require("./lib/ui-defaults").readUiDefaults();
+
 const { log } = require("./lib/log");
 // First statement of a real run — bot-banner prints on require (side
 // effect, cached so it fires exactly once per process). Required here so

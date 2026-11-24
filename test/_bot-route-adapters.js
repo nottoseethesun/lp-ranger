@@ -36,9 +36,11 @@ function createPositionRoutes(deps) {
   const getPrivateKey = deps.getPrivateKey ?? (() => null);
   const bot = botOperations({
     ...deps,
-    /*- The key the test's `getPrivateKey` gives, asked each time the bot
+    /*-
+     *  The key the test's `getPrivateKey` gives, asked each time the bot
      *  reads its key. These routes never hand the bot a key, so it has no
-     *  setter: one that tried would throw. */
+     *  setter: one that tried would throw.
+     */
     privateKeyRef: {
       get current() {
         return getPrivateKey();

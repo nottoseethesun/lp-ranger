@@ -18,16 +18,18 @@
  *   with none loaded, every wallet's are read, and each wallet keeps its
  *   own position in a pool.
  *
- *   Driven through the real start-up with the chain stood in for: who
- *   owns each NFT and which pool it is in come from the test, and the
- *   position manager records the starts instead of running bot loops.
+ *   Driven through the real start-up, as the bot's interface binds it
+ *   (`startManagedPositions`, src/bot/bot-interface.js), with the chain
+ *   stood in for: who owns each NFT and which pool it is in come from the
+ *   test, and the position manager records the starts instead of running
+ *   bot loops.
  */
 
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const config = require("../src/lib/config");
 const appPhase = require("../src/bot/app-phase");
-const { createAutoStartManagedPositions } = require("../src/bot/auto-start");
+const { botOperations } = require("../src/bot/bot-interface");
 const { captureWarnings } = require("./helpers/capture-warnings");
 const {
   contractReverted,
@@ -114,7 +116,7 @@ function startUp({
     runningCount: () => started.length,
     poolKey: (_c, _pm, w, t0, t1, fee) => `${w}-${t0}-${t1}-${fee}`,
   };
-  const run = createAutoStartManagedPositions({
+  const bot = botOperations({
     diskConfig,
     positionMgr,
     privateKeyRef: { current: null },
@@ -123,10 +125,10 @@ function startUp({
     createPerPositionBotState: () => ({}),
     attachMultiPosDeps: () => {},
     updatePositionState: () => {},
-    readConfigValue: () => undefined,
     ethersLib: chainStandIn(ownerOf, pools),
     readProvider: () => ({}),
   });
+  const run = () => bot.startManagedPositions();
   return { run, started, progress, diskConfig };
 }
 

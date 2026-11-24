@@ -160,11 +160,13 @@ const RPC_URL = RPC_URLS[0] || "";
 /**
  * Replace the live endpoint list, in place, after the operator adds one.
  *
- * Mutates rather than rebinding because `RPC_URLS` is read directly by
- * `src/server/rpc-endpoints.js`, `src/bot/rebalancer-pools.js` and
- * `src/bot/can-reopen.js`, each of which captured the array. A
- * rebind would leave all three walking the endpoints the process
- * started with.
+ * Mutates rather than rebinding because every reader takes the one array
+ * this module exports, through `config.RPC_URLS`: the server's endpoint
+ * list and status answer (`src/server/rpc-endpoints.js`,
+ * `src/server/handle-api-status.js`) and the bot as it puts the
+ * endpoints into service (`src/bot/bot-interface.js`, `bot-loop.js`,
+ * `position-manager.js`). A rebind would leave them all walking the
+ * endpoints the process started with.
  * @param {string[]} urls  Ordered endpoints, most-preferred first.
  * @returns {void}
  */

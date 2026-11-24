@@ -11,20 +11,27 @@
 
 /**
  * The badge while the server starts the positions saved as managed, one
- * at a time after a launch, or null when it is not. Asked before
- * anything about the position on screen, since the whole app is still
- * syncing then; the Syncing state also keeps Manage and Stop Managing
- * disabled, so nothing changes the list the server is working through.
+ * at a time after a launch or a wallet import, or while it imports a
+ * wallet; null at any other time. Asked before anything about the
+ * position on screen, since the whole app is still syncing then; the
+ * Syncing state also keeps Manage and Stop Managing disabled, so nothing
+ * changes the list the server is working through, or starts a position
+ * under the wallet being swapped out. The start-up's progress is named
+ * when there is one, since an import ends with a start-up.
  * @param {{done:number,total:number}|null|undefined} progress
+ * @param {boolean} [importing]  Whether a wallet import is under way.
  * @returns {{complete:boolean, label:string, tip:string}|null}
  */
-function _startUpSyncStatus(progress) {
-  if (progress === null || progress === undefined) return null;
-  return {
-    complete: false,
-    label: "Syncing…",
-    tip: `Starting the managed positions: ${progress.done} of ${progress.total}`,
-  };
+function _startUpSyncStatus(progress, importing) {
+  if (progress !== null && progress !== undefined)
+    return {
+      complete: false,
+      label: "Syncing…",
+      tip: `Starting the managed positions: ${progress.done} of ${progress.total}`,
+    };
+  if (importing === true)
+    return { complete: false, label: "Syncing…", tip: "Importing the wallet" };
+  return null;
 }
 
 /**
@@ -43,6 +50,8 @@ function _startUpSyncStatus(progress) {
  * @param {{done:number,total:number}|null} [inputs.startingPositions]
  *   The server's start-up progress while it starts the positions saved
  *   as managed; null at any other time.
+ * @param {boolean} [inputs.importingWallet]  Whether the server is
+ *   importing a wallet.
  * @returns {{complete:boolean, label:string, tip?:string}}
  */
 export function _computeSyncStatus(inputs) {
@@ -56,8 +65,9 @@ export function _computeSyncStatus(inputs) {
     rebalanceScanComplete,
     lifetimeScanComplete,
     startingPositions,
+    importingWallet,
   } = inputs;
-  const startUp = _startUpSyncStatus(startingPositions);
+  const startUp = _startUpSyncStatus(startingPositions, importingWallet);
   if (startUp !== null) return startUp;
   /*- Order matters: this branch must precede the `!active` check.  A
    *  wallet with no positions yet is still loading them, which is

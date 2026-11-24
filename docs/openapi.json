@@ -3,7 +3,7 @@
   "info": {
     "title": "LP Ranger API",
     "version": "2.0.0",
-    "description": "REST API for the LP Ranger auto-rebalancing concentrated liquidity manager. Manages V3 NFT positions on 9mm Pro (PulseChain)."
+    "description": "REST API for the LP Ranger auto-rebalancing concentrated liquidity manager. Manages V3 NFT positions on 9mm Pro (PulseChain). Every request but a GET must carry a valid csrf token in the `x-csrf-token` header, taken from `GET /api/csrf-token`; without one the server answers 403 with the reason (missing, invalid, unknown or expired)."
   },
   "servers": [
     {
@@ -135,6 +135,10 @@
                               "type": "integer"
                             }
                           }
+                        },
+                        "importingWallet": {
+                          "type": "boolean",
+                          "description": "Whether a wallet import is under way, from its first step until the start-up of the new wallet's saved positions has finished. A Manage is refused meanwhile, and the dashboard's badge reads Syncing."
                         }
                       }
                     },
@@ -320,7 +324,38 @@
             "description": "Config saved. An answer to a request that named a position names it too: positionKey is the key the request named, and livePositionKey the key the values were saved under when a rebalance had moved it, so a dashboard that has moved to another position since it asked can keep the answer off its screen."
           },
           "400": {
-            "description": "Missing or invalid positionKey for position-specific keys, or a dashboard-settable value outside its range. The route takes settings only: the bot's own records (hodlBaseline, residuals, compoundHistory and the rest) are not saved through it. The two refusals are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Ranges are declared in src/lib/config-bounds.js; null clears a setting rather than being checked. Names the position as the 200 does."
+            "description": "Missing or invalid positionKey for position-specific keys, or a dashboard-settable value outside its range. The route takes settings only: the bot's own records (hodlBaseline, residuals, compoundHistory and the rest) are not saved through it. The two refusals are told apart by the response's invalidValueForKey field, which names the setting whose value was refused and is absent on a malformed request. Values are refused, never corrected, and nothing in the request is applied. Each setting's rule is in src/lib/config-bounds.js and its range in setting-bounds.json; null clears a setting rather than being checked. Names the position as the 200 does."
+          }
+        }
+      }
+    },
+    "/api/csrf-token": {
+      "get": {
+        "tags": ["Status"],
+        "summary": "Get a csrf token",
+        "description": "A token to send in the `x-csrf-token` header of every request but a GET. It expires at `expiresAt`; the dashboard asks for a fresh one every `refreshIntervalMs`.",
+        "responses": {
+          "200": {
+            "description": "A fresh token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "integer",
+                      "description": "When the token expires, in ms since the epoch."
+                    },
+                    "refreshIntervalMs": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -329,7 +364,7 @@
       "get": {
         "tags": ["Wallet"],
         "summary": "Get wallet status",
-        "description": "Returns whether a wallet is loaded, its address, and lock state.",
+        "description": "Returns whether a wallet is loaded, its address, how it was imported, whether its file exists, and lock state.",
         "responses": {
           "200": {
             "description": "Wallet status",
@@ -338,14 +373,28 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "hasWallet": {
+                    "loaded": {
                       "type": "boolean"
                     },
                     "address": {
-                      "type": "string"
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "source": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "How the wallet was imported, such as `key` or `seed`."
+                    },
+                    "hasMnemonic": {
+                      "type": "boolean"
+                    },
+                    "fileExists": {
+                      "type": "boolean",
+                      "description": "Whether the encrypted wallet file is on disk."
                     },
                     "locked": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "A wallet file is on disk and the bot holds no key: the dashboard asks for its password."
                     }
                   }
                 }
@@ -393,21 +442,32 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Import wallet",
-        "description": "Import a wallet via seed phrase or private key. Encrypts and persists to app-config/user-configurable/wallet.json.",
+        "description": "Import a wallet from its address and private key; the dashboard derives both from a seed phrase, and sends the phrase as well. Encrypts and persists to app-config/user-configurable/wallet.json, then stops every position and starts the new wallet's saved ones. From its first step until that start-up has finished, a Manage is refused and `GET /api/status` reports `importingWallet`.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["address", "privateKey", "password"],
                 "properties": {
-                  "seed": {
+                  "address": {
                     "type": "string",
-                    "description": "BIP-39 mnemonic seed phrase"
+                    "description": "The wallet's address"
                   },
                   "privateKey": {
                     "type": "string",
-                    "description": "Hex private key (alternative to seed)"
+                    "description": "Hex private key"
+                  },
+                  "mnemonic": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "The BIP-39 seed phrase, when the wallet came from one; stored encrypted with the key"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["key", "seed"],
+                    "description": "How the wallet was imported; `key` unless given"
                   },
                   "password": {
                     "type": "string",
@@ -423,10 +483,10 @@
             "description": "Wallet imported and encrypted"
           },
           "400": {
-            "description": "Invalid input"
+            "description": "No password, private key or address"
           },
           "409": {
-            "description": "Refused, with nothing imported: an import stops every position and starts the saved ones again, so it waits while the server is still starting the positions saved as managed, and is refused once the server is stopping. `error` says which, in the operator's words."
+            "description": "Refused, with nothing imported, while the app may start nothing: during the start-up of the positions saved as managed, during another import, and once the server is stopping. `error` says which, in the operator's words."
           }
         }
       },
@@ -466,8 +526,11 @@
           "200": {
             "description": "Private key returned"
           },
-          "401": {
-            "description": "Invalid password"
+          "400": {
+            "description": "No password given, or no wallet loaded"
+          },
+          "403": {
+            "description": "Wrong password"
           }
         }
       }
@@ -483,9 +546,17 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "walletAddress": {
+                  "force": {
+                    "type": "boolean",
+                    "description": "Scan the chain again rather than answer from the LP position cache"
+                  },
+                  "positionManagerAddress": {
                     "type": "string",
-                    "description": "Optional override wallet address"
+                    "description": "The position manager to scan; this server's unless given"
+                  },
+                  "erc20Address": {
+                    "type": "string",
+                    "description": "An ERC-20 LP token to check beside the wallet's NFTs"
                   }
                 }
               }
@@ -1750,7 +1821,7 @@
       "post": {
         "summary": "Reset and re-trigger one position",
         "tags": ["Positions"],
-        "description": "Clears the position's error and pause state and asks its bot loop to run a fresh cycle. Rejected while a rebalance or scan is already in flight. liveKey is the resolved composite key, which may differ from the one sent if a rebalance minted a new tokenId in the meantime.",
+        "description": "Wipes what the chain gave the position (its scan errors, compounded coins, per-NFT gas, HODL baseline, lifetime holdings and deposits, and the two scan-complete flags), clears the pool's cached events, and starts its scan from the pool's creation, which rebuilds them; the answer comes once the scan has started. Its error and pause state are left as they are. Refused (409) once the server is stopping, while a scan is running on the position (`scan-in-progress`), and while a coin move is under way on it (`coin-move-under-way`). liveKey is the resolved composite key, which may differ from the one sent if a rebalance minted a new tokenId in the meantime.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1979,7 +2050,7 @@
       "post": {
         "summary": "Cancel an in-flight pool scan",
         "tags": ["Positions"],
-        "description": "Aborts the 5-year event scan for one pool. aborted reports whether a scan was actually running; flagReset reports whether the position's scan-in-progress flag was cleared, which is what re-enables Reload Current Position. positionKey is resolved to the live key first, since the dashboard may hold a key that a parallel rebalance has already migrated.",
+        "description": "Aborts the 5-year event scan for one pool: an operator's escape hatch from a stuck sync, which no dashboard control sends. aborted reports whether a scan was actually running; flagReset reports whether the position's live state was found and its scan marked unfinished (`rebalanceScanComplete` false), so its badge reads Syncing until the scan runs again. positionKey is resolved to the live key first, since a rebalance may have moved it.",
         "requestBody": {
           "required": true,
           "content": {

@@ -243,10 +243,12 @@ function createCanReopenCheck(deps) {
         err.stack,
       );
       if (err instanceof WalletReadUnavailableError) {
-        /*- Its own reason and code, so the dashboard renders the
+        /*-
+         *  Its own reason and code, so the dashboard renders the
          *  "couldn't read wallet right now, try again in 10+ min"
          *  modal instead of a generic alert.  Same shape as the
-         *  `pool-info-unavailable` answer. */
+         *  `pool-info-unavailable` answer.
+         */
         return {
           ok: false,
           reason: "unavailable",

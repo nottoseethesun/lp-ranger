@@ -120,7 +120,8 @@ The endpoints fall into these groups, which are the reference's tags:
 - **Status** — `GET /api/status`, which the dashboard polls every
   `dashboardPollIntervalMs` (three seconds as shipped), returns the full
   state of all managed positions: pool prices, P&L snapshots, throttle
-  state and scan progress.
+  state and scan progress. `GET /api/csrf-token` hands out the token every
+  request but a GET carries.
 - **Config** — `POST /api/config` saves per-position settings (slippage,
   threshold, timeout, auto-compound) and global ones (rpc list, gas fee
   limit, approval multiple).
@@ -169,7 +170,8 @@ When the user clicks "Manage" on a position, the dashboard sends
 it; the bot starts a new bot loop for that position, and the server
 responds with success. When the user saves a slippage
 setting, the dashboard sends `POST /api/config { slippagePctToken0,
-positionKey }` (or `slippagePctToken1`), and the server updates the
+positionKey }` (or `slippagePctToken1`), the server asks the bot to save
+it, and the bot's settings save (`src/bot/settings-save.js`) updates the
 per-position config on disk.
 
 ### Persistence
@@ -548,11 +550,14 @@ Kept apart, a position's badge does not depend on when its own bot loop
 starts. Only a managed position has a Lifetime panel, so only its own scan
 can mark it "Synced": an unmanaged position's details fetch never sets the
 flag, so it cannot show "Synced" for a position whose managed scan has not
-started yet. One thing overrides every position's badge: after a launch,
-while the server is still starting the positions saved as managed, one at
-a time, the badge reads "Syncing" whatever is on screen. The server reports
-that start-up's progress in `GET /api/status` (`startingManagedPositions`),
-and the Syncing state keeps Manage and Stop Managing disabled until it ends.
+started yet. Two things override every position's badge, and each reads
+"Syncing" whatever is on screen. After a launch, while the server is still
+starting the positions saved as managed, one at a time, it reports that
+start-up's progress in `GET /api/status` (`startingManagedPositions`).
+While a wallet is imported, from its first step until the start-up of the
+new wallet's saved positions has finished, it reports `importingWallet`,
+and refuses a Manage. The Syncing state keeps Manage and Stop Managing
+disabled until each ends.
 
 ---
 
@@ -565,11 +570,15 @@ nobody reads. The idle-driven pause stops the cascade in those windows
 while keeping it instantly available for any move.
 
 All gating happens at the public API of `src/bot/price-fetcher.js`, before the
-source cascade. Every price the app fetches goes through it: the
-rebalance / compound hot path, and the view-only answers for
-unmanaged-position detail and closed-position history, which the server
-asks the bot for through its interface — it is the single chokepoint. Adding or removing a price source later requires zero
-changes here.
+source cascade. Every price lookup goes through it: the rebalance /
+compound hot path, and the view-only answers for unmanaged-position
+detail and closed-position history, which the server asks the bot for
+through its interface. Adding or removing a price source later requires
+zero changes here. The one other request of a price service is the
+server's check of the stored Moralis key (`pingMoralis`,
+`src/lib/moralis-key.js`): it asks Moralis one price to prove the key,
+on a key save, the key dialog's status check and the check after the
+wallet unlock, and the pause does not gate it.
 
 These set the pause flag, or bypass it:
 
@@ -595,10 +604,10 @@ scope, so it always gets a fresh price.
 Three global keys tune the caching. They are saved in `bot-config.json`'s
 global section, with their defaults in `bot-config-defaults.json`:
 `priceCacheTtlMs` (120000 as shipped), `dustUnitPriceCacheMultiplier` (30)
-and `moveCacheTtlMs` (4000, the cache's life inside a move). The server
-and the bot read them as they start (`readPriceCacheSettings`,
-`src/bot/price-fetcher-gate.js`); until a program reads them, each is its
-default. The dust-unit-price TTL is `priceCacheTtlMs × multiplier`, with
+and `moveCacheTtlMs` (4000, the cache's life inside a move). Each program
+reads them as it builds the bot (`readPriceCacheSettings`,
+`src/bot/price-fetcher-gate.js`, called by `buildBotParts` in
+`src/bot/bot-interface.js`); until then, each is its default. The dust-unit-price TTL is `priceCacheTtlMs × multiplier`, with
 a runtime assertion guarding the integer-multiple invariant.
 
 The browser-side flag (`isBrowserPaused()` in `src/client/web/js/dashboard-idle.js`)

@@ -1,7 +1,7 @@
 /**
  * @file test/server-can-reopen.test.js
- * @description Unit tests for `src/bot/can-reopen.js` — the
- *   `POST /api/position/can-reopen` handler used by the dashboard's
+ * @description Unit tests for `src/bot/can-reopen.js` — the re-open
+ *   check behind `POST /api/position/can-reopen`, used by the dashboard's
  *   closed-position Manage flow to verify the wallet holds enough of
  *   at least one pair token to seed a re-open rebalance.
  *
@@ -12,6 +12,7 @@
  *     - 200 + canReopen=false when BOTH tokens are dust
  *     - 500 when the on-chain reader throws
  *     - response shape (balances per-token, isDust flag, threshold)
+ *     - the route over the bot's interface, as the server builds it
  */
 
 "use strict";
@@ -23,6 +24,9 @@ const {
   _setRetryDelayForTests,
 } = require("../src/bot/can-reopen");
 const { createPositionRoutes } = require("../src/server/position-routes");
+const {
+  createPositionRoutes: createPositionRoutesOverBot,
+} = require("./_bot-route-adapters");
 
 /** The server's re-open route over the bot's check, one set of deps for both. */
 const createCanReopenHandler = (deps) =>
@@ -393,5 +397,38 @@ describe("the re-open check", () => {
     assert.strictEqual(res._status, 503);
     assert.strictEqual(res._body.error, "wallet-read-unavailable");
     assert.match(res._body.message, /token0 unreadable/);
+  });
+});
+
+describe("the re-open check, through the bot's interface", () => {
+  /*-
+   *  The route the server builds asks the interface's `canReopen`
+   *  (src/bot/bot-interface.js), which the cases above stand in for.
+   *  These two answer before any chain or price read, so they need no
+   *  stand-in for either, and fail if the binding is dropped or bound to
+   *  another operation.
+   */
+  const routeThroughInterface = (overrides) =>
+    createPositionRoutesOverBot({
+      diskConfig: { global: {}, positions: {} },
+      positionMgr: {},
+      ...makeDeps(overrides),
+    })["POST /api/position/can-reopen"];
+
+  it("refuses with no wallet loaded", async () => {
+    const res = makeRes();
+    await routeThroughInterface({
+      walletManager: { getAddress: () => null },
+      body: { token0: TOKEN0, token1: TOKEN1 },
+    })({}, res);
+    assert.strictEqual(res._status, 400);
+    assert.match(res._body.error, /wallet not loaded/);
+  });
+
+  it("refuses a request that names no pair", async () => {
+    const res = makeRes();
+    await routeThroughInterface({ body: { token0: TOKEN0 } })({}, res);
+    assert.strictEqual(res._status, 400);
+    assert.match(res._body.error, /token0 and token1 are required/);
   });
 });

@@ -10,7 +10,8 @@
  *
  *   The position manager, the alert and the exit are stood in for; the
  *   bot states are plain objects, a running scan's pass a promise the
- *   test settles.
+ *   test settles. What is under way, and the wait for the scans, come
+ *   from the bot's own interface over those states.
  */
 
 const { describe, it } = require("node:test");
@@ -18,15 +19,28 @@ const assert = require("node:assert/strict");
 const {
   createStopWhenAllClear: heldStopOver,
 } = require("../src/server/stop-when-all-clear");
-const { underWay, scansEnded } = require("../src/bot/under-way");
+const { botOperations } = require("../src/bot/bot-interface");
+const { underWay } = require("../src/bot/under-way");
 
-/** The server's held stop over the bot's account of what is under way, one set of deps for both. */
-const createStopWhenAllClear = (deps) =>
-  heldStopOver({
-    ...deps,
-    underWay: (movesOver) => underWay(deps.getStates(), movesOver),
-    scansEnded: () => scansEnded(deps.getStates),
+/**
+ * The server's held stop, wired as the server wires it, over the bot's
+ * own account of what is under way: the interface's `underWay` and
+ * `scansEnded` (src/bot/bot-interface.js), built over the test's bot
+ * states.
+ */
+const createStopWhenAllClear = (deps) => {
+  const bot = botOperations({
+    diskConfig: { global: {}, positions: {} },
+    walletManager: { getAddress: () => null },
+    positionMgr: {},
+    getAllPositionBotStates: deps.getStates,
   });
+  return heldStopOver({
+    ...deps,
+    underWay: (movesOver) => bot.underWay(movesOver),
+    scansEnded: () => bot.scansEnded(),
+  });
+};
 
 /** A promise with its resolver. */
 function deferred() {

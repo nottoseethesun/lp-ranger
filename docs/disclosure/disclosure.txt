@@ -163,7 +163,7 @@ Slippage protections in place:
 - amountOutMinimum calculated from a staticCall quote (real expected output),
   not spot price
 - Price impact check aborts the swap if impact exceeds the user's slippage
-  setting (_checkSwapImpact() in src/bot/rebalancer-pools.js)
+  setting (_checkSwapImpact() in src/bot/rebalancer-swap-impact.js)
 - Aggregator quotes include guaranteedPrice floor
 
 The existing disclaimer warns users (in src/client/web/index.html lines 15-59): users

@@ -137,9 +137,13 @@ function _cacheKeyOpts(position, wallet) {
   };
 }
 
-/*- Validate the request's positionKey and split it into
- *  {rawKey, parsed}.  Returns { refusal } on any validation failure,
- *  `invalid`, so the caller can return it. */
+/**
+ * Validate the request's positionKey and split it into its raw text and
+ * its parts. On any validation failure the answer is a refusal,
+ * `invalid`, for the caller to return as it is.
+ * @param {object} body  The request body, naming `positionKey`.
+ * @returns {{rawKey: string, parsed: object}|{refusal: object}}
+ */
 function _validateKey(body) {
   const rawKey = body && body.positionKey;
   if (!rawKey || typeof rawKey !== "string") {
@@ -326,9 +330,11 @@ function createReloadPosition(deps) {
 module.exports = {
   createReloadPosition,
   _resetBotState, // exported for tests
-  /*- Shared with rescan-prices.js, which performs the same
+  /*-
+   *  Shared with rescan-prices.js, which performs the same
    *  key validation, position resolution and in-flight guarding
-   *  before a narrower reset.  Exported rather than duplicated. */
+   *  before a narrower reset.  Exported rather than duplicated.
+   */
   _validateKey,
   _resolveStateAndPosition,
   _checkInProgress,

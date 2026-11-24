@@ -22,28 +22,28 @@ const {
   _recordResidual,
   _notifyRebalance,
 } = require("../src/bot/bot-recorder");
-const { bigIntReplacer: _bigIntReplacer } = require("../src/lib/bigint-json");
+const { bigIntReplacer } = require("../src/lib/bigint-json");
 const {
   updateHodlBaseline: _updateHodlBaseline,
 } = require("../src/bot/bot-recorder-baseline");
 
-// ── _bigIntReplacer ─────────────────────────────────────────────────
+// ── bigIntReplacer ─────────────────────────────────────────────────
 
-describe("_bigIntReplacer", () => {
+describe("bigIntReplacer", () => {
   it("converts BigInt to string", () => {
-    assert.strictEqual(_bigIntReplacer("k", 123n), "123");
+    assert.strictEqual(bigIntReplacer("k", 123n), "123");
   });
 
   it("passes through non-BigInt values", () => {
-    assert.strictEqual(_bigIntReplacer("k", 42), 42);
-    assert.strictEqual(_bigIntReplacer("k", "hello"), "hello");
-    assert.strictEqual(_bigIntReplacer("k", null), null);
-    assert.strictEqual(_bigIntReplacer("k", true), true);
+    assert.strictEqual(bigIntReplacer("k", 42), 42);
+    assert.strictEqual(bigIntReplacer("k", "hello"), "hello");
+    assert.strictEqual(bigIntReplacer("k", null), null);
+    assert.strictEqual(bigIntReplacer("k", true), true);
   });
 
   it("works with JSON.stringify", () => {
     const obj = { a: 100n, b: "text", c: 200n };
-    const s = JSON.stringify(obj, _bigIntReplacer);
+    const s = JSON.stringify(obj, bigIntReplacer);
     assert.deepStrictEqual(JSON.parse(s), { a: "100", b: "text", c: "200" });
   });
 });

@@ -5,11 +5,14 @@
  * (`_start`, src/bot/position-lifecycle.js) and the entry-reference
  * capture in Stop Managing (src/bot/stop-managing.js).
  *
- * These exercise the FULL handler flow with a mocked startBotLoop +
- * positionMgr so that a "migration happened during the await" can be
- * injected without booting a real bot loop.  Lives in a dedicated file
- * because adding to test/server-positions.test.js pushes it past the
- * 500-line max-lines cap.
+ * Manage's steps around a migration are taken by hand here; the real
+ * Manage is driven through one in test/manage-key-migration.test.js.
+ * Stop Managing is driven through its route, over a stand-in position
+ * manager that moves the key while the stop waits, so a "migration
+ * happened during the await" can be injected without booting a real bot
+ * loop.  Lives in a dedicated file because adding to
+ * test/server-positions.test.js pushes it past the 500-line max-lines
+ * cap.
  */
 
 "use strict";
@@ -84,17 +87,18 @@ function makeRouteDeps(overrides = {}) {
 }
 
 describe("Manage's stale-key sequence (direct simulation)", () => {
-  /*- Direct simulation of Manage's post-await sequence (`_start`) rather
-   *  than a full HTTP-handler integration test.  Mocking `startBotLoop`
-   *  via the require cache is unreliable because position-lifecycle.js
-   *  destructures `startBotLoop` at module-load — a captured local
-   *  reference that subsequent cache mutations cannot reach.
+  /*-
+   *  Manage's steps around the migration, taken here by hand.
+   *  test/manage-key-migration.test.js drives the real Manage through
+   *  one, its bot loop stood in for before position-lifecycle.js loads,
+   *  since that module takes `startBotLoop` as it loads.
    *
-   *  This test verifies the SEMANTIC contract of the fix: after
-   *  updatePositionState mutates keyRef.current via a migration patch,
-   *  the subsequent addManagedPosition call must use keyRef.current —
-   *  NOT the original captured key — to avoid creating a phantom
-   *  status=running stub under the dead old key. */
+   *  The contract pinned here: after updatePositionState mutates
+   *  keyRef.current via a migration patch, the subsequent
+   *  addManagedPosition call must use keyRef.current — NOT the original
+   *  captured key — to avoid creating a phantom status=running stub
+   *  under the dead old key.
+   */
   it("addManagedPosition(keyRef.current) writes only the NEW key after migration", () => {
     const OLD_TOKEN = "159175";
     const NEW_TOKEN = "161616";
@@ -109,7 +113,7 @@ describe("Manage's stale-key sequence (direct simulation)", () => {
     states.delete(oldKey);
     states.delete(newKey);
 
-    /*- `_start` captures key + keyRef = { current: key }. */
+    // `_start` captures key + keyRef = { current: key }.
     const keyRef = { current: oldKey };
 
     /*- Simulate the bot loop's first poll completing a force rebalance
@@ -144,10 +148,11 @@ describe("Manage's stale-key sequence (direct simulation)", () => {
       newTid: NEW_TOKEN,
     });
 
-    /*- THE FIX: `_start` now calls addManagedPosition(dc,
-     *  keyRef.current) instead of addManagedPosition(dc, key).  Verify
-     *  the correct (post-migration) key gets status=running, and NO
-     *  phantom is resurrected under the old key. */
+    /*-
+     *  `_start` marks the position managed under keyRef.current, not
+     *  the captured key: the post-migration key gets status=running,
+     *  and NO phantom is resurrected under the old key.
+     */
     addManagedPosition(dc, keyRef.current);
 
     assert.strictEqual(

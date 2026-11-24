@@ -14,11 +14,12 @@
  * via `clearErrorLog`.
  *
  * Reserved for CATASTROPHIC failures only.  Not for general debug, not
- * for handled retries, not for expected transient errors.  The one
- * current caller is `_recordScanFailure` in `src/bot/bot-recorder-lifetime.js`,
- * which fires when the initial pool-wide lifetime scan aborts before
- * anything is persisted — the failure mode that produced the July-2026
- * $11.63-vs-$255.50 Fees Compounded discrepancy on Prod.
+ * for handled retries, not for expected transient errors.  Its two
+ * callers: `_recordScanFailure` in `src/bot/bot-recorder-lifetime.js`,
+ * when the initial pool-wide lifetime scan aborts before anything is
+ * persisted, and `_handleHealResult` in
+ * `src/bot/bot-recorder-decimals-heal.js`, when a coin's decimals cannot
+ * be healed and the position is stopped.
  *
  * Entry format:
  *

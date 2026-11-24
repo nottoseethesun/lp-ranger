@@ -66,16 +66,31 @@ function createRouteHandlers(deps) {
     sendBotResult(jsonResponse, res, bot.saveSettings(body));
   }
 
-  /*-
-   *  POST /api/wallet: import a wallet, then stop every position and
-   *  start the saved ones again under it. Refused while the start-up is
-   *  under way or the app is stopping (src/bot/app-phase.js), since it would
-   *  start positions then.
+  /**
+   * POST /api/wallet: import a wallet, stop every position, and start the
+   * new wallet's saved ones. Refused while the app may start nothing (a
+   * stop, a start-up or another import under way, src/bot/app-phase.js).
+   * From its first step until its closing start-up has finished, the bot
+   * holds the import as under way: a Manage is refused, and the
+   * dashboard's badge reads Syncing.
    */
   async function _handleWalletImport(req, res) {
-    const refusal = bot.refusalToStart();
+    const refusal = bot.beginWalletImport();
     if (refusal !== null)
       return jsonResponse(res, 409, { ok: false, error: refusal });
+    try {
+      await _importWallet(req, res);
+    } finally {
+      bot.endWalletImport();
+    }
+  }
+
+  /**
+   * The import itself, while the bot holds it as under way: the new
+   * wallet saved, the old one forgotten, the answer sent, then the new
+   * key decrypted and the new wallet's saved positions started.
+   */
+  async function _importWallet(req, res) {
     const body = await readJsonBody(req);
     log.info(
       "[server] Wallet import for %s (running: %d)",

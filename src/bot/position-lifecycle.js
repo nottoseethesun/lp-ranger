@@ -24,6 +24,7 @@ const {
   PoolStateUnavailableError,
 } = require("./pool-state-validate");
 const { manageRequestRefusal } = require("./manage-request-check");
+const { refusalToStart } = require("./app-phase");
 const { rejectIfPoolManaged } = require("./pool-already-managed");
 const { openInPool } = require("./open-in-pool");
 const { positionTag } = require("./position-answer-tag");
@@ -186,13 +187,45 @@ function createPositionLifecycle(deps) {
     positionMgr,
     walletManager,
     getPrivateKey,
-    /*- Injectable so the one-position-per-pool gate can be driven in a
-     *  test.  A thunk, not a value: the managed read provider is not
-     *  built until `sendTx.init()` has run, which is after this factory. */
+    /*-
+     *  Injectable so the one-position-per-pool gate can be driven in a
+     *  test. The provider is a thunk, asked as each Manage runs rather
+     *  than when this factory is built, so building the lifecycle asks
+     *  nothing of the rpc layer.
+     */
     ethersLib = ethers,
     readProvider = () => sendTx.getManagedReadProvider(),
     loadScanCache,
   } = deps;
+
+  /**
+   * Why a Manage that has waited must stop before its next step, or null.
+   * Manage waits twice before its loop starts: on the pool check's chain
+   * reads, then on the shared signer. A wallet import or a stop that
+   * began meanwhile refuses it, as either would have at its start. So
+   * does a key that is no longer the one it began with, as after an
+   * import that began and ended while it waited. Asked after each wait,
+   * so no loop starts signing with the key of a wallet the import has
+   * swapped out, and no such key is left to the new wallet's positions.
+   * @param {string} key  The position's composite key.
+   * @param {string|null} pk  The key the request began with.
+   * @returns {object|null}  The refusal (src/server/bot-result.js).
+   */
+  function _lateRefusal(key, pk) {
+    const now = refusalToStart();
+    const error =
+      now ??
+      (getPrivateKey() === pk
+        ? null
+        : "A wallet was imported while this Manage was under way. Try again.");
+    if (error === null) return null;
+    log.warn(
+      "[pos-route] Manage refused after its wait (key=%s): %s",
+      key,
+      error,
+    );
+    return { ok: false, reason: "refused", error, ...positionTag(key) };
+  }
 
   /**
    * The already-running short-circuit. If the request carries
@@ -305,6 +338,11 @@ function createPositionLifecycle(deps) {
         }),
     });
     if (refused !== null) return refused;
+    const late = _lateRefusal(key, pk);
+    if (late !== null) {
+      _starting.delete(key);
+      return late;
+    }
     return _start(key, body, pk);
   }
 
@@ -345,6 +383,18 @@ function createPositionLifecycle(deps) {
     _stampReopenFlags(posBotState, body);
     getAllPositionBotStates().set(key, posBotState);
 
+    /*-
+     *  Roll back the in-memory state above, so a retry starts cleanly and
+     *  the status report shows no phantom managed entry. A slot that held
+     *  settings before keeps them, with its prior status (e.g. `stopped`):
+     *  never promoted to running.
+     */
+    const undo = () => {
+      getAllPositionBotStates().delete(key);
+      if (_hadExistingConfig) posConfig.status = _prevStatus;
+      else delete diskConfig.positions[key];
+    };
+
     const t0 = Date.now();
     const keyRef = { current: key };
     /*- Fetch (or reuse) the app-wide shared signer before starting the
@@ -358,6 +408,11 @@ function createPositionLifecycle(deps) {
         ethersLib: ethers,
         dryRun: config.DRY_RUN,
       });
+      const late = _lateRefusal(key, pk);
+      if (late !== null) {
+        undo();
+        return late;
+      }
       await positionMgr.startPosition(key, {
         tokenId: String(body.tokenId),
         startLoop: () =>
@@ -386,15 +441,7 @@ function createPositionLifecycle(deps) {
         err.message,
         err.stack,
       );
-      /*- Roll back in-memory state so a retry starts cleanly and so the
-       *  status endpoint doesn't show a phantom managed entry. */
-      getAllPositionBotStates().delete(key);
-      if (!_hadExistingConfig) {
-        delete diskConfig.positions[key];
-      } else {
-        // Preserve prior status (e.g. `stopped`) — never auto-promote to running
-        posConfig.status = _prevStatus;
-      }
+      undo();
       return _startFailure(err, key, body.tokenId);
     } finally {
       _starting.delete(key);

@@ -98,9 +98,14 @@ function scanSites() {
     .map((m) => m.name);
 }
 
-/*- Whether a module routes its floor through the shared helper,
- *  src/bot/nft-mint-blocks.js. Only a bot module may load it, and every
- *  bot module sits beside it, so the one form is `./nft-mint-blocks`. */
+/**
+ * Whether a module routes its floor through the shared helper,
+ * src/bot/nft-mint-blocks.js. Only a bot module may load it, and every
+ * module this test reads beside it (the top of src/bot/) names it
+ * `./nft-mint-blocks`.
+ * @param {string} file  The module's file name.
+ * @returns {boolean}
+ */
 function isBounded(file) {
   const { src } = _modules().find((m) => m.name === file);
   return /require\(["']\.\/nft-mint-blocks["']\)/.test(src);

@@ -95,12 +95,14 @@ test("the module stays importable from the browser bundle", () => {
 // ── Cross-tier agreement ─────────────────────────────────────────────
 
 test("the key the server publishes equals the key the client builds", () => {
-  /*- `attachPoolKeys` (src/bot/position-states.js) stamps `poolKey` onto
+  /*-
+   *  `attachPoolKeys` (src/bot/position-states.js) stamps `poolKey` onto
    *  every managed entry in GET /api/status, and `_poolHeldBy` compares
    *  the active position's client-built key against it. If the two
    *  spellings ever diverge, nothing throws — the comparison simply
    *  never matches, and the "pool already managed" gate goes quiet with
-   *  every other test still green. This pins the agreement. */
+   *  every other test still green. This pins the agreement.
+   */
   const CHAIN = "pulsechain";
   const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
   const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";

@@ -302,10 +302,12 @@ export function _handleManageFailure(verb, payload, active, tell = alert) {
     const code = isObj ? payload.error : payload;
     const message = isObj ? payload.message : payload;
     log.warn("[lp-ranger] [manage] %s failed: %s", verb, code || message);
-    /*- `pool-info-unavailable` (503 from Manage when the position's
+    /*-
+     *  `pool-info-unavailable` (503 from Manage when the position's
      *  pool, or the pool's state, could not be read) is shown in a
      *  dedicated warning modal so the raw error message can be displayed
-     *  in a scrollable code block.  Other failures keep the alert() path. */
+     *  in a scrollable code block.  Other failures keep the alert() path.
+     */
     if (code === "pool-info-unavailable") {
       _showPoolInfoUnavailableModal(message, active);
       return;

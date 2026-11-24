@@ -196,6 +196,7 @@ function _syncStatus(d) {
     rebalanceScanComplete: d.rebalanceScanComplete,
     lifetimeScanComplete: d.lifetimeScanComplete,
     startingPositions: d._startingPositions,
+    importingWallet: d._importingWallet,
   });
 }
 function _updateSyncBadge(d) {

@@ -31,9 +31,11 @@ otherwise a position left drained is retired, within seconds in case 3
 and after thirty minutes in the others.
 
 The shared flag already shows through in one place. While it is set,
-the Manage button is disabled with a tooltip written for case 3 alone,
-"Re-open just failed — the bot will auto-retire shortly", whichever case
-set it (`_MANAGE_PAUSED_HELP`, `src/client/web/js/dashboard-manage-ui.js`). Beyond
+the Manage button is disabled with a tooltip that names the stop's
+reason (`abortReasonSummary`, `src/client/web/js/dashboard-abort-reason.js`)
+but frames every case as case 3's, "Re-open just failed: … The bot will
+auto-retire shortly", whichever case set it (`_pausedHelp`,
+`src/client/web/js/dashboard-manage-ui.js`). Beyond
 that the behaviour is right; it is the naming that makes correct prose
 about any one case hard to write.
 

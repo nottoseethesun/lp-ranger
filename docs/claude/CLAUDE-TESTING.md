@@ -56,7 +56,7 @@ Every swap a rebalance or a compound makes runs through these files:
 | `src/bot/compounder-swap.js` | The compound's ratio-correcting swap |
 | `src/bot/swap-gates.js` | The dust and gas checks in front of every swap |
 | `src/bot/slippage-resolver.js` | Which slippage figure a swap uses |
-| `src/bot/rebalancer-pools.js` | The shared swap helpers: impact check, approvals, send retries |
+| `src/bot/rebalancer-pools.js` | The shared ABIs and constants, the deadline and approvals (`_ensureAllowance`), the pool's state read with its retries, and liquidity removal |
 
 Measured 2026-10-18, on Node 24 and Node 22:
 

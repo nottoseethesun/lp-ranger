@@ -35,7 +35,11 @@ const {
   unpausePriceLookups,
 } = require("./price-fetcher-gate");
 const { readConfigValue, managedKeys } = require("../lib/bot-config-v2");
-const { markStopping, refusalToStart } = require("./app-phase");
+const {
+  markStopping,
+  beginWalletImport,
+  endWalletImport,
+} = require("./app-phase");
 const {
   createPerPositionBotState,
   attachMultiPosDeps,
@@ -128,10 +132,12 @@ function createBot(opts) {
  * @param {Function} [parts.setGlobalScanStatus]  Where the wallet scan
  *   keeps its progress (src/bot/wallet-scan.js); its own unless given.
  * @param {Function} [parts.getGlobalScanStatus]
- * @param {object} [parts.ethersLib]  Manage's chain reads
- *   (src/bot/position-lifecycle.js): the ethers library, the read
- *   provider thunk and the scan-cache reader its pool check uses; the
- *   real ones unless given.
+ * @param {object} [parts.ethersLib]  The chain reads of Manage's pool
+ *   check (src/bot/position-lifecycle.js) and of the start-up's owner
+ *   and pool reads (src/bot/auto-start.js): the ethers library and the
+ *   read provider thunk, with the scan-cache reader a re-open's search
+ *   for an open position in its pool uses (src/bot/open-in-pool.js);
+ *   the real ones unless given.
  * @param {Function} [parts.readProvider]
  * @param {Function} [parts.loadScanCache]
  * @returns {object}  The bot's operations, listed below.
@@ -153,7 +159,7 @@ function botOperations(parts) {
     getAllPositionBotStates: states,
   };
 
-  /*- An `undefined` seam leaves the lifecycle's own default in place. */
+  // An `undefined` seam leaves the lifecycle's own default in place.
   const lifecycle = createPositionLifecycle({
     ...shared,
     ethersLib: parts.ethersLib,
@@ -190,6 +196,8 @@ function botOperations(parts) {
     attachMultiPosDeps: parts.attachMultiPosDeps ?? attachMultiPosDeps,
     updatePositionState: parts.updatePositionState ?? updatePositionState,
     readConfigValue,
+    ethersLib: parts.ethersLib,
+    readProvider: parts.readProvider,
   });
 
   return {
@@ -226,8 +234,15 @@ function botOperations(parts) {
     },
     /** Start the positions saved as managed (src/bot/auto-start.js). */
     startManagedPositions: () => startManagedPositions(),
-    /** Why nothing may start now (the start-up, a stop), or null. */
-    refusalToStart: () => refusalToStart(),
+    /**
+     * Begin a wallet import (src/bot/app-phase.js): null when it began,
+     * else why it is refused (a stop, a start-up or another import under
+     * way). Until `endWalletImport`, a Manage is refused and the status
+     * report says an import is under way.
+     */
+    beginWalletImport: () => beginWalletImport(),
+    /** End the wallet import, its closing start-up included. */
+    endWalletImport: () => endWalletImport(),
     /** How many positions' loops are running. */
     runningCount: () => positionMgr.runningCount(),
 

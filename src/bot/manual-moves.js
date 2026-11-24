@@ -119,8 +119,10 @@ function createManualMoves(deps) {
     log.info("[bot] Manual compound for %s %s", positionKey, emojiId(tokenId));
     // Asked for: no scan starts until it is made (src/bot/scan-state.js).
     state.forceCompound = true;
-    /*- Same reasoning as Rebalance Now — kick the poll so the manual
-     *  Compound Now doesn't wait for the next scheduled poll. */
+    /*-
+     *  Same reasoning as Rebalance Now — kick the poll so the manual
+     *  Compound Now doesn't wait for the next scheduled poll.
+     */
     state._kickPoll?.();
     return { ok: true, message: "Compound requested" };
   }

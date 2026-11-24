@@ -3,14 +3,16 @@
 /**
  * @file test/start-up-syncing.test.js
  * @description The dashboard's Syncing badge while the server starts the
- *   positions saved as managed, one at a time after a launch.
+ *   positions saved as managed, one at a time after a launch, and while it
+ *   imports a wallet.
  *
  *   The server reports the start-up's progress in its status answer
- *   (`startingManagedPositions`, src/server/handle-api-status.js), and while it
- *   does, the badge reads Syncing whatever position is on screen, naming
- *   the progress in its tooltip; the Syncing state is what keeps Manage
- *   and Stop Managing disabled. Once the start-up ends, the badge follows
- *   the position on screen again.
+ *   (`startingManagedPositions`, src/server/handle-api-status.js), and an
+ *   import under way (`importingWallet`). While either is set, the badge
+ *   reads Syncing whatever position is on screen, naming the progress or
+ *   the import in its tooltip; the Syncing state is what keeps Manage and
+ *   Stop Managing disabled. Once both end, the badge follows the position
+ *   on screen again.
  *
  *   Driven end to end: the real status handler builds the answer, and the
  *   page's own poll shows it on its markup from src/client/web/index.html.
@@ -159,5 +161,27 @@ describe("while the server starts the saved positions", () => {
     await polled();
     assert.equal(badge().textContent, "Synced");
     assert.equal(data.isSyncComplete(), true);
+  });
+});
+
+describe("while the server imports a wallet", () => {
+  it("reads Syncing, naming the import, and is synced again once it ends", async () => {
+    appPhase.beginWalletImport();
+    await polled();
+    assert.equal(badge().textContent, "Syncing…");
+    assert.equal(badge().title, "Importing the wallet");
+    assert.equal(data.isSyncComplete(), false);
+    appPhase.endWalletImport();
+    await polled();
+    assert.equal(badge().textContent, "Synced");
+    assert.equal(data.isSyncComplete(), true);
+  });
+
+  it("names the start-up's progress once the import's own start-up begins", async () => {
+    appPhase.beginWalletImport();
+    appPhase.beginStartUp(2);
+    await polled();
+    assert.equal(badge().title, "Starting the managed positions: 0 of 2");
+    assert.equal(data.isSyncComplete(), false);
   });
 });

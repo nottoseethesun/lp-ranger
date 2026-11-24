@@ -13,7 +13,7 @@
  *   src/bot.js builds its bot through `createBot`.
  */
 
-const { describe, it, mock, before, after } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
@@ -41,12 +41,21 @@ const keyOf = (pool) =>
 /** Today's counts the log below holds: two in pool A, one in pool B. */
 const TODAY = { [keyOf(A)]: 2, [keyOf(B)]: 1 };
 
+/**
+ * Fix the clock at noon on the log's day, for the case `t`.
+ *
+ * TEST-ONLY global swap: the parts count today's rebalances by the
+ * clock, read from `Date`, which takes no stand-in, and a fixed day keeps
+ * a run from crossing midnight between writing the log and reading it.
+ * The test runner puts `Date` back pristine as the case ends.
+ * @param {object} t  The test case's context.
+ */
+const atNoonOnTheLogsDay = (t) =>
+  t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 10, 23, 12) });
+
 describe("the bot's parts", () => {
   const savedLogFile = config.LOG_FILE;
   before(() => {
-    /*- The day is fixed, so no run can cross midnight between writing
-     *  the log and reading it. */
-    mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 10, 23, 12) });
     const logFile = path.join(makeTestTempFolder("bot-parts"), "log.json");
     fs.writeFileSync(
       logFile,
@@ -61,10 +70,10 @@ describe("the bot's parts", () => {
   });
   after(() => {
     config.LOG_FILE = savedLogFile;
-    mock.timers.reset();
   });
 
-  it("count each pool's rebalances today from the rebalance log", () => {
+  it("count each pool's rebalances today from the rebalance log", (t) => {
+    atNoonOnTheLogsDay(t);
     const { positionMgr } = buildBotParts();
 
     assert.deepEqual(positionMgr.getPoolDailyCounts(), TODAY);
@@ -72,9 +81,12 @@ describe("the bot's parts", () => {
     assert.equal(positionMgr.canRebalancePool(keyOf(B), 2), true);
   });
 
-  it("are the parts createBot builds the bot over", async () => {
-    /*- No gas reading has been taken in this process, so the report asks
-     *  nothing of the chain. */
+  it("are the parts createBot builds the bot over", async (t) => {
+    atNoonOnTheLogsDay(t);
+    /*-
+     *  No gas reading has been taken in this process, so the report asks
+     *  nothing of the chain.
+     */
     const bot = createBot({
       diskConfig: { global: {}, positions: {} },
       walletManager: { getAddress: () => null },

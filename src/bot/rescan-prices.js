@@ -20,7 +20,7 @@
  *   and re-scans the pool's whole 5-year Transfer history, which can
  *   take hours.
  *
- *   This route fixes only the prices. It asks the position's next
+ *   Re-scan Prices fixes only the prices. It asks the position's next
  *   lifetime scan to rebuild every stored dollar figure at freshly
  *   fetched prices, from token amounts it re-reads from the chain — the
  *   lifetime deposit and the HODL baseline's entry value — and to count

@@ -180,7 +180,8 @@ function _currentPnl(
 ) {
   const rUsd = residuals?.usd || 0;
   const pgl = entryValue > 0 ? value - entryValue : null;
-  /*- Through `ilFigures` (src/bot/bot-pnl-il.js), the one expression of the
+  /*-
+   *  Through `ilFigures` (src/bot/bot-pnl-il.js), the one expression of the
    *  rule, so this figure matches what the bot tier reports for the same
    *  position — including taking this NFT's compounded fees out of the
    *  LP value, which are liquidity the HODL side never had, counting no
@@ -189,7 +190,8 @@ function _currentPnl(
    *
    *  Only the current-NFT figure is asked for here; the lifetime one
    *  needs a chain scan this fast path does not make, and
-   *  `computeLifetimeDetails` supplies it. */
+   *  `computeLifetimeDetails` supplies it.
+   */
   const il = baseline
     ? (ilFigures({
         lpValue: value,

@@ -145,9 +145,11 @@ describe("a deposit of a coin two positions hold", () => {
   });
 
   it("keeps each coin apart: a deposit of A's other coin is A's alone", () => {
-    /*- A deposit brings one coin (`_isDeposit`, src/bot/wallet-deposits.js):
+    /*-
+     *  A deposit brings one coin (`_isDeposit`, src/bot/wallet-deposits.js):
      *  here one of the shared coin, which both list, and one of the coin
-     *  only A holds. */
+     *  only A holds.
+     */
     const own = { key: "0xx", block: 100, raw: [0, 70], usd: [0, 7] };
     const a = holder("A", { deposits: [deposit("0xd", 100, 1000), own] });
     const b = holder("B", { deposits: [deposit("0xd", 100, 1000)] });

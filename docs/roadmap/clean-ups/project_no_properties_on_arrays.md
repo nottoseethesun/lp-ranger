@@ -68,7 +68,7 @@ Two parts.
 values as fields, and have callers take them as ordinary values.
 Touches `src/bot/event-scanner.js`,
 `src/bot/pool-scanner.js`, `src/bot/bot-recorder.js`,
-`src/bot/bot-recorder-lifetime.js`, `src/server/position-details*.js` and
+`src/bot/bot-recorder-lifetime.js`, `src/bot/position-details*.js` and
 `src/bot/nft-mint-blocks.js` (`chainScanFloor`). Once done, delete the
 re-attach lines and their test.
 

@@ -99,8 +99,10 @@ function _pausedCopy(message) {
     thin: "Source tokens externally, recreate the LP position, then select the new NFT.",
     slip: "Adjust the slippage setting, then use the manual Rebalance button.",
     gas: "Send native tokens to the wallet address, then manual Rebalance.",
-    /*- The bot's own words carry the advice (src/bot/price-moved-stop.js),
-     *  the same as its Telegram alert. */
+    /*-
+     *  The bot's own words carry the advice (src/bot/price-moved-stop.js),
+     *  the same as its Telegram alert.
+     */
     volatile: "",
   };
   /*- "Aborted" rather than "Paused": the bot does NOT auto-retry from

@@ -9,6 +9,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { _poll } = require("./_bot-loop-helpers");
 const { updateHodlBaseline } = require("../src/bot/bot-recorder-baseline");
+const { bigIntReplacer } = require("../src/lib/bigint-json");
 
 describe("pollCycle compound gates", () => {
   it("does not trigger compound when autoCompound disabled and no force", async () => {
@@ -306,13 +307,10 @@ describe("compound P&L integration", () => {
 });
 
 describe("bot-recorder helpers", () => {
-  it("_bigIntReplacer converts BigInt to string", () => {
-    const {
-      bigIntReplacer: _bigIntReplacer,
-    } = require("../src/lib/bigint-json");
-    assert.equal(_bigIntReplacer("k", 42n), "42");
-    assert.equal(_bigIntReplacer("k", 42), 42);
-    assert.equal(_bigIntReplacer("k", "hello"), "hello");
+  it("bigIntReplacer (src/lib/bigint-json.js) converts BigInt to string", () => {
+    assert.equal(bigIntReplacer("k", 42n), "42");
+    assert.equal(bigIntReplacer("k", 42), 42);
+    assert.equal(bigIntReplacer("k", "hello"), "hello");
   });
 
   it("_activePosSummary returns serialisable summary", () => {

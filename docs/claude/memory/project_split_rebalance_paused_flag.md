@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
-  modified: 2026-10-24T05:23:58.932Z
+  modified: 2026-11-24T19:18:35.544Z
 ---
 
 **Status: DEFERRED to a future cleanup PR.** User picked option C in the 2026-06-18 closed-position-reopen-via-manage review: leave the flag as-is for now, discipline the user-facing prose via [[feedback_paused_vs_aborted]]. Tackle the rename when there's appetite for a small, focused cleanup PR.
@@ -17,31 +17,33 @@ The `botState.rebalancePaused` flag is written from two structurally different p
 1. **Swap-abort on slippage** — `src/bot/bot-loop.js:194-202` `_handleError`. When the swap quote's price impact exceeds the user's `SLIPPAGE_PCT`, the entire rebalance effort halts instantly. The bot will NOT retry — slippage problems require manual user action 99.9% of the time. "Aborted" fits.
 2. **A rebalance the price outran** — `src/bot/price-moved-stop.js` `holdAfterPriceMove`. When the price leaves the new range before the mint, with the old position emptied, the bot holds the position at once for the owner to weigh the impermanent loss and click Rebalance Now (the user's ruling, 2026-10-23). Until then it backed off and retried, up to `REBALANCE_RETRY_SWAP_LIMIT` stops, and paused only once those ran out; that ladder and its three settings are gone, so this case no longer earns a pause by exhaustion, and "Aborted" fits it too.
 
-Both paths share the same downstream consumer (`_checkRebalanceGates` in `bot-cycle.js:392` returns early when paused) and the same UI treatment (the "RETRYING" pill in `dashboard-data-status.js:337`, plus the alerts in `dashboard-alerts.js`). They converge enough that splitting downstream isn't worth it — but the flag NAME needs splitting for prose clarity.
+Both paths share the same downstream consumer (`checkStateGates` in `bot-cycle-gates.js`, asked by `_checkRebalanceGates` in `bot-cycle.js`, returns early when paused) and the same UI treatment (the "RETRYING" pill in `dashboard-data-status.js`, plus the alerts in `dashboard-alerts.js`). They converge enough that splitting downstream isn't worth it — but the flag NAME needs splitting for prose clarity.
 
 ## Proposed split
 
 - **`rebalanceAborted`** — set ONLY by `_handleError` on the swap-abort case (when `/swap aborted/i.test(errMsg)`).
 - **`rebalancePaused`** — keep the name, set ONLY by `_activateSwapBackoff` after exhausting the priceVolatile retry budget. (Overtaken 2026-10-23: that writer is gone, and its successor, `holdAfterPriceMove`, holds at the first stop. The public roadmap's form, one flag renamed `rebalanceAborted` that records which case set it, covers every writer.)
 - Update `_checkRebalanceGates` to early-return on either flag: `if (!forced && (bs.rebalancePaused || bs.rebalanceAborted))`.
-- Update `server-routes.js`'s POST /api/config slippage-change handler to clear BOTH flags (the user changing slippage is the natural action for either case).
-- Update `_stampReopenFlagsOnLive` in `src/lib/server-positions.js` to clear both.
+- Update the settings save's slippage-change clear (`_clearSlippagePause`, `src/bot/settings-save.js`) to clear BOTH flags (the user changing slippage is the natural action for either case).
+- Update `_stampReopenFlagsOnLive` in `src/bot/position-lifecycle.js` to clear both.
 - Update the dashboard pill: `RETRYING` for `rebalancePaused`, `ABORTED` for `rebalanceAborted` (or two different colors — talk to the user about wording).
 
 ## Files that touch the flag today
 
-Source (~15 places):
+Source (grep `rebalancePaused` in `src/` for the current lines; as of 2026-11-24):
 
-- `src/bot/bot-loop.js` — `_handleError` writes (becomes `rebalanceAborted` writer), `_handleRecovery` / `_handleRebalanceSuccess` clear (clear both).
-- `src/bot/bot-cycle.js:392` — `_checkRebalanceGates` reads.
-- `src/bot/bot-cycle-residual.js:54` — reads to skip residual cleanup.
+- `src/bot/bot-loop.js` — `_handleError` writes (becomes `rebalanceAborted` writer), `_handleRecovery` / `_handleRebalanceSuccess` clear (clear both), and the delayed retire reads it.
+- `src/bot/bot-cycle-gates.js` (`checkStateGates`, asked by `_checkRebalanceGates` in `bot-cycle.js`) — reads it and returns early.
+- `src/bot/bot-cycle-residual.js` — reads to skip residual cleanup.
+- `src/bot/bot-cycle-drain.js` — reads it for the drained-position retire.
 - `src/bot/price-moved-stop.js` (`holdAfterPriceMove`) — writes.
-- `src/server/server-routes.js:141-142` — clears on slippage change.
-- `src/lib/server-positions.js:54, 185` — initializes / clears on key migration.
-- `src/client/web/js/dashboard-data-status.js:337` — pill label.
-- `src/client/web/js/dashboard-alerts.js:157, 183, 186` — alert visibility.
-- `src/client/web/js/dashboard-manage-badge.js` (from this branch) — closed-position Manage button logic.
-- `src/client/web/js/dashboard-data.js` (from this branch) — `_updateClosedManageBtn` reads.
+- `src/bot/settings-save.js` (`_clearSlippagePause`) — clears on slippage change.
+- `src/bot/manual-moves.js` — Rebalance Now clears it.
+- `src/bot/position-lifecycle.js` (`_stampReopenFlagsOnLive`) — a re-open clears it.
+- `src/bot/position-states.js` — initializes it, and clears it on a key migration.
+- `src/client/web/js/dashboard-data-status.js` — pill label.
+- `src/client/web/js/dashboard-alerts.js` — alert visibility.
+- `src/client/web/js/dashboard-manage-ui.js` — closed-position Manage button logic.
 
 Tests: grep `rebalancePaused` in `test/` to find existing coverage; add coverage for the new `rebalanceAborted` writer.
 

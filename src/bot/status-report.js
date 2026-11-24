@@ -22,7 +22,7 @@ const {
 } = require("./gas-monitor");
 const { actualGasCostUsd: _actualGasCostUsd } = require("./bot-pnl-updater");
 const { primaryRouteLabel: _primaryRouteLabel } = require("./rebalancer-swap");
-const { startUpProgress } = require("./app-phase");
+const { startUpProgress, walletImportUnderWay } = require("./app-phase");
 const {
   buildStatusPositions: _buildStatusPositions,
 } = require("./position-states");
@@ -45,8 +45,8 @@ const { guaranteedDashboardHasPolledMs } = require("./dashboard-has-polled");
  * @param {Function} [deps.managedKeys]
  * @returns {(posDefaults: object) => Promise<object>}  The report: the
  *   `positions` map, and `gasStatus`, `positionScan`, `swapRouteLabel`,
- *   `managedPositions`, `startingManagedPositions`, `poolDailyCounts` and
- *   `guaranteedDashboardHasPolledMs`.
+ *   `managedPositions`, `startingManagedPositions`, `importingWallet`,
+ *   `poolDailyCounts` and `guaranteedDashboardHasPolledMs`.
  */
 function createStatusReport(deps) {
   const {
@@ -91,6 +91,11 @@ function createStatusReport(deps) {
        *  the dashboard's badge at Syncing. Null at any other time.
        */
       startingManagedPositions: startUpProgress(),
+      /*-
+       *  Whether a wallet import is under way, its closing start-up
+       *  included, which also holds the badge at Syncing.
+       */
+      importingWallet: walletImportUnderWay(),
       poolDailyCounts: positionMgr.getPoolDailyCounts(),
       /*-
        *  How long the bot waits before it retires a position whose

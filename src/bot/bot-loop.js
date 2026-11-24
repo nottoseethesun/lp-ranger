@@ -224,8 +224,10 @@ function _countRescan(botState) {
 async function startBotLoop(opts) {
   const { privateKey, updateBotState, botState } = opts;
   const gc = wireBotStateGetConfig(botState, opts);
-  /*- How long the dashboard is given to see a change before the loop
-   *  retires the position or clears a one-shot signal. */
+  /*-
+   *  How long the dashboard is given to see a change before the loop
+   *  retires the position or clears a one-shot signal.
+   */
   const dashboardHasPolledMs = guaranteedDashboardHasPolledMs();
   const dryRun = opts.dryRun ?? config.DRY_RUN,
     ethersLib = opts.ethersLib || ethers;
@@ -394,7 +396,8 @@ async function startBotLoop(opts) {
         position.tokenId,
         dashboardHasPolledMs,
       );
-      /*- Delay the actual retire by `dashboardHasPolledMs` so the
+      /*-
+       *  Delay the actual retire by `dashboardHasPolledMs` so the
        *  dashboard (3 s poll) reliably catches the paused state and
        *  fires the alert modal across multiple polls.  Without this
        *  delay the bot's startup-scan-triggered retire can fire
@@ -405,7 +408,8 @@ async function startBotLoop(opts) {
        *  `_retireImmediately` poll path so retire fires exactly when
        *  the delay elapses, regardless of bot-poll interval.  Bails
        *  if the user took action during the wait (slippage change
-       *  clears rebalancePaused; Manage click sets forceRebalance).  */
+       *  clears rebalancePaused; Manage click sets forceRebalance).
+       */
       setTimeout(() => {
         if (_stopped) {
           log.info(
@@ -537,12 +541,16 @@ async function startBotLoop(opts) {
     }
   }
 
-  /*- Stop the loop, fire the optional server-side retirement callback,
-   *  and mark the bot state accordingly. Called from `poll` when
-   *  pollCycle reports that a drained position has exceeded the
-   *  retirement window.  The NFT is not burned — this is a pure
-   *  software state flip; the user can re-manage it from the
-   *  dashboard at any time. */
+  /**
+   * Stop the loop, fire the optional retirement callback (`onRetire`,
+   * made by `createOnRetire` in src/bot/position-states.js), and mark the
+   * bot state accordingly. Called from `poll` when pollCycle reports that
+   * a drained position has exceeded the retirement window.  The NFT is
+   * not burned — this is a pure software state flip; the user can
+   * re-manage it from the dashboard at any time.
+   * @param {number} drainedForMs  How long the position has held no
+   *   liquidity.
+   */
   async function _handleRetire(drainedForMs) {
     log.info(
       "[bot] Retiring drained position #%s (no tx in flight)",

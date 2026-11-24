@@ -615,8 +615,10 @@ that body into the config object would let an attacker inject
 unexpected keys (for example, overwriting `status` to mark a
 position as stopped).
 
-LP Ranger prevents this with a strict `allowlist`. The route handler
-in `src/bot/settings-save.js` walks two hardcoded arrays —
+LP Ranger prevents this with a strict `allowlist`. The route
+(`_handleApiConfig`, `src/server/server-routes.js`) asks the bot to save
+the body, and the bot's settings save (`src/bot/settings-save.js`) walks
+two hardcoded arrays —
 `GLOBAL_KEYS` (RPC URLs, gas fee limit, etc.) and
 `SETTING_POSITION_KEYS` (slippage, threshold, timeout, auto-compound
 settings, etc.) defined in `src/lib/bot-config-keys.js` — and copies only
@@ -628,7 +630,7 @@ range by `src/lib/config-bounds.js` before anything is saved. A test fails
 any key the route accepts without a check.
 The outer layers (the localhost binding, the origin check and the
 CSRF token) still stand in front of all of it. Because
-the `allowlist` is a constant inside server code (never derived from
+the `allowlist` is a constant in the app's own code (never derived from
 user input), the bracket access `diskConfig[k]` that merges each
 field is safe — which is why `eslint-plugin-security`'s
 `detect-object-injection` rule is disabled with a documented reason

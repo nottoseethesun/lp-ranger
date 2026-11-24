@@ -232,8 +232,10 @@ function formatNftResponse(nftPositions, symMap, poolTickMap) {
 function createWalletScan(deps) {
   const { walletManager, getAllPositionBotStates, positionMgr } = deps;
 
-  /*- The scan's progress, for the status report: "idle", "scanning"
-   *  with how far it has got, "ready" or "error". */
+  /*-
+   *  The scan's progress, for the status report: "idle", "scanning"
+   *  with how far it has got, "ready" or "error".
+   */
   let _globalScanStatus = "idle";
   let _globalScanProgress = null;
   const setGlobalScanStatus =
@@ -523,13 +525,12 @@ function createWalletScan(deps) {
     const aborted = cancelPoolScan(token0, token1, fee, w);
     let flagReset = false;
     if (positionKey && getAllPositionBotStates) {
-      /*- Resolve to the live key: the body.positionKey was captured by
-       *  the dashboard from a recent poll and may be stale by the time
-       *  this request arrives (e.g. a parallel rebalance migrated the
-       *  key).  Without this, getAllPositionBotStates().get(stale)
-       *  returns undefined, flagReset stays false, and the user's
-       *  "Reload Current Position" silently fails to clear
-       *  rebalanceScanComplete — leaving the Syncing badge stuck. */
+      /*-
+       *  Resolve to the live key: a rebalance may have moved the key
+       *  since the caller took it. Without this, the stale key finds no
+       *  state, flagReset stays false, and the position's scan is not
+       *  marked unfinished.
+       */
       const liveKey = resolveLiveKey(positionMgr, positionKey, (k) =>
         getAllPositionBotStates().get(k),
       );

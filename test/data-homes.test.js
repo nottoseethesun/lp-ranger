@@ -75,9 +75,11 @@ const APP_CONFIG_OWNERS = [
 
 describe("where each kind of data is kept", () => {
   it("reads every module, those in subfolders included", () => {
-    /*- The records file's own module sits in src/lib/util/; a check that
+    /*-
+     *  The records file's own module sits in src/lib/util/; a check that
      *  skipped subfolders would leave it, and the Telegram modules,
-     *  unread. */
+     *  unread.
+     */
     const names = MODULES.map(([f]) => f);
     for (const f of [
       "position-records.js",

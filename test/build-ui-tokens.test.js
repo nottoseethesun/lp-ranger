@@ -287,11 +287,13 @@ test("the build writes the stylesheet before it stamps the pages", () => {
 });
 
 test("prelint generates the stylesheet so lint sees it in CI too", () => {
-  /*- `stylelint src/client/web/css/*.css` only lints files that exist.  Without
+  /*-
+   *  `stylelint src/client/web/css/*.css` only lints files that exist.  Without
    *  this, the generated file would be linted on a developer's machine
    *  (where a build has run) and silently skipped in CI, which is the
    *  asymmetry that lets a generator start emitting invalid CSS
-   *  unnoticed. */
+   *  unnoticed.
+   */
   const pkg = readJson(path.join(ROOT, "package.json"));
   assert.match(pkg.scripts.prelint, /build-ui-tokens\.js/);
 });

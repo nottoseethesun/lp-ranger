@@ -567,9 +567,11 @@ describe("createPositionRoutes", () => {
       assert.ok(!getAllPositionBotStates().has("rm-key"));
     });
 
-    /*- Stop Managing's migration-during-stop test lives in
+    /*-
+     *  Stop Managing's migration-during-stop test lives in
      *  `test/server-positions-stale-key-races.test.js` to keep this
-     *  file under the 500-line cap. */
+     *  file under the 500-line cap.
+     */
   });
 
   // ── The managed list ────────────────────────────────────────────────────

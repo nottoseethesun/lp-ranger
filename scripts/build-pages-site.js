@@ -202,8 +202,10 @@ function buildPagesSite(outDir) {
     writePage(page, spec, outDir);
   }
 
-  /*- Each asset keeps its folder under the web root (css/, images/), so
-   *  a page's relative link to it, which names that folder, finds it. */
+  /*-
+   *  Each asset keeps its folder under the web root (css/, images/), so
+   *  a page's relative link to it, which names that folder, finds it.
+   */
   for (const file of spec.webAssets || []) {
     if (fs.existsSync(file)) {
       const to = path.join(outDir, path.relative(spec.webRoot, file));

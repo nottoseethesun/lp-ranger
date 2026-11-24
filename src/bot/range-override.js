@@ -26,10 +26,11 @@
  * one-way "No Override" button, which cleared the keys outright.
  *
  * `resolveRangeOverrideEnabled` is the ONLY place the unset-slot default
- * is decided.  The server calls it from `bot-cycle-opts.js` (what the
- * bot actually does) and from `build-status-positions.js` (what
- * `GET /api/status` publishes), so the dashboard reads a value that is
- * already resolved and never re-derives the rule client-side.
+ * is decided.  Both its callers are the bot's: `bot-cycle-opts.js` (what
+ * the bot actually does) and `build-status-positions.js` (what the status
+ * report, and so `GET /api/status`, publishes), so the dashboard reads a
+ * value that is already resolved and never re-derives the rule
+ * client-side.
  */
 
 "use strict";

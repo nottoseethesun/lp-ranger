@@ -118,6 +118,7 @@ function createApiStatusHandler(deps) {
         moralisEnabled: moralisEnabledIn(diskConfig.global),
         managedPositions: report.managedPositions,
         startingManagedPositions: report.startingManagedPositions,
+        importingWallet: report.importingWallet,
         poolDailyCounts: report.poolDailyCounts,
         gasStatus: report.gasStatus,
       },
