@@ -15,7 +15,7 @@ same file. Renamed from "Help and User Manual" on 2026-10-17 by the
 user's request: "Rename the User Manual to just 'User Manual'". The
 file path did not change, so published links still work.
 
-- Styles in `src/client/web/help.css` (external, no inline styles)
+- Styles in `src/client/web/css/help.css` (external, no inline styles)
 - Uses plain `<ul>` and `<p>` elements (no `9mm-pos-mgr-help-*` classes — those stay for compact app contexts in `index.html`)
 - Has a clickable table of contents with anchor links
 - Regions marked `HELP:` are generated from `src/lib/shared-help-content.json` by `scripts/build-manual-content.js`; edit the JSON, never the region

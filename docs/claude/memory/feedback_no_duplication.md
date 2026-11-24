@@ -37,10 +37,10 @@ dependencies further down the file: `fs`, `ethers`, `async-mutex`.
 **So extract the pure part into its own dependency-free module and have
 both tiers import it.** Established 2026-09-16 on the
 one-position-per-pool gate: `positionMgr.poolKey` lives in
-`src/lib/position-manager.js`, which pulls in `async-mutex`, `ethers` and
+`src/bot/position-manager.js`, which pulls in `async-mutex`, `ethers` and
 `fs`, so the dashboard could not import it. The pair normalisation
 inside it was pure, so it moved to `src/lib/pool-key.js` with zero imports,
-and `src/client/web/dashboard-manage-ui.js` now imports the very function the
+and `src/client/web/js/dashboard-manage-ui.js` now imports the very function the
 server decides with.
 
 **Why it matters:** the user offered the duplication as acceptable in

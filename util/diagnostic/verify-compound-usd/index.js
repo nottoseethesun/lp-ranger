@@ -14,11 +14,11 @@
  *   usdValue = (amount0Deposited / 10^decimals0) × price0
  *            + (amount1Deposited / 10^decimals1) × price1
  *
- * (`src/lib/compounder.js` `executeCompound`).  `amount0Deposited` /
+ * (`src/bot/compounder.js` `executeCompound`).  `amount0Deposited` /
  * `amount1Deposited` come from the `IncreaseLiquidity` event on the
  * deposit TX, the decimals from `poolState`, and the prices from
  * `deps._lastPrice0` / `_lastPrice1` — the last values
- * `src/lib/bot-pnl-updater.js` `_fetchWithOverrides` resolved for the
+ * `src/bot/bot-pnl-updater.js` `_fetchWithOverrides` resolved for the
  * position, which is either the live price cascade or a per-position
  * manual price override.  This tool re-derives all three from the
  * chain and from live price sources, then reports which input has to
@@ -26,19 +26,19 @@
  *
  * The Telegram alert reports the fees among that deposit, the record's
  * `amount0Compounded` / `amount1Compounded` at the same prices
- * (`src/lib/compounded-coins.js`).  When the deposit also took in coins the
+ * (`src/bot/compounded-coins.js`).  When the deposit also took in coins the
  * wallet already held, the alert names their value apart, and the
  * `usdValue` checked here is the whole deposit's.
  *
  * Why the figure matters beyond the alert text: `recordCompound` in
- * `src/lib/bot-cycle-compound.js` adds every fee the same compound collected
+ * `src/bot/bot-cycle-compound.js` adds every fee the same compound collected
  * to the position's `compoundedAmount0` / `compoundedAmount1`, which priced
  * at the current poll are half of the fee earnings the Lifetime panel's
  * Profit adds (Current Fees plus Fees Compounded,
- * `src/client/web/dashboard-data-kpi.js`).
+ * `src/client/web/js/dashboard-data-kpi.js`).
  * That total is only ever accumulated
  * incrementally once disk holds a non-zero value — the on-chain
- * rescan in `src/lib/bot-recorder-lifetime.js` is deliberately gated off
+ * rescan in `src/bot/bot-recorder-lifetime.js` is deliberately gated off
  * by `_resolveDiskState`.  So a single bad compound figure persists in
  * lifetime P&L until the value is corrected by hand.
  *
@@ -57,7 +57,7 @@
  *      mint (`Transfer` from the zero address) events.
  *   4. Classifies each `IncreaseLiquidity` as mint / compound /
  *      rebalance re-deposit by reusing the production classifier
- *      (`_filterRebalances` from `src/lib/compounder.js`) so the labels
+ *      (`_filterRebalances` from `src/bot/compounder.js`) so the labels
  *      match what the bot itself would conclude.
  *   5. Prices every event at live USD, and prints each price source
  *      (Moralis, GeckoTerminal, DexScreener) separately alongside the
@@ -82,7 +82,7 @@
  *     ±4 that reproduces the reported figure to within 5%.  A hit here
  *     means the amounts were divided by the wrong power of ten, not
  *     that a price was wrong.  Cross-check against the decimals heal /
- *     override path in `src/lib/bot-recorder-lifetime.js` and the
+ *     override path in `src/bot/bot-recorder-lifetime.js` and the
  *     `decimalsOverride0` / `decimalsOverride1` /
  *     `decimalsOverrideForce0` / `decimalsOverrideForce1` config keys.
  *
@@ -193,32 +193,32 @@ process.chdir(path.resolve(__dirname, "..", "..", ".."));
 
 const { ethers } = require("ethers");
 const config = require("../../../src/lib/config");
-const { PM_ABI } = require("../../../src/lib/pm-abi");
+const { PM_ABI } = require("../../../src/bot/pm-abi");
 const { parseCompositeKey } = require("../../../src/lib/composite-key");
-const { _DEFAULT_CHUNK_SIZE } = require("../../../src/lib/get-logs-chunked");
+const { _DEFAULT_CHUNK_SIZE } = require("../../../src/bot/get-logs-chunked");
 const {
   readBotConfigDefaults,
 } = require("../../../src/lib/bot-config-defaults");
 const { setApiKey } = require("../../../src/lib/api-key-holder");
 const { readEnv } = require("../../../src/lib/env-settings");
-const { fetchTokenPriceUsd } = require("../../../src/lib/price-fetcher");
+const { fetchTokenPriceUsd } = require("../../../src/bot/price-fetcher");
 const {
   readPriceCacheSettings,
-} = require("../../../src/lib/price-fetcher-gate");
+} = require("../../../src/bot/price-fetcher-gate");
 const {
   _fetchMoralisCurrent,
   _fetchGeckoTerminalCurrent,
   _fetchDexScreener,
-} = require("../../../src/lib/price-sources-current");
-const { parseLogs: _parseLogs } = require("../../../src/lib/nft-event-parse");
-const { topicForTokenId } = require("../../../src/lib/nft-token-topic");
+} = require("../../../src/bot/price-sources-current");
+const { parseLogs: _parseLogs } = require("../../../src/bot/nft-event-parse");
+const { topicForTokenId } = require("../../../src/bot/nft-token-topic");
 const { Command, InvalidArgumentError } = require("commander");
 const { sleep } = require("../_helpers");
 const { findPositionForTokenId, fmtUsd } = require("./analysis");
 const {
   readPositionRecords,
   mergePositionRecords,
-} = require("../../../src/lib/position-records");
+} = require("../../../src/lib/util/position-records");
 const {
   renderPrices,
   renderEvents,

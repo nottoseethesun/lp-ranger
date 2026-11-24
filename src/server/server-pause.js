@@ -23,15 +23,14 @@
  *     sync with whatever the browser is doing.
  *   - `stop()` is invoked by the graceful-shutdown handler so the
  *     periodic check timer is cleared cleanly.
+ *
+ * The pause itself is the bot's, kept by its price library; the server
+ * asks for it through the bot's interface (src/bot/bot-interface.js).
  */
 
 "use strict";
 
 const { createIdleTracker } = require("./server-idle-tracker");
-const {
-  pausePriceLookups,
-  unpausePriceLookups,
-} = require("../lib/price-fetcher-gate");
 
 /** Default thresholds — match docs/architecture.md. */
 const DEFAULT_IDLE_THRESHOLD_MS = 15 * 60_000;
@@ -40,7 +39,9 @@ const DEFAULT_IDLE_CHECK_MS = 60_000;
 /**
  * Build the pause infrastructure (idle tracker + two endpoints).
  *
- * @param {object} [opts]
+ * @param {object} opts
+ * @param {object} opts.bot  The bot's interface: its `pausePriceLookups`
+ *   and `unpausePriceLookups`.
  * @param {number} [opts.thresholdMs]
  * @param {number} [opts.checkIntervalMs]
  * @param {Function} [opts.jsonResponse]  Defaults to a minimal local impl.
@@ -52,16 +53,17 @@ const DEFAULT_IDLE_CHECK_MS = 60_000;
  * @returns {{ markActivity: () => void, stop: () => void, routes: object }}
  */
 function createPauseInfra({
+  bot,
   thresholdMs = DEFAULT_IDLE_THRESHOLD_MS,
   checkIntervalMs = DEFAULT_IDLE_CHECK_MS,
   jsonResponse,
   readJsonBody,
-} = {}) {
+}) {
   const tracker = createIdleTracker({
     thresholdMs,
     checkIntervalMs,
     onIdle: () => {
-      pausePriceLookups(`server idle ${Math.round(thresholdMs / 60_000)}m`);
+      bot.pausePriceLookups(`server idle ${Math.round(thresholdMs / 60_000)}m`);
     },
   });
   tracker.start();
@@ -84,13 +86,13 @@ function createPauseInfra({
     "POST /api/pause-price-lookups": async (req, res) => {
       tracker.markActivity();
       const reason = await _readReason(req, "browser request");
-      pausePriceLookups(`browser ${reason}`);
+      bot.pausePriceLookups(`browser ${reason}`);
       jsonResponse(res, 200, { ok: true, paused: true });
     },
     "POST /api/unpause-price-lookups": async (req, res) => {
       tracker.markActivity();
       const reason = await _readReason(req, "browser request");
-      unpausePriceLookups(`browser ${reason}`);
+      bot.unpausePriceLookups(`browser ${reason}`);
       jsonResponse(res, 200, { ok: true, paused: false });
     },
   };

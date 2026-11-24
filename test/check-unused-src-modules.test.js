@@ -124,25 +124,25 @@ describe("checkUnusedSrcModules", () => {
 
   it("follows the dashboard's imports, into a CommonJS module they share", async () => {
     const root = sampleProject({
-      "knip.json": json({ entry: ["src/client/web/dashboard-init.js"] }),
+      "knip.json": json({ entry: ["src/client/web/js/dashboard-init.js"] }),
       "package.json": json({}),
-      "src/client/web/dashboard-init.js":
+      "src/client/web/js/dashboard-init.js":
         'import { a } from "./dashboard-a.js";\nconsole.log(a);\n',
-      "src/client/web/dashboard-a.js":
-        'import { rule } from "../../lib/rule.js";\nexport const a = rule;\n',
+      "src/client/web/js/dashboard-a.js":
+        'import { rule } from "../../../lib/rule.js";\nexport const a = rule;\n',
       "src/lib/rule.js": '"use strict";\nmodule.exports = { rule: 1 };\n',
-      "src/client/web/dashboard-orphan.js": "export const x = 1;\n",
+      "src/client/web/js/dashboard-orphan.js": "export const x = 1;\n",
     });
     const result = await checkUnusedSrcModules(root, {
       srcFiles: [
-        "src/client/web/dashboard-a.js",
-        "src/client/web/dashboard-init.js",
-        "src/client/web/dashboard-orphan.js",
+        "src/client/web/js/dashboard-a.js",
+        "src/client/web/js/dashboard-init.js",
+        "src/client/web/js/dashboard-orphan.js",
         "src/lib/rule.js",
       ],
     });
     assert.deepStrictEqual(result.unused, [
-      "src/client/web/dashboard-orphan.js",
+      "src/client/web/js/dashboard-orphan.js",
     ]);
   });
 

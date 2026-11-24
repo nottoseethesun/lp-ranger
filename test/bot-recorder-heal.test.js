@@ -22,15 +22,15 @@ const assert = require("node:assert/strict");
 const ethers = require("ethers");
 const {
   _ensureTokenDecimals,
-} = require("../src/lib/bot-recorder-decimals-heal");
+} = require("../src/bot/bot-recorder-decimals-heal");
 const {
   getPoolState,
   _setRetryDelayForTests,
-} = require("../src/lib/rebalancer-pools");
+} = require("../src/bot/rebalancer-pools");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
-} = require("../src/lib/pool-state-validate");
+} = require("../src/bot/pool-state-validate");
 const {
   withMockRpc,
   makeMockEthers,

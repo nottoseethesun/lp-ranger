@@ -2,7 +2,7 @@
  * @file test/deposit-attribution-inputs.test.js
  * @description The running positions' deposits and moves as the replay
  * reads them from their bot states, and what the replay changes in one
- * position's Lifetime figures (src/lib/deposit-attribution-inputs.js).
+ * position's Lifetime figures (src/bot/deposit-attribution-inputs.js).
  *
  * The positions here share coin `0xc`: it is token0 of the asking
  * position's pool and token1 of the other's. Each lists the same deposit
@@ -20,11 +20,11 @@ const {
   holdersOf,
   lifetimeDepositFigure,
   walletStates,
-} = require("../src/lib/deposit-attribution-inputs");
+} = require("../src/bot/deposit-attribution-inputs");
 const {
   attachMultiPosDeps,
   getAllPositionBotStates,
-} = require("../src/lib/server-positions");
+} = require("../src/bot/position-states");
 
 const DECIMALS = { decimals0: 2, decimals1: 2 };
 
@@ -97,7 +97,7 @@ describe("walletStates", () => {
     assert.deepEqual(walletStates(map, self), [self, other]);
   });
 
-  it("is what src/lib/server-positions.js hands each position's state", () => {
+  it("is what src/bot/position-states.js hands each position's state", () => {
     const states = getAllPositionBotStates();
     const mine = selfState();
     const sibling = otherState();
@@ -158,7 +158,7 @@ describe("holdersOf", () => {
 
   it("puts a deposit's dollars on the one coin it brought, and none while it is unpriced", () => {
     /*- A transaction bringing both coins is a drain or a collect, never
-     *  a deposit (`_isDeposit`, src/lib/wallet-deposits.js). */
+     *  a deposit (`_isDeposit`, src/bot/wallet-deposits.js). */
     const self = selfState({
       lifetimeHodlAmounts: {
         deposits: [entry(1, { txHash: "0xone" }), entry(0, { usd: undefined })],

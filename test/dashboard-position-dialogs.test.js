@@ -82,15 +82,16 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../src/client/web/dashboard-positions-store.js");
-  positions = await import("../src/client/web/dashboard-positions.js");
-  status = await import("../src/client/web/dashboard-data-status.js");
-  confirm = await import("../src/client/web/dashboard-confirm-dialog.js");
-  baseline = await import("../src/client/web/dashboard-data-baseline.js");
-  deposit = await import("../src/client/web/dashboard-data-deposit.js");
+  const store =
+    await import("../src/client/web/js/dashboard-positions-store.js");
+  positions = await import("../src/client/web/js/dashboard-positions.js");
+  status = await import("../src/client/web/js/dashboard-data-status.js");
+  confirm = await import("../src/client/web/js/dashboard-confirm-dialog.js");
+  baseline = await import("../src/client/web/js/dashboard-data-baseline.js");
+  deposit = await import("../src/client/web/js/dashboard-data-deposit.js");
   const slippage =
-    await import("../src/client/web/dashboard-per-token-slippage.js");
-  const { wallet } = await import("../src/client/web/dashboard-wallet.js");
+    await import("../src/client/web/js/dashboard-per-token-slippage.js");
+  const { wallet } = await import("../src/client/web/js/dashboard-wallet.js");
   wallet.address = WALLET;
   slippage.wirePerTokenSlippageEvents(
     (id, fn) => document.getElementById(id)?.addEventListener("click", fn),
@@ -198,9 +199,9 @@ describe("a switch to another position", () => {
      *  once per episode: closed by a switch, the operator would never
      *  learn a rebalance had been aborted.
      */
-    const alerts = await import("../src/client/web/dashboard-alerts.js");
+    const alerts = await import("../src/client/web/js/dashboard-alerts.js");
     const warnings =
-      await import("../src/client/web/dashboard-post-rebalance-modal.js");
+      await import("../src/client/web/js/dashboard-post-rebalance-modal.js");
     alerts._resetAlertsState();
     warnings._resetPostRebalanceModalState();
     alerts.showPerPositionAlerts({

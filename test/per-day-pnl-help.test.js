@@ -28,7 +28,7 @@ const BODY = HTML.slice(HTML.indexOf("<body>") + 6, HTML.indexOf("</body>"));
 
 before(async () => {
   const { buildParamHelp } =
-    await import("../src/client/web/param-help-content.js");
+    await import("../src/client/web/js/param-help-content.js");
   PARAM_HELP = buildParamHelp(shippedFigures());
 });
 

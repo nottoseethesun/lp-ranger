@@ -15,7 +15,7 @@ with [[project_hodl_baseline_zero_from_rpc_failure]] and
 
 ## What happens
 
-`ensureInitialResidualData` (`src/lib/liquidity-pair-details.js`) records
+`ensureInitialResidualData` (`src/bot/liquidity-pair-details.js`) records
 what the wallet still held right after the position's very first
 deposit. It reads two things: the balances at that block from the chain,
 and their USD prices at that block from GeckoTerminal.

@@ -14,7 +14,7 @@ const {
   saveLpPositionCache,
   clearLpPositionCache,
   hasPositionActivitySince,
-} = require("../src/lib/lp-position-cache");
+} = require("../src/bot/lp-position-cache");
 
 // ── Mock fs ─────────────────────────────────────────────────────────────────
 

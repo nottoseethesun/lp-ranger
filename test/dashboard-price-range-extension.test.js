@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-price-range-extension.test.js
  * @description Tests for the Price Range Extension row in
- * `src/client/web/dashboard-price-range-extension.js`: the Default button, the
+ * `src/client/web/js/dashboard-price-range-extension.js`: the Default button, the
  * Full-Range checkbox, and the Save button that commits both.
  *
  * The row's contract, which these pin:
@@ -42,11 +42,14 @@ let posted;
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  mod = await import("../src/client/web/dashboard-price-range-extension.js");
-  configInputs = await import("../src/client/web/dashboard-config-inputs.js");
-  cache = await import("../src/client/web/dashboard-data-cache.js");
-  rangeOverride = await import("../src/client/web/dashboard-range-override.js");
-  const store = await import("../src/client/web/dashboard-positions-store.js");
+  mod = await import("../src/client/web/js/dashboard-price-range-extension.js");
+  configInputs =
+    await import("../src/client/web/js/dashboard-config-inputs.js");
+  cache = await import("../src/client/web/js/dashboard-data-cache.js");
+  rangeOverride =
+    await import("../src/client/web/js/dashboard-range-override.js");
+  const store =
+    await import("../src/client/web/js/dashboard-positions-store.js");
   store.posStore.entries.length = 0;
   store.posStore.entries.push({
     tokenId: "157149",

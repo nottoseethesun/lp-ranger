@@ -240,7 +240,7 @@ decisions documented here for security reviewers.
 
 ### Nonce management
 
-A single async-mutex rebalance lock (`src/lib/rebalance-lock.js`)
+A single async-mutex rebalance lock (`src/bot/rebalance-lock.js`)
 serializes all transactions across all managed positions. Only one
 position sends TXs at a time. The lock has no timeout — it releases
 only after TX confirmation. This prevents nonce collisions that could
@@ -248,7 +248,7 @@ cause stuck or lost transactions.
 
 ### TX recovery pipeline
 
-`_waitOrSpeedUp()` in `src/lib/tx-speedup.js` wraps the `tx.wait()` of
+`_waitOrSpeedUp()` in `src/bot/tx-speedup.js` wraps the `tx.wait()` of
 every send that goes through `sendTx.sendTransaction`, with a 4-phase
 pipeline: wait, speed-up (1.5x gas), wait again, auto-cancel (a
 zero-value self-transfer). The aggregator swap sends outside that entry point and

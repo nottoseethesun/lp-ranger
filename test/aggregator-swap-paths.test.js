@@ -49,8 +49,8 @@ const {
   swapViaAggregator,
   AGGREGATOR_LABEL,
   _setWaitMsForTests,
-} = require("../src/lib/rebalancer-aggregator");
-const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
+} = require("../src/bot/rebalancer-aggregator");
+const { swapIfNeeded } = require("../src/bot/rebalancer-swap");
 const { ADDR, buildMockEthersLib } = require("./helpers/rebalancer-mocks");
 const {
   EXCHANGE,

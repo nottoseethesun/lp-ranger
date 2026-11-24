@@ -5,7 +5,7 @@
  * @module config-record-checks
  * @description
  * What makes a value acceptable for each record the bot keeps per
- * position in app-data/position-records.json (src/lib/position-records.js).
+ * position in app-data/position-records.json (src/lib/util/position-records.js).
  *
  * The bot writes these records itself: the HODL baseline, the coins
  * rebalances left in the wallet, the compound history and its coin
@@ -115,7 +115,7 @@ const _tokenId = _either(_digits, _of(KINDS.count), "a token id");
 const RECORD_CHECKS = Object.freeze({
   /*-
    *  The coins the held NFT was minted with, and their worth at its mint
-   *  (src/lib/hodl-baseline.js, src/lib/bot-recorder-baseline.js). The mint time
+   *  (src/bot/hodl-baseline.js, src/bot/bot-recorder-baseline.js). The mint time
    *  is Unix seconds, or an ISO date an older release wrote.
    */
   hodlBaseline: _record(
@@ -137,17 +137,17 @@ const RECORD_CHECKS = Object.freeze({
   ),
   /*-
    *  Coins rebalances left in the wallet, per pool, in each token's
-   *  smallest unit (src/lib/residual-tracker.js).
+   *  smallest unit (src/bot/residual-tracker.js).
    */
   residuals: _mapOf(
     _record({ token0: _digits, token1: _digits }, ["token0", "token1"]),
   ),
   /*-
    *  One entry for each compound, live or found on the chain
-   *  (src/lib/bot-cycle-compound.js, src/lib/bot-recorder-lifetime.js). An entry
+   *  (src/bot/bot-cycle-compound.js, src/bot/bot-recorder-lifetime.js). An entry
    *  written since the Activity Log's figures began also holds the fee
    *  coins the compound collected and their share of the position at the
-   *  time (src/lib/compound-activity-figures.js); either is null when it
+   *  time (src/bot/compound-activity-figures.js); either is null when it
    *  could not be worked out, and an older entry has neither.
    */
   compoundHistory: _listOf(
@@ -160,7 +160,7 @@ const RECORD_CHECKS = Object.freeze({
         amount1Deposited: _digits,
         /*-
          *  The fees among the deposited coins, where the compound could
-         *  tell them apart (src/lib/compounded-coins.js).
+         *  tell them apart (src/bot/compounded-coins.js).
          */
         amount0Compounded: _digits,
         amount1Compounded: _digits,
@@ -170,7 +170,7 @@ const RECORD_CHECKS = Object.freeze({
         /*-
          *  The deposit's block, and the wallet's two coins before the
          *  collect, for the deposits to the wallet the compound took
-         *  (src/lib/deposit-attribution.js).
+         *  (src/bot/deposit-attribution.js).
          */
         blockNumber: _of(KINDS.count),
         amount0WalletBefore: _digits,
@@ -203,7 +203,7 @@ const RECORD_CHECKS = Object.freeze({
   depositUsedFallback: _of(KINDS.bool),
   /*-
    *  One entry for each failed rebalance or compound that paid gas: when,
-   *  the wei, and its dollars on that day (src/lib/spent-gas.js).
+   *  the wei, and its dollars on that day (src/bot/spent-gas.js).
    */
   failedMoveGas: _listOf(
     _record({ at: _isoTime, wei: _digits, usd: _usd }, ["at", "wei", "usd"]),

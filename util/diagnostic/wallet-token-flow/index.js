@@ -83,7 +83,7 @@ process.chdir(path.resolve(__dirname, "..", ".."));
 
 const { ethers } = require("ethers");
 const config = require("../../../src/lib/config");
-const { _DEFAULT_CHUNK_SIZE } = require("../../../src/lib/get-logs-chunked");
+const { _DEFAULT_CHUNK_SIZE } = require("../../../src/bot/get-logs-chunked");
 const {
   readBotConfigDefaults,
 } = require("../../../src/lib/bot-config-defaults");

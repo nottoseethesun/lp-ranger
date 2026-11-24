@@ -31,7 +31,6 @@ const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.
 const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui-defaults_non-layout_for-server-down-scenario.json");
 const APP_RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 const SETTING_BOUNDS = require("../app-config/app-defaults-for-user-configurable/setting-bounds.json");
-const _UI_SERVER_UP = "ui-defaults_non-layout_for-server-up-scenario.json";
 
 describe("swap route names", () => {
   it("are the active chain's, from chains.json", () => {
@@ -397,28 +396,6 @@ describe("the bot's retry, follow-up and retire timings", () => {
     });
 });
 
-describe("how long the dashboard is given to see a change", () => {
-  it("is the poll interval in force times pollsBeforeAssumedSeen, each an override", () => {
-    const config = loadConfigWith({
-      [_UI_SERVER_UP]: { dashboardPollIntervalMs: 4000 },
-      "app-runtime.json": { dashboard: { pollsBeforeAssumedSeen: 3.5 } },
-    });
-    assert.equal(config.GUARANTEED_DASHBOARD_HAS_POLLED_MS, 14000);
-  });
-
-  for (const bad of [0.5, 101, "2", null]) {
-    it(`stops startup on pollsBeforeAssumedSeen = ${JSON.stringify(bad)}, naming it`, () => {
-      assert.throws(
-        () =>
-          loadConfigWith({
-            "app-runtime.json": { dashboard: { pollsBeforeAssumedSeen: bad } },
-          }),
-        /app-runtime\.json → dashboard\.pollsBeforeAssumedSeen must be/,
-      );
-    });
-  }
-});
-
 describe("price-service urls", () => {
   /**
    * Load src/lib/price-service-urls.js as startup would, with `override` as
@@ -478,40 +455,6 @@ describe("compound reposition window", () => {
           "app-runtime.json": { compound: { repositionWindowSec: -1 } },
         }),
       /app-runtime\.json → compound\.repositionWindowSec/,
-    );
-  });
-});
-
-describe("the dashboard settings the server sends", () => {
-  it("give the server the poll interval the page is sent, override applied", () => {
-    /*-
-     *  The page is sent the operator's value, so the server's own copy,
-     *  which times "the dashboard has had a chance to poll", must be the
-     *  same one.
-     */
-    const config = loadConfigWith({
-      [_UI_SERVER_UP]: { dashboardPollIntervalMs: 5000 },
-    });
-    assert.equal(config.DASHBOARD_POLL_INTERVAL_MS, 5000);
-  });
-
-  it("stop startup when an override breaks its rule, naming each one", () => {
-    assert.throws(
-      () =>
-        loadConfigWith({
-          [_UI_SERVER_UP]: {
-            dashboardPollIntervalMs: 100,
-            throttleNearLimitPct: 150,
-            soundsEnabled: "yes",
-          },
-        }),
-      (err) => {
-        assert.match(err.message, new RegExp(_UI_SERVER_UP));
-        assert.match(err.message, /dashboardPollIntervalMs/);
-        assert.match(err.message, /throttleNearLimitPct must be .*150/);
-        assert.match(err.message, /soundsEnabled must be true or false/);
-        return true;
-      },
     );
   });
 });

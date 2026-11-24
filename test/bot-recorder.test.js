@@ -15,16 +15,16 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const {
-  _bigIntReplacer,
   _activePosSummary,
   _collectTokenIds,
   _pushRebalanceEvent,
   _recordResidual,
   _notifyRebalance,
-} = require("../src/lib/bot-recorder");
+} = require("../src/bot/bot-recorder");
+const { bigIntReplacer: _bigIntReplacer } = require("../src/lib/bigint-json");
 const {
   updateHodlBaseline: _updateHodlBaseline,
-} = require("../src/lib/bot-recorder-baseline");
+} = require("../src/bot/bot-recorder-baseline");
 
 // ── _bigIntReplacer ─────────────────────────────────────────────────
 
@@ -379,7 +379,7 @@ describe("_notifyRebalance", () => {
 // ── _applyRebalanceResult ───────────────────────────────────────────
 
 describe("_applyRebalanceResult", () => {
-  const { _applyRebalanceResult } = require("../src/lib/bot-recorder");
+  const { _applyRebalanceResult } = require("../src/bot/bot-recorder");
 
   it("updates position tokenId and ticks from result", () => {
     const position = {
@@ -491,8 +491,8 @@ describe("appendLog", () => {
     process.env.LOG_FILE = logPath;
     // Clear require cache so config picks up new LOG_FILE
     delete require.cache[require.resolve("../src/lib/config")];
-    delete require.cache[require.resolve("../src/lib/bot-recorder")];
-    const { appendLog: al } = require("../src/lib/bot-recorder");
+    delete require.cache[require.resolve("../src/bot/bot-recorder")];
+    const { appendLog: al } = require("../src/bot/bot-recorder");
     al({ action: "test", value: 123n });
     const entries = JSON.parse(fs.readFileSync(logPath, "utf8"));
     assert.strictEqual(entries.length, 1);
@@ -508,6 +508,6 @@ describe("appendLog", () => {
     if (origLog) process.env.LOG_FILE = origLog;
     else delete process.env.LOG_FILE;
     delete require.cache[require.resolve("../src/lib/config")];
-    delete require.cache[require.resolve("../src/lib/bot-recorder")];
+    delete require.cache[require.resolve("../src/bot/bot-recorder")];
   });
 });

@@ -52,11 +52,11 @@ function _installMocks() {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/lib/bot-pnl-current-nft")];
+  delete require.cache[require.resolve("../src/bot/bot-pnl-current-nft")];
 }
 function _restoreMocks() {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/lib/bot-pnl-current-nft")];
+  delete require.cache[require.resolve("../src/bot/bot-pnl-current-nft")];
 }
 
 describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
@@ -64,7 +64,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
   beforeEach(() => {
     _detectCalls = [];
     _installMocks();
-    ({ applyCurrentNftFigures } = require("../src/lib/bot-pnl-current-nft"));
+    ({ applyCurrentNftFigures } = require("../src/bot/bot-pnl-current-nft"));
   });
   afterEach(_restoreMocks);
 
@@ -358,7 +358,7 @@ describe("applyCurrentNftFigures — Managed/Unmanaged parity", () => {
     /*-
      *  An entry a rebuild of the compound list wrote, its trigger
      *  `unknown`, names the fees it read from the chain
-     *  (src/lib/compound-fees-on-chain.js). The scan that fills this NFT's
+     *  (src/bot/compound-fees-on-chain.js). The scan that fills this NFT's
      *  coins after a compound must count them too, or every compound
      *  would put the whole deposit back on the panel.
      */
@@ -499,7 +499,7 @@ describe("applyCurrentNftFigures — where the NFT's history read starts", () =>
   beforeEach(() => {
     _detectCalls = [];
     _installMocks();
-    ({ applyCurrentNftFigures } = require("../src/lib/bot-pnl-current-nft"));
+    ({ applyCurrentNftFigures } = require("../src/bot/bot-pnl-current-nft"));
   });
   afterEach(_restoreMocks);
 

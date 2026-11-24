@@ -16,10 +16,10 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const {
-  createPositionRoutes,
   getAllPositionBotStates,
   updatePositionState,
-} = require("../src/lib/server-positions");
+} = require("../src/bot/position-states");
+const { createPositionRoutes } = require("./_bot-route-adapters");
 const {
   addManagedPosition,
   getPositionConfig,
@@ -85,7 +85,7 @@ function makeRouteDeps(overrides = {}) {
 describe("handleManage stale-key sequence (direct simulation)", () => {
   /*- Direct simulation of handleManage's post-await sequence rather
    *  than a full HTTP-handler integration test.  Mocking `startBotLoop`
-   *  via the require cache is unreliable because server-positions.js
+   *  via the require cache is unreliable because position-states.js
    *  destructures `startBotLoop` at module-load — a captured local
    *  reference that subsequent cache mutations cannot reach.
    *
@@ -278,7 +278,7 @@ describe("handleRemove stale-key races", () => {
     /*-
      *  The answer names the position by both keys, so a dashboard that
      *  followed it to its new NFT still knows the answer is its own
-     *  (src/lib/position-answer-tag.js).
+     *  (src/bot/position-answer-tag.js).
      */
     assert.strictEqual(res._body.positionKey, OLD_KEY);
     assert.strictEqual(res._body.livePositionKey, NEW_KEY);

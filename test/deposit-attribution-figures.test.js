@@ -2,7 +2,7 @@
  * @file test/deposit-attribution-figures.test.js
  * @description A deposit of a coin two managed positions hold, through
  * the figures the Lifetime panel shows (`overridePnlWithRealValues` and
- * `walletResiduals`, src/lib/bot-pnl-updater.js).
+ * `walletResiduals`, src/bot/bot-pnl-updater.js).
  *
  * The asking position holds coin `0xc` as its token0, the other as its
  * token1. Both list the same deposit of 100 coins, worth $50 at its own
@@ -22,10 +22,10 @@ const path = require("node:path");
 const {
   overridePnlWithRealValues,
   walletResiduals,
-} = require("../src/lib/bot-pnl-updater");
-const rangeMath = require("../src/lib/range-math");
-const { NO_OTHER_NFTS } = require("../src/lib/wallet-coin-share");
-const { _resetForTest } = require("../src/lib/gecko-rate-limit");
+} = require("../src/bot/bot-pnl-updater");
+const rangeMath = require("../src/bot/range-math");
+const { NO_OTHER_NFTS } = require("../src/bot/wallet-coin-share");
+const { _resetForTest } = require("../src/bot/gecko-rate-limit");
 
 let _originalFetch;
 beforeEach(() => {
@@ -127,7 +127,7 @@ describe("the bot loop", () => {
      *  reading the source, as test/deposit-count-on-rise-wiring.test.js
      *  pins the deposit count's. */
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "lib", "bot-loop.js"),
+      path.join(__dirname, "..", "src", "bot", "bot-loop.js"),
       "utf8",
     );
     assert.match(src, /_walletDepositStates: botState\._walletDepositStates,/);

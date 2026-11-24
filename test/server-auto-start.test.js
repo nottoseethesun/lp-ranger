@@ -2,7 +2,7 @@
 
 /**
  * @file test/server-auto-start.test.js
- * @description The start-up (src/lib/server-auto-start.js). Once the wallet
+ * @description The start-up (src/bot/auto-start.js). Once the wallet
  *   is unlocked, the server starts each position saved as managed, one at
  *   a time, spread over a poll interval. It reports its progress while it
  *   runs, which holds the dashboard's badge at Syncing, and ends at its
@@ -26,10 +26,8 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const config = require("../src/lib/config");
-const appPhase = require("../src/lib/app-phase");
-const {
-  createAutoStartManagedPositions,
-} = require("../src/lib/server-auto-start");
+const appPhase = require("../src/bot/app-phase");
+const { createAutoStartManagedPositions } = require("../src/bot/auto-start");
 const { captureWarnings } = require("./helpers/capture-warnings");
 const {
   contractReverted,

@@ -8,7 +8,7 @@ modified: 2026-10-24T04:55:01.312Z
 ## Plain language
 
 Every rebalance LP Ranger makes is recorded the moment it finishes
-(`appendToPoolCache`, `src/lib/pool-scanner.js`). A rebalance made outside
+(`appendToPoolCache`, `src/bot/pool-scanner.js`). A rebalance made outside
 LP Ranger, by hand on the 9mm site or by another install, after LP
 Ranger has scanned the pool, is not: routine scans read only blocks
 after the event cache's `lastBlock`, and cannot pair the new mint with

@@ -353,7 +353,9 @@ describe("lp-providers.handleLpProviders", () => {
         },
       }),
     );
-    const { handleLpProviders } = require("../src/lib/lp-providers");
+    const {
+      handleLpProviders,
+    } = require("../src/server/user-configurable-routes");
     let gotStatus = null;
     let gotBody = null;
     const jsonResponse = (_res, status, body) => {
@@ -371,7 +373,9 @@ describe("lp-providers.handleLpProviders", () => {
 
   it("returns 200 with empty map when file missing", () => {
     fs.unlinkSync(_FILE);
-    const { handleLpProviders } = require("../src/lib/lp-providers");
+    const {
+      handleLpProviders,
+    } = require("../src/server/user-configurable-routes");
     let gotStatus = null;
     let gotBody = null;
     const jsonResponse = (_res, status, body) => {

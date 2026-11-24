@@ -24,11 +24,11 @@ const { learnActiveChain } = require("./helpers/active-chain");
 const { learnUiSettings } = require("./helpers/ui-settings");
 const { indexHtmlDocument } = require("./helpers/index-html");
 const config = require("../src/lib/config");
-const appPhase = require("../src/lib/app-phase");
-const { createApiStatusHandler } = require("../src/server/handle-api-status");
+const appPhase = require("../src/bot/app-phase");
+const { createApiStatusHandler } = require("./_bot-route-adapters");
 const { managedKeys } = require("../src/lib/bot-config-v2");
-const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
-const { moralisEnabledIn } = require("../src/lib/server-moralis");
+const { primaryRouteLabel } = require("../src/bot/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/lib/moralis-key");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -108,10 +108,11 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../src/client/web/dashboard-positions-store.js");
-  data = await import("../src/client/web/dashboard-data.js");
-  poll = await import("../src/client/web/dashboard-data-poll.js");
-  const { wallet } = await import("../src/client/web/dashboard-wallet.js");
+  const store =
+    await import("../src/client/web/js/dashboard-positions-store.js");
+  data = await import("../src/client/web/js/dashboard-data.js");
+  poll = await import("../src/client/web/js/dashboard-data-poll.js");
+  const { wallet } = await import("../src/client/web/js/dashboard-wallet.js");
   wallet.address = WALLET;
   store.posStore.add({
     walletAddress: WALLET,

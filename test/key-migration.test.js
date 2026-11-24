@@ -13,7 +13,7 @@ const {
   updatePositionState,
   createPerPositionBotState,
   getAllPositionBotStates,
-} = require("../src/lib/server-positions");
+} = require("../src/bot/position-states");
 const {
   getPositionConfig,
   compositeKey,
@@ -66,7 +66,7 @@ describe("key migration on rebalance", () => {
       updatePositionState(keyRef, patch, diskConfig, mgr, _tmpDir);
     const getConfig = (k) => readConfigValue(diskConfig, keyRef.current, k);
 
-    // Register in the global map (server-positions internal)
+    // Register in the global map (position-states internal)
     getAllPositionBotStates().set(oldKey, posBotState);
 
     // First update — should work with old key

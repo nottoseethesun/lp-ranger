@@ -27,7 +27,7 @@ const path = require("path");
 const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), "scan-full-cache-"));
 process.env.TOKEN_SYMBOL_CACHE_PATH = path.join(SCRATCH, "symbols.json");
 
-const DETECTOR = require.resolve("../src/lib/position-detector");
+const DETECTOR = require.resolve("../src/bot/position-detector");
 const OTHER_PM = "0x" + "c".repeat(40);
 const WALLET = "0x" + "d".repeat(39) + "1";
 const HEAD = 500;
@@ -57,9 +57,9 @@ require.cache[DETECTOR] = {
 };
 
 const config = require("../src/lib/config");
-const sendTx = require("../src/lib/send-transaction");
-const { createScanHandlers } = require("../src/lib/server-scan");
-const { loadLpPositionCache } = require("../src/lib/lp-position-cache");
+const sendTx = require("../src/bot/send-transaction");
+const { createScanHandlers } = require("./_bot-route-adapters");
+const { loadLpPositionCache } = require("../src/bot/lp-position-cache");
 
 const scope = (contract) => ({ blockchain: config.CHAIN_NAME, contract });
 

@@ -36,9 +36,9 @@ const {
 const {
   readUiDefaults,
   readUiDefaultsStrict,
-  handleUiDefaults,
   _resetMemoForTests,
 } = require("../src/lib/ui-defaults");
+const { handleUiDefaults } = require("../src/server/user-configurable-routes");
 
 const SHIPPED = loadShippedDefaults(_FILE);
 

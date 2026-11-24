@@ -1,7 +1,7 @@
 /**
  * @file test/rebalancer-pools-retry.test.js
  * @description Validation and retry coverage for `getPoolState` in
- *   `src/lib/rebalancer-pools.js`.  Covers:
+ *   `src/bot/rebalancer-pools.js`.  Covers:
  *
  *   - `_getPoolStateOnce` throws `PoolStateInvalidError` on the first
  *     failing field (decimals0=NaN, tick=undefined, etc.)
@@ -28,11 +28,11 @@ const {
   _getPoolStateOnce,
   getPoolState,
   _setRetryDelayForTests,
-} = require("../src/lib/rebalancer-pools");
+} = require("../src/bot/rebalancer-pools");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
-} = require("../src/lib/pool-state-validate");
+} = require("../src/bot/pool-state-validate");
 
 /*- Shrink the inter-retry delay to zero so the exhaustion test (4
  *  attempts) completes in milliseconds rather than ~6 seconds. */
@@ -246,8 +246,8 @@ test("getPoolState reports what it sees to the decider", async () => {
    *  process: this walk produces up to six failures per call, across
    *  ten positions.  A rate decides now, so the most frequent read in
    *  the bot can say what it sees. */
-  const decider = require("../src/lib/rpc-out-of-service");
-  const sendTx = require("../src/lib/send-transaction");
+  const decider = require("../src/bot/rpc-out-of-service");
+  const sendTx = require("../src/bot/send-transaction");
   const { RPC_URLS } = require("../src/lib/config");
   decider._resetForTests();
   try {

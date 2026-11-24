@@ -1,6 +1,6 @@
 /**
  * @file test/helpers/lifetime-hodl-fixtures.js
- * @description Shared fixtures for the `src/lib/lifetime-hodl.js` test files:
+ * @description Shared fixtures for the `src/bot/lifetime-hodl.js` test files:
  * the three NFT event shapes, a chain of two NFTs, an addition's receipt,
  * and the provider and ethers stubs the fresh-deposit scan and the
  * receipt check read through. Each file used to

@@ -23,7 +23,7 @@
 
 const config = require("../../src/lib/config");
 
-const PRICE_MODULE = require.resolve("../../src/lib/price-fetcher");
+const PRICE_MODULE = require.resolve("../../src/bot/price-fetcher");
 const real = require(PRICE_MODULE);
 
 // USD for one of the chain's wrapped native coin, near PulseChain's.

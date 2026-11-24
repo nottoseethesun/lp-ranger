@@ -3,7 +3,7 @@
 /**
  * @file test/send-transaction-read-failover.test.js
  * @description Tests for the read-side RPC failover surface added to
- *   `src/lib/send-transaction.js`:
+ *   `src/bot/send-transaction.js`:
  *
  *     - `init()` idempotency (same URLs → no-op; different URLs → throws)
  *     - `ensureReachable()` boot-time reachability probe + failover engagement
@@ -23,7 +23,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { format } = require("node:util");
 
-const sendTx = require("../src/lib/send-transaction");
+const sendTx = require("../src/bot/send-transaction");
 const {
   PRI,
   FALL,

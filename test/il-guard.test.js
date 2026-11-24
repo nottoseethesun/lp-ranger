@@ -3,7 +3,7 @@
 /**
  * @file test/il-guard.test.js
  * @description Tests for the Impermanent Loss Guard's RULES — the pure
- * decisions in `src/lib/il-guard.js`, plus its shipped defaults and the
+ * decisions in `src/bot/il-guard.js`, plus its shipped defaults and the
  * Telegram message.  The gate that applies them to a poll cycle is
  * tested in `il-guard-gate.test.js`; the two files split when this one
  * passed the 500-line cap.
@@ -30,7 +30,7 @@ const {
   ilGuardInputs,
   ilGuardRetryWaitMs,
   checkIlGuard,
-} = require("../src/lib/il-guard");
+} = require("../src/bot/il-guard");
 const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 const config = require("../src/lib/config");
 const { SETTING_BOUNDS } = require("../src/lib/setting-bounds");
@@ -514,10 +514,10 @@ describe("the help copy is written once", () => {
   const shared = () => JSON.parse(read("src/lib/shared-help-content.json"));
 
   it("the dialog imports the JSON rather than restating it", () => {
-    const src = read("src/client/web/param-help-content.js");
+    const src = read("src/client/web/js/param-help-content.js");
     assert.match(
       src,
-      /import SHARED_HELP from "\.\.\/\.\.\/lib\/shared-help-content\.json"/,
+      /import SHARED_HELP from "\.\.\/\.\.\/\.\.\/lib\/shared-help-content\.json"/,
     );
     assert.match(src, /fillEntryFigures\(SHARED_HELP\.inIlGuard, f\)/);
     assert.ok(
@@ -625,7 +625,7 @@ describe("the badge figure is the figure the bot enforces", () => {
       process.execPath,
       [
         "-e",
-        'const c=require("./src/lib/config"),g=require("./src/lib/il-guard");' +
+        'const c=require("./src/lib/config"),g=require("./src/bot/il-guard");' +
           "const r=g.checkIlGuard({_botState:{}," +
           "updateBotState:()=>{},position:{tokenId:'1',liquidity:'1000'}},false," +
           `${snap},()=>({}));` +

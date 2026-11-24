@@ -311,13 +311,13 @@ const _NORMALIZERS = {
   /*- Range section "No Override" toggle default for a position that has
    *  never been configured.  `false` = re-use the existing on-chain
    *  range; the Range fields are disabled and none of them applies.
-   *  See src/lib/range-override.js for the full resolution rule. */
+   *  See src/bot/range-override.js for the full resolution rule. */
   rangeOverrideEnabled: (v) => (typeof v === "boolean" ? v : false),
   slippagePct: (v) => _inRange(v, "slippagePct"),
   /*-
    *  Per-token slippage overrides. The dashboard also warns past one
    *  figure and asks for a typed confirmation past another (see
-   *  src/client/web/dashboard-per-token-slippage.js); neither is a range.
+   *  src/client/web/js/dashboard-per-token-slippage.js); neither is a range.
    */
   slippagePctToken0: (v) => _inRange(v, "slippagePctToken0"),
   slippagePctToken1: (v) => _inRange(v, "slippagePctToken1"),

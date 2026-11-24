@@ -59,7 +59,7 @@ const {
   saveEncryptedKey,
 } = require("../../src/lib/api-key-store");
 const { setApiKey } = require("../../src/lib/api-key-holder");
-const { pingMoralis } = require("../../src/lib/server-moralis");
+const { pingMoralis } = require("../../src/lib/moralis-key");
 
 /** Where LP Ranger keeps its api keys, as the report's messages name it. */
 const STORE_FILE = "app-config/user-configurable/api-keys.json";

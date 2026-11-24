@@ -31,7 +31,7 @@ const shared = () => JSON.parse(read("src/lib/shared-help-content.json"));
 
 /** The dialogs' help, built as the dashboard builds it. */
 async function paramHelp() {
-  const mod = await import("../src/client/web/param-help-content.js");
+  const mod = await import("../src/client/web/js/param-help-content.js");
   return mod.buildParamHelp(shippedFigures());
 }
 

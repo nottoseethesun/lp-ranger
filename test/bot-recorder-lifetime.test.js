@@ -4,7 +4,7 @@
  *   logic.  Disk values for `compoundedAmount0`/`compoundedAmount1` are
  *   treated as source-of-truth — once present, classification must NOT
  *   re-run; the compound and rebalance paths keep the saved coins
- *   current.  See `_resolveDiskState` in `src/lib/bot-recorder-lifetime.js`
+ *   current.  See `_resolveDiskState` in `src/bot/bot-recorder-lifetime.js`
  *   for the full reasoning.
  */
 
@@ -12,7 +12,7 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { PoolStateInvalidError } = require("../src/lib/pool-state-validate");
+const { PoolStateInvalidError } = require("../src/bot/pool-state-validate");
 
 const Module = require("module");
 const {
@@ -34,7 +34,7 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
   beforeEach(() => {
     resetState();
     installMocks();
-    ({ _scanLifetimePoolData } = require("../src/lib/bot-recorder-lifetime"));
+    ({ _scanLifetimePoolData } = require("../src/bot/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);
@@ -150,7 +150,7 @@ describe("_scanLifetimePoolData — disk-as-source-of-truth", () => {
      *  The integration contract — that `startBotLoop` actually wires
      *  `_getConfig` — is asserted in test/bot-loop.test.js's
      *  `wireBotStateGetConfig` suite (the helper itself lives in
-     *  src/lib/bot-state-init.js).  These two tests together close the gap
+     *  src/bot/bot-state-init.js).  These two tests together close the gap
      *  that let the original bug ship green.
      */
     const botState = {}; // no _getConfig — simulates broken wiring
@@ -371,7 +371,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
        *  full-rescan tests never reach a real RPC. pool-state-validate stays
        *  REAL (no mirror of its predicates). */
       if (id === "./rebalancer-pools") return poolStateMock();
-      if (id === "./error-log") return errorLogMock();
+      if (id === "../lib/error-log") return errorLogMock();
       return origRequire.apply(this, arguments);
     };
     evictLifetimeModules();
@@ -385,7 +385,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
      *  which restores the default cached value. */
     state.cachedHodl = null;
     _installMocksThrowingHodl();
-    ({ _scanLifetimePoolData } = require("../src/lib/bot-recorder-lifetime"));
+    ({ _scanLifetimePoolData } = require("../src/bot/bot-recorder-lifetime"));
   });
 
   afterEach(restoreMocks);
@@ -505,7 +505,7 @@ describe("_scanLifetimePoolData — rescan flag + error tracking", () => {
       return origRequire2.apply(this, arguments);
     };
     evictLifetimeModules();
-    ({ _scanLifetimePoolData } = require("../src/lib/bot-recorder-lifetime"));
+    ({ _scanLifetimePoolData } = require("../src/bot/bot-recorder-lifetime"));
     await _scanLifetimePoolData(
       makePosition(),
       botState,

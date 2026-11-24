@@ -22,7 +22,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 const { botConfigPath } = require("../src/lib/bot-config-v2");
-const { positionRecordsPath } = require("../src/lib/position-records");
+const { positionRecordsPath } = require("../src/lib/util/position-records");
 const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
 const KEY =
@@ -60,10 +60,10 @@ function seed() {
 
 /** Load the price library afresh, as a program that prices with it does. */
 function loadLibrary() {
-  delete require.cache[require.resolve("../src/lib/price-fetcher-gate")];
-  delete require.cache[require.resolve("../src/lib/price-fetcher")];
-  const fetcher = require("../src/lib/price-fetcher");
-  const gate = require("../src/lib/price-fetcher-gate");
+  delete require.cache[require.resolve("../src/bot/price-fetcher-gate")];
+  delete require.cache[require.resolve("../src/bot/price-fetcher")];
+  const fetcher = require("../src/bot/price-fetcher");
+  const gate = require("../src/bot/price-fetcher-gate");
   return { fetcher, gate };
 }
 

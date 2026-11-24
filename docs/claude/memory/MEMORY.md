@@ -50,10 +50,11 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
 - [one thing at a time](feedback_one_thing_at_a_time.md) — Only what was asked; yes/no means yes/no
 - [report that resolved](feedback_report_that_resolved.md) — "It finally went" closes it: acknowledge, don't investigate
-- [server is a layer on the bot](feedback_server_is_a_layer_on_the_bot.md) — Separation of concerns: the bot behind a small interface; a result at odds with the design is the finding
+- [server is a layer on the bot](feedback_server_is_a_layer_on_the_bot.md) — Separation of concerns: the bot behind a small interface; src/lib/ only what two or more parts use
 - [branch data never meets main](feedback_branch_data_never_meets_main.md) — Server down through all of CI; never test main on branch data
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
+- [don't force a placement](feedback_dont_force_a_placement.md) — A suggested place needing new machinery is likely wrong; check its premise first
 - [general to specific](feedback_general_to_specific.md) — Name the thing in operator terms first
 - [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens; function names last
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, lowercase tech initials

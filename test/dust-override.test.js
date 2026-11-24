@@ -7,7 +7,7 @@
  *
  *   The threshold decides which amounts are too small to act on: a
  *   fraction of one unit of a reference asset, priced live, with a dollar
- *   floor for when no price arrives. src/lib/dust.js read both figures from
+ *   floor for when no price arrives. src/bot/dust.js read both figures from
  *   the shipped file alone, so an operator's copy changed nothing. It now
  *   reads the shipped file with the operator's copy on top, and holds
  *   each figure to the kind the tests hold the shipped file to, a number
@@ -33,7 +33,7 @@ const SHIPPED = require("../app-config/app-defaults-for-user-configurable/dust-t
 const mergedLoader = require("../src/lib/load-merged-defaults");
 
 let unitPriceUsd;
-const _priceFetcherPath = require.resolve("../src/lib/price-fetcher");
+const _priceFetcherPath = require.resolve("../src/bot/price-fetcher");
 
 beforeEach(() => {
   require.cache[_priceFetcherPath] = {
@@ -56,8 +56,8 @@ function dustWith(override) {
     JSON.stringify(override),
   );
   mergedLoader._resetMemoForTests();
-  delete require.cache[require.resolve("../src/lib/dust")];
-  return require("../src/lib/dust");
+  delete require.cache[require.resolve("../src/bot/dust")];
+  return require("../src/bot/dust");
 }
 
 describe("an operator's dust threshold", () => {

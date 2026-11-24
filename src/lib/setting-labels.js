@@ -51,16 +51,4 @@ function readSettingLabels() {
   }
 }
 
-/**
- * Route handler for `GET /api/setting-labels`.  Always returns 200
- * with a well-formed map (possibly empty); parse failures surface
- * via the empty-map path inside `readSettingLabels()`.
- * @param {import('http').IncomingMessage} _req
- * @param {import('http').ServerResponse} res
- * @param {Function} jsonResponse  `(res, status, body) => void`
- */
-function handleSettingLabels(_req, res, jsonResponse) {
-  jsonResponse(res, 200, readSettingLabels());
-}
-
-module.exports = { readSettingLabels, handleSettingLabels };
+module.exports = { readSettingLabels };

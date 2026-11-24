@@ -21,7 +21,7 @@
  * Storage location: `app-config/user-configurable/bot-config.json`
  * (gitignored) holds the settings and each position's status; the bot's
  * records for each position (`RECORD_POSITION_KEYS`) are in
- * `app-data/position-records.json` (src/lib/position-records.js). In memory a
+ * `app-data/position-records.json` (src/lib/util/position-records.js). In memory a
  * position's slot holds both. See the `app-config/` section of server.js
  * for the full layout. Tests pass a `dir` override to `loadConfig(dir)` /
  * `saveConfig(cfg, dir)` and write directly to `${dir}/bot-config.json`
@@ -46,7 +46,7 @@ const {
   splitPositionSlots,
   backUpPositionRecords,
   writePositionRecords,
-} = require("./position-records");
+} = require("./util/position-records");
 
 const CONFIG_FILE = "bot-config.json";
 
@@ -121,7 +121,7 @@ function _empty() {
 /**
  * Load bot config from disk: the settings in bot-config.json, with each
  * position's records from the records file merged into its slot
- * (src/lib/position-records.js), so a position's figures are read from one
+ * (src/lib/util/position-records.js), so a position's figures are read from one
  * place. The records are merged before the phantom purge, since a
  * managed position's slot in bot-config.json can hold its status alone
  * when everything else it has is a record.
@@ -132,7 +132,7 @@ function _empty() {
  * were before that run saved anything: a way back from a save that went
  * wrong. A caller that only reads a setting passes `skipBackups`, and
  * leaves the copies as the last start made them. The price library does
- * so as it loads (src/lib/price-fetcher-gate.js), since a tool under util/
+ * so as it loads (src/bot/price-fetcher-gate.js), since a tool under util/
  * loads it too and must not replace the app's copies.
  * @param {string} [dir]  Directory override (default: cwd).
  * @param {boolean} [skipBackups]  True to make no copies. Default false.
@@ -374,7 +374,7 @@ function saveConfig(cfg, dir) {
 
 /**
  * Write a config, each key to its own file: the records to the records
- * file, the rest to bot-config.json (src/lib/position-records.js), each
+ * file, the rest to bot-config.json (src/lib/util/position-records.js), each
  * atomically. The slots in memory keep both.
  * @param {object} cfg
  * @param {string} filePath  bot-config.json.

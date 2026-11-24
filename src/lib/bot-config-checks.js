@@ -7,7 +7,7 @@
  * Every problem with bot-config.json, the Bot Settings saved from the
  * dashboard for each position and the settings of its global section,
  * and with the records file, `app-data/position-records.json`, where the
- * bot keeps its records for each position (src/lib/position-records.js).
+ * bot keeps its records for each position (src/lib/util/position-records.js).
  *
  * bot-config.json is held to a JSON Schema built here from the schema of
  * each setting in it, the one a save is held to (`settingSchemas`,

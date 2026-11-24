@@ -29,8 +29,8 @@ const assert = require("node:assert/strict");
 const { format } = require("node:util");
 
 const { _setSinkForTests } = require("../src/lib/log");
-const { mintBlocksByTokenId } = require("../src/lib/nft-mint-blocks");
-const batch = require("../src/lib/nft-events-batch");
+const { mintBlocksByTokenId } = require("../src/bot/nft-mint-blocks");
+const batch = require("../src/bot/nft-events-batch");
 
 /** #100 → #200 → #300, minted 5M and 6M blocks in. */
 const CHAIN = [
@@ -86,8 +86,8 @@ function stubBatch(o = {}) {
  *  rather than the real batched read.
  */
 function helpers() {
-  delete require.cache[require.resolve("../src/lib/bot-recorder-scan-helpers")];
-  return require("../src/lib/bot-recorder-scan-helpers");
+  delete require.cache[require.resolve("../src/bot/bot-recorder-scan-helpers")];
+  return require("../src/bot/bot-recorder-scan-helpers");
 }
 
 /** Run with a stub installed, always restoring it. */
@@ -392,7 +392,7 @@ describe("_lifetimeResumeBuffer", () => {
    *  The floor comparison cannot catch that: both passes floor the NFT
    *  at the same block, so they compare equal.
    */
-  const { _lifetimeResumeBuffer } = require("../src/lib/bot-recorder-lifetime");
+  const { _lifetimeResumeBuffer } = require("../src/bot/bot-recorder-lifetime");
 
   it("creates one on first use", () => {
     const botState = {};

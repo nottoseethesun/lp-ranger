@@ -77,9 +77,10 @@ before(async () => {
     return { ok: true, status: 200, json: async () => ({}) };
   };
   await learnActiveChain("pulsechain");
-  const providers = await import("../src/client/web/dashboard-lp-providers.js");
+  const providers =
+    await import("../src/client/web/js/dashboard-lp-providers.js");
   await providers.loadLpProviders();
-  stats = await import("../src/client/web/dashboard-all-positions-stats.js");
+  stats = await import("../src/client/web/js/dashboard-all-positions-stats.js");
   const page = indexHtmlDocument();
   document.body.replaceChildren(
     document.importNode(page.getElementById("allPositionsStatsModal"), true),

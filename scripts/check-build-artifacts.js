@@ -14,8 +14,8 @@
  *     1. Operator downloaded the GitHub-auto-generated "Source code
  *        (tar.gz)" archive instead of the release ASSET — the source
  *        archive is `git archive` output which strips every gitignored
- *        path, including `src/client/web/dist/`, `src/client/web/build-info.js`,
- *        `src/client/web/disclosure-content.js`, and `src/server/build-info.json`.
+ *        path, including `src/client/web/dist/`, `src/client/web/js/build-info.js`,
+ *        `src/client/web/js/disclosure-content.js`, and `src/server/build-info.json`.
  *     2. Operator cloned the repo with `git clone` and skipped
  *        `npm run build` before `npm start`.
  *
@@ -59,11 +59,11 @@ const REQUIRED = [
     role: "dashboard JS bundle (built by esbuild from dashboard-init.js)",
   },
   {
-    rel: "src/client/web/build-info.js",
+    rel: "src/client/web/js/build-info.js",
     role: "version banner module imported by the dashboard bundle",
   },
   {
-    rel: "src/client/web/disclosure-content.js",
+    rel: "src/client/web/js/disclosure-content.js",
     role: "disclaimer modal content (extracted from docs/disclosure.md)",
   },
   {

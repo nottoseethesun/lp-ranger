@@ -26,7 +26,7 @@ library's path overrides (`PRICE_CACHE_PATH`, `GECKO_POOL_CACHE_PATH`)
 and set them to the tool's folder first. Under `node --test`, use the test
 process's own folder instead. Then list every `src/lib/` module the tool
 loads (`require.cache`) and check each for writes made as it loads, not
-only its caches: `src/lib/price-fetcher-gate.js` called `loadConfig()`,
+only its caches: `src/bot/price-fetcher-gate.js` called `loadConfig()`,
 which copies `bot-config.json` and `position-records.json` over their
 backups (found 2026-10-20; since 2026-10-21 it reads nothing as it
 loads, and a tool that needs its settings calls

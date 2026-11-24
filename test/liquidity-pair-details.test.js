@@ -50,7 +50,7 @@ const {
   readBalanceAt,
   _resetForTest,
   _CACHE_PATH,
-} = require("../src/lib/liquidity-pair-details");
+} = require("../src/bot/liquidity-pair-details");
 const { liquidityPairScopeKey } = require("../src/lib/cache-store");
 
 /** Mock ethers module used to inject deterministic balance reads. */
@@ -229,9 +229,9 @@ describe("liquidity-pair-details cache", () => {
     try {
       _resetForTest();
       delete require.cache[
-        require.resolve("../src/lib/liquidity-pair-details")
+        require.resolve("../src/bot/liquidity-pair-details")
       ];
-      const fresh = require("../src/lib/liquidity-pair-details");
+      const fresh = require("../src/bot/liquidity-pair-details");
       await fresh.ensureInitialResidualData(_baseArgs({ refresh: true }));
       assert.equal(
         observed.refresh,
@@ -241,7 +241,7 @@ describe("liquidity-pair-details cache", () => {
     } finally {
       Module._load = _origLoadInner;
       delete require.cache[
-        require.resolve("../src/lib/liquidity-pair-details")
+        require.resolve("../src/bot/liquidity-pair-details")
       ];
     }
   });

@@ -21,7 +21,7 @@ let _notifyCalls = [];
 function _installMocks() {
   _notifyCalls = [];
   Module.prototype.require = function (id) {
-    if (id === "./telegram-notifications/telegram") {
+    if (id === "../lib/telegram-notifications/telegram") {
       return {
         notify: (type, details) => {
           _notifyCalls.push({ type, details });
@@ -29,24 +29,24 @@ function _installMocks() {
         },
       };
     }
-    if (id === "./token-symbol-cache") {
+    if (id === "../lib/token-symbol-cache") {
       return { getTokenSymbol: (a) => "SYM:" + a };
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/lib/bot-cycle-drain")];
+  delete require.cache[require.resolve("../src/bot/bot-cycle-drain")];
 }
 
 function _restoreMocks() {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/lib/bot-cycle-drain")];
+  delete require.cache[require.resolve("../src/bot/bot-cycle-drain")];
 }
 
 describe("checkRetireRequest", () => {
   let checkRetireRequest;
   beforeEach(() => {
     _installMocks();
-    ({ checkRetireRequest } = require("../src/lib/bot-cycle-drain"));
+    ({ checkRetireRequest } = require("../src/bot/bot-cycle-drain"));
   });
   afterEach(() => {
     _restoreMocks();

@@ -22,10 +22,7 @@ const {
   hasEncryptedKey,
 } = require("../../lib/api-key-store");
 const telegram = require("../../lib/telegram-notifications/telegram");
-const {
-  BALANCED_BAND_PCT,
-  BALANCED_COOLDOWN_MS,
-} = require("../../lib/telegram-notifications/balanced-notifier");
+const { readBotConfigDefaults } = require("../../lib/bot-config-defaults");
 const {
   ALERT_CHOICES,
 } = require("../../lib/telegram-notifications/telegram-events");
@@ -129,13 +126,14 @@ function createTelegramHandlers(opts) {
   function handleTelegramStatus(_, res) {
     const hasToken = hasEncryptedKey("telegramBotToken");
     const hasChatId = hasEncryptedKey("telegramChatId");
+    const defaults = readBotConfigDefaults();
     jsonResponse(res, 200, {
       hasToken,
       hasChatId,
       configured: telegram.isConfigured(),
       enabledEvents: telegram.getEnabledEvents(),
-      balancedThresholdPct: BALANCED_BAND_PCT,
-      balancedCooldownMs: BALANCED_COOLDOWN_MS,
+      balancedThresholdPct: defaults.positionBalancedBandPct,
+      balancedCooldownMs: defaults.positionBalancedCooldownMs,
     });
   }
 

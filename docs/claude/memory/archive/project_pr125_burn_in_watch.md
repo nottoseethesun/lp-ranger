@@ -9,4 +9,4 @@ PR #125 (commit 14a5bf6, merged 3c1d6a4): `fix(lp-browser): refresh after rebala
 
 **Why:** User explicitly said they'll watch for a "test in the wild" of this fix during burn-in — meaning the fix is in but they haven't yet observed the recovery path triggering naturally on Prod.
 
-**How to apply:** If the user references the lp-browser-scan refresh, the rebalance-driven retry, or burn-in observations of either, this is the PR they mean. Code paths to look at: `_handleRebalance` in `src/client/web/dashboard-data-events.js` (rebalance-driven `scanPositions` retry that advances `_lastRebAt` only on `{ok:true}`). Burn-in window context: see `project_burn_in_release.md`.
+**How to apply:** If the user references the lp-browser-scan refresh, the rebalance-driven retry, or burn-in observations of either, this is the PR they mean. Code paths to look at: `_handleRebalance` in `src/client/web/js/dashboard-data-events.js` (rebalance-driven `scanPositions` retry that advances `_lastRebAt` only on `{ok:true}`). Burn-in window context: see `project_burn_in_release.md`.

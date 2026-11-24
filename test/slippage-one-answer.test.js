@@ -25,7 +25,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { resolveSlippagePct } = require("../src/lib/slippage-resolver");
+const { resolveSlippagePct } = require("../src/bot/slippage-resolver");
 const {
   POSITION_KEYS,
   RETIRED_POSITION_KEYS,
@@ -76,7 +76,7 @@ describe("the compound path carries the same settings the rebalance does", () =>
   const fs = require("node:fs");
   const path = require("node:path");
   const read = (f) =>
-    fs.readFileSync(path.join(__dirname, "..", "src", "lib", f), "utf8");
+    fs.readFileSync(path.join(__dirname, "..", "src", "bot", f), "utf8");
 
   it("builds compound opts from the two per-token keys", () => {
     const src = read("bot-cycle-compound.js");

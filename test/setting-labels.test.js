@@ -118,7 +118,9 @@ describe("setting-labels.handleSettingLabels", () => {
       _FILE,
       JSON.stringify({ slippagePct: { label: "Slip", unit: "%" } }),
     );
-    const { handleSettingLabels } = require("../src/lib/setting-labels");
+    const {
+      handleSettingLabels,
+    } = require("../src/server/user-configurable-routes");
     let gotStatus = null;
     let gotBody = null;
     const jsonResponse = (_res, status, body) => {
@@ -132,7 +134,9 @@ describe("setting-labels.handleSettingLabels", () => {
 
   it("returns 200 with empty map when file missing", () => {
     fs.unlinkSync(_FILE);
-    const { handleSettingLabels } = require("../src/lib/setting-labels");
+    const {
+      handleSettingLabels,
+    } = require("../src/server/user-configurable-routes");
     let gotStatus = null;
     let gotBody = null;
     const jsonResponse = (_res, status, body) => {

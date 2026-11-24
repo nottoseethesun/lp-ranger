@@ -38,6 +38,9 @@ function setupSandbox(present) {
   fs.mkdirSync(path.join(root, "src", "client", "web", "dist"), {
     recursive: true,
   });
+  fs.mkdirSync(path.join(root, "src", "client", "web", "js"), {
+    recursive: true,
+  });
   fs.mkdirSync(path.join(root, "src", "server"), { recursive: true });
   fs.copyFileSync(
     SCRIPT,
@@ -45,8 +48,8 @@ function setupSandbox(present) {
   );
   const all = [
     "src/client/web/dist/bundle.js",
-    "src/client/web/build-info.js",
-    "src/client/web/disclosure-content.js",
+    "src/client/web/js/build-info.js",
+    "src/client/web/js/disclosure-content.js",
     "src/server/build-info.json",
   ];
   for (const rel of all) {
@@ -71,8 +74,8 @@ function cleanup(root) {
 test("exits 0 when all four required artifacts exist", () => {
   const root = setupSandbox([
     "src/client/web/dist/bundle.js",
-    "src/client/web/build-info.js",
-    "src/client/web/disclosure-content.js",
+    "src/client/web/js/build-info.js",
+    "src/client/web/js/disclosure-content.js",
     "src/server/build-info.json",
   ]);
   try {
@@ -86,8 +89,8 @@ test("exits 0 when all four required artifacts exist", () => {
 
 test("exits 1 with a clear error when bundle.js is missing", () => {
   const root = setupSandbox([
-    "src/client/web/build-info.js",
-    "src/client/web/disclosure-content.js",
+    "src/client/web/js/build-info.js",
+    "src/client/web/js/disclosure-content.js",
     "src/server/build-info.json",
   ]);
   try {
@@ -106,8 +109,8 @@ test("lists EVERY missing file, not just the first", () => {
     const r = runGuard(root);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /src\/client\/web\/dist\/bundle\.js/);
-    assert.match(r.stderr, /src\/client\/web\/build-info\.js/);
-    assert.match(r.stderr, /src\/client\/web\/disclosure-content\.js/);
+    assert.match(r.stderr, /src\/client\/web\/js\/build-info\.js/);
+    assert.match(r.stderr, /src\/client\/web\/js\/disclosure-content\.js/);
     assert.match(r.stderr, /src\/server\/build-info\.json/);
   } finally {
     cleanup(root);

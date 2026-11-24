@@ -1,7 +1,7 @@
 /**
  * @file test/current-lp-deposit.test.js
  * @description What Initial Deposit for This LP adds to the coins an NFT
- * was minted with (src/lib/current-lp-deposit.js): the wallet's coins its
+ * was minted with (src/bot/current-lp-deposit.js): the wallet's coins its
  * compounds took in beyond their fees, each at that compound's prices.
  *
  * The coins here have no decimals, so a record's amounts are whole coins.
@@ -17,7 +17,7 @@ const {
   addedByCompounds,
   addedByOthers,
   addedSinceMint,
-} = require("../src/lib/current-lp-deposit");
+} = require("../src/bot/current-lp-deposit");
 
 const DECIMALS = { decimals0: 0, decimals1: 0 };
 const TODAY = { price0: 2, price1: 1 };

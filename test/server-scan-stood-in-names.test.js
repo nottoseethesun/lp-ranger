@@ -33,7 +33,7 @@ const { ethers } = require("ethers");
 /*-
  *  A name this file reads is a fixture. It goes to a symbol cache of this
  *  file's own, not the operator's, which nothing expires. Set before
- *  src/lib/server-scan.js loads src/lib/token-symbol-cache.js, which reads it
+ *  src/bot/wallet-scan.js loads src/lib/token-symbol-cache.js, which reads it
  *  once.
  */
 const SYMBOL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "stood-in-sym-"));
@@ -43,12 +43,12 @@ process.env.TOKEN_SYMBOL_CACHE_PATH = path.join(
 );
 
 const config = require("../src/lib/config");
-const sendTx = require("../src/lib/send-transaction");
-const { createScanHandlers } = require("../src/lib/server-scan");
+const sendTx = require("../src/bot/send-transaction");
+const { createScanHandlers } = require("./_bot-route-adapters");
 const {
   saveLpPositionCache,
   loadLpPositionCache,
-} = require("../src/lib/lp-position-cache");
+} = require("../src/bot/lp-position-cache");
 
 const WALLET = "0x" + "d".repeat(39) + "1";
 const TOKEN0 = "0x1234567890abcdef1234567890abcdef12345678";

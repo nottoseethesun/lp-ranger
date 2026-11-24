@@ -83,13 +83,13 @@ before(async () => {
     return { ok: true, status: 200, json: async () => ({}) };
   };
   await learnActiveChain();
-  const wallet = await import("../src/client/web/dashboard-wallet.js");
+  const wallet = await import("../src/client/web/js/dashboard-wallet.js");
   await wallet.checkWalletLocked();
-  store = await import("../src/client/web/dashboard-positions-store.js");
-  ui = await import("../src/client/web/dashboard-manage-ui.js");
-  check = await import("../src/client/web/dashboard-manage-check.js");
-  positions = await import("../src/client/web/dashboard-positions.js");
-  events = await import("../src/client/web/dashboard-events-manage.js");
+  store = await import("../src/client/web/js/dashboard-positions-store.js");
+  ui = await import("../src/client/web/js/dashboard-manage-ui.js");
+  check = await import("../src/client/web/js/dashboard-manage-check.js");
+  positions = await import("../src/client/web/js/dashboard-positions.js");
+  events = await import("../src/client/web/js/dashboard-events-manage.js");
   ui.injectManageUIDeps({
     posStore: store.posStore,
     /*-

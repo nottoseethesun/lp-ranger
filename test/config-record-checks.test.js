@@ -26,8 +26,8 @@ const assert = require("node:assert/strict");
 const { RECORD_CHECKS } = require("../src/lib/config-record-checks");
 const { positionRecordsProblems } = require("../src/lib/bot-config-checks");
 const { RECORD_POSITION_KEYS } = require("../src/lib/bot-config-keys");
-const { createResidualTracker } = require("../src/lib/residual-tracker");
-const { createRouteHandlers } = require("../src/server/server-routes");
+const { createResidualTracker } = require("../src/bot/residual-tracker");
+const { createRouteHandlers } = require("./_bot-route-adapters");
 
 const POOL = "0x" + "ab".repeat(20);
 const KEY =
@@ -68,18 +68,18 @@ const AS_WRITTEN = {
       price1: 2,
       gasCostUsd: 0.01,
       trigger: "auto",
-      // The fees among the deposited coins (src/lib/compounded-coins.js).
+      // The fees among the deposited coins (src/bot/compounded-coins.js).
       amount0Compounded: "400",
       amount1Compounded: "2000",
       // The fees the deposit could not take, left in the wallet.
       amount0FeesLeft: "100",
       amount1FeesLeft: "0",
       /*- The deposit's block and the wallet's coins before the collect
-       *  (src/lib/deposit-attribution.js). */
+       *  (src/bot/deposit-attribution.js). */
       blockNumber: 27900000,
       amount0WalletBefore: "5000",
       amount1WalletBefore: "0",
-      // The Activity Log figures (src/lib/compound-activity-figures.js).
+      // The Activity Log figures (src/bot/compound-activity-figures.js).
       feesCollected: { amount0: 0.5, amount1: 0.25 },
       historical: { percentGainForPosition: 0.01 },
     },
@@ -112,7 +112,7 @@ const AS_WRITTEN = {
   lastCompoundAt: "2026-10-18T07:00:00.000Z",
   totalLifetimeDepositUsd: 500.25,
   depositUsedFallback: false,
-  // As recordSpentGas writes it (src/lib/spent-gas.js).
+  // As recordSpentGas writes it (src/bot/spent-gas.js).
   failedMoveGas: [
     { at: "2026-10-19T15:00:00.000Z", wei: "3000000000000000", usd: 0.12 },
   ],

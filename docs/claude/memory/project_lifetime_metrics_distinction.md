@@ -34,8 +34,8 @@ was wrong.  The two metrics have different jobs and the initial-
 residual subtraction belongs in one of them, not both.
 
 Future reasoning:
-- For IL/G code changes (`src/lib/il-calculator.js`, `_computeIL` in
-  `src/lib/bot-pnl-updater.js`, the IL/G debug modal), stay with the
+- For IL/G code changes (`src/bot/il-calculator.js`, `_computeIL` in
+  `src/bot/bot-pnl-updater.js`, the IL/G debug modal), stay with the
   gross-credit formula.  No initial-residual term.
 - For Net P&L code changes (anywhere the Lifetime panel's "Net P&L
   Return" or the "PROFIT" line is computed), the initial-residual

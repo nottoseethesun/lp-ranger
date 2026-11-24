@@ -8,7 +8,7 @@ metadata:
   modified: 2026-10-24T04:55:09.163Z
 ---
 
-`src/lib/bot-loop.js#_triggerScan`:
+`src/bot/bot-loop.js#_triggerScan`:
 
 ```js
 botState._triggerScan = async () => {

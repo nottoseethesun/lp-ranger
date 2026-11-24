@@ -77,7 +77,7 @@ const { scanCachePath } = require("../../src/lib/scan-cache-dir");
 const {
   readPositionRecords,
   mergePositionRecords,
-} = require("../../src/lib/position-records");
+} = require("../../src/lib/util/position-records");
 
 /**
  * Describe the command line, so Commander both parses it and renders

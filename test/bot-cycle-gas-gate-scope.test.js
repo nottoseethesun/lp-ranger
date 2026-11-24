@@ -79,11 +79,11 @@ function loadWithProbe(gasUsd, posValue) {
     };
   };
   try {
-    delete require.cache[require.resolve("../src/lib/bot-cycle")];
-    const mod = require("../src/lib/bot-cycle");
+    delete require.cache[require.resolve("../src/bot/bot-cycle")];
+    const mod = require("../src/bot/bot-cycle");
     /*- Evicted again so the stubbed copy is not handed to whoever
      *  requires this module next. */
-    delete require.cache[require.resolve("../src/lib/bot-cycle")];
+    delete require.cache[require.resolve("../src/bot/bot-cycle")];
     return { mod, probe };
   } finally {
     Module.prototype.require = orig;

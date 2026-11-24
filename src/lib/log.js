@@ -76,7 +76,7 @@ let _sink = {
 };
 
 /*- ANSI color table for known log tag prefixes.  Folded in from the
- *  legacy `installColorLogger()` in `src/lib/logger.js` so colorization
+ *  legacy `installColorLogger()` in `src/bot/logger.js` so colorization
  *  happens inside the opt-in `log.*` chain instead of via a
  *  `console.*` monkey-patch (see Core Essentials in
  *  docs/claude/CLAUDE-BEST-PRACTICES.md).  Lines that don't begin with

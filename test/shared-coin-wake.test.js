@@ -2,10 +2,10 @@
  * @file test/shared-coin-wake.test.js
  * @description When a running managed position finishes its first check,
  * or stops, each other running position whose pool contains one of its
- * coins is checked again at once (src/lib/shared-coin-wake.js), so its
+ * coins is checked again at once (src/bot/shared-coin-wake.js), so its
  * Wallet Residual (Pool) line divides the wallet's coins by the positions
  * as they now are. Driven through the update every position's state
- * takes (`updatePositionState`, src/lib/server-positions.js).
+ * takes (`updatePositionState`, src/bot/position-states.js).
  */
 
 "use strict";
@@ -15,16 +15,16 @@ const assert = require("node:assert/strict");
 const {
   joinOrLeave,
   wakeOthersSharingACoin,
-} = require("../src/lib/shared-coin-wake");
+} = require("../src/bot/shared-coin-wake");
 const {
   updatePositionState,
   getAllPositionBotStates,
-} = require("../src/lib/server-positions");
-const { claimScanStart, endScan } = require("../src/lib/scan-state");
+} = require("../src/bot/position-states");
+const { claimScanStart, endScan } = require("../src/bot/scan-state");
 const {
   markStopping,
   _resetAppPhaseForTests,
-} = require("../src/lib/app-phase");
+} = require("../src/bot/app-phase");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 /**

@@ -42,7 +42,7 @@ const ANSWER = { figures: FIGURES, botDefaults: BOT };
 let mod;
 
 before(async () => {
-  mod = await import("../src/client/web/dashboard-help-figures.js");
+  mod = await import("../src/client/web/js/dashboard-help-figures.js");
 });
 
 /** Every `data-figure` span in index.html as `{name, text}`. */

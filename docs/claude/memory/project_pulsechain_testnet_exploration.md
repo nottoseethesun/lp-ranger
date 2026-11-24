@@ -84,7 +84,7 @@ resets it.
   need a look.
 - **Plumbing already built.** On branch `migrate-to-new-9mm-data-api`
   (2026-10-16): `parseCompositeKey` reads from the right, there is a
-  `GET /api/chain` route plus `src/client/web/dashboard-chain.js`, and contract
+  `GET /api/chain` route plus `src/client/web/js/dashboard-chain.js`, and contract
   addresses no longer fall back to mainnet's.
 
 **Why:** live tests must never touch Production

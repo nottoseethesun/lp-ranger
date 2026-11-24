@@ -18,8 +18,8 @@ const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
 const config = require("../src/lib/config");
-const epochCache = require("../src/lib/epoch-cache");
-const { createPnlTracker } = require("../src/lib/pnl-tracker");
+const epochCache = require("../src/bot/epoch-cache");
+const { createPnlTracker } = require("../src/bot/pnl-tracker");
 const {
   CHAIN_HISTORY_MODULE,
   chainHistoryStub,
@@ -59,7 +59,7 @@ const HISTORY = {
 const run = { historyCalls: [], beforeCallback: () => {} };
 
 /**
- * Load `src/server/position-details.js` with the pool scan and the closed NFTs'
+ * Load `src/bot/position-details.js` with the pool scan and the closed NFTs'
  * histories replaced, and every module it pulls in for the first time
  * evicted again afterwards, so no stubbed copy outlives the load.
  */
@@ -104,7 +104,7 @@ function loadSnapshot() {
     if (Object.prototype.hasOwnProperty.call(stubs, name)) return stubs[name];
     return origRequire.apply(this, arguments);
   };
-  const file = require.resolve("../src/server/position-details");
+  const file = require.resolve("../src/bot/position-details");
   delete require.cache[file];
   try {
     return require(file)._getLifetimeSnapshot;

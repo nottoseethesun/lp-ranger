@@ -36,7 +36,7 @@ let shouldSkipUnmanagedFetch;
 
 before(async () => {
   ({ shouldSkipUnmanagedFetch } =
-    await import("../src/client/web/dashboard-unmanaged.js"));
+    await import("../src/client/web/js/dashboard-unmanaged.js"));
 });
 
 describe("shouldSkipUnmanagedFetch", () => {
@@ -119,6 +119,7 @@ describe("the flush path consults it", () => {
       "src",
       "client",
       "web",
+      "js",
       "dashboard-unmanaged.js",
     ),
     "utf8",

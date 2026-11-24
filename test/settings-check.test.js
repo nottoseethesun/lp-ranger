@@ -125,6 +125,37 @@ describe("the operator's copies of the settings files", () => {
     oneProblem(problems, "maxRebalancesPerDay");
   });
 
+  it("refuses dashboard settings written outside their rules, naming each", () => {
+    /*-
+     *  The one place an operator's dashboard settings are refused before
+     *  the app starts: nothing reads them strictly at startup since the
+     *  bot's wait for the dashboard moved out of src/lib/config.js.
+     */
+    const file = "ui-defaults_non-layout_for-server-up-scenario.json";
+    const problems = problemsOf({
+      copies: {
+        [file]: JSON.stringify({
+          dashboardPollIntervalMs: 100,
+          throttleNearLimitPct: 150,
+          soundsEnabled: "yes",
+        }),
+      },
+    });
+    oneProblem(problems, file, "dashboardPollIntervalMs");
+    oneProblem(problems, file, "throttleNearLimitPct");
+    oneProblem(problems, file, "soundsEnabled", "true or false");
+  });
+
+  it("refuses a dashboard-seen multiple outside its range", () => {
+    const problems = problemsOf({
+      copies: {
+        "app-runtime.json":
+          '{ "dashboard": { "pollsBeforeAssumedSeen": 101 } }',
+      },
+    });
+    oneProblem(problems, "app-runtime.json", "pollsBeforeAssumedSeen");
+  });
+
   it("refuses a copy that is not valid JSON, naming it", () => {
     const problems = problemsOf({ copies: { "chains.json": "{ nope" } });
     oneProblem(problems, "chains.json", "is not valid JSON");

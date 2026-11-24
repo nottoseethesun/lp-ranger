@@ -30,7 +30,7 @@ const assert = require("node:assert/strict");
 
 const config = require("../src/lib/config");
 const logModule = require("../src/lib/log");
-const { _waitOrSpeedUp } = require("../src/lib/tx-speedup");
+const { _waitOrSpeedUp } = require("../src/bot/tx-speedup");
 
 const WALLET = "0x" + "11".repeat(20);
 

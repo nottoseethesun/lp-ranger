@@ -67,10 +67,10 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  store = await import("../src/client/web/dashboard-positions-store.js");
-  override = await import("../src/client/web/dashboard-price-override.js");
-  await import("../src/client/web/dashboard-data.js");
-  poll = await import("../src/client/web/dashboard-data-poll.js");
+  store = await import("../src/client/web/js/dashboard-positions-store.js");
+  override = await import("../src/client/web/js/dashboard-price-override.js");
+  await import("../src/client/web/js/dashboard-data.js");
+  poll = await import("../src/client/web/js/dashboard-data-poll.js");
   store.posStore.add(A);
   store.posStore.add(B);
 });

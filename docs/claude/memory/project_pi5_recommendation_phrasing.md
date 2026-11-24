@@ -24,13 +24,13 @@ This is the canonical form for **every** Pi 5 mention — README, help/manual pa
 - Notable: "5GB" (no space) and "Wi-Fi" (hyphenated, capital W and F) are how the user wrote it — preserve spelling.
 - On 2026-09-19 the sweep to the revised form finished. Every mention
   carrying the old wording now uses it: `README.md`, `docs/security.md`,
-  `src/client/web/dashboard-helpers.js`, `src/client/web/help-and-user-manual.html`
+  `src/client/web/js/dashboard-helpers.js`, `src/client/web/help-and-user-manual.html`
   (three spots), and `app-config/app-defaults-for-user-configurable/csrf.json`.
   Grep the whole repo before assuming a location is current — the
   csrf.json one was missed by an earlier inventory that listed only four.
 - Bare mentions ("e.g. a Pi 5", "arm64 / Raspberry Pi") were left bare,
-  pending the user's call: `src/client/web/dashboard-init.js`,
-  `src/client/web/dashboard-data-poll.js`, `docs/engineering.md` (a heading),
+  pending the user's call: `src/client/web/js/dashboard-init.js`,
+  `src/client/web/js/dashboard-data-poll.js`, `docs/engineering.md` (a heading),
   `docs/configuration.md`, `README.md` line 85, and the issue template.
   Some are platform references rather than hardware advice, and line 85
   sits one line under the full phrase.

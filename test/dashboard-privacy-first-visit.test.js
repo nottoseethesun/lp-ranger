@@ -43,11 +43,11 @@ before(async () => {
   });
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  const ui = await import("../src/client/web/dashboard-ui-settings.js");
-  events = await import("../src/client/web/dashboard-events-manage.js");
-  browser = await import("../src/client/web/dashboard-positions-browser.js");
+  const ui = await import("../src/client/web/js/dashboard-ui-settings.js");
+  events = await import("../src/client/web/js/dashboard-events-manage.js");
+  browser = await import("../src/client/web/js/dashboard-positions-browser.js");
   const { posStore } =
-    await import("../src/client/web/dashboard-positions-store.js");
+    await import("../src/client/web/js/dashboard-positions-store.js");
   posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,

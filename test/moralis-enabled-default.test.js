@@ -9,7 +9,7 @@
  *   operator's copy of that file may say false. Nothing read that
  *   default: with no choice saved in bot-config.json, the key was used at
  *   every unlock and after a save that cleared the choice, and the switch
- *   showed on. Now one rule (`moralisEnabledIn`, src/lib/server-moralis.js)
+ *   showed on. Now one rule (`moralisEnabledIn`, src/lib/moralis-key.js)
  *   answers for the unlock, the save and the status the switch reads.
  *
  *   The operator's copy here says false, so a server that ignored it
@@ -42,10 +42,10 @@ after(() => {
 });
 
 const holder = require("../src/lib/api-key-holder");
-const { moralisEnabledIn } = require("../src/lib/server-moralis");
-const { createRouteHandlers } = require("../src/server/server-routes");
-const { createApiStatusHandler } = require("../src/server/handle-api-status");
-const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/lib/moralis-key");
+const { createRouteHandlers } = require("./_bot-route-adapters");
+const { createApiStatusHandler } = require("./_bot-route-adapters");
+const { primaryRouteLabel } = require("../src/bot/rebalancer-swap");
 const config = require("../src/lib/config");
 
 /** The smallest set of route dependencies, with `global` as given. */

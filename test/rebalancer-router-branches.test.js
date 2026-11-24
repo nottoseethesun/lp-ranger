@@ -31,7 +31,7 @@ process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { swapViaRouter } = require("../src/lib/rebalancer-router");
+const { swapViaRouter } = require("../src/bot/rebalancer-router");
 const {
   ADDR,
   makeTx,

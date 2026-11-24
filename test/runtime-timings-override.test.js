@@ -31,7 +31,7 @@ fs.writeFileSync(
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const { checkZeroLiquidity } = require("../src/lib/bot-cycle-drain");
+const { checkZeroLiquidity } = require("../src/bot/bot-cycle-drain");
 
 describe("a drained position's retire", () => {
   /** Deps for a drained position, with no rebalance under way. */
@@ -55,7 +55,7 @@ describe("a drained position's retire", () => {
 
 describe("the bot loop's own timings", () => {
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "src", "lib", "bot-loop.js"),
+    path.join(__dirname, "..", "src", "bot", "bot-loop.js"),
     "utf8",
   );
 

@@ -37,12 +37,13 @@ let dataCache;
 let store;
 
 before(async () => {
-  reloadFlow = await import("../src/client/web/dashboard-reload-flow.js");
-  rescanPrices = await import("../src/client/web/dashboard-rescan-prices.js");
-  deposit = await import("../src/client/web/dashboard-data-deposit.js");
-  manageUi = await import("../src/client/web/dashboard-manage-ui.js");
-  dataCache = await import("../src/client/web/dashboard-data-cache.js");
-  store = await import("../src/client/web/dashboard-positions-store.js");
+  reloadFlow = await import("../src/client/web/js/dashboard-reload-flow.js");
+  rescanPrices =
+    await import("../src/client/web/js/dashboard-rescan-prices.js");
+  deposit = await import("../src/client/web/js/dashboard-data-deposit.js");
+  manageUi = await import("../src/client/web/js/dashboard-manage-ui.js");
+  dataCache = await import("../src/client/web/js/dashboard-data-cache.js");
+  store = await import("../src/client/web/js/dashboard-positions-store.js");
   /*-
    *  One NFT position, active, as the position store holds it once
    *  restored from the browser's storage at page load — which is before

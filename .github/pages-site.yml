@@ -13,16 +13,18 @@
 # it up; there is nowhere else to change.
 #
 # Why the rewrites exist: the pages reference their CSS absolutely and
-# stamped (`/style.css?v=123`, from `npm run build`), which only resolves
-# while the dashboard server is running. A static host needs each sheet
-# relative, sitting next to the HTML, so its path is made relative and
-# its stamp dropped.
+# stamped (`/css/style.css?v=123`, from `npm run build`), which only
+# resolves while the dashboard server is running. A static host needs
+# each sheet relative to the HTML, so its path is made relative and its
+# stamp dropped, and the sheet is copied to the same place beside the
+# page (`webAssets` below).
 
-# Stylesheets EVERY published page loads, made relative and unstamped.
+# Stylesheets EVERY published page loads, made relative and unstamped:
+# each one's path under src/client/web/, as the pages name it.
 sharedSheets:
-  - style.css
-  - 9mm-pos-mgr.css
-  - fonts.css
+  - css/style.css
+  - css/9mm-pos-mgr.css
+  - css/fonts.css
 
 # Scripts dropped from every published page, whatever stamp follows the
 # path. The manual's asks the running app for the install's own figures;
@@ -32,23 +34,30 @@ droppedScripts:
   - /dist/manual-figures.js
 
 # Pages to publish. `css` names the page-specific stylesheet whose
-# cache-busted href also needs flattening.
+# cache-busted href is also made relative, by its path under
+# src/client/web/.
 pages:
   - src: src/client/web/help-and-user-manual.html
-    css: help.css
+    css: css/help.css
   - src: src/client/web/disclosure.html
-    css: help.css
+    css: css/help.css
   - src: src/client/web/screenshot-gallery.html
-    css: gallery.css
+    css: css/gallery.css
 
-# Stylesheets and assets copied flat alongside the pages.
-flatAssets:
-  - src/client/web/style.css
-  - src/client/web/9mm-pos-mgr.css
-  - src/client/web/fonts.css
-  - src/client/web/help.css
-  - src/client/web/gallery.css
-  - src/client/web/favicon.png
+# The folder the pages and their assets sit in: each asset below is
+# copied to its place under it, beside the pages (css/, images/), where
+# the pages' relative links find it.
+webRoot: src/client/web
+
+# Stylesheets and assets copied beside the pages, each keeping its
+# folder under `webRoot`.
+webAssets:
+  - src/client/web/css/style.css
+  - src/client/web/css/9mm-pos-mgr.css
+  - src/client/web/css/fonts.css
+  - src/client/web/css/help.css
+  - src/client/web/css/gallery.css
+  - src/client/web/images/favicon.png
 
 # Self-hosted fonts. Populated by `npm run copy-fonts`, which the deploy
 # workflow runs; a missing directory degrades to fallback typefaces

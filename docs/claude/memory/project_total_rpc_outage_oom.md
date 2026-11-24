@@ -29,7 +29,7 @@ killed it.
 
 Six links, each confirmed by reproduction:
 
-1. `_patchRequestPacing` (`src/lib/bot-provider.js`) wraps `provider.send`.
+1. `_patchRequestPacing` (`src/bot/bot-provider.js`) wraps `provider.send`.
    Under a halt, `acquire()` never resolves, so that wrapper's body
    never runs.
 2. ethers' `JsonRpcProvider.send()` is the **only** caller of `_start()`,
@@ -42,7 +42,7 @@ Six links, each confirmed by reproduction:
    consults the request manager: unpaced and unhaltable.
 4. `AbstractProvider.getNetwork()` clears its cached promise on failure,
    so **every** read detects again.
-5. `retryRead` (`src/lib/rpc-read-retry.js`) has no exit and no backoff by
+5. `retryRead` (`src/bot/rpc-read-retry.js`) has no exit and no backoff by
    design; its stated brake is the global queue, and the failure
    short-circuits past it. So it spun at network speed.
 6. Every iteration re-armed `halt()` and `_stickyUntilMs` to one hour

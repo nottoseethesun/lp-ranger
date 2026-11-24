@@ -25,7 +25,7 @@ process.env.POOL_CREATION_BLOCK_CACHE_PATH = path.join(
   "pool-creation-blocks-cache-test-" + process.pid + ".json",
 );
 
-const mod = require("../src/lib/pool-creation-block");
+const mod = require("../src/bot/pool-creation-block");
 const config = require("../src/lib/config");
 
 const FACTORY = "0xe50DBdC88E87a2C92984d794bcF3D1d76f619C68";

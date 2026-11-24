@@ -12,9 +12,10 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const { pollCycle } = require("../src/lib/bot-loop");
+const { pollCycle } = require("../src/bot/bot-loop");
 const { ADDR, buildPollDeps } = require("./_bot-loop-helpers");
-const showHelp = require("../src/lib/cli-help");
+const showHelp = require("../src/bot/bot-cli-help");
+const showServerHelp = require("../src/server/server-cli-help");
 
 // ── pollCycle — OOR detection ────────────────────────────────────────────────
 
@@ -302,7 +303,7 @@ describe("cli-help — bot mode advertises the new pause flag", () => {
     const orig = console.log;
     console.log = (...args) => captured.push(args.join(" "));
     try {
-      showHelp("server");
+      showServerHelp("server");
     } finally {
       console.log = orig;
     }

@@ -31,7 +31,7 @@ outperformance. This matches the standard definition — the closed form
 
 - **Fees** — everything the position earned, whether compounded away or
   still unclaimed. Per NFT that is `Σ(Collect) − Σ(drained principal)`;
-  `lifetimeFeeAmounts` in src/lib/compounder.js is the single definition.
+  `lifetimeFeeAmounts` in src/bot/compounder.js is the single definition.
 - **IL/G** — as above. Two variants: lifetime removes
   `totalCompoundedUsd`; current-NFT removes only that NFT's share, since
   its mint value already contained the earlier ones.

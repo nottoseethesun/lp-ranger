@@ -2,8 +2,8 @@
  * @file test/bot-cycle-helpers.test.js
  * @description Unit tests for pure helper functions in bot-cycle.js:
  *   _humanizeError, _checkRangeAndThreshold, and _checkRebalanceGates
- *   (src/lib/bot-cycle.js), plus _isTimeoutExpired, _isBeyondThreshold,
- *   and _reloadFromConfig (src/lib/bot-cycle-triggers.js).
+ *   (src/bot/bot-cycle.js), plus _isTimeoutExpired, _isBeyondThreshold,
+ *   and _reloadFromConfig (src/bot/bot-cycle-triggers.js).
  *
  *   How long a drained position waits to be retired, and the OOR
  *   timeout's default, are an operator's own here, not the figures that
@@ -37,7 +37,7 @@ const {
   _checkZeroLiquidity,
   _checkRebalanceGates,
   _liquidityChanged,
-} = require("../src/lib/bot-cycle");
+} = require("../src/bot/bot-cycle");
 const config = require("../src/lib/config");
 const tg = require("../src/lib/telegram-notifications/telegram");
 const {
@@ -48,7 +48,7 @@ const {
   _isTimeoutExpired,
   _isBeyondThreshold,
   _reloadFromConfig,
-} = require("../src/lib/bot-cycle-triggers");
+} = require("../src/bot/bot-cycle-triggers");
 
 // ── _humanizeError ──────────────────────────────────────────────────
 
@@ -355,7 +355,7 @@ describe("_checkRebalanceGates", () => {
   it("holds no Rebalance Now for a scan", () => {
     /*- The server refuses a Rebalance Now while a scan is running on
      *  the position, and no scan starts while one waits to be made
-     *  (src/lib/scan-state.js), so the bot never has one to hold. */
+     *  (src/bot/scan-state.js), so the bot never has one to hold. */
     const deps = makeDeps({
       _botState: { _scanRunning: true, forceRebalance: true },
     });
@@ -398,7 +398,7 @@ describe("_checkRebalanceGates", () => {
 
   it("ends a Rebalance Now the dry run turns down", () => {
     /*- Left asked for, it would hold the position's scans until a
-     *  restart, since no scan starts while one waits (src/lib/scan-state.js).
+     *  restart, since no scan starts while one waits (src/bot/scan-state.js).
      *  The residual cleanup's flag is the bot's own, and stays. */
     const asked = makeDeps({
       dryRun: true,

@@ -25,7 +25,7 @@ const {
   _buildRebalanceResult,
   _walletBalances,
   _computeRange,
-} = require("../src/lib/rebalancer-execute");
+} = require("../src/bot/rebalancer-execute");
 const {
   ADDR,
   Q96,

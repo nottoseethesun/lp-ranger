@@ -44,9 +44,9 @@ which, so the only thing to do about one is ask again. The user's
 framing, and it is the whole fix: *"The two requests should be handled
 entirely separately."*
 
-So the redundant deadline is gone. `_phase` (`src/lib/tx-speedup.js`) hands
+So the redundant deadline is gone. `_phase` (`src/bot/tx-speedup.js`) hands
 down the abort signal and nothing else, and
-`_receiptAcrossEndpoints` (`src/lib/send-transaction.js`) computes no
+`_receiptAcrossEndpoints` (`src/bot/send-transaction.js`) computes no
 deadline of its own when it is given a signal. One authority per
 re-ask, so there is no tiebreak left to lose.
 

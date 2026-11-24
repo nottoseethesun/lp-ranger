@@ -10,7 +10,7 @@
  *
  * Covers both:
  *   * Activity-Log icons — `ACT_ICONS` map in
- *     `src/client/web/dashboard-helpers.js` (loaded via `<img>` per
+ *     `src/client/web/js/dashboard-helpers.js` (loaded via `<img>` per
  *     docs/engineering.md § "SVG Assets").
  *   * Header / wallet-strip / modal icons — `data-svg="…"`
  *     placeholder attributes in `src/client/web/index.html` (inlined at
@@ -34,7 +34,15 @@ const _ICONS_DIR = path.join(__dirname, "..", "src", "client", "web", "icons");
  *  — matching what would ship in bundle.js. */
 function _readActIconsInventory() {
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "src", "client", "web", "dashboard-helpers.js"),
+    path.join(
+      __dirname,
+      "..",
+      "src",
+      "client",
+      "web",
+      "js",
+      "dashboard-helpers.js",
+    ),
     "utf8",
   );
   const match = src.match(/export const ACT_ICONS = \{([^}]+)\}/);

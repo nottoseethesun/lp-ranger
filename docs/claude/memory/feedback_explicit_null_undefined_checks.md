@@ -46,9 +46,9 @@ const v = x ?? defaultValue;
 ```
 
 **Why:** A type audit on 2026-07-10 flagged two pre-existing bare
-`!== undefined` guards (`src/client/web/dashboard-active-sync.js` `_applyLiqAndTicks`
-and `src/client/web/dashboard-positions.js` `_backgroundRefresh`) plus a
-`String(x || 0)` normalisation in `src/lib/bot-cycle.js` `_liquidityChanged`.
+`!== undefined` guards (`src/client/web/js/dashboard-active-sync.js` `_applyLiqAndTicks`
+and `src/client/web/js/dashboard-positions.js` `_backgroundRefresh`) plus a
+`String(x || 0)` normalisation in `src/bot/bot-cycle.js` `_liquidityChanged`.
 All three worked by accident (the server never sent the type they'd
 mishandle) but the class of bug was real.  Ten-plus explicit
 `!== undefined && !== null` guards already exist across the codebase

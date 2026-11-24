@@ -13,10 +13,17 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const { managedPositionList } = require("../src/bot/managed-positions");
 const {
-  managedPositionList,
-  createPositionStateRoutes,
+  createPositionStateRoutes: stateRoutesOver,
 } = require("../src/server/position-state-routes");
+
+/** The server's route over the bot's managed list, one set of deps for both. */
+const createPositionStateRoutes = (deps) =>
+  stateRoutesOver({
+    ...deps,
+    bot: { managedPositionList: () => managedPositionList(deps) },
+  });
 
 const W = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";

@@ -7,8 +7,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { _filterRebalances } = require("../src/lib/compounder");
-const { parseLogs: _parseLogs } = require("../src/lib/nft-event-parse");
+const { _filterRebalances } = require("../src/bot/compounder");
+const { parseLogs: _parseLogs } = require("../src/bot/nft-event-parse");
 
 // ── _filterRebalances ───────────────────────────────────────────────
 

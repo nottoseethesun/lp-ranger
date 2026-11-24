@@ -3,7 +3,7 @@
 /**
  * @file test/dashboard-offset-row.test.js
  * @description Tests for the Position Offset row's two buttons in
- * `src/client/web/dashboard-throttle.js` — `resetOffset` ("No Offset") and
+ * `src/client/web/js/dashboard-throttle.js` — `resetOffset` ("No Offset") and
  * `saveOffset` ("Save").
  *
  * The behaviour under test: **only Save persists.**  `resetOffset` used
@@ -35,9 +35,11 @@ let posted;
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  mod = await import("../src/client/web/dashboard-throttle.js");
-  configInputs = await import("../src/client/web/dashboard-config-inputs.js");
-  const store = await import("../src/client/web/dashboard-positions-store.js");
+  mod = await import("../src/client/web/js/dashboard-throttle.js");
+  configInputs =
+    await import("../src/client/web/js/dashboard-config-inputs.js");
+  const store =
+    await import("../src/client/web/js/dashboard-positions-store.js");
   store.posStore.entries.length = 0;
   store.posStore.entries.push({
     tokenId: "157149",
@@ -84,7 +86,7 @@ describe("resetOffset — the No Offset button", () => {
   it("marks the input dirty so the next poll cannot clobber it", () => {
     /*- Same guard the Default button relies on: the injected value has
      *  to survive until the user decides whether to Save it. */
-    const cache = require("../src/client/web/dashboard-data-cache.js");
+    const cache = require("../src/client/web/js/dashboard-data-cache.js");
     mod.resetOffset();
     assert.equal(cache.isInputDirty("inOffsetToken0"), true);
   });

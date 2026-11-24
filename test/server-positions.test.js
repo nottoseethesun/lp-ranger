@@ -1,6 +1,6 @@
 /**
  * @file test/server-positions.test.js
- * @description Unit tests for src/lib/server-positions.js.
+ * @description Unit tests for src/bot/position-states.js.
  *
  * Tests createPerPositionBotState, attachMultiPosDeps,
  * updatePositionState, getAllPositionBotStates, and createPositionRoutes.
@@ -15,8 +15,8 @@ const {
   attachMultiPosDeps,
   updatePositionState,
   getAllPositionBotStates,
-  createPositionRoutes,
-} = require("../src/lib/server-positions");
+} = require("../src/bot/position-states");
+const { createPositionRoutes } = require("./_bot-route-adapters");
 const config = require("../src/lib/config");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { poolReadStandIn } = require("./helpers/pool-read-stand-in");

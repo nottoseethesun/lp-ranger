@@ -24,7 +24,7 @@ const {
   flushBlockTimeCache,
   _resetForTest,
   _CACHE_PATH,
-} = require("../src/lib/block-time-cache");
+} = require("../src/bot/block-time-cache");
 
 describe("block-time-cache", () => {
   after(() => {

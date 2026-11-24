@@ -8,7 +8,7 @@ Smell: docstrings that say `Mirror of …`, `In-test replica`, or "mirror is sma
 
 **Correct pattern** — when a function is module-private and needs testing, **extract it as an exported pure decision** and drive the export directly:
 
-- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `src/client/web/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../src/client/web/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`. Every test run passes `--no-experimental-webstorage` (`scripts/check.js` and the npm `test` scripts): Node 25 and later put a `localStorage` of their own on the global object, which reads as `undefined` without a storage file, and `global-jsdom` would leave it in place of jsdom's.
+- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `src/client/web/js/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../src/client/web/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`. Every test run passes `--no-experimental-webstorage` (`scripts/check.js` and the npm `test` scripts): Node 25 and later put a `localStorage` of their own on the global object, which reads as `undefined` without a storage file, and `global-jsdom` would leave it in place of jsdom's.
 - **Server tests** (`src/lib/*.js`): direct `require("../src/lib/<module>.js")`. No import obstacle — mirrors have no excuse.
 
 When the private helper's logic is entangled with I/O (DOM writes, network, module-singleton state), extract only the **pure decision** (accepts state as parameters, returns the intended action) and leave the I/O in the wrapper. See PRs #167–#172 for the extract-then-test pattern applied across ~30 dashboard helpers.
@@ -45,18 +45,18 @@ Every swap a rebalance or a compound makes runs through these files:
 
 | File | What it does |
 | --- | --- |
-| `src/lib/rebalancer-swap.js` | The ratio math, and the order swaps are tried in: aggregator, aggregator in chunks, V3 router |
-| `src/lib/rebalancer-aggregator.js` | Quote, approve, send and confirm through the aggregator, with its retries and its cancel on timeout |
-| `src/lib/aggregator-quote-request.js` | One quote request under its time limit, with the aggregator's reasons on a refusal |
-| `src/lib/aggregator-nonce-settle.js` | Works out what mined once a swap's wait has run out |
-| `src/lib/rebalancer-router.js` | The V3 router swap, in the position's own pool |
-| `src/lib/rebalancer-swap-impact.js` | The price-impact check against the slippage setting, and the refusal of a quote that names no impact |
-| `src/lib/rebalancer-correct.js` | Corrective swaps, after the main swap moves the tick |
-| `src/lib/rebalancer-execute.js` | Swap and adjust: the range shift, the pre-mint check, the result |
-| `src/lib/compounder-swap.js` | The compound's ratio-correcting swap |
-| `src/lib/swap-gates.js` | The dust and gas checks in front of every swap |
-| `src/lib/slippage-resolver.js` | Which slippage figure a swap uses |
-| `src/lib/rebalancer-pools.js` | The shared swap helpers: impact check, approvals, send retries |
+| `src/bot/rebalancer-swap.js` | The ratio math, and the order swaps are tried in: aggregator, aggregator in chunks, V3 router |
+| `src/bot/rebalancer-aggregator.js` | Quote, approve, send and confirm through the aggregator, with its retries and its cancel on timeout |
+| `src/bot/aggregator-quote-request.js` | One quote request under its time limit, with the aggregator's reasons on a refusal |
+| `src/bot/aggregator-nonce-settle.js` | Works out what mined once a swap's wait has run out |
+| `src/bot/rebalancer-router.js` | The V3 router swap, in the position's own pool |
+| `src/bot/rebalancer-swap-impact.js` | The price-impact check against the slippage setting, and the refusal of a quote that names no impact |
+| `src/bot/rebalancer-correct.js` | Corrective swaps, after the main swap moves the tick |
+| `src/bot/rebalancer-execute.js` | Swap and adjust: the range shift, the pre-mint check, the result |
+| `src/bot/compounder-swap.js` | The compound's ratio-correcting swap |
+| `src/bot/swap-gates.js` | The dust and gas checks in front of every swap |
+| `src/bot/slippage-resolver.js` | Which slippage figure a swap uses |
+| `src/bot/rebalancer-pools.js` | The shared swap helpers: impact check, approvals, send retries |
 
 Measured 2026-10-18, on Node 24 and Node 22:
 

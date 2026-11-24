@@ -7,7 +7,7 @@
  *
  *   An open managed position's figures come from the status poll, an
  *   unmanaged one's from its details request, a closed one's from its
- *   history request (src/client/web/dashboard-stale-data.js). An answer counts
+ *   history request (src/client/web/js/dashboard-stale-data.js). An answer counts
  *   only for the position it was about, an error answer counts, and with
  *   no answer the figures stay stale while each status answer asks again.
  *   A switch also empties the Bot Settings boxes holding the position's
@@ -133,15 +133,15 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  store = await import("../src/client/web/dashboard-positions-store.js");
-  stale = await import("../src/client/web/dashboard-stale-data.js");
-  data = await import("../src/client/web/dashboard-data.js");
-  poll = await import("../src/client/web/dashboard-data-poll.js");
-  positions = await import("../src/client/web/dashboard-positions.js");
-  const unmanaged = await import("../src/client/web/dashboard-unmanaged.js");
-  const closed = await import("../src/client/web/dashboard-closed-pos.js");
-  ({ wallet } = await import("../src/client/web/dashboard-wallet.js"));
-  const walletModule = await import("../src/client/web/dashboard-wallet.js");
+  store = await import("../src/client/web/js/dashboard-positions-store.js");
+  stale = await import("../src/client/web/js/dashboard-stale-data.js");
+  data = await import("../src/client/web/js/dashboard-data.js");
+  poll = await import("../src/client/web/js/dashboard-data-poll.js");
+  positions = await import("../src/client/web/js/dashboard-positions.js");
+  const unmanaged = await import("../src/client/web/js/dashboard-unmanaged.js");
+  const closed = await import("../src/client/web/js/dashboard-closed-pos.js");
+  ({ wallet } = await import("../src/client/web/js/dashboard-wallet.js"));
+  const walletModule = await import("../src/client/web/js/dashboard-wallet.js");
   await walletModule.checkWalletLocked();
   wallet.address = WALLET;
   positions.injectPositionDeps({

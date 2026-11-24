@@ -26,7 +26,7 @@ const { withinBound, boundText } = require("../src/lib/range-check");
 const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
 const { BOUNDS } = require("../src/lib/config-bounds");
 const { assertTimerSec } = require("../src/lib/timer-bounds");
-const { GAS_FEE_PCT_MIN, GAS_FEE_PCT_MAX } = require("../src/lib/swap-gates");
+const { GAS_FEE_PCT_MIN, GAS_FEE_PCT_MAX } = require("../src/bot/swap-gates");
 
 const BOT = loadShippedDefaults("bot-config-defaults.json");
 const RUNTIME = loadShippedDefaults("app-runtime.json");

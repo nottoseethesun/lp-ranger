@@ -4,7 +4,7 @@
  * @file test/dashboard-rebalance-scan-wait.test.js
  * @description The Rebalance Now dialog when the server refuses a
  *   rebalance because the position's scan is in progress
- *   (src/client/web/dashboard-rebalance-confirm.js): it stays open, showing the
+ *   (src/client/web/js/dashboard-rebalance-confirm.js): it stays open, showing the
  *   server's words beside a spinner, with Cancel and no confirm button;
  *   once a status answer says the scan has ended, the confirm button
  *   comes back, so the rebalance is confirmed at that moment's price.
@@ -45,9 +45,9 @@ let answer;
 before(async () => {
   await learnActiveChain();
   pollMs = (await learnUiSettings()).dashboardPollIntervalMs;
-  confirm = await import("../src/client/web/dashboard-rebalance-confirm.js");
+  confirm = await import("../src/client/web/js/dashboard-rebalance-confirm.js");
   const { posStore } =
-    await import("../src/client/web/dashboard-positions-store.js");
+    await import("../src/client/web/js/dashboard-positions-store.js");
   posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,
@@ -56,7 +56,7 @@ before(async () => {
   });
   posStore.select(0);
   const { _setStatusReaderForTests } =
-    await import("../src/client/web/dashboard-scan-wait.js");
+    await import("../src/client/web/js/dashboard-scan-wait.js");
   _setStatusReaderForTests(() => ({
     _allPositionStates: { [KEY]: { scanInProgress: scanning } },
   }));

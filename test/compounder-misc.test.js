@@ -67,7 +67,7 @@ describe("compounder", () => {
     it("createPerPositionBotState copies compound fields from saved config", () => {
       const {
         createPerPositionBotState,
-      } = require("../src/lib/server-positions");
+      } = require("../src/bot/position-states");
       const saved = {
         compoundedAmount0: 12.5,
         compoundedAmount1: 3,
@@ -84,7 +84,7 @@ describe("compounder", () => {
     it("createPerPositionBotState handles missing compound fields", () => {
       const {
         createPerPositionBotState,
-      } = require("../src/lib/server-positions");
+      } = require("../src/bot/position-states");
       const state = createPerPositionBotState({}, {});
       assert.equal(state.compoundedAmount0, undefined);
       assert.equal(state.compoundHistory, undefined);
@@ -95,7 +95,7 @@ describe("compounder", () => {
     it("prices the compounded coins at the poll's prices", () => {
       const {
         overridePnlWithRealValues,
-      } = require("../src/lib/bot-pnl-updater");
+      } = require("../src/bot/bot-pnl-updater");
       const snap = {
         closedEpochs: [],
         liveEpoch: { entryValue: 100, fees: 5 },
@@ -157,7 +157,7 @@ describe("compounder", () => {
     const _dir = makeTestTempFolder("comp-persist");
     it("persists compound fields to in-memory config", () => {
       const { getOrCreatePositionConfig } = require("../src/lib/bot-config-v2");
-      const { updatePositionState } = require("../src/lib/server-positions");
+      const { updatePositionState } = require("../src/bot/position-states");
       const cfg = { global: {}, positions: {} };
       getOrCreatePositionConfig(cfg, "test-key");
       cfg.positions["test-key"].status = "running";
@@ -181,7 +181,7 @@ describe("compounder", () => {
 
   describe("pnl-tracker addGas", () => {
     it("addGas increments live epoch gas", () => {
-      const { createPnlTracker } = require("../src/lib/pnl-tracker");
+      const { createPnlTracker } = require("../src/bot/pnl-tracker");
       const tracker = createPnlTracker({ initialDeposit: 100 });
       tracker.openEpoch({
         entryValue: 100,
@@ -195,13 +195,13 @@ describe("compounder", () => {
       assert.equal(snap.totalGas, 0.08);
     });
     it("addGas does nothing when no live epoch", () => {
-      const { createPnlTracker } = require("../src/lib/pnl-tracker");
+      const { createPnlTracker } = require("../src/bot/pnl-tracker");
       const tracker = createPnlTracker({ initialDeposit: 100 });
       tracker.addGas(1.0); // no epoch open — should not throw
       assert.equal(tracker.epochCount(), 0);
     });
     it("addGas ignores zero and negative", () => {
-      const { createPnlTracker } = require("../src/lib/pnl-tracker");
+      const { createPnlTracker } = require("../src/bot/pnl-tracker");
       const tracker = createPnlTracker({ initialDeposit: 100 });
       tracker.openEpoch({
         entryValue: 100,
@@ -219,7 +219,7 @@ describe("compounder", () => {
 
 describe("_filterRebalances", () => {
   it("excludes IncreaseLiquidity that follows a drain", () => {
-    const { _filterRebalances } = require("../src/lib/compounder");
+    const { _filterRebalances } = require("../src/bot/compounder");
     const candidates = [
       { amount0: 100n, amount1: 0n, blockNumber: 2000 },
       { amount0: 50n, amount1: 10n, blockNumber: 100000 },
@@ -230,13 +230,13 @@ describe("_filterRebalances", () => {
     assert.equal(result[0].blockNumber, 100000, "only real compound kept");
   });
   it("keeps all when no drains exist", () => {
-    const { _filterRebalances } = require("../src/lib/compounder");
+    const { _filterRebalances } = require("../src/bot/compounder");
     const candidates = [{ amount0: 50n, amount1: 10n, blockNumber: 100 }];
     const result = _filterRebalances(candidates, []);
     assert.equal(result.length, 1);
   });
   it("ignores zero-liquidity DecreaseLiquidity", () => {
-    const { _filterRebalances } = require("../src/lib/compounder");
+    const { _filterRebalances } = require("../src/bot/compounder");
     const candidates = [{ amount0: 50n, amount1: 10n, blockNumber: 100 }];
     const drains = [{ liquidity: 0n, blockNumber: 95 }];
     const result = _filterRebalances(candidates, drains);

@@ -19,7 +19,7 @@ const assert = require("node:assert/strict");
 const {
   currentPriceSources,
   _fetchMoralisCurrent,
-} = require("../src/lib/price-sources-current");
+} = require("../src/bot/price-sources-current");
 const { setApiKey, setServiceEnabled } = require("../src/lib/api-key-holder");
 
 const TOKEN = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";

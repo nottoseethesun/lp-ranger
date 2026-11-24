@@ -26,12 +26,12 @@ parallelism reproduces it.
 
 The case drives the real speed-up pipeline, whose phases are bounded by
 wall-clock deadlines from `TX_SPEEDUP_SEC` and an `AbortSignal`
-(`src/lib/tx-speedup.js`, `_phase`), which is why contention shows it.
+(`src/bot/tx-speedup.js`, `_phase`), which is why contention shows it.
 
 **FIXED 2026-10-02, and it was not a timing problem.** Making it
 reproducible — twenty copies of the file at once, with the phase
 shortened — turned it from "flaky under load" into two real faults in
-`src/lib/tx-speedup.js`:
+`src/bot/tx-speedup.js`:
 
 1. **An abandoned racer's rejection went unhandled.** `Promise.race`
    abandons its losers without stopping them, and an abandoned receipt

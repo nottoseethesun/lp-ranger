@@ -51,7 +51,7 @@ poll-result object), never back from what the DOM happens to look like.
   business decision instead of downstream of it.
 
 **Concrete example from this codebase (the bug that taught the rule):**
-`src/client/web/dashboard-events-manage.js`'s `_runClosedPositionFlow` checked
+`src/client/web/js/dashboard-events-manage.js`'s `_runClosedPositionFlow` checked
 `g("syncBadge")?.classList.contains("done")` to gate a re-open click.
 When a separate bug left the badge stuck on "Syncing…", the click was
 silently ignored — even though the underlying app state had a perfectly

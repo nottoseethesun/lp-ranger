@@ -1,13 +1,13 @@
 /**
  * @file test/build-status-positions.test.js
- * @description Tests for src/lib/server-positions.js `buildStatusPositions`.
+ * @description Tests for src/bot/position-states.js `buildStatusPositions`.
  *
  * The post-auto-retire "stuck Syncing badge" bug fix lives here: a
  * position that was managed, attempted a re-open, failed, then
  * auto-retired now needs the /api/status payload to publish a
  * terminal sync state so the dashboard's syncBadge resolves to
  * "Synced" (and the closed-position Manage button re-enables for the
- * user to retry).  See server-positions.js's loop-2 comment block.
+ * user to retry).  See position-states.js's loop-2 comment block.
  */
 
 "use strict";
@@ -17,8 +17,8 @@ const assert = require("assert");
 const {
   buildStatusPositions,
   getAllPositionBotStates,
-} = require("../src/lib/server-positions");
-const { buildRebalanceOpts } = require("../src/lib/bot-cycle-opts");
+} = require("../src/bot/position-states");
+const { buildRebalanceOpts } = require("../src/bot/bot-cycle-opts");
 
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
 const CONTRACT = "0xCC05BF51E2B8f0A457E8F15FD5E8e25F34f8b279";

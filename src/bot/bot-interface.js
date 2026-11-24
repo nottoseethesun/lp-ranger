@@ -1,0 +1,257 @@
+/**
+ * @file src/bot/bot-interface.js
+ * @module bot-interface
+ * @description
+ * The bot's interface: the one module of the bot that the server loads,
+ * and the one way both programs build the bot. `createBot` builds it —
+ * its rpc providers, its position manager and rebalance lock, the key it
+ * signs with — and returns what a caller may ask of it: start and stop
+ * positions, make a move, read a position from the chain, scan the
+ * wallet, save settings, report its state, and pause its price lookups.
+ * Everything behind it is the bot's own, and the server reaches none of
+ * it but through here. The headless bot (src/bot.js) builds its bot here
+ * too, so the two programs cannot build it two ways.
+ *
+ * An operation that can refuse returns a result: `ok: true` with the
+ * answer's fields, or `ok: false` with a reason (`invalid`, `missing`,
+ * `refused`, `unavailable` or `failed`) beside them. The bot knows
+ * nothing of HTTP; the server turns a reason into its status
+ * (src/server/bot-result.js).
+ */
+
+"use strict";
+
+const ethers = require("ethers");
+const { log } = require("../lib/log");
+const config = require("../lib/config");
+const sendTx = require("./send-transaction");
+const botRecorder = require("./bot-recorder");
+const { createRebalanceLock } = require("./rebalance-lock");
+const { createPositionManager } = require("./position-manager");
+const {
+  readPriceCacheSettings,
+  pausePriceLookups,
+  unpausePriceLookups,
+} = require("./price-fetcher-gate");
+const { readConfigValue, managedKeys } = require("../lib/bot-config-v2");
+const { markStopping, refusalToStart } = require("./app-phase");
+const {
+  createPerPositionBotState,
+  attachMultiPosDeps,
+  updatePositionState,
+  getAllPositionBotStates,
+} = require("./position-states");
+const { createAutoStartManagedPositions } = require("./auto-start");
+const { createPositionLifecycle } = require("./position-lifecycle");
+const { createManualMoves } = require("./manual-moves");
+const { createWalletScan } = require("./wallet-scan");
+const { createPositionViews } = require("./position-views");
+const { createReloadPosition } = require("./reload-position");
+const { createRescanPrices } = require("./rescan-prices");
+const { createSettingsSave } = require("./settings-save");
+const { createStatusReport } = require("./status-report");
+const { managedPositionList } = require("./managed-positions");
+const { underWay, scansEnded } = require("./under-way");
+
+/**
+ * Build the bot's parts: put the rpc endpoints into service, read the
+ * price library's cache lifetimes, and make the rebalance lock and the
+ * position manager, its count of today's rebalances per pool seeded from
+ * the rebalance log, so a restart mid-day does not reset the daily cap
+ * (which would otherwise allow MAX_REBALANCES_PER_DAY × restart-count
+ * rebalances against it).
+ *
+ * `createBot` is its one caller in the app, so the server and the
+ * headless bot build the parts the same way; the headless bot once built
+ * them itself and left the count unseeded (Bug #19).
+ *
+ * @returns {{ positionMgr: object }}  The parts `botOperations` works over.
+ */
+function buildBotParts() {
+  sendTx.init({ urls: config.RPC_URLS });
+  readPriceCacheSettings();
+  const positionMgr = createPositionManager({
+    rebalanceLock: createRebalanceLock(),
+  });
+  const seeded = positionMgr.seedPoolDailyCounts(botRecorder.readLog());
+  if (seeded > 0)
+    log.info("[bot] Seeded %d pool rebalance(s) for today's cap", seeded);
+  return { positionMgr };
+}
+
+/**
+ * Build the bot.
+ *
+ * Run by each program's entry point as it starts, the server
+ * (src/server.js) and the headless bot (src/bot.js): the bot's parts
+ * (`buildBotParts`), then its operations over them.
+ *
+ * @param {object} opts
+ * @param {object} opts.diskConfig  The loaded bot-config.json
+ *   (src/lib/bot-config-v2.js): the settings the bot runs on and saves,
+ *   the same object the server reads them from.
+ * @param {object} opts.walletManager  The wallet store
+ *   (src/lib/wallet-manager.js): the wallet the bot manages positions of.
+ *   The headless bot passes one that answers `getAddress` alone, with
+ *   its signer's wallet, which is all the start-up asks of it.
+ * @returns {object}  The bot's operations (`botOperations`).
+ */
+function createBot(opts) {
+  const { diskConfig, walletManager } = opts;
+  const { positionMgr } = buildBotParts();
+  return botOperations({ diskConfig, walletManager, positionMgr });
+}
+
+/**
+ * The bot's operations over the parts `createBot` builds. A test passes
+ * its own parts, stand-ins included, to drive the operations without a
+ * chain or a running bot; the app's two programs use `createBot` alone.
+ *
+ * @param {object} parts
+ * @param {object} parts.diskConfig     The loaded bot-config.json.
+ * @param {object} parts.walletManager  The wallet store.
+ * @param {object} parts.positionMgr    Position manager instance.
+ * @param {{current: (string|null)}} [parts.privateKeyRef]  Where the key
+ *   the bot signs with is kept; a new one, empty, unless given.
+ * @param {Function} [parts.getAllPositionBotStates]  The per-position bot
+ *   states; the bot's own unless given.
+ * @param {Function} [parts.createPerPositionBotState]  The start-up's
+ *   state helpers; the bot's own unless given.
+ * @param {Function} [parts.attachMultiPosDeps]
+ * @param {Function} [parts.updatePositionState]
+ * @param {Function} [parts.computeQuickDetails]  The position views'
+ *   chain reads (src/bot/position-views.js); the real ones unless given.
+ * @param {Function} [parts.computeLifetimeDetails]
+ * @param {Function} [parts.setGlobalScanStatus]  Where the wallet scan
+ *   keeps its progress (src/bot/wallet-scan.js); its own unless given.
+ * @param {Function} [parts.getGlobalScanStatus]
+ * @returns {object}  The bot's operations, listed below.
+ */
+function botOperations(parts) {
+  const {
+    diskConfig,
+    walletManager,
+    positionMgr,
+    privateKeyRef = { current: null },
+  } = parts;
+  const states = parts.getAllPositionBotStates ?? getAllPositionBotStates;
+  const getPrivateKey = () => privateKeyRef.current;
+  const shared = {
+    diskConfig,
+    positionMgr,
+    walletManager,
+    getPrivateKey,
+    getAllPositionBotStates: states,
+  };
+
+  const lifecycle = createPositionLifecycle(shared);
+  const moves = createManualMoves(shared);
+  const walletScan = createWalletScan({
+    ...shared,
+    setGlobalScanStatus: parts.setGlobalScanStatus,
+    getGlobalScanStatus: parts.getGlobalScanStatus,
+  });
+  const views = createPositionViews({
+    ...shared,
+    computeQuickDetails: parts.computeQuickDetails,
+    computeLifetimeDetails: parts.computeLifetimeDetails,
+  });
+  const reloadPosition = createReloadPosition(shared);
+  const rescanPrices = createRescanPrices(shared);
+  const saveSettings = createSettingsSave(shared);
+  const statusReport = createStatusReport({
+    diskConfig,
+    positionMgr,
+    scanStatus: walletScan.scanStatus,
+  });
+  const startManagedPositions = createAutoStartManagedPositions({
+    diskConfig,
+    positionMgr,
+    privateKeyRef,
+    walletManager,
+    getAllPositionBotStates: states,
+    createPerPositionBotState:
+      parts.createPerPositionBotState ?? createPerPositionBotState,
+    attachMultiPosDeps: parts.attachMultiPosDeps ?? attachMultiPosDeps,
+    updatePositionState: parts.updatePositionState ?? updatePositionState,
+    readConfigValue,
+  });
+
+  return {
+    // ── The key and the start-up ──
+    /** Hand the bot the key it signs with. */
+    setPrivateKey: (privateKey) => {
+      privateKeyRef.current = privateKey;
+    },
+    /** Whether the bot holds a key to sign with. */
+    hasPrivateKey: () =>
+      privateKeyRef.current !== null && privateKeyRef.current !== undefined,
+    /**
+     * The signer every position signs through, built once from the key
+     * the bot holds (a random wallet in a dry run with none): its
+     * provider, signer and address. The headless bot asks for it as it
+     * starts, for its wallet and for its single-position mode.
+     */
+    sharedSigner: () =>
+      positionMgr.getSharedSigner({
+        privateKey: privateKeyRef.current,
+        ethersLib: ethers,
+        dryRun: config.DRY_RUN,
+      }),
+    /**
+     * Before another wallet is imported: stop every position, then keep
+     * nothing of the previous wallet — its key, and the signer built from
+     * it, which would otherwise sign for the new wallet's positions.
+     */
+    forgetWallet: async () => {
+      await positionMgr.stopAll();
+      privateKeyRef.current = null;
+      positionMgr.resetSharedSigner();
+    },
+    /** Start the positions saved as managed (src/bot/auto-start.js). */
+    startManagedPositions: () => startManagedPositions(),
+    /** Why nothing may start now (the start-up, a stop), or null. */
+    refusalToStart: () => refusalToStart(),
+    /** How many positions' loops are running. */
+    runningCount: () => positionMgr.runningCount(),
+
+    // ── Stopping ──
+    /** The app is stopping for good: nothing starts from now on. */
+    markStopping: () => markStopping(),
+    /** Stop every position, each once its poll has ended. */
+    stopAll: () => positionMgr.stopAll(),
+    /** What is still under way (src/bot/under-way.js). */
+    underWay: (movesOver) => underWay(states(), movesOver),
+    /** Resolves once no scan is running. */
+    scansEnded: () => scansEnded(states),
+
+    // ── Positions ──
+    manage: (body) => lifecycle.manage(body),
+    stopManaging: (body) => lifecycle.stopManaging(body),
+    canReopen: (body) => lifecycle.canReopen(body),
+    managedList: () => lifecycle.managedList(),
+    /** The positions listed as managed (src/bot/managed-positions.js). */
+    managedPositionList: () =>
+      managedPositionList({ positionMgr, diskConfig, managedKeys }),
+    requestRebalance: (positionKey) => moves.requestRebalance(positionKey),
+    requestCompound: (positionKey) => moves.requestCompound(positionKey),
+
+    // ── Reading positions and the wallet ──
+    scanPositions: (readRequest) => walletScan.scanPositions(readRequest),
+    refreshPositions: () => walletScan.refreshPositions(),
+    cancelScan: (body) => walletScan.cancelScan(body),
+    positionDetails: (body) => views.positionDetails(body),
+    positionLifetime: (body) => views.positionLifetime(body),
+    positionHistory: (tokenId) => views.positionHistory(tokenId),
+    reloadPosition: (body) => reloadPosition(body),
+    rescanPrices: (body) => rescanPrices(body),
+
+    // ── Settings, the report, price lookups ──
+    saveSettings: (body) => saveSettings(body),
+    statusReport: (posDefaults) => statusReport(posDefaults),
+    pausePriceLookups: (reason) => pausePriceLookups(reason),
+    unpausePriceLookups: (reason) => unpausePriceLookups(reason),
+  };
+}
+
+module.exports = { createBot, botOperations, buildBotParts };

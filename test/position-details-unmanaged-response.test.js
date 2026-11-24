@@ -152,7 +152,7 @@ function load(cachedEpochs) {
     if (Object.prototype.hasOwnProperty.call(stubs, name)) return stubs[name];
     return origRequire.apply(this, arguments);
   };
-  const file = require.resolve("../src/server/position-details");
+  const file = require.resolve("../src/bot/position-details");
   delete require.cache[file];
   try {
     return {
@@ -260,7 +260,7 @@ describe("the unmanaged details response", () => {
   it("measures the Current IL/G against the coins compounds took from the wallet", async () => {
     /*-
      *  The bot saved its compound list while it managed the position, so
-     *  the figure stays where the bot had it (src/lib/bot-pnl-il.js).
+     *  the figure stays where the bot had it (src/bot/bot-pnl-il.js).
      */
     const { pnlArgs } = await run();
     assert.equal(pnlArgs.length, 1);

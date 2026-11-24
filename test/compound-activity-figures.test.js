@@ -41,12 +41,12 @@ Module.prototype.require = function (id) {
     };
   return _origRequire.apply(this, arguments);
 };
-delete require.cache[require.resolve("../src/lib/compound-activity-figures")];
+delete require.cache[require.resolve("../src/bot/compound-activity-figures")];
 const {
   compoundFiguresFromChain,
   compoundHistoryFrom,
   compoundPricesFor,
-} = require("../src/lib/compound-activity-figures");
+} = require("../src/bot/compound-activity-figures");
 Module.prototype.require = _origRequire;
 
 const SPAN = readBotConfigDefaults().getLogsChunkSize;
@@ -300,7 +300,7 @@ describe("compoundHistoryFrom", () => {
   it("keeps the deposit's block from the chain, and the wallet's coins before the collect the bot read", async () => {
     /*-
      *  Both say which deposits to the wallet the compound took
-     *  (src/lib/deposit-attribution.js); only the bot's record knows the
+     *  (src/bot/deposit-attribution.js); only the bot's record knows the
      *  wallet's coins before the collect.
      */
     const onChain = { ...COMPOUND, blockNumber: 4321 };
@@ -325,7 +325,7 @@ describe("compoundHistoryFrom", () => {
     /*-
      *  The Activity Log marks an amount "(historical $usd)" while its
      *  record carries the prices of the compound's own time
-     *  (src/client/web/dashboard-compound-log.js). A rebuild writes each amount
+     *  (src/client/web/js/dashboard-compound-log.js). A rebuild writes each amount
      *  at the prices it was handed, so the entry it writes carries none.
      *  A compound recorded during the chain read is kept as recorded.
      */

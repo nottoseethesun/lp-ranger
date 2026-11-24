@@ -13,7 +13,7 @@ const {
   calcIlMultiplier,
   estimateLiveValue,
   _buildDailyPnl,
-} = require("../src/lib/pnl-tracker");
+} = require("../src/bot/pnl-tracker");
 
 // ── calcIlMultiplier ──────────────────────────────────────────────────────────
 

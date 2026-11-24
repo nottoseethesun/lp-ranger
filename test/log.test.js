@@ -292,15 +292,15 @@ test("_colorize paints the lifetime auto-rescan in the soil palette", () => {
 
 test("the auto-rescan colour is tied to the wording the log uses", () => {
   /*- The highlight matches on a substring, so rewording the log line in
-   *  src/lib/bot-loop.js silently drops the colour with every gate still
+   *  src/bot/bot-loop.js silently drops the colour with every gate still
    *  green. This pins the two together — and the same phrase is what
    *  the burn-in procedure greps for.
    *
    *  Asserted against the real format string rather than a copy of it,
    *  so a reword fails here instead of being mirrored into the test. */
-  const src = readFileSync(require.resolve("../src/lib/bot-loop.js"), "utf8");
+  const src = readFileSync(require.resolve("../src/bot/bot-loop.js"), "utf8");
   assert.ok(
     src.includes("Auto-rescanning lifetime"),
-    "src/lib/bot-loop.js no longer logs the phrase the colour keys on",
+    "src/bot/bot-loop.js no longer logs the phrase the colour keys on",
   );
 });

@@ -10,8 +10,8 @@ const assert = require("assert");
 const {
   _checkSwapImpact,
   _bestAttemptError,
-} = require("../src/lib/rebalancer-swap-impact");
-const { _deadline, _DEADLINE_SECONDS } = require("../src/lib/rebalancer-pools");
+} = require("../src/bot/rebalancer-swap-impact");
+const { _deadline, _DEADLINE_SECONDS } = require("../src/bot/rebalancer-pools");
 
 describe("_checkSwapImpact", () => {
   it("does not throw when impact is within slippage", () => {
@@ -179,7 +179,7 @@ describe("_deadline", () => {
     assert.ok(dl > now, "deadline should be in the future");
     /*- Assert against the exported constant so a future tweak to
      *  the deadline value (see the block-comment on _DEADLINE_SECONDS
-     *  in src/lib/rebalancer-pools.js) doesn't require touching the
+     *  in src/bot/rebalancer-pools.js) doesn't require touching the
      *  test. */
     const expected = BigInt(_DEADLINE_SECONDS);
     assert.ok(

@@ -1,12 +1,12 @@
 /**
  * @file scripts/build-info.js
- * @description Generates src/client/web/build-info.js AND src/server/build-info.json at
+ * @description Generates src/client/web/js/build-info.js AND src/server/build-info.json at
  * build time with the current git commit hash, commit date, and release
  * tag (if HEAD is tagged). Values are frozen at build time so they work
  * under any deployment scenario — even without the .git directory.
  *
  * Two outputs:
- *   * `src/client/web/build-info.js` — ES-module consumed by the dashboard bundle.
+ *   * `src/client/web/js/build-info.js` — ES-module consumed by the dashboard bundle.
  *   * `src/server/build-info.json`  — read by `src/server/build-info.js` at server
  *     startup, so a release tarball (which excludes `.git`) can still log
  *     its version banner without shelling out to git.
@@ -43,7 +43,15 @@ const pkg = JSON.parse(
 );
 const packageVersion = pkg.version || "unknown";
 
-const out = path.join(__dirname, "..", "src", "client", "web", "build-info.js");
+const out = path.join(
+  __dirname,
+  "..",
+  "src",
+  "client",
+  "web",
+  "js",
+  "build-info.js",
+);
 const content = `/**
  * @file build-info.js
  * @description Auto-generated at build time by scripts/build-info.js.

@@ -15,7 +15,7 @@
  *
  * Reserved for CATASTROPHIC failures only.  Not for general debug, not
  * for handled retries, not for expected transient errors.  The one
- * current caller is `_recordScanFailure` in `src/lib/bot-recorder-lifetime.js`,
+ * current caller is `_recordScanFailure` in `src/bot/bot-recorder-lifetime.js`,
  * which fires when the initial pool-wide lifetime scan aborts before
  * anything is persisted — the failure mode that produced the July-2026
  * $11.63-vs-$255.50 Fees Compounded discrepancy on Prod.

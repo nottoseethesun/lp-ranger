@@ -113,7 +113,7 @@ said they started it.
 A scratch script that `require`s anything under `src/lib/` needs the same
 wipe as a test run.
 
-**Why:** `src/lib/price-fetcher-gate.js` calls `loadConfig()` when it loads.
+**Why:** `src/bot/price-fetcher-gate.js` calls `loadConfig()` when it loads.
 `loadConfig` copies the live `bot-config.json` over
 `bot-config.backup.json`, the config-stomp safety net. Most server
 modules reach it (`bot-recorder.js` and `server-rescan-prices.js` both

@@ -7,10 +7,10 @@
 
 const { describe, it, afterEach } = require("node:test");
 const assert = require("assert");
-const { createRouteHandlers } = require("../src/server/server-routes");
+const { createRouteHandlers } = require("./_bot-route-adapters");
 const { compositeKey } = require("../src/lib/bot-config-v2");
 const { CHAIN_NAME } = require("../src/lib/config");
-const appPhase = require("../src/lib/app-phase");
+const appPhase = require("../src/bot/app-phase");
 const { makeDeps, makeRes } = require("./helpers/route-handler-deps");
 
 describe("server-routes createRouteHandlers", () => {

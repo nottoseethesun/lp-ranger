@@ -22,7 +22,7 @@ const assert = require("node:assert/strict");
 
 const { format } = require("node:util");
 
-const { retryRead } = require("../src/lib/rpc-read-retry");
+const { retryRead } = require("../src/bot/rpc-read-retry");
 const { _setSinkForTests } = require("../src/lib/log");
 
 /*- Both levels are captured: failures go to warn and the recovery to

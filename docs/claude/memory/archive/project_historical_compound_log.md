@@ -10,7 +10,7 @@ metadata:
 
 **CLOSED 2026-07-17 PR #153.**
 
-`populateCompoundHistoryOnce` in `src/client/web/dashboard-populate-history.js` renders historical compounds into the Activity Log on cold load, mirroring the rebalance-history render pipeline (`populateRebalanceHistoryOnce`) line-for-line. Sync-complete gate → one-shot latch → sort ascending → iterate + `act()`. Reset on position/wallet switch via `resetPopulateHistoryFlags()` (called from `resetHistoryFlag()` in `dashboard-data.js`).
+`populateCompoundHistoryOnce` in `src/client/web/js/dashboard-populate-history.js` renders historical compounds into the Activity Log on cold load, mirroring the rebalance-history render pipeline (`populateRebalanceHistoryOnce`) line-for-line. Sync-complete gate → one-shot latch → sort ascending → iterate + `act()`. Reset on position/wallet switch via `resetPopulateHistoryFlags()` (called from `resetHistoryFlag()` in `dashboard-data.js`).
 
 Trigger labels: `historical → "Historical"`, `auto → "Auto"`, `manual → "Manual"` (map in `dashboard-compound-log.js`).
 

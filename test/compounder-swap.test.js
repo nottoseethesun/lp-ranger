@@ -36,29 +36,29 @@ const assert = require("node:assert/strict");
  *  so `compounder-swap` — required last — binds to them. Each stand-in
  *  forwards to a per-test function in `stub`.
  */
-const realSwap = require("../src/lib/rebalancer-swap");
-const realGates = require("../src/lib/swap-gates");
-const realPrices = require("../src/lib/price-fetcher");
+const realSwap = require("../src/bot/rebalancer-swap");
+const realGates = require("../src/bot/swap-gates");
+const realPrices = require("../src/bot/price-fetcher");
 
 const stub = {};
 function replace(id, exports) {
   require.cache[require.resolve(id)].exports = exports;
 }
-replace("../src/lib/rebalancer-swap", {
+replace("../src/bot/rebalancer-swap", {
   ...realSwap,
   swapIfNeeded: (...a) => stub.swap(...a),
 });
-replace("../src/lib/swap-gates", {
+replace("../src/bot/swap-gates", {
   ...realGates,
   estimateSwapGasUsd: (...a) => stub.gasUsd(...a),
   shouldSkipSwap: (...a) => stub.gate(...a),
 });
-replace("../src/lib/price-fetcher", {
+replace("../src/bot/price-fetcher", {
   ...realPrices,
   fetchTokenPriceUsd: (...a) => stub.price(...a),
 });
 
-const { swapForCompound } = require("../src/lib/compounder-swap");
+const { swapForCompound } = require("../src/bot/compounder-swap");
 
 const T0 = "0xA1077a294dDE1B09bB078844df40758a5D0f9a27";
 const T1 = "0x7b39712EF45F7dcED2bBDF11F3D5046bA61dA719";

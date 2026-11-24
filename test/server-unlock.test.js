@@ -15,7 +15,28 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createUnlockHandler } = require("../src/server/server-unlock");
+const {
+  createUnlockHandler: unlockRouteOver,
+} = require("../src/server/server-unlock");
+
+/**
+ * The unlock route over a stand-in for the bot's interface that keeps
+ * its key in the test's `privateKeyRef` and starts positions through the
+ * test's `startManagedPositions`.
+ */
+const createUnlockHandler = (deps) =>
+  unlockRouteOver({
+    ...deps,
+    bot: {
+      hasPrivateKey: () =>
+        deps.privateKeyRef.current !== null &&
+        deps.privateKeyRef.current !== undefined,
+      setPrivateKey: (privateKey) => {
+        deps.privateKeyRef.current = privateKey;
+      },
+      startManagedPositions: () => deps.startManagedPositions(),
+    },
+  });
 
 const KEY = "0x" + "11".repeat(32);
 

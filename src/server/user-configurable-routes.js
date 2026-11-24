@@ -14,16 +14,55 @@
 
 "use strict";
 
-const { handleUiDefaults } = require("../lib/ui-defaults");
-const { handleLpProviders } = require("../lib/lp-providers");
+const { readUiDefaults } = require("../lib/ui-defaults");
+const {
+  readLpProvidersWithDexDetailPages,
+} = require("./dex-detail-page-url-generator");
 const {
   handleBotConfigDefaults,
   handleHelpFigures,
 } = require("./resolved-settings");
 const { handleChartProviders } = require("./chart-providers");
 const { handleRpcEndpoints } = require("./rpc-endpoints");
-const { handleSettingLabels } = require("../lib/setting-labels");
+const { readSettingLabels } = require("../lib/setting-labels");
 const config = require("../lib/config");
+
+/**
+ * Route handler for `GET /api/ui-defaults`: the dashboard settings in
+ * force (src/lib/ui-defaults.js). Always 200.
+ * @param {import('http').IncomingMessage} _req
+ * @param {import('http').ServerResponse} res
+ * @param {Function} jsonResponse  `(res, status, body) => void`
+ */
+function handleUiDefaults(_req, res, jsonResponse) {
+  jsonResponse(res, 200, readUiDefaults());
+}
+
+/**
+ * Route handler for `GET /api/lp-providers`: the LP providers, each with
+ * its DEX detail page for the active chain when it configures one
+ * (`readLpProvidersWithDexDetailPages`,
+ * src/server/dex-detail-page-url-generator.js). Always
+ * 200 with a well-formed map, possibly empty.
+ * @param {import('http').IncomingMessage} _req
+ * @param {import('http').ServerResponse} res
+ * @param {Function} jsonResponse  `(res, status, body) => void`
+ */
+function handleLpProviders(_req, res, jsonResponse) {
+  jsonResponse(res, 200, readLpProvidersWithDexDetailPages());
+}
+
+/**
+ * Route handler for `GET /api/setting-labels`. Always returns 200 with a
+ * well-formed map (possibly empty); parse failures surface via the
+ * empty-map path inside `readSettingLabels()` (src/lib/setting-labels.js).
+ * @param {import('http').IncomingMessage} _req
+ * @param {import('http').ServerResponse} res
+ * @param {Function} jsonResponse  `(res, status, body) => void`
+ */
+function handleSettingLabels(_req, res, jsonResponse) {
+  jsonResponse(res, 200, readSettingLabels());
+}
 
 /**
  * Build the `{ "METHOD /path": handler }` route map for all
@@ -70,4 +109,9 @@ function userConfigurableRoutes(jsonResponse) {
   };
 }
 
-module.exports = { userConfigurableRoutes };
+module.exports = {
+  userConfigurableRoutes,
+  handleUiDefaults,
+  handleLpProviders,
+  handleSettingLabels,
+};

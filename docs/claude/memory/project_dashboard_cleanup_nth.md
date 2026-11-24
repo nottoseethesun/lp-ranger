@@ -14,7 +14,7 @@ Polish, not bugs. Merged from: project_dashboard_cycle_cleanup, project_dashboar
 
 ## dashboard cycle cleanup
 
-`npm run show-dependency-cycles` (added 2026-05-03 on `add-madge-cycle-check`) reports 31 circular dependencies, all in `src/client/web/dashboard-*.js`. None in the CJS server-side code.
+`npm run show-dependency-cycles` (added 2026-05-03 on `add-madge-cycle-check`) reports 31 circular dependencies, all in `src/client/web/js/dashboard-*.js`. None in the CJS server-side code.
 
 **Why:** Cycles are real but masked by esbuild bundling at build time. The longer-term goal is to wire `madge --circular` into `npm run check` so new cycles are caught in CI; that requires the existing `src/client/web/` cycles to be cleaned up first or grandfathered with an allow-list.
 

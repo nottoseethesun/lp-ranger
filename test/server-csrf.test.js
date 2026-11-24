@@ -15,7 +15,7 @@ const {
   readCsrfTunable,
   handleCsrf,
 } = require("../src/server/server-csrf");
-const { CSRF_REFUSALS } = require("../src/lib/csrf-refusals");
+const { CSRF_REFUSALS } = require("../src/server/csrf-refusals");
 const { _setSinkForTests } = require("../src/lib/log");
 const { UTC_TIMESTAMP_PATTERN } = require("../src/lib/utc-timestamp");
 

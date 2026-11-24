@@ -8,7 +8,7 @@
  * and you want the bot to rebuild them from on-chain
  * `IncreaseLiquidity` + `Collect` events on the next restart.  The
  * lifetime scan keeps a saved total rather than recompute it (the
- * disk-as-source-of-truth gate in `src/lib/bot-recorder-lifetime.js`).  A
+ * disk-as-source-of-truth gate in `src/bot/bot-recorder-lifetime.js`).  A
  * wrong one stays until something clears it.
  *
  * Why this isn't a Settings button:
@@ -46,7 +46,7 @@
  *     Its P&L epochs survive either way.
  *   - Live in-memory bot state.  The bot reads the cleared values from
  *     disk only on next startup (`createPerPositionBotState` in
- *     `src/lib/server-positions.js`), which is why a restart is required.
+ *     `src/bot/position-states.js`), which is why a restart is required.
  *   - Any other position or pool.
  *
  * It imports nothing from `src/lib/`, so loading it neither opens the app's
@@ -97,7 +97,7 @@ const APP_RUNTIME = require("../../app-config/app-defaults-for-user-configurable
  */
 const { parseCompositeKey } = require("../../src/lib/composite-key");
 const { scanCachePath } = require("../../src/lib/scan-cache-dir");
-const { positionRecordsPath } = require("../../src/lib/position-records");
+const { positionRecordsPath } = require("../../src/lib/util/position-records");
 
 /*-
  *  The chain used when `--blockchain` is not given: the shipped default
@@ -418,7 +418,7 @@ function _applyMutations(cfg, epochCache, posKey, poolKeys, flags, paths = {}) {
   fs.copyFileSync(configPath, cfgBackup);
   if (clearHodl) fs.copyFileSync(epochPath, cacheBackup);
   /*-
-   *  The records are in the records file (src/lib/position-records.js); one
+   *  The records are in the records file (src/lib/util/position-records.js); one
    *  left in bot-config.json by an install not yet migrated goes too.
    */
   const records = fs.existsSync(recordsPath)
@@ -451,7 +451,7 @@ function _applyMutations(cfg, epochCache, posKey, poolKeys, flags, paths = {}) {
 
 /**
  * What a position holds: its settings from bot-config.json, and its
- * records beside them from the records file (src/lib/position-records.js).
+ * records beside them from the records file (src/lib/util/position-records.js).
  * @param {object} slot  The position's slot in bot-config.json.
  * @param {string} posKey
  * @param {string} recordsPath

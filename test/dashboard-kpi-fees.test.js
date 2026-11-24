@@ -24,7 +24,7 @@ describe("currentUnclaimedFees", () => {
 
   before(async () => {
     ({ currentUnclaimedFees } =
-      await import("../src/client/web/dashboard-data-kpi-fees.js"));
+      await import("../src/client/web/js/dashboard-data-kpi-fees.js"));
   });
 
   it("reports the unclaimed figure the bot published", () => {
@@ -97,7 +97,7 @@ describe("unmanaged unclaimed fees", () => {
   let remember, read;
 
   before(async () => {
-    const m = await import("../src/client/web/dashboard-data-kpi-fees.js");
+    const m = await import("../src/client/web/js/dashboard-data-kpi-fees.js");
     remember = m.rememberUnmanagedUnclaimedFees;
     read = m.unmanagedUnclaimedFees;
   });
@@ -139,7 +139,7 @@ describe("Current panel composition", () => {
   let kpi;
 
   before(async () => {
-    kpi = await import("../src/client/web/dashboard-data-kpi.js");
+    kpi = await import("../src/client/web/js/dashboard-data-kpi.js");
   });
 
   beforeEach(() => {
@@ -226,7 +226,7 @@ describe("Current panel composition", () => {
      *  row nor the IL/G, which counts no coin in the wallet, and outside
      *  Current Value, so Net P&L adds them too: once a later compound
      *  sweeps them in, Initial Deposit for This LP counts them among the
-     *  wallet's coins it took (src/lib/current-lp-deposit.js), so they
+     *  wallet's coins it took (src/bot/current-lp-deposit.js), so they
      *  still count once.
      *  Profit = 0.27 + 40.76 + 5.00 - 0.28 + (-1.72) = 44.03
      *  Net P&L = (3143.94 - 3000) + 0.27 + 0 + 5.00 = 149.21
@@ -267,11 +267,11 @@ describe("the Current panel's Initial Deposit for This LP", () => {
    *  The coins the NFT was minted with, $3,000 at its mint, and the
    *  wallet's coins its compounds took in beyond their fees, $500 at
    *  their compounds' prices (`currentDepositAddedUsd`,
-   *  src/lib/current-lp-deposit.js). Current Value holds both.
+   *  src/bot/current-lp-deposit.js). Current Value holds both.
    */
   let kpi;
   before(async () => {
-    kpi = await import("../src/client/web/dashboard-data-kpi.js");
+    kpi = await import("../src/client/web/js/dashboard-data-kpi.js");
   });
 
   const status = (snap, over = {}) => ({
@@ -322,8 +322,9 @@ describe("an unmanaged position's Profit", () => {
   let unmanaged;
 
   before(async () => {
-    kpi = await import("../src/client/web/dashboard-data-kpi.js");
-    unmanaged = await import("../src/client/web/dashboard-unmanaged-apply.js");
+    kpi = await import("../src/client/web/js/dashboard-data-kpi.js");
+    unmanaged =
+      await import("../src/client/web/js/dashboard-unmanaged-apply.js");
   });
 
   beforeEach(() => {
@@ -384,7 +385,7 @@ describe("Lifetime Net P&L", () => {
   let kpi;
 
   before(async () => {
-    kpi = await import("../src/client/web/dashboard-data-kpi.js");
+    kpi = await import("../src/client/web/js/dashboard-data-kpi.js");
   });
 
   /** A lifetime snapshot: $1,000 deposited, prices flat. */

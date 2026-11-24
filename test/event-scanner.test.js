@@ -35,11 +35,11 @@ const {
   scanRebalanceHistory,
   buildCacheKey,
   _PAIRING_WINDOW_SEC,
-} = require("../src/lib/event-scanner");
-const { BLOCKS_PER_YEAR } = require("../src/lib/history-lookback");
-const { _DEFAULT_CHUNK_SIZE } = require("../src/lib/get-logs-chunked");
+} = require("../src/bot/event-scanner");
+const { BLOCKS_PER_YEAR } = require("../src/bot/history-lookback");
+const { _DEFAULT_CHUNK_SIZE } = require("../src/bot/get-logs-chunked");
 const SHIPPED_DEFAULTS = require("../app-config/app-defaults-for-user-configurable/bot-config-defaults.json");
-const poolCreationBlock = require("../src/lib/pool-creation-block");
+const poolCreationBlock = require("../src/bot/pool-creation-block");
 
 const WALLET = "0xABCDEF0000000000000000000000000000000001";
 const POS_MGR = "0x1234560000000000000000000000000000000099";

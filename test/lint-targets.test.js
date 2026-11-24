@@ -49,7 +49,7 @@ test("JS_TARGETS — covers every linted source root", () => {
     "test/**/*.js",
     "scripts/**/*.js",
     "util/**/*.js",
-    "src/client/web/dashboard-*.js",
+    "src/client/web/js/dashboard-*.js",
     "eslint-rules/**/*.js",
   ]) {
     assert.ok(JS_TARGETS.includes(root), `JS_TARGETS must include ${root}`);

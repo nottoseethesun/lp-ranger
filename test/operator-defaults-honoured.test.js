@@ -50,18 +50,18 @@ fs.writeFileSync(
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
 after(() => fs.rmSync(_USER_DIR, { recursive: true, force: true }));
 
-const { resolveSlippagePct } = require("../src/lib/slippage-resolver");
-const { buildRebalanceOpts } = require("../src/lib/bot-cycle-opts");
+const { resolveSlippagePct } = require("../src/bot/slippage-resolver");
+const { buildRebalanceOpts } = require("../src/bot/bot-cycle-opts");
 const {
   resolveRangeOverrideEnabled,
   fullRangeSetting,
-} = require("../src/lib/range-override");
-const { buildStatusPositions } = require("../src/lib/build-status-positions");
-const { gasFeePctToRatio } = require("../src/lib/swap-gates");
-const { createThrottle } = require("../src/lib/throttle");
+} = require("../src/bot/range-override");
+const { buildStatusPositions } = require("../src/bot/build-status-positions");
+const { gasFeePctToRatio } = require("../src/bot/swap-gates");
+const { createThrottle } = require("../src/bot/throttle");
 const { CENTERED_OFFSET_PCT } = require("../src/lib/centered-offset");
-const { _MAX_ITERATIONS } = require("../src/lib/rebalancer-correct");
-const balanced = require("../src/lib/telegram-notifications/balanced-notifier");
+const { _MAX_ITERATIONS } = require("../src/bot/rebalancer-correct");
+const balanced = require("../src/bot/telegram-notifications/balanced-notifier");
 const { EVENT_LABELS } = require("../src/lib/telegram-notifications/telegram");
 const defaultsReader = require("../src/lib/bot-config-defaults");
 const mergedLoader = require("../src/lib/load-merged-defaults");

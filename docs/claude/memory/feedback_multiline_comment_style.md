@@ -30,7 +30,7 @@ function/method headers use `/**` — they are a separate, required
 format for exported APIs.
 
 **CSS exception:** stylelint-config-standard's `comment-whitespace-inside`
-rule rejects `/*-` (the `-` is not whitespace). For `src/client/web/*.css`, use
+rule rejects `/*-` (the `-` is not whitespace). For `src/client/web/css/*.css`, use
 plain `/* ... */` with a leading space. Do NOT disable the stylelint rule
 to allow `/*-` in CSS — user rejected that approach.
 

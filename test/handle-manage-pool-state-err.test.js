@@ -21,14 +21,12 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const {
-  createPositionRoutes,
-  getAllPositionBotStates,
-} = require("../src/lib/server-positions");
+const { getAllPositionBotStates } = require("../src/bot/position-states");
+const { createPositionRoutes } = require("./_bot-route-adapters");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
-} = require("../src/lib/pool-state-validate");
+} = require("../src/bot/pool-state-validate");
 const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
 
 // ── Minimal helpers (mirrors test/server-positions.test.js) ─────────────────
@@ -123,7 +121,7 @@ describe("handleManage Pool*Error mapping", () => {
     assert.match(res._body.message, /exhausted 4 RPC attempt/);
     assert.match(res._body.message, /decimals0/);
     assert.strictEqual(res._body.tokenId, "158970");
-    // The refusal names the position (src/lib/position-answer-tag.js).
+    // The refusal names the position (src/bot/position-answer-tag.js).
     assert.match(res._body.positionKey, /-158970$/);
 
     // No phantom entry on disk.

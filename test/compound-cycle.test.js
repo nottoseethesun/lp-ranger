@@ -8,7 +8,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { _poll } = require("./_bot-loop-helpers");
-const { updateHodlBaseline } = require("../src/lib/bot-recorder-baseline");
+const { updateHodlBaseline } = require("../src/bot/bot-recorder-baseline");
 
 describe("pollCycle compound gates", () => {
   it("does not trigger compound when autoCompound disabled and no force", async () => {
@@ -53,7 +53,7 @@ describe("pollCycle compound gates", () => {
 
   it("does not trigger auto-compound when _scanRunning is true", async () => {
     /*- Reload / initial-scan gate for auto-compound: while a scan runs
-     *  (src/lib/scan-state.js), the position's on-chain-derived state is
+     *  (src/bot/scan-state.js), the position's on-chain-derived state is
      *  being rebuilt.  An auto-compound fired mid-scan would race the
      *  reconstruction.  Manual (forced) compound still bypasses this
      *  gate. */
@@ -177,7 +177,7 @@ describe("atomic config write", () => {
 
 describe("pnl-tracker residuals in dailyPnl", () => {
   it("dailyPnl includes the inOut field", () => {
-    const { createPnlTracker } = require("../src/lib/pnl-tracker");
+    const { createPnlTracker } = require("../src/bot/pnl-tracker");
     const tracker = createPnlTracker({ initialDeposit: 100 });
     tracker.openEpoch({
       entryValue: 100,
@@ -193,7 +193,7 @@ describe("pnl-tracker residuals in dailyPnl", () => {
   });
 
   it("missingPrice flag propagates to dailyPnl", () => {
-    const { createPnlTracker } = require("../src/lib/pnl-tracker");
+    const { createPnlTracker } = require("../src/bot/pnl-tracker");
     const tracker = createPnlTracker({ initialDeposit: 100 });
     tracker.restore({
       closedEpochs: [
@@ -242,7 +242,7 @@ describe("compound config defaults", () => {
 
 describe("compound P&L integration", () => {
   it("overridePnlWithRealValues sets totalCompoundedUsd on snapshot", () => {
-    const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
+    const { overridePnlWithRealValues } = require("../src/bot/bot-pnl-updater");
     const snap = {
       closedEpochs: [],
       liveEpoch: { entryValue: 200, fees: 10 },
@@ -267,7 +267,7 @@ describe("compound P&L integration", () => {
   });
 
   it("totalCompoundedUsd is set on snapshot", () => {
-    const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
+    const { overridePnlWithRealValues } = require("../src/bot/bot-pnl-updater");
     const snap = {
       closedEpochs: [],
       liveEpoch: { entryValue: 100, fees: 5 },
@@ -290,9 +290,7 @@ describe("compound P&L integration", () => {
   });
 
   it("createPerPositionBotState restores compound state", () => {
-    const {
-      createPerPositionBotState,
-    } = require("../src/lib/server-positions");
+    const { createPerPositionBotState } = require("../src/bot/position-states");
     const saved = {
       compoundedAmount0: 25,
       compoundHistory: [{ trigger: "auto" }, { trigger: "manual" }],
@@ -309,14 +307,16 @@ describe("compound P&L integration", () => {
 
 describe("bot-recorder helpers", () => {
   it("_bigIntReplacer converts BigInt to string", () => {
-    const { _bigIntReplacer } = require("../src/lib/bot-recorder");
+    const {
+      bigIntReplacer: _bigIntReplacer,
+    } = require("../src/lib/bigint-json");
     assert.equal(_bigIntReplacer("k", 42n), "42");
     assert.equal(_bigIntReplacer("k", 42), 42);
     assert.equal(_bigIntReplacer("k", "hello"), "hello");
   });
 
   it("_activePosSummary returns serialisable summary", () => {
-    const { _activePosSummary } = require("../src/lib/bot-recorder");
+    const { _activePosSummary } = require("../src/bot/bot-recorder");
     const s = _activePosSummary({
       tokenId: 123n,
       token0: "0xA",
@@ -332,7 +332,7 @@ describe("bot-recorder helpers", () => {
   });
 
   it("_activePosSummary handles missing liquidity", () => {
-    const { _activePosSummary } = require("../src/lib/bot-recorder");
+    const { _activePosSummary } = require("../src/bot/bot-recorder");
     const s = _activePosSummary({ tokenId: "1", token0: "A", token1: "B" });
     assert.equal(s.liquidity, "0");
   });
@@ -358,14 +358,14 @@ describe("bot-recorder helpers", () => {
   });
 
   it("_recordResidual skips without tracker", () => {
-    const { _recordResidual } = require("../src/lib/bot-recorder");
+    const { _recordResidual } = require("../src/bot/bot-recorder");
     // Should not throw
     _recordResidual({}, { poolAddress: "0x1" });
     _recordResidual({ _residualTracker: null }, {});
   });
 
   it("_notifyRebalance updates bot state", () => {
-    const { _notifyRebalance } = require("../src/lib/bot-recorder");
+    const { _notifyRebalance } = require("../src/bot/bot-recorder");
     const state = {};
     const deps = {
       _rebalanceCount: 0,
@@ -387,7 +387,7 @@ describe("bot-recorder helpers", () => {
   });
 
   it("appendLog creates and appends to log file", () => {
-    const { appendLog } = require("../src/lib/bot-recorder");
+    const { appendLog } = require("../src/bot/bot-recorder");
     const fs = require("fs");
     const os = require("os");
     const path = require("path");
@@ -414,7 +414,7 @@ describe("bot-recorder helpers", () => {
 
 describe("_recordResidual with tracker", () => {
   it("records residual delta and persists", () => {
-    const { _recordResidual } = require("../src/lib/bot-recorder");
+    const { _recordResidual } = require("../src/bot/bot-recorder");
     const state = {};
     const tracker = {
       addDelta: (pool, d0, d1) => {
@@ -462,7 +462,7 @@ describe("_persistPositionConfig status guard", () => {
     const os = require("os");
     const path = require("path");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cycle-guard-"));
-    const { updatePositionState } = require("../src/lib/server-positions");
+    const { updatePositionState } = require("../src/bot/position-states");
     const { getOrCreatePositionConfig } = require("../src/lib/bot-config-v2");
     const cfg = { global: {}, positions: {} };
     /*- Seed the entry via the explicit lazy-create form (the non-lazy

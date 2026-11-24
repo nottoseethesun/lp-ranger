@@ -7,7 +7,7 @@
  *
  *   A token can sit at the same address on two chains, and PulseChain's
  *   copy of Ethereum's state means many do. The best-pool cache
- *   (`getBestPoolForToken`, src/lib/gecko-pool-cache.js) feeds the historical
+ *   (`getBestPoolForToken`, src/bot/gecko-pool-cache.js) feeds the historical
  *   prices a closed period is valued at, and historical entries never
  *   expire, so a pool lent across chains would price that chain's history
  *   from the wrong token for good. The key is `cacheKey(chain, "token",
@@ -33,7 +33,7 @@ const { cacheKey } = require("../src/lib/cache-store");
 const {
   getBestPoolForToken,
   _resetForTest,
-} = require("../src/lib/gecko-pool-cache");
+} = require("../src/bot/gecko-pool-cache");
 
 const TOKEN = "0x00000000000000000000000000000000000AbCdE";
 const POOL = {

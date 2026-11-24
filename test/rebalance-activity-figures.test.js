@@ -27,7 +27,7 @@ const {
   fourNumbers,
   finishRebalanceFigures,
   figuresNeedNftEvents,
-} = require("../src/lib/rebalance-activity-figures");
+} = require("../src/bot/rebalance-activity-figures");
 const { rebalanceIlPct } = require("../src/lib/coin-value");
 
 const READINGS = Object.freeze({

@@ -18,8 +18,8 @@ const assert = require("assert");
 const {
   buildDexDetailPageUrlTemplate,
   readDexDetailPageName,
-} = require("../src/lib/dex-detail-page-url-generator");
-const { _withDexDetailPage } = require("../src/lib/lp-providers");
+  _withDexDetailPage,
+} = require("../src/server/dex-detail-page-url-generator");
 
 /** A provider entry shaped like the shipped 9mm v3 one. */
 function entry(overrides = {}) {

@@ -15,16 +15,16 @@ const path = require("node:path");
 const os = require("node:os");
 
 const {
-  createReloadPositionHandler,
   _resetBotState,
   _checkInProgress,
-} = require("../src/server/server-reload-position");
+} = require("../src/bot/reload-position");
+const { createReloadPositionHandler } = require("./_bot-route-adapters");
 const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/lib/bot-config-keys");
 const {
   markStopping,
   _resetAppPhaseForTests,
-} = require("../src/lib/app-phase");
-const epochCache = require("../src/lib/epoch-cache");
+} = require("../src/bot/app-phase");
+const epochCache = require("../src/bot/epoch-cache");
 const config = require("../src/lib/config");
 const { eventCachePath } = require("../src/lib/cache-store");
 
@@ -159,7 +159,7 @@ describe("POST /api/position/reload — in-progress guard", () => {
    *  A coin move counts from the poll's first gate, before the Guard, the
    *  gas check and the wait for the rebalance lock, after which the move
    *  raises rebalanceInProgress or compoundInProgress; and while a
-   *  Rebalance Now or Compound Now waits to be made (src/lib/scan-state.js).
+   *  Rebalance Now or Compound Now waits to be made (src/bot/scan-state.js).
    */
   const COIN_MOVE_WORDS =
     "A coin move (rebalance or compound) for this position has already started. Try again once it's complete.";

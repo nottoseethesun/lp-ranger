@@ -74,7 +74,7 @@ before(async () => {
   document.body.replaceChildren(
     document.importNode(page.getElementById("telegramModal"), true),
   );
-  dialog = await import("../src/client/web/dashboard-telegram.js");
+  dialog = await import("../src/client/web/js/dashboard-telegram.js");
   dialog.initTelegram();
 });
 

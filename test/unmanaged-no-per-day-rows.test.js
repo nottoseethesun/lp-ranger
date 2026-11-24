@@ -20,7 +20,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { _withoutPerDayRows } = require("../src/server/position-details");
+const { _withoutPerDayRows } = require("../src/bot/position-details");
 
 /** A snapshot as `tracker.snapshot()` returns one, rows included. */
 function snapshotWithRows() {

@@ -11,7 +11,7 @@ metadata:
 Bot Config form inputs (Min Time Between Rebalances, Max Rebalances /
 Day, OOR threshold/timeout, etc.) are populated from server data
 **once per position activation** via the `_configSynced` latch in
-`_syncConfigFromServer` (`src/client/web/dashboard-data.js`).  After that,
+`_syncConfigFromServer` (`src/client/web/js/dashboard-data.js`).  After that,
 the poll never writes them again — an unsaved typed value sits in the
 field until Save, position switch, or page reload.  Focus is never
 consulted.

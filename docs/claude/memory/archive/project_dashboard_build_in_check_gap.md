@@ -10,7 +10,7 @@ modified: 2026-10-24T05:24:12.605Z
 The gap was: `npm run check` ran ESLint + node:test + audits but never
 invoked `npm run build` (esbuild). ESLint had no path-resolution rule
 wired in, and tests only imported `src/lib/` + `test/` — never the browser
-bundle. So a broken `import` in `src/client/web/dashboard-*.js` (e.g. after a
+bundle. So a broken `import` in `src/client/web/js/dashboard-*.js` (e.g. after a
 file rename) passed both local check AND CI green, then blew up the
 moment esbuild ran.
 

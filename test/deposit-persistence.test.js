@@ -31,12 +31,12 @@ const {
   updatePositionState,
   getAllPositionBotStates,
   PERSISTED_STATE_KEYS,
-} = require("../src/lib/server-positions");
+} = require("../src/bot/position-states");
 const { readConfigValue } = require("../src/lib/bot-config-v2");
 const {
   lifetimeFiguresSaved,
   _resolveDiskState,
-} = require("../src/lib/bot-recorder-lifetime");
+} = require("../src/bot/bot-recorder-lifetime");
 const {
   state: harness,
   resetState,
@@ -103,7 +103,7 @@ describe("the deposit total is saved", () => {
     );
     /*-
      *  Records are written to the records file beside bot-config.json
-     *  (src/lib/position-records.js).
+     *  (src/lib/util/position-records.js).
      */
     const onDisk = JSON.parse(
       fs.readFileSync(path.join(dir, "position-records.json"), "utf8"),
@@ -250,7 +250,7 @@ describe("a restart with every figure saved", () => {
   before(() => {
     resetState();
     installMocks();
-    scan = require("../src/lib/bot-recorder-lifetime")._scanLifetimePoolData;
+    scan = require("../src/bot/bot-recorder-lifetime")._scanLifetimePoolData;
   });
   after(restoreMocks);
 

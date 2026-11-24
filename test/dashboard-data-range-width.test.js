@@ -4,7 +4,7 @@
  * @file test/dashboard-data-range-width.test.js
  * @description Tests the pure decisions extracted from
  *   `syncRangeWidth` and `syncFullRangeCheckbox` in
- *   `src/client/web/dashboard-data-range-width.js`:
+ *   `src/client/web/js/dashboard-data-range-width.js`:
  *
  *     - `computeRangeWidthDecision(data, ctx)`
  *     - `computeFullRangeChecked(data, activeFromStore)`
@@ -36,7 +36,7 @@ const assert = require("node:assert/strict");
 let mod;
 
 before(async () => {
-  mod = await import("../src/client/web/dashboard-data-range-width.js");
+  mod = await import("../src/client/web/js/dashboard-data-range-width.js");
 });
 
 // ── computeRangeWidthDecision ─────────────────────────────────────────

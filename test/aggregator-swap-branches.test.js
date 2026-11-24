@@ -46,8 +46,8 @@ const {
   _handleSwapError,
   _submitGasPrice,
   _setWaitMsForTests,
-} = require("../src/lib/rebalancer-aggregator");
-const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
+} = require("../src/bot/rebalancer-aggregator");
+const { swapIfNeeded } = require("../src/bot/rebalancer-swap");
 const {
   ADDR,
   defaultDispatch,
@@ -66,7 +66,7 @@ const {
   params,
   fixedOut,
 } = require("./helpers/aggregator-harness");
-const { CANCEL_GAS_LIMIT } = require("../src/lib/tx-speedup");
+const { CANCEL_GAS_LIMIT } = require("../src/bot/tx-speedup");
 
 beforeEach(installAggregatorStage);
 afterEach(async () => {

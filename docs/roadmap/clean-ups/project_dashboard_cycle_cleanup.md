@@ -7,7 +7,7 @@
 The dashboard's modules import each other in circles. On 2026-10-17
 `npm run show-dependency-cycles` (madge `--circular` over every `.js`
 file) reported **27 circular dependencies, all in
-`src/client/web/dashboard-*.js`**, and none in the server-side code. Bundling
+`src/client/web/js/dashboard-*.js`**, and none in the server-side code. Bundling
 hides them, so they cost nothing today; they make the modules harder to
 reason about, and nothing stops a new one landing.
 

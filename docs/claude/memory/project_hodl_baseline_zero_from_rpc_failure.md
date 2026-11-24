@@ -14,7 +14,7 @@ as a blockchain-level fact. **Not fixed.**
 
 ## What happens
 
-`_readMintedAmounts` (`src/lib/hodl-baseline.js`) reads the mint
+`_readMintedAmounts` (`src/bot/hodl-baseline.js`) reads the mint
 transaction's receipt to learn how much of each token the position was
 opened with. On an endpoint failure, and equally on a `null` receipt
 from an endpoint that is behind or pruned, it returns
@@ -53,10 +53,10 @@ clears it.
 file, and the commit that fixed the bug, both said otherwise. Correcting
 it here because the wrong severity is what survives.
 
-`computeHodlIL` (`src/lib/il-calculator.js`) guards its amounts against
+`computeHodlIL` (`src/bot/il-calculator.js`) guards its amounts against
 `null` and `undefined` but not against zero, which is where the
 overstatement came from. Its caller closes that gap:
-`_ilFor` (`src/lib/bot-pnl-il.js`) is `a0 > 0 || a1 > 0 ? computeHodlIL(…) :
+`_ilFor` (`src/bot/bot-pnl-il.js`) is `a0 > 0 || a1 > 0 ? computeHodlIL(…) :
 undefined`, so two zero amounts never reach the formula and the figure
 comes back absent. The dashboard then renders dashes, which is what
 [CLAUDE-BEST-PRACTICES](../CLAUDE-BEST-PRACTICES.md) asks for by name —

@@ -17,8 +17,8 @@
  * accident. Both tiers need this rule: the server decides whether to
  * accept a Manage request, and the dashboard decides whether to offer
  * the button. The dashboard bundle is built by esbuild from
- * `src/client/web/dashboard-init.js`, so it can only reach a module that pulls
- * in nothing Node-only — `src/lib/position-manager.js`, which owns the
+ * `src/client/web/js/dashboard-init.js`, so it can only reach a module that pulls
+ * in nothing Node-only — `src/bot/position-manager.js`, which owns the
  * scoped `poolKey` built on this, drags in `async-mutex`, `ethers` and
  * `fs` and cannot cross that line. Keeping this file free of imports is
  * what lets one definition serve both, instead of a copy per tier that
@@ -36,8 +36,8 @@
  *
  * Callers are responsible for rejecting incomplete identities before
  * calling: `String(undefined)` is `"undefined"`, which would make two
- * unknown pools compare equal. `src/lib/pool-already-managed.js` guards on
- * the server side and `_poolKeyOf` in `src/client/web/dashboard-manage-ui.js`
+ * unknown pools compare equal. `src/bot/pool-already-managed.js` guards on
+ * the server side and `_poolKeyOf` in `src/client/web/js/dashboard-manage-ui.js`
  * guards on the client side, each returning null rather than a partial
  * key.
  *

@@ -10,7 +10,7 @@
  *   operator's copies. What is read from the blockchain or a price
  *   service, kept to save reading it again, is in `app-data/scan-cache/`
  *   (src/lib/scan-cache-dir.js). What the bot records about a position is in
- *   `app-data/position-records.json` (src/lib/position-records.js). `tmp/`
+ *   `app-data/position-records.json` (src/lib/util/position-records.js). `tmp/`
  *   holds nothing worth keeping: the server's PID file alone of what the
  *   app writes.
  *

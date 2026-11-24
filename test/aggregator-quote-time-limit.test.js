@@ -38,8 +38,8 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const http = require("http");
 const config = require("../src/lib/config");
-const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
-const { swapViaAggregator } = require("../src/lib/rebalancer-aggregator");
+const { swapIfNeeded } = require("../src/bot/rebalancer-swap");
+const { swapViaAggregator } = require("../src/bot/rebalancer-aggregator");
 const {
   ADDR,
   makeTx,

@@ -38,7 +38,7 @@ the compound-toggle incident.
 
 Pick a letter-first prefix (`nine-mm-`, `pm-`, `lpr-`, …), then sweep:
 
-- All CSS selectors under `src/client/web/*.css` (≈500+ touches in
+- All CSS selectors under `src/client/web/css/*.css` (≈500+ touches in
   `9mm-pos-mgr.css` alone).
 - Every HTML `class="…"` list in `src/client/web/index.html`,
   `src/client/web/help-and-user-manual.html`, and other served pages.
@@ -78,7 +78,7 @@ Until 2026-09-02 the two used *different formulas* and disagreed — the
 table read `Collect(last) − DecreaseLiquidity(last)` and so missed every
 fee auto-compound had already swept, showing $149 against a lifetime
 $1,084 on the HEX pool. That is fixed: both now call
-`lifetimeFeeAmounts` in src/lib/compounder.js. What remains is only the
+`lifetimeFeeAmounts` in src/bot/compounder.js. What remains is only the
 duplicated *pass*.
 
 Merging them would make a future divergence impossible by construction
@@ -100,7 +100,7 @@ Keep the two in step, and do not add a second entry for it.
 
 ### Stop hanging properties on arrays (plus a lint for it)
 
-`src/lib/event-scanner.js` attaches `firstMintTimestamp` and
+`src/bot/event-scanner.js` attaches `firstMintTimestamp` and
 `firstMintBlockNumber` directly to the events array, beside the entries
 rather than as entries.  Copying an array copies its entries only, so
 `push(...list)`, `slice()`, `map()`, `JSON.stringify()` and

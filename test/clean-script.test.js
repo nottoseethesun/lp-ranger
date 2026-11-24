@@ -116,7 +116,9 @@ test("build artifacts are cleared, and the prestart guard covers it", () => {
    *  Safe because scripts/check-build-artifacts.js fails `npm start`
    *  with the missing files named and `npm run build` as the fix. */
   assert.ok(BUILD_DIRS.includes("src/client/web/dist"));
-  assert.ok(BUILD_ARTIFACTS.includes("src/client/web/disclosure-content.js"));
+  assert.ok(
+    BUILD_ARTIFACTS.includes("src/client/web/js/disclosure-content.js"),
+  );
   assert.ok(fs.existsSync(path.join(ROOT, "scripts/check-build-artifacts.js")));
   assert.match(pkg.scripts.prestart, /check-build-artifacts/);
 });

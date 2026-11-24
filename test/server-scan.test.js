@@ -14,7 +14,7 @@ const path = require("path");
 /*-
  *  Token symbols resolved here are fixtures. They go to a file of this
  *  test's own, not the operator's cache, which nothing expires. Set
- *  before src/lib/server-scan.js loads src/lib/token-symbol-cache.js, which
+ *  before src/bot/wallet-scan.js loads src/lib/token-symbol-cache.js, which
  *  reads it once.
  */
 const SYMBOL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "server-scan-"));
@@ -23,12 +23,12 @@ process.env.TOKEN_SYMBOL_CACHE_PATH = SYMBOL_FILE;
 after(() => fs.rmSync(SYMBOL_DIR, { recursive: true, force: true }));
 
 const {
-  createScanHandlers,
   resolveTokenSymbol,
   resolveSymbolMap,
   formatNftResponse,
   poolKey,
-} = require("../src/lib/server-scan");
+} = require("../src/bot/wallet-scan");
+const { createScanHandlers } = require("./_bot-route-adapters");
 const { getTokenSymbol } = require("../src/lib/token-symbol-cache");
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ function mockDeps(overrides) {
 
 // ── createScanHandlers ──────────────────────────────────────────────
 
-describe("server-scan — createScanHandlers", () => {
+describe("wallet-scan — createScanHandlers", () => {
   it("returns handler functions", () => {
     const h = createScanHandlers(mockDeps());
     assert.strictEqual(typeof h._handlePositionsScan, "function");
@@ -61,7 +61,7 @@ describe("server-scan — createScanHandlers", () => {
 
 // ── _handlePositionsScan — wallet not loaded ────────────────────────
 
-describe("server-scan — scan rejects without wallet", () => {
+describe("wallet-scan — scan rejects without wallet", () => {
   it("returns 400 when wallet not loaded", async () => {
     const responses = [];
     const h = createScanHandlers(
@@ -80,7 +80,7 @@ describe("server-scan — scan rejects without wallet", () => {
 
 // ── _handlePositionsRefresh — no cache ──────────────────────────────
 
-describe("server-scan — refresh with no cache", () => {
+describe("wallet-scan — refresh with no cache", () => {
   it("returns empty when no cache exists", async () => {
     const responses = [];
     const h = createScanHandlers(
@@ -104,7 +104,7 @@ describe("server-scan — refresh with no cache", () => {
 
 // ── _handlePositionsRefresh — wallet not loaded ─────────────────────
 
-describe("server-scan — refresh rejects without wallet", () => {
+describe("wallet-scan — refresh rejects without wallet", () => {
   it("returns 400 when wallet not loaded", async () => {
     const responses = [];
     const h = createScanHandlers(
@@ -122,7 +122,7 @@ describe("server-scan — refresh rejects without wallet", () => {
 
 // ── resolveTokenSymbol ──────────────────────────────────────────────
 
-describe("server-scan — resolveTokenSymbol", () => {
+describe("wallet-scan — resolveTokenSymbol", () => {
   it("returns ? for null address", async () => {
     const h = createScanHandlers(mockDeps());
     const sym = await h.resolveTokenSymbol({}, null);
@@ -141,7 +141,7 @@ describe("server-scan — resolveTokenSymbol", () => {
 
 // ── resolveSymbolMap ─────────────────────────────────────────────────
 
-describe("server-scan — resolveSymbolMap", () => {
+describe("wallet-scan — resolveSymbolMap", () => {
   it("resolves symbols for a set of addresses", async () => {
     const map = await resolveSymbolMap(
       null,
@@ -167,7 +167,7 @@ describe("server-scan — resolveSymbolMap", () => {
 
 // ── poolKey ─────────────────────────────────────────────────────────
 
-describe("server-scan — poolKey", () => {
+describe("wallet-scan — poolKey", () => {
   it("builds key from token0, token1, fee", () => {
     const k = poolKey({
       token0: "0xAAA",
@@ -180,7 +180,7 @@ describe("server-scan — poolKey", () => {
 
 // ── formatNftResponse ───────────────────────────────────────────────
 
-describe("server-scan — formatNftResponse", () => {
+describe("wallet-scan — formatNftResponse", () => {
   it("formats positions with symbols and ticks", () => {
     const pos = [
       {

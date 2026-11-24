@@ -29,7 +29,7 @@ process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { _ilGuardMessage } = require("../src/lib/il-guard");
+const { _ilGuardMessage } = require("../src/bot/il-guard");
 
 describe("the Telegram message", () => {
   it("quotes the retry ceiling and the gas share the bot runs on", () => {

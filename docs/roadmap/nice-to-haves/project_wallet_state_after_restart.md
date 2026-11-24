@@ -24,5 +24,5 @@ every few seconds could carry whether the wallet is locked, and the
 page could open the unlock dialog when that turns to locked.
 
 Likely touch points: the status answer (`src/server/handle-api-status.js`),
-the poll's handler (`src/client/web/dashboard-data.js`) and the unlock dialog
-(`src/client/web/dashboard-wallet.js`).
+the poll's handler (`src/client/web/js/dashboard-data.js`) and the unlock dialog
+(`src/client/web/js/dashboard-wallet.js`).

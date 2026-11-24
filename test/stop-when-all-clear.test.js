@@ -16,9 +16,17 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  createStopWhenAllClear,
-  underWay,
+  createStopWhenAllClear: heldStopOver,
 } = require("../src/server/stop-when-all-clear");
+const { underWay, scansEnded } = require("../src/bot/under-way");
+
+/** The server's held stop over the bot's account of what is under way, one set of deps for both. */
+const createStopWhenAllClear = (deps) =>
+  heldStopOver({
+    ...deps,
+    underWay: (movesOver) => underWay(deps.getStates(), movesOver),
+    scansEnded: () => scansEnded(deps.getStates),
+  });
 
 /** A promise with its resolver. */
 function deferred() {

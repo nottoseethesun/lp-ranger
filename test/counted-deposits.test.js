@@ -1,7 +1,7 @@
 /**
  * @file test/counted-deposits.test.js
  * @description What the deposit count's records add to the figures
- *   (src/lib/counted-deposits.js).
+ *   (src/bot/counted-deposits.js).
  *
  *   A move's count saves each deposit into the pool's Lifetime results,
  *   naming its transaction; a poll's count holds what it finds in memory
@@ -25,7 +25,7 @@ const {
   plusDeposits,
   nftMintBlock,
   withLaterCounts,
-} = require("../src/lib/counted-deposits");
+} = require("../src/bot/counted-deposits");
 
 /** A deposit the count recorded: whole coins at two decimals. */
 const counted = (tx, block, raw0, raw1, extra = {}) => ({

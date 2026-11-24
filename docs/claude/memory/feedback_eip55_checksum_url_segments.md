@@ -28,10 +28,10 @@ metadata:
 
 **Code locations to audit/protect:**
 
-- `src/client/web/dashboard-router.js` — parses URL into wallet/contract/tokenId
-- `src/client/web/dashboard-positions.js` — posStore add path
-- `src/client/web/dashboard-data-cache.js` `flattenV2Status` — builds composite key from posStore
-- `src/client/web/dashboard-data-deposit.js` `_poolKey()` — builds localStorage keys; calls `.toLowerCase()` so it's consistent on its own, but make sure server data also normalizes
+- `src/client/web/js/dashboard-router.js` — parses URL into wallet/contract/tokenId
+- `src/client/web/js/dashboard-positions.js` — posStore add path
+- `src/client/web/js/dashboard-data-cache.js` `flattenV2Status` — builds composite key from posStore
+- `src/client/web/js/dashboard-data-deposit.js` `_poolKey()` — builds localStorage keys; calls `.toLowerCase()` so it's consistent on its own, but make sure server data also normalizes
 - Anywhere `fetch(/api/...)` includes an address in body or query
 
 **CLAUDE.md already states the constraint** ("EVM addresses use EIP-55 checksummed capitalization"). This memory documents the URL-segment-specific application of that rule, since URLs are the most common contamination vector and the failure mode is silent.

@@ -1,8 +1,8 @@
 /**
  * @file test/compound-fees-put-back.test.js
  * @description A compound names the fees its deposit put back apart from
- *   the coins the wallet already held (src/lib/compounder.js,
- *   src/lib/compounded-coins.js). Run through the real compound, with the
+ *   the coins the wallet already held (src/bot/compounder.js,
+ *   src/bot/compounded-coins.js). Run through the real compound, with the
  *   chain and the swap stood in for: the wallet's two coins are read
  *   before the collect, after it, and after the swap, and the deposit
  *   takes the amounts its event reports.
@@ -187,14 +187,14 @@ describe("a compound's fees, apart from the wallet's other coins", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/lib/compounder")];
-    ({ executeCompound } = require("../src/lib/compounder"));
+    delete require.cache[require.resolve("../src/bot/compounder")];
+    ({ executeCompound } = require("../src/bot/compounder"));
     Module.prototype.require = _origRequire;
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/lib/compounder")];
+    delete require.cache[require.resolve("../src/bot/compounder")];
   });
 
   beforeEach(() => {
@@ -227,7 +227,7 @@ describe("a compound's fees, apart from the wallet's other coins", () => {
   it("reports the deposit's block and the wallet's coins before the collect", async () => {
     /*- A deposit to the wallet still waiting there is taken by this
      *  compound in proportion to its share of that balance
-     *  (src/lib/deposit-attribution.js). */
+     *  (src/bot/deposit-attribution.js). */
     swapRan = true;
     const result = await compound(
       executeCompound,

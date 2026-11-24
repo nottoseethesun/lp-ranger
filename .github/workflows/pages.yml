@@ -14,13 +14,13 @@ on:
     branches: [main]
     paths:
       - "src/client/web/help-and-user-manual.html"
-      - "src/client/web/help.css"
+      - "src/client/web/css/help.css"
       - "src/client/web/disclosure.html"
       - "src/client/web/screenshot-gallery.html"
-      - "src/client/web/gallery.css"
-      - "src/client/web/style.css"
-      - "src/client/web/9mm-pos-mgr.css"
-      - "src/client/web/fonts.css"
+      - "src/client/web/css/gallery.css"
+      - "src/client/web/css/style.css"
+      - "src/client/web/css/9mm-pos-mgr.css"
+      - "src/client/web/css/fonts.css"
       - "src/client/web/fonts/**"
       - "docs/**"
       - ".github/workflows/pages.yml"

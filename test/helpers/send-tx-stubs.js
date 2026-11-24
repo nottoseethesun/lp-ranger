@@ -2,7 +2,7 @@
 
 /**
  * @file test/helpers/send-tx-stubs.js
- * @description Shared stubs for the `src/lib/send-transaction.js` test files.
+ * @description Shared stubs for the `src/bot/send-transaction.js` test files.
  *
  * One copy, required by both `send-transaction-read-failover.test.js` and
  * `send-transaction-startup.test.js`. A second copy in either file would
@@ -11,7 +11,7 @@
  */
 
 const logModule = require("../../src/lib/log");
-const { noteRpcResult } = require("../../src/lib/rpc-out-of-service");
+const { noteRpcResult } = require("../../src/bot/rpc-out-of-service");
 const { UTC_TIMESTAMP_PATTERN } = require("../../src/lib/utc-timestamp");
 
 /** The two endpoints every test in this family walks between. */

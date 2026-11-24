@@ -12,13 +12,13 @@ const {
   _MAX_UINT128,
   _DEADLINE_SECONDS,
   _MIN_SWAP_THRESHOLD,
-} = require("../src/lib/rebalancer-pools");
+} = require("../src/bot/rebalancer-pools");
 const {
   computeDesiredAmounts,
   swapIfNeeded,
-} = require("../src/lib/rebalancer-swap");
-const { _setRetryDelayForTests } = require("../src/lib/rebalancer-pools");
-const { PoolStateUnavailableError } = require("../src/lib/pool-state-validate");
+} = require("../src/bot/rebalancer-swap");
+const { _setRetryDelayForTests } = require("../src/bot/rebalancer-pools");
+const { PoolStateUnavailableError } = require("../src/bot/pool-state-validate");
 const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
 
 _setRetryDelayForTests(0); // shorten retry waits in failure-path tests

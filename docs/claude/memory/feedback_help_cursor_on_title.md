@@ -9,7 +9,7 @@ Any non-interactive element (div/span) with a non-empty `title` attribute must s
 
 **Why:** The user said "always on hover when there is hover text, remember?" — discoverability of tooltips: if the cursor doesn't change, users don't know hovering reveals info. This is a project-wide UI convention, not per-element.
 
-**How to apply:** A single global CSS rule lives at the top of `src/client/web/9mm-pos-mgr.css`:
+**How to apply:** A single global CSS rule lives at the top of `src/client/web/css/9mm-pos-mgr.css`:
 
 ```css
 div[title]:not([title=""]):hover,

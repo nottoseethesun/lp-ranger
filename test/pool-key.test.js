@@ -20,7 +20,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { poolPairKey, poolKey } = require("../src/lib/pool-key");
-const { createPositionManager } = require("../src/lib/position-manager");
+const { createPositionManager } = require("../src/bot/position-manager");
 const { learnActiveChain } = require("./helpers/active-chain");
 
 const A = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
@@ -32,7 +32,7 @@ let _poolHeldBy;
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a pool.
   await learnActiveChain();
-  const mod = await import("../src/client/web/dashboard-manage-ui.js");
+  const mod = await import("../src/client/web/js/dashboard-manage-ui.js");
   _poolKeyOf = mod._poolKeyOf;
   _poolHeldBy = mod._poolHeldBy;
 });
@@ -95,7 +95,7 @@ test("the module stays importable from the browser bundle", () => {
 // ── Cross-tier agreement ─────────────────────────────────────────────
 
 test("the key the server publishes equals the key the client builds", () => {
-  /*- `attachPoolKeys` (src/lib/server-positions.js) stamps `poolKey` onto
+  /*- `attachPoolKeys` (src/bot/position-states.js) stamps `poolKey` onto
    *  every managed entry in GET /api/status, and `_poolHeldBy` compares
    *  the active position's client-built key against it. If the two
    *  spellings ever diverge, nothing throws — the comparison simply

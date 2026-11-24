@@ -25,7 +25,12 @@ describe("eslint-config import-resolution wiring", () => {
     const results = await eslint.lintText(
       'import { foo } from "./dashboard-this-file-does-not-exist.js";\n' +
         "console.log(foo);\n",
-      { filePath: path.join(PROJECT_ROOT, "src/client/web/dashboard-fake.js") },
+      {
+        filePath: path.join(
+          PROJECT_ROOT,
+          "src/client/web/js/dashboard-fake.js",
+        ),
+      },
     );
     const rules = results[0].messages.map((m) => m.ruleId);
     assert.ok(
@@ -53,7 +58,12 @@ describe("eslint-config import-resolution wiring", () => {
     const eslint = new ESLint({ cwd: PROJECT_ROOT });
     const results = await eslint.lintText(
       'import { g } from "./dashboard-helpers.js";\n' + "console.log(g);\n",
-      { filePath: path.join(PROJECT_ROOT, "src/client/web/dashboard-fake.js") },
+      {
+        filePath: path.join(
+          PROJECT_ROOT,
+          "src/client/web/js/dashboard-fake.js",
+        ),
+      },
     );
     const missing = results[0].messages.filter(
       (m) => m.ruleId === "n/no-missing-import",
@@ -69,7 +79,12 @@ describe("eslint-config import-resolution wiring", () => {
     const eslint = new ESLint({ cwd: PROJECT_ROOT });
     const results = await eslint.lintText(
       'import { ethers } from "ethers";\n' + "console.log(ethers);\n",
-      { filePath: path.join(PROJECT_ROOT, "src/client/web/dashboard-fake.js") },
+      {
+        filePath: path.join(
+          PROJECT_ROOT,
+          "src/client/web/js/dashboard-fake.js",
+        ),
+      },
     );
     const missing = results[0].messages.filter(
       (m) => m.ruleId === "n/no-missing-import",

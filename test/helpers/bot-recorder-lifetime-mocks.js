@@ -42,10 +42,10 @@ const _origRequire = Module.prototype.require;
  *  with first, and the stubs below would not reach them.
  */
 const _LIFETIME_MODULES = [
-  "../../src/lib/bot-recorder-lifetime",
-  "../../src/lib/bot-recorder-lifetime-read",
-  "../../src/lib/bot-recorder-decimals-heal",
-  "../../src/lib/shared-chain-read",
+  "../../src/bot/bot-recorder-lifetime",
+  "../../src/bot/bot-recorder-lifetime-read",
+  "../../src/bot/bot-recorder-decimals-heal",
+  "../../src/bot/shared-chain-read",
 ];
 
 /** Drop the lifetime modules from the require cache. */
@@ -167,7 +167,7 @@ function _installMocks() {
      *  pool state, or throws a preset error to drive the retire/transient
      *  paths. pool-state-validate stays REAL (no mirror of its predicates). */
     if (id === "./rebalancer-pools") return _poolStateMock();
-    if (id === "./error-log") return _errorLogMock();
+    if (id === "../lib/error-log") return _errorLogMock();
     return _origRequire.apply(this, arguments);
   };
   _evictLifetimeModules();

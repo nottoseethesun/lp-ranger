@@ -26,7 +26,7 @@
 
 const path = require("path");
 const { spawnSync } = require("child_process");
-const cliHelp = require("../src/lib/cli-help");
+const cliHelp = require("../src/server/server-cli-help");
 
 const ROOT = path.join(__dirname, "..");
 

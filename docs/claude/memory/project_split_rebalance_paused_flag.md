@@ -14,8 +14,8 @@ metadata:
 
 The `botState.rebalancePaused` flag is written from two structurally different places with different semantics:
 
-1. **Swap-abort on slippage** — `src/lib/bot-loop.js:194-202` `_handleError`. When the swap quote's price impact exceeds the user's `SLIPPAGE_PCT`, the entire rebalance effort halts instantly. The bot will NOT retry — slippage problems require manual user action 99.9% of the time. "Aborted" fits.
-2. **A rebalance the price outran** — `src/lib/price-moved-stop.js` `holdAfterPriceMove`. When the price leaves the new range before the mint, with the old position emptied, the bot holds the position at once for the owner to weigh the impermanent loss and click Rebalance Now (the user's ruling, 2026-10-23). Until then it backed off and retried, up to `REBALANCE_RETRY_SWAP_LIMIT` stops, and paused only once those ran out; that ladder and its three settings are gone, so this case no longer earns a pause by exhaustion, and "Aborted" fits it too.
+1. **Swap-abort on slippage** — `src/bot/bot-loop.js:194-202` `_handleError`. When the swap quote's price impact exceeds the user's `SLIPPAGE_PCT`, the entire rebalance effort halts instantly. The bot will NOT retry — slippage problems require manual user action 99.9% of the time. "Aborted" fits.
+2. **A rebalance the price outran** — `src/bot/price-moved-stop.js` `holdAfterPriceMove`. When the price leaves the new range before the mint, with the old position emptied, the bot holds the position at once for the owner to weigh the impermanent loss and click Rebalance Now (the user's ruling, 2026-10-23). Until then it backed off and retried, up to `REBALANCE_RETRY_SWAP_LIMIT` stops, and paused only once those ran out; that ladder and its three settings are gone, so this case no longer earns a pause by exhaustion, and "Aborted" fits it too.
 
 Both paths share the same downstream consumer (`_checkRebalanceGates` in `bot-cycle.js:392` returns early when paused) and the same UI treatment (the "RETRYING" pill in `dashboard-data-status.js:337`, plus the alerts in `dashboard-alerts.js`). They converge enough that splitting downstream isn't worth it — but the flag NAME needs splitting for prose clarity.
 
@@ -32,16 +32,16 @@ Both paths share the same downstream consumer (`_checkRebalanceGates` in `bot-cy
 
 Source (~15 places):
 
-- `src/lib/bot-loop.js` — `_handleError` writes (becomes `rebalanceAborted` writer), `_handleRecovery` / `_handleRebalanceSuccess` clear (clear both).
-- `src/lib/bot-cycle.js:392` — `_checkRebalanceGates` reads.
-- `src/lib/bot-cycle-residual.js:54` — reads to skip residual cleanup.
-- `src/lib/price-moved-stop.js` (`holdAfterPriceMove`) — writes.
+- `src/bot/bot-loop.js` — `_handleError` writes (becomes `rebalanceAborted` writer), `_handleRecovery` / `_handleRebalanceSuccess` clear (clear both).
+- `src/bot/bot-cycle.js:392` — `_checkRebalanceGates` reads.
+- `src/bot/bot-cycle-residual.js:54` — reads to skip residual cleanup.
+- `src/bot/price-moved-stop.js` (`holdAfterPriceMove`) — writes.
 - `src/server/server-routes.js:141-142` — clears on slippage change.
 - `src/lib/server-positions.js:54, 185` — initializes / clears on key migration.
-- `src/client/web/dashboard-data-status.js:337` — pill label.
-- `src/client/web/dashboard-alerts.js:157, 183, 186` — alert visibility.
-- `src/client/web/dashboard-manage-badge.js` (from this branch) — closed-position Manage button logic.
-- `src/client/web/dashboard-data.js` (from this branch) — `_updateClosedManageBtn` reads.
+- `src/client/web/js/dashboard-data-status.js:337` — pill label.
+- `src/client/web/js/dashboard-alerts.js:157, 183, 186` — alert visibility.
+- `src/client/web/js/dashboard-manage-badge.js` (from this branch) — closed-position Manage button logic.
+- `src/client/web/js/dashboard-data.js` (from this branch) — `_updateClosedManageBtn` reads.
 
 Tests: grep `rebalancePaused` in `test/` to find existing coverage; add coverage for the new `rebalanceAborted` writer.
 

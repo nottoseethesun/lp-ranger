@@ -6,7 +6,7 @@
  * The info-dialog max height is configured in `ui-defaults_layout.json` but has
  * to reach a stylesheet, and this project forbids inline styles — so
  * `scripts/build-ui-tokens.js` bakes it into a generated
- * `src/client/web/ui-tokens.css` at build time. That is three moving parts (the
+ * `src/client/web/css/ui-tokens.css` at build time. That is three moving parts (the
  * JSON key, the generator, the `var()` reference in the authored CSS)
  * and a break in any one of them fails the same silent way: `var()`
  * with no fallback makes `max-height` invalid at computed-value time,
@@ -142,7 +142,7 @@ const BOUNDED = [
 /** The body of the rule that starts at `marker` in `file`. */
 function ruleBody(file, marker) {
   const css = fs.readFileSync(
-    path.join(ROOT, "src", "client", "web", file),
+    path.join(ROOT, "src", "client", "web", "css", file),
     "utf8",
   );
   const start = css.indexOf(marker);
@@ -188,7 +188,7 @@ test("the token is referenced with NO fallback literal", () => {
    *  exactly what routing it through JSON was meant to avoid. */
   for (const file of ["9mm-pos-mgr.css", "style.css"]) {
     const css = fs.readFileSync(
-      path.join(ROOT, "src", "client", "web", file),
+      path.join(ROOT, "src", "client", "web", "css", file),
       "utf8",
     );
     assert.equal(
@@ -209,7 +209,7 @@ test("no scrollbar-inside-a-scrollbar in the Pool Details dialog", () => {
    *  `.9mm-pos-mgr-pool-details-block:last-of-type`), but it must carry
    *  no scroll of its own. */
   const css = fs.readFileSync(
-    path.join(ROOT, "src", "client", "web", "9mm-pos-mgr.css"),
+    path.join(ROOT, "src", "client", "web", "css", "9mm-pos-mgr.css"),
     "utf8",
   );
   const start = css.indexOf("mm-pos-mgr-pool-details-tokens {");
@@ -235,7 +235,7 @@ test("the Disclosure is deliberately NOT bounded", () => {
    *  them jump straight to the bottom.  It uses its own class, so it is
    *  exempt by construction — this pins that it stays exempt. */
   const css = fs.readFileSync(
-    path.join(ROOT, "src", "client", "web", "style.css"),
+    path.join(ROOT, "src", "client", "web", "css", "style.css"),
     "utf8",
   );
   const box = ruleBody("style.css", ".disclaimer-box{");
@@ -262,13 +262,13 @@ test("the modal body still absorbs the overflow where one exists", () => {
 
 test("index.html links the generated stylesheet", () => {
   const html = fs.readFileSync(INDEX_HTML, "utf8");
-  assert.match(html, /<link rel="stylesheet" href="ui-tokens\.css/);
+  assert.match(html, /<link rel="stylesheet" href="css\/ui-tokens\.css/);
 });
 
 test("the generated file is gitignored, not committed", () => {
   /*- It is build output; a committed copy would drift from the JSON. */
   const ignore = fs.readFileSync(path.join(ROOT, ".gitignore"), "utf8");
-  assert.match(ignore, /^src\/client\/web\/ui-tokens\.css$/m);
+  assert.match(ignore, /^src\/client\/web\/css\/ui-tokens\.css$/m);
 });
 
 test("the build writes the stylesheet before it stamps the pages", () => {
@@ -287,7 +287,7 @@ test("the build writes the stylesheet before it stamps the pages", () => {
 });
 
 test("prelint generates the stylesheet so lint sees it in CI too", () => {
-  /*- `stylelint src/client/web/*.css` only lints files that exist.  Without
+  /*- `stylelint src/client/web/css/*.css` only lints files that exist.  Without
    *  this, the generated file would be linted on a developer's machine
    *  (where a build has run) and silently skipped in CI, which is the
    *  asymmetry that lets a generator start emitting invalid CSS
@@ -301,5 +301,5 @@ test("cache-bust stamps the generated stylesheet", () => {
    *  would keep a stale --dialog-max-h after an operator edits the
    *  JSON. */
   const html = fs.readFileSync(INDEX_HTML, "utf8");
-  assert.match(stampPage(html, 42), /href="ui-tokens\.css\?v=42"/);
+  assert.match(stampPage(html, 42), /href="css\/ui-tokens\.css\?v=42"/);
 });

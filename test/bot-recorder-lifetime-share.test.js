@@ -70,7 +70,7 @@ beforeEach(() => {
   resetState();
   state.poolCreationBlock = POOL_FLOOR;
   installMocks();
-  lifetime = require("../src/lib/bot-recorder-lifetime");
+  lifetime = require("../src/bot/bot-recorder-lifetime");
 });
 afterEach(restoreMocks);
 
