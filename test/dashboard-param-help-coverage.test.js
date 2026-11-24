@@ -50,7 +50,7 @@ function markupKeys() {
  * figures stand in for them here.
  */
 async function paramHelp() {
-  const mod = await import("../src/client/web/param-help-content.js");
+  const mod = await import("../src/client/web/js/param-help-content.js");
   return mod.buildParamHelp(SHIPPED_FIGURES);
 }
 
@@ -110,11 +110,13 @@ test("Fees Earned and Fees Compounded both open a help dialog", async () => {
 });
 
 test("the Fees Earned tooltip does not claim compounded fees are included", async () => {
-  /*- `feesUsd` in src/lib/bot-pnl-updater.js is
+  /*-
+   *  `feesUsd` in src/bot/bot-pnl-updater.js is
    *  tokensOwed0*price0 + tokensOwed1*price1 — UNCLAIMED fees only,
    *  and compounding zeroes tokensOwed.  The two figures are disjoint,
    *  which is why the code adds them, so copy saying one includes the
-   *  other states the opposite of what is computed. */
+   *  other states the opposite of what is computed.
+   */
   const html = fs.readFileSync(INDEX_HTML, "utf8");
   assert.equal(
     html.includes("Includes any fees that were compounded"),
@@ -134,7 +136,7 @@ test("each Current fee dialog names the remedy that applies, and where it is", a
   /*-
    *  Fees Earned is the unclaimed coins at this poll's prices, so a bad
    *  price is fixed by the price override; Re-scan Prices re-values only
-   *  stored figures (src/server/server-rescan-prices.js) and leaves it alone.
+   *  stored figures (src/bot/rescan-prices.js) and leaves it alone.
    *  Fees Compounded is a count of coins Re-scan Prices takes again.
    */
   const help = await paramHelp();
@@ -151,7 +153,7 @@ test("each Current fee dialog names the remedy that applies, and where it is", a
 
 test("curCompounded scopes itself to this NFT, not the whole chain", async () => {
   /*- snap.currentCompoundedUsd sums compoundHistory rows matching the
-   *  CURRENT tokenId (src/lib/bot-pnl-current-nft.js), while the Lifetime
+   *  CURRENT tokenId (src/bot/bot-pnl-current-nft.js), while the Lifetime
    *  figure spans every NFT in the rebalance chain.  Conflating them
    *  would make the two panels look like they disagree. */
   const help = await paramHelp();
@@ -220,7 +222,7 @@ test("the hand-rolled throttle modal is gone, markup and wiring alike", () => {
   assert.equal(html.includes('id="throttleInfoOk"'), false);
   for (const f of ["dashboard-events.js", "dashboard-events-manage.js"]) {
     const js = fs.readFileSync(
-      path.join(ROOT, "src", "client", "web", f),
+      path.join(ROOT, "src", "client", "web", "js", f),
       "utf8",
     );
     assert.equal(
@@ -250,7 +252,7 @@ test("every circle-i in index.html opens something on click", async () => {
   /*- Ids dashboard-events.js wires a click to, read from source rather
    *  than hardcoded so rewiring cannot silently invalidate the list. */
   const events = fs.readFileSync(
-    path.join(ROOT, "src", "client", "web", "dashboard-events.js"),
+    path.join(ROOT, "src", "client", "web", "js", "dashboard-events.js"),
     "utf8",
   );
   const wired = new Set(
@@ -293,7 +295,7 @@ test("every badge state the code can paint has a help section", async () => {
    *  asserted a fixed list that had silently drifted: the renderer grew
    *  NEAR LIMIT and N/A while the help kept four sections. */
   const src = fs.readFileSync(
-    path.join(ROOT, "src", "client", "web", "dashboard-throttle.js"),
+    path.join(ROOT, "src", "client", "web", "js", "dashboard-throttle.js"),
     "utf8",
   );
   const fn = src.slice(

@@ -57,7 +57,7 @@ const SERVER_DOWN = require("../app-config/app-defaults-for-user-configurable/ui
 let chainMod;
 
 before(async () => {
-  chainMod = await import("../src/client/web/dashboard-chain.js");
+  chainMod = await import("../src/client/web/js/dashboard-chain.js");
 });
 
 /**
@@ -279,7 +279,8 @@ describe("the header's chain link", () => {
     assert.equal(link().title, "Visit A Chain");
     assert.equal(slot().previousElementSibling, on(), "right after the 'on'");
     const img = link().querySelector("img");
-    assert.match(img.src, /chain-logo\.png$/);
+    // The setting names a file in the web client's images/ folder.
+    assert.match(img.src, /(^|\/)images\/chain-logo\.png$/);
     assert.equal(img.alt, "A Chain");
   });
 

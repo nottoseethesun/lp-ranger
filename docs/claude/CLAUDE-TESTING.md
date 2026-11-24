@@ -8,8 +8,8 @@ Smell: docstrings that say `Mirror of …`, `In-test replica`, or "mirror is sma
 
 **Correct pattern** — when a function is module-private and needs testing, **extract it as an exported pure decision** and drive the export directly:
 
-- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `src/client/web/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../src/client/web/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`. Every test run passes `--no-experimental-webstorage` (`scripts/check.js` and the npm `test` scripts): Node 25 and later put a `localStorage` of their own on the global object, which reads as `undefined` without a storage file, and `global-jsdom` would leave it in place of jsdom's.
-- **Server tests** (`src/lib/*.js`): direct `require("../src/lib/<module>.js")`. No import obstacle — mirrors have no excuse.
+- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `src/client/web/js/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../src/client/web/js/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`. Every test run passes `--no-experimental-webstorage` (`scripts/check.js` and the npm `test` scripts): Node 25 and later put a `localStorage` of their own on the global object, which reads as `undefined` without a storage file, and `global-jsdom` would leave it in place of jsdom's.
+- **Node tests** (`src/bot/`, `src/server/`, `src/lib/`): direct `require("../src/<folder>/<module>.js")`. No import obstacle — mirrors have no excuse.
 
 When the private helper's logic is entangled with I/O (DOM writes, network, module-singleton state), extract only the **pure decision** (accepts state as parameters, returns the intended action) and leave the I/O in the wrapper. See PRs #167–#172 for the extract-then-test pattern applied across ~30 dashboard helpers.
 
@@ -45,18 +45,18 @@ Every swap a rebalance or a compound makes runs through these files:
 
 | File | What it does |
 | --- | --- |
-| `src/lib/rebalancer-swap.js` | The ratio math, and the order swaps are tried in: aggregator, aggregator in chunks, V3 router |
-| `src/lib/rebalancer-aggregator.js` | Quote, approve, send and confirm through the aggregator, with its retries and its cancel on timeout |
-| `src/lib/aggregator-quote-request.js` | One quote request under its time limit, with the aggregator's reasons on a refusal |
-| `src/lib/aggregator-nonce-settle.js` | Works out what mined once a swap's wait has run out |
-| `src/lib/rebalancer-router.js` | The V3 router swap, in the position's own pool |
-| `src/lib/rebalancer-swap-impact.js` | The price-impact check against the slippage setting, and the refusal of a quote that names no impact |
-| `src/lib/rebalancer-correct.js` | Corrective swaps, after the main swap moves the tick |
-| `src/lib/rebalancer-execute.js` | Swap and adjust: the range shift, the pre-mint check, the result |
-| `src/lib/compounder-swap.js` | The compound's ratio-correcting swap |
-| `src/lib/swap-gates.js` | The dust and gas checks in front of every swap |
-| `src/lib/slippage-resolver.js` | Which slippage figure a swap uses |
-| `src/lib/rebalancer-pools.js` | The shared swap helpers: impact check, approvals, send retries |
+| `src/bot/rebalancer-swap.js` | The ratio math, and the order swaps are tried in: aggregator, aggregator in chunks, V3 router |
+| `src/bot/rebalancer-aggregator.js` | Quote, approve, send and confirm through the aggregator, with its retries and its cancel on timeout |
+| `src/bot/aggregator-quote-request.js` | One quote request under its time limit, with the aggregator's reasons on a refusal |
+| `src/bot/aggregator-nonce-settle.js` | Works out what mined once a swap's wait has run out |
+| `src/bot/rebalancer-router.js` | The V3 router swap, in the position's own pool |
+| `src/bot/rebalancer-swap-impact.js` | The price-impact check against the slippage setting, and the refusal of a quote that names no impact |
+| `src/bot/rebalancer-correct.js` | Corrective swaps, after the main swap moves the tick |
+| `src/bot/rebalancer-execute.js` | Swap and adjust: the range shift, the pre-mint check, the result |
+| `src/bot/compounder-swap.js` | The compound's ratio-correcting swap |
+| `src/bot/swap-gates.js` | The dust and gas checks in front of every swap |
+| `src/bot/slippage-resolver.js` | Which slippage figure a swap uses |
+| `src/bot/rebalancer-pools.js` | The shared ABIs and constants, the deadline and approvals (`_ensureAllowance`), the pool's state read with its retries, and liquidity removal |
 
 Measured 2026-10-18, on Node 24 and Node 22:
 
@@ -219,8 +219,8 @@ A test that checks the shipped values themselves, such as the manual on disk, re
 
 A test asks no service outside the machine. A result that depends on a third party fails when that party changes its answer, and the app's own budget of calls a minute to GeckoTerminal can make a test wait out a whole minute. Two stand-ins cover what the tests reach:
 
-- **Prices.** A test that reaches a price lookup, through a poll, a rebalance, a compound or a swap gate, requires `test/helpers/price-stand-ins.js` before anything under `src/lib/` that reads a price, since those modules take the lookups when they load. A token's current price and the dust unit's then answer from a fixed table: the chain's wrapped native coin and the dust unit at steady prices, and every other token unpriced.
+- **Prices.** A test that reaches a price lookup, through a poll, a rebalance, a compound or a swap gate, requires `test/helpers/price-stand-ins.js` before any module that reads a price (they are bot modules, in `src/bot/`) or loads one (the bot's interface, or `test/_bot-route-adapters.js`, which builds the server's routes over it; no server module loads a bot module), since those modules take the lookups when they load. A token's current price and the dust unit's then answer from a fixed table: the chain's wrapped native coin and the dust unit at steady prices, and every other token unpriced.
 - **The aggregator.** A test whose swap asks for a quote but is not about the aggregator's own handling starts a local aggregator (`startLocalAggregator`, `test/helpers/local-aggregator.js`) and points the chain's aggregator url at it. It refuses every quote, as the live aggregator refuses the fixtures' made-up tokens, or answers as a case scripts it. A test of the aggregator's own handling stages it with `test/helpers/aggregator-harness.js`.
-- **A Manage's pool check.** The Manage route reads the position's pool from the chain and refuses the position when it cannot, so a test that drives a Manage past that check passes `poolReadStandIn()` (`test/helpers/pool-read-stand-in.js`) as the route's `ethersLib` and `readProvider`: each NFT open, alone in a pool of its own.
+- **A Manage's pool check.** The bot's Manage (`src/bot/position-lifecycle.js`) reads the position's pool from the chain and refuses the position when it cannot, so a test that drives a Manage past that check passes `poolReadStandIn()` (`test/helpers/pool-read-stand-in.js`) as its `ethersLib` and `readProvider`: each NFT open, alone in a pool of its own.
 
 To find a test that still asks an outside service, run the gate with a preload that records every request leaving the machine (`NODE_OPTIONS="--require <preload>"`, subscribing to `undici:request:create`); `npm audit` is the only stage that should appear.

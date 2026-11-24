@@ -1,6 +1,6 @@
 /**
  * @file scripts/build-ui-tokens.js
- * @description Generates `src/client/web/ui-tokens.css` (a generated artifact,
+ * @description Generates `src/client/web/css/ui-tokens.css` (a generated artifact,
  * gitignored) from `ui-defaults_layout.json`, the dashboard's layout
  * settings, with any operator override applied.
  *
@@ -34,7 +34,15 @@ const path = require("path");
 const { log } = require("../src/lib/log");
 const { loadMergedDefaults } = require("../src/lib/load-merged-defaults");
 
-const OUT = path.join(__dirname, "..", "src", "client", "web", "ui-tokens.css");
+const OUT = path.join(
+  __dirname,
+  "..",
+  "src",
+  "client",
+  "web",
+  "css",
+  "ui-tokens.css",
+);
 const SRC = "ui-defaults_layout.json";
 
 /**
@@ -88,7 +96,7 @@ function main() {
   };
   fs.writeFileSync(OUT, renderCss(tokens));
   log.info(
-    "[build-ui-tokens] wrote src/client/web/ui-tokens.css (--dialog-max-h: %dpx)",
+    "[build-ui-tokens] wrote src/client/web/css/ui-tokens.css (--dialog-max-h: %dpx)",
     tokens.dialogMaxHeightPx,
   );
 }

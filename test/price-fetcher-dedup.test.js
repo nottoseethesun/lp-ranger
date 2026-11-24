@@ -1,7 +1,7 @@
 /**
  * @file test/price-fetcher-dedup.test.js
  * @description Unit tests for the in-flight fetch dedup in
- *   `src/lib/price-fetcher-dedup.js`.  When N callers race past the cache
+ *   `src/bot/price-fetcher-dedup.js`.  When N callers race past the cache
  *   for the same token in the same tick, only the first should hit the
  *   source cascade — the rest must await the same Promise.  This
  *   eliminates the thundering-herd that otherwise wastes price-source
@@ -18,14 +18,14 @@ const {
   withFreshPricesAllowed,
   _resetPauseStateForTests,
   _cache,
-} = require("../src/lib/price-fetcher");
+} = require("../src/bot/price-fetcher");
 const {
   _resetForTest: _resetGeckoRateLimit,
-} = require("../src/lib/gecko-rate-limit");
+} = require("../src/bot/gecko-rate-limit");
 const {
   _resetInflightForTests,
   _inflightSize,
-} = require("../src/lib/price-fetcher-dedup");
+} = require("../src/bot/price-fetcher-dedup");
 
 const TOKEN = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
 const TOKEN_B = "0x1111111111111111111111111111111111111111";

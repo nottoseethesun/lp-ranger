@@ -208,7 +208,7 @@ describe("cli-help", () => {
       out += s;
     };
     try {
-      require("../src/lib/cli-help")("server");
+      require("../src/server/server-cli-help")("server");
       assert.ok(out.includes("Dashboard"));
     } finally {
       console.log = orig;
@@ -221,7 +221,7 @@ describe("cli-help", () => {
       out += s;
     };
     try {
-      require("../src/lib/cli-help")("bot");
+      require("../src/bot/bot-cli-help")("bot");
       assert.ok(out.includes("Headless"));
     } finally {
       console.log = orig;

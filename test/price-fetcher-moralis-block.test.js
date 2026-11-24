@@ -8,7 +8,7 @@
  *   block, Moralis is not asked at all, since it prices only by block.
  *   The rebuilt compound list relies on the first: it passes each
  *   compound's deposit block (`compoundPricesFor`,
- *   src/lib/compound-activity-figures.js).
+ *   src/bot/compound-activity-figures.js).
  *
  *   Under `node --test` the price caches are this process's own
  *   (src/lib/scan-cache-dir.js), so the operator's are never touched.
@@ -18,8 +18,8 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const config = require("../src/lib/config");
-const { fetchHistoricalPriceGecko } = require("../src/lib/price-fetcher");
-const { getHistoricalPrice, _resetForTest } = require("../src/lib/price-cache");
+const { fetchHistoricalPriceGecko } = require("../src/bot/price-fetcher");
+const { getHistoricalPrice, _resetForTest } = require("../src/bot/price-cache");
 const { setApiKey } = require("../src/lib/api-key-holder");
 
 const POOL = "0x" + "9".repeat(40);

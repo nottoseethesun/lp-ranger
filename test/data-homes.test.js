@@ -10,7 +10,7 @@
  *   operator's copies. What is read from the blockchain or a price
  *   service, kept to save reading it again, is in `app-data/scan-cache/`
  *   (src/lib/scan-cache-dir.js). What the bot records about a position is in
- *   `app-data/position-records.json` (src/lib/position-records.js). `tmp/`
+ *   `app-data/position-records.json` (src/lib/util/position-records.js). `tmp/`
  *   holds nothing worth keeping: the server's PID file alone of what the
  *   app writes.
  *
@@ -31,24 +31,33 @@ const {
 } = require("../src/lib/bot-config-keys");
 
 /*- The app's module folders: the modules the programs share, the
- *  server's own and the bot's own. */
+ *  server's own and the bot's own, each with its subfolders. */
 const SRC_DIRS = ["lib", "server", "bot"].map((d) =>
   path.join(__dirname, "..", "src", d),
 );
 
+/**
+ * Every .js file under `dir`, in its subfolders too (src/lib/util/, the
+ * telegram-notifications/ folders), as `[file name, path]`.
+ * @param {string} dir
+ * @returns {Array<[string, string]>}
+ */
+function jsFilesUnder(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) return jsFilesUnder(p);
+    return e.name.endsWith(".js") ? [[e.name, p]] : [];
+  });
+}
+
 /** Each module in those folders, by file name, as code with comments removed. */
-const MODULES = SRC_DIRS.flatMap((dir) =>
+const MODULES = SRC_DIRS.flatMap(jsFilesUnder).map(([f, p]) => [
+  f,
   fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith(".js"))
-    .map((f) => [
-      f,
-      fs
-        .readFileSync(path.join(dir, f), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/^\s*\/\/.*$/gm, ""),
-    ]),
-);
+    .readFileSync(p, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, ""),
+]);
 
 /*-
  *  The modules that own a file under app-config/, each something the
@@ -65,6 +74,21 @@ const APP_CONFIG_OWNERS = [
 ];
 
 describe("where each kind of data is kept", () => {
+  it("reads every module, those in subfolders included", () => {
+    /*-
+     *  The records file's own module sits in src/lib/util/; a check that
+     *  skipped subfolders would leave it, and the Telegram modules,
+     *  unread.
+     */
+    const names = MODULES.map(([f]) => f);
+    for (const f of [
+      "position-records.js",
+      "telegram.js",
+      "balanced-notifier.js",
+    ])
+      assert.ok(names.includes(f), `${f} is read`);
+  });
+
   it("names a cache's file only through scanCachePath, in the scan-cache folder", () => {
     for (const [file, code] of MODULES) {
       const named = code.match(/["'`][\w$\-{}.]*cache[\w$\-{}.]*\.json["'`]/g);

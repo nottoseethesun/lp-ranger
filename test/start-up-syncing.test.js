@@ -3,14 +3,16 @@
 /**
  * @file test/start-up-syncing.test.js
  * @description The dashboard's Syncing badge while the server starts the
- *   positions saved as managed, one at a time after a launch.
+ *   positions saved as managed, one at a time after a launch, and while it
+ *   imports a wallet.
  *
  *   The server reports the start-up's progress in its status answer
- *   (`startingManagedPositions`, src/server/handle-api-status.js), and while it
- *   does, the badge reads Syncing whatever position is on screen, naming
- *   the progress in its tooltip; the Syncing state is what keeps Manage
- *   and Stop Managing disabled. Once the start-up ends, the badge follows
- *   the position on screen again.
+ *   (`startingManagedPositions`, src/server/handle-api-status.js), and an
+ *   import under way (`importingWallet`). While either is set, the badge
+ *   reads Syncing whatever position is on screen, naming the progress or
+ *   the import in its tooltip; the Syncing state is what keeps Manage and
+ *   Stop Managing disabled. Once both end, the badge follows the position
+ *   on screen again.
  *
  *   Driven end to end: the real status handler builds the answer, and the
  *   page's own poll shows it on its markup from src/client/web/index.html.
@@ -24,11 +26,11 @@ const { learnActiveChain } = require("./helpers/active-chain");
 const { learnUiSettings } = require("./helpers/ui-settings");
 const { indexHtmlDocument } = require("./helpers/index-html");
 const config = require("../src/lib/config");
-const appPhase = require("../src/lib/app-phase");
-const { createApiStatusHandler } = require("../src/server/handle-api-status");
+const appPhase = require("../src/bot/app-phase");
+const { createApiStatusHandler } = require("./_bot-route-adapters");
 const { managedKeys } = require("../src/lib/bot-config-v2");
-const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
-const { moralisEnabledIn } = require("../src/lib/server-moralis");
+const { primaryRouteLabel } = require("../src/bot/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/lib/moralis-key");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -108,10 +110,11 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../src/client/web/dashboard-positions-store.js");
-  data = await import("../src/client/web/dashboard-data.js");
-  poll = await import("../src/client/web/dashboard-data-poll.js");
-  const { wallet } = await import("../src/client/web/dashboard-wallet.js");
+  const store =
+    await import("../src/client/web/js/dashboard-positions-store.js");
+  data = await import("../src/client/web/js/dashboard-data.js");
+  poll = await import("../src/client/web/js/dashboard-data-poll.js");
+  const { wallet } = await import("../src/client/web/js/dashboard-wallet.js");
   wallet.address = WALLET;
   store.posStore.add({
     walletAddress: WALLET,
@@ -158,5 +161,27 @@ describe("while the server starts the saved positions", () => {
     await polled();
     assert.equal(badge().textContent, "Synced");
     assert.equal(data.isSyncComplete(), true);
+  });
+});
+
+describe("while the server imports a wallet", () => {
+  it("reads Syncing, naming the import, and is synced again once it ends", async () => {
+    appPhase.beginWalletImport();
+    await polled();
+    assert.equal(badge().textContent, "Syncing…");
+    assert.equal(badge().title, "Importing the wallet");
+    assert.equal(data.isSyncComplete(), false);
+    appPhase.endWalletImport();
+    await polled();
+    assert.equal(badge().textContent, "Synced");
+    assert.equal(data.isSyncComplete(), true);
+  });
+
+  it("names the start-up's progress once the import's own start-up begins", async () => {
+    appPhase.beginWalletImport();
+    appPhase.beginStartUp(2);
+    await polled();
+    assert.equal(badge().title, "Starting the managed positions: 0 of 2");
+    assert.equal(data.isSyncComplete(), false);
   });
 });

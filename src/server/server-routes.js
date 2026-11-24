@@ -1,113 +1,101 @@
 /**
  * @file src/server/server-routes.js
  * @description
- * Route handler functions extracted from server.js.
- * Exported as `createRouteHandlers(deps)` factory.
+ * Route handler functions extracted from server.js: the wallet, its key
+ * and the api keys, the settings save, Telegram's settings and the held
+ * stop. Whatever they ask of the bot goes through its interface
+ * (src/bot/bot-interface.js). Exported as `createRouteHandlers(deps)`
+ * factory.
  */
 
 "use strict";
 
 const { log } = require("../lib/log");
-const ethers = require("ethers");
 const config = require("../lib/config");
-const sendTx = require("../lib/send-transaction");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
   hasEncryptedKey,
 } = require("../lib/api-key-store");
 const { setApiKey, setServiceEnabled } = require("../lib/api-key-holder");
+const { moralisEnabledIn, pingMoralis } = require("../lib/moralis-key");
 const {
-  moralisEnabledIn,
-  pingMoralis,
-  validateMoralisKey,
   handleApiKeyStatus,
-} = require("../lib/server-moralis");
+  validateMoralisKey,
+} = require("./moralis-key-status");
 const {
   createTelegramHandlers,
 } = require("./telegram-notifications/server-telegram");
-const {
-  saveConfig,
-  compositeKey,
-  readConfigValue,
-} = require("../lib/bot-config-v2");
-const { resolveLiveKey } = require("../lib/server-key-resolver");
-// position-detector used via server-scan.js
-const { createScanHandlers } = require("../lib/server-scan");
-const { createReloadPositionHandler } = require("./server-reload-position");
-const { createRescanPricesHandler } = require("./server-rescan-prices");
-const { createAutoStartManagedPositions } = require("../lib/server-auto-start");
-const { markStopping, refusalToStart } = require("../lib/app-phase");
+const { saveConfig } = require("../lib/bot-config-v2");
 const { createStopWhenAllClear } = require("./stop-when-all-clear");
 const { readShutdownTimings } = require("../lib/shutdown-timing");
-const { createConfigRouteHandler } = require("./server-config-route");
-const {
-  computeQuickDetails: _defaultComputeQuickDetails,
-  computeLifetimeDetails: _defaultComputeLifetimeDetails,
-} = require("./position-details");
-const { emojiId } = require("../lib/logger");
+const { sendBotResult } = require("./bot-result");
 
 /**
  * Create route handler functions.
  * @param {object} deps
- * @param {object} deps.diskConfig
- * @param {object} deps.positionMgr
- * @param {{ current: string|null }}
- *   deps.privateKeyRef
+ * @param {object} deps.bot  The bot's interface (src/bot/bot-interface.js).
+ * @param {object} deps.diskConfig  The loaded bot-config.json: Telegram's
+ *   settings and the Moralis switch are read from it.
  * @param {object} deps.walletManager
  * @param {Function} deps.jsonResponse
  * @param {Function} deps.readJsonBody
- * @param {Function}
- *   deps.getAllPositionBotStates
- * @param {Function}
- *   deps.createPerPositionBotState
- * @param {Function} deps.attachMultiPosDeps
- * @param {Function} deps.updatePositionState
+ * @param {Function|null} [deps.askPassword]  Prompts on the terminal for
+ *   the wallet password (`--headless`), else null.
  * @param {Function} deps.notifyShutdown  Sends the shutdown alert
  *   (src/server/telegram-notifications/server-shutdown.js).
  * @returns {object} Handler function map.
  */
 function createRouteHandlers(deps) {
   const {
+    bot,
     diskConfig,
-    positionMgr,
-    privateKeyRef,
     walletManager,
     jsonResponse,
     readJsonBody,
-    getAllPositionBotStates,
-    createPerPositionBotState,
-    attachMultiPosDeps,
-    updatePositionState,
     askPassword,
     notifyShutdown,
-    /*- position-details functions are overridable from tests so we
-     *  don't exercise a real RPC in unit tests. */
-    computeQuickDetails = _defaultComputeQuickDetails,
-    computeLifetimeDetails = _defaultComputeLifetimeDetails,
   } = deps;
 
   /** Cached wallet password for API key encryption (set on unlock). */
   let _sessionPassword = null;
 
-  // POST /api/config, built by its own module.
-  const _handleApiConfig = createConfigRouteHandler(deps);
+  /** POST /api/config: the bot saves the settings (src/bot/settings-save.js). */
+  async function _handleApiConfig(req, res) {
+    const body = await readJsonBody(req);
+    sendBotResult(jsonResponse, res, bot.saveSettings(body));
+  }
 
-  /*-
-   *  POST /api/wallet: import a wallet, then stop every position and
-   *  start the saved ones again under it. Refused while the start-up is
-   *  under way or the app is stopping (src/lib/app-phase.js), since it would
-   *  start positions then.
+  /**
+   * POST /api/wallet: import a wallet, stop every position, and start the
+   * new wallet's saved ones. Refused while the app may start nothing (a
+   * stop, a start-up or another import under way, src/bot/app-phase.js).
+   * From its first step until its closing start-up has finished, the bot
+   * holds the import as under way: a Manage is refused, and the
+   * dashboard's badge reads Syncing.
    */
   async function _handleWalletImport(req, res) {
-    const refusal = refusalToStart();
+    const refusal = bot.beginWalletImport();
     if (refusal !== null)
       return jsonResponse(res, 409, { ok: false, error: refusal });
+    try {
+      await _importWallet(req, res);
+    } finally {
+      bot.endWalletImport();
+    }
+  }
+
+  /**
+   * The import itself, while the bot holds it as under way: the new
+   * wallet saved, the old one forgotten, the answer sent, then the new
+   * key decrypted and the new wallet's saved positions started.
+   */
+  async function _importWallet(req, res) {
     const body = await readJsonBody(req);
     log.info(
       "[server] Wallet import for %s (running: %d)",
       body.address?.slice(0, 10),
-      positionMgr.runningCount(),
+      bot.runningCount(),
     );
     await walletManager.importWallet({
       address: body.address,
@@ -116,28 +104,26 @@ function createRouteHandlers(deps) {
       source: body.source || "key",
       password: body.password,
     });
-    await positionMgr.stopAll();
     /*-
      *  Nothing of the previous wallet is kept once its positions have
-     *  stopped: its key, its password, and the signer built from the key,
-     *  which would otherwise sign for the new wallet's positions. Cleared
-     *  before the new wallet is decrypted, so a failure there leaves the
-     *  wallet locked rather than the old key in use.
+     *  stopped: its key and the signer built from it (the bot's
+     *  `forgetWallet`), and its password. Cleared before the new wallet
+     *  is decrypted, so a failure there leaves the wallet locked rather
+     *  than the old key in use.
      */
-    privateKeyRef.current = null;
+    await bot.forgetWallet();
     _sessionPassword = null;
-    positionMgr.resetSharedSigner();
     jsonResponse(res, 200, {
       ok: true,
       address: body.address,
     });
     try {
-      privateKeyRef.current = (
-        await walletManager.revealWallet(body.password)
-      ).privateKey;
-      log.info("[bot] Loading key from imported wallet");
+      bot.setPrivateKey(
+        (await walletManager.revealWallet(body.password)).privateKey,
+      );
+      log.info("[server] Loading key from imported wallet");
       _decryptApiKeys(body.password).catch(() => {});
-      await _autoStartManagedPositions();
+      await bot.startManagedPositions();
     } catch (err) {
       log.warn("[server] Key resolution after import:", err.message);
     }
@@ -156,50 +142,13 @@ function createRouteHandlers(deps) {
     });
   }
 
-  // Scan handlers delegated to server-scan.js
-  let _globalScanStatus = "idle";
-  let _globalScanProgress = null;
-  const scanHandlers = createScanHandlers({
-    walletManager,
-    jsonResponse,
-    readJsonBody,
-    getAllPositionBotStates,
-    positionMgr,
-    getGlobalScanStatus: () => ({
-      status: _globalScanStatus,
-      progress: _globalScanProgress,
-    }),
-    setGlobalScanStatus: (s, p) => {
-      _globalScanStatus = s;
-      _globalScanProgress = p || null;
-    },
-  });
-
-  const _handlePositionReload = createReloadPositionHandler({
-    jsonResponse,
-    readJsonBody,
-    getAllPositionBotStates,
-    positionMgr,
-    walletManager,
-    diskConfig,
-  });
-
-  const _handleRescanPrices = createRescanPricesHandler({
-    jsonResponse,
-    readJsonBody,
-    getAllPositionBotStates,
-    positionMgr,
-    walletManager,
-    diskConfig,
-  });
-
   /*- The held stop, made by the first stop request. */
   let _heldStop = null;
 
   /**
    * POST /api/stop-when-all-clear: stop the server once nothing it has
    * under way is left (src/server/stop-when-all-clear.js). From the first
-   * request on, the app is stopping for good (src/lib/app-phase.js), so no
+   * request on, the app is stopping for good (src/bot/app-phase.js), so no
    * position starts and no rebalance, compound or Reload begins; the
    * server exits once each position's move and scan under way has
    * finished. It exits when its connections have closed, or after the
@@ -214,10 +163,11 @@ function createRouteHandlers(deps) {
   function _handleStopWhenAllClear(_req, res, srv) {
     if (_heldStop === null)
       _heldStop = createStopWhenAllClear({
-        markStopping,
+        markStopping: () => bot.markStopping(),
         notifyShutdown,
-        stopAll: () => positionMgr.stopAll(),
-        getStates: getAllPositionBotStates,
+        stopAll: () => bot.stopAll(),
+        underWay: (movesOver) => bot.underWay(movesOver),
+        scansEnded: () => bot.scansEnded(),
         exit: () => {
           srv.close(() => process.exit(0));
           const { exitTimeoutMs } = readShutdownTimings();
@@ -226,149 +176,6 @@ function createRouteHandlers(deps) {
       });
     const { waitingFor } = _heldStop.request();
     jsonResponse(res, 200, { ok: true, stopping: true, waitingFor });
-  }
-
-  async function _handlePositionDetails(req, res) {
-    const body = await readJsonBody(req);
-    if (!body.tokenId || !body.token0 || !body.token1 || !body.fee)
-      return jsonResponse(res, 400, {
-        ok: false,
-        error: "Missing tokenId, token0, token1, or fee",
-      });
-    log.info(
-      "[server] Position selected: NFT #%s %s",
-      body.tokenId,
-      emojiId(String(body.tokenId)),
-    );
-    try {
-      const prov = sendTx.getManagedReadProvider();
-      body.walletAddress =
-        body.walletAddress || walletManager.getAddress() || "";
-      body.contractAddress = body.contractAddress || config.POSITION_MANAGER;
-      jsonResponse(
-        res,
-        200,
-        await computeQuickDetails(
-          prov,
-          ethers,
-          body,
-          diskConfig,
-          privateKeyRef.current,
-        ),
-      );
-    } catch (err) {
-      log.error("[server] Position details error:", err.message);
-      jsonResponse(res, 500, {
-        ok: false,
-        error: err.message,
-      });
-    }
-  }
-
-  /** Sync lifetime result into the position's bot state for poll access. */
-  function _syncLifetimeState(pk, result) {
-    if (!pk) return;
-    const states = getAllPositionBotStates();
-    const s = states.get(pk) || {};
-    // For managed positions the bot loop owns the sync flag — setting it
-    // here would cause a "Done Syncing" → "Syncing…" flash when the bot's
-    // own scan starts moments later.
-    const isManaged = diskConfig.positions[pk]?.status === "running";
-    if (!isManaged) s.rebalanceScanComplete = true;
-    /*-
-     *  The snapshot belongs to the bot on a managed position, and this
-     *  route can still be asked about one: the dashboard suppresses its
-     *  fetch only once a poll has landed, so a page load fires it before
-     *  the first poll. What this route builds covers what an UNMANAGED
-     *  position shows — the Current panel's two figures — and writing it
-     *  over the bot's would drop the Lifetime panel's figures until the
-     *  next poll rebuilt them, which is one `CHECK_INTERVAL_SEC` away.
-     */
-    const snapshot = result.pnlSnapshot;
-    if (!isManaged && snapshot !== undefined && snapshot !== null)
-      s.pnlSnapshot = snapshot;
-    if (result.entryValue) s.entryValue = result.entryValue;
-    const bl = diskConfig.positions[pk]?.hodlBaseline;
-    if (bl) s.hodlBaseline = bl;
-    if (!states.has(pk)) states.set(pk, s);
-    /*- Note: `lifetimeScanComplete` is intentionally NOT set here.
-     *  Unmanaged positions don't render a Lifetime panel (the placeholder
-     *  "Click Manage to get reporting of Lifetime values." takes its
-     *  place), so the flag is structurally irrelevant on their state.
-     *  The dashboard's `_syncStatus` gates on the flag only when the
-     *  active position is managed. */
-    const _sn = s.pnlSnapshot;
-    log.info(
-      "[server] _syncLifetimeState %s: curFees=%s gas=%s comp=%s residual=%s entry=%s bl=%s",
-      pk.split("-").pop(),
-      _sn?.currentFeesUsd,
-      _sn?.totalGas,
-      _sn?.totalCompoundedUsd,
-      _sn?.residualValueUsd,
-      s.entryValue || "none",
-      !!s.hodlBaseline,
-    );
-  }
-
-  async function _handlePositionLifetime(req, res) {
-    const body = await readJsonBody(req);
-    if (!body.tokenId || !body.token0 || !body.token1 || !body.fee)
-      return jsonResponse(res, 400, {
-        ok: false,
-        error: "Missing fields",
-      });
-    try {
-      // Trigger lazy rebalance history scan
-      // for managed positions (fire-and-forget)
-      for (const [, bs] of getAllPositionBotStates()) {
-        const ap = bs.activePosition;
-        if (
-          ap &&
-          String(ap.tokenId) === String(body.tokenId) &&
-          bs._triggerScan
-        ) {
-          bs._triggerScan();
-          break;
-        }
-      }
-      const prov = sendTx.getManagedReadProvider();
-      body.walletAddress =
-        body.walletAddress || walletManager.getAddress() || "";
-      body.contractAddress = body.contractAddress || config.POSITION_MANAGER;
-      const result = await computeLifetimeDetails(
-        prov,
-        ethers,
-        body,
-        diskConfig,
-      );
-      // Mark scan complete in the position's server state so the poll
-      // cycle reports it — same path as managed positions.  This is the
-      // ONLY way the dashboard detects "Synced" (no separate client flag).
-      const pk = compositeKey(
-        config.CHAIN_NAME,
-        body.walletAddress,
-        body.contractAddress,
-        body.tokenId,
-      );
-      /*- Resolve to the LIVE composite key.  computeLifetimeDetails
-       *  awaits multi-second on-chain event scans; during that window
-       *  a parallel rebalance can migrate the key, leaving the stale
-       *  `pk` pointing at a dead tokenId.  _syncLifetimeState would
-       *  then create or update a phantom bot-state entry under that
-       *  stale key (because `if (!states.has(pk)) states.set(pk, s)`
-       *  inside it creates the entry on first access). */
-      const livePk = resolveLiveKey(positionMgr, pk, (k) =>
-        getAllPositionBotStates().get(k),
-      );
-      _syncLifetimeState(livePk, result);
-      jsonResponse(res, 200, result);
-    } catch (err) {
-      log.error("[server] Lifetime details error:", err.message);
-      jsonResponse(res, 500, {
-        ok: false,
-        error: err.message,
-      });
-    }
   }
 
   let _starting = false;
@@ -433,7 +240,7 @@ function createRouteHandlers(deps) {
         else log.info("[server] No wallet key" + " — dashboard-only mode.");
         return;
       }
-      privateKeyRef.current = pk;
+      bot.setPrivateKey(pk);
       if (password) {
         _sessionPassword = password;
         _decryptApiKeys(password).catch(() => {});
@@ -442,27 +249,11 @@ function createRouteHandlers(deps) {
           "[server] Wallet key loaded without password — encrypted Telegram/Moralis keys (if any) will NOT be decrypted this session. Unlock via dashboard to enable notifications.",
         );
       }
-      await _autoStartManagedPositions();
+      await bot.startManagedPositions();
     } finally {
       _starting = false;
     }
   }
-
-  /**
-   * Start bot loops for all managed positions with status 'running'.
-   * Delegated to `./server-auto-start` so this file stays under max-lines.
-   */
-  const _autoStartManagedPositions = createAutoStartManagedPositions({
-    diskConfig,
-    positionMgr,
-    privateKeyRef,
-    walletManager,
-    getAllPositionBotStates,
-    createPerPositionBotState,
-    attachMultiPosDeps,
-    updatePositionState,
-    readConfigValue,
-  });
 
   /** Encrypt and save a third-party API key. */
   async function _handleApiKeySave(req, res) {
@@ -488,7 +279,7 @@ function createRouteHandlers(deps) {
     }
   }
 
-  /** Route wrapper — delegates to server-moralis.js. */
+  /** Route wrapper — delegates to src/server/moralis-key-status.js. */
   async function _handleApiKeyStatus(_, res) {
     return handleApiKeyStatus(_, res, jsonResponse);
   }
@@ -527,21 +318,8 @@ function createRouteHandlers(deps) {
     _handleApiConfig,
     _handleWalletImport,
     _handleWalletReveal,
-    _resolveTokenSymbol: scanHandlers.resolveTokenSymbol,
-    _handlePositionsScan: scanHandlers._handlePositionsScan,
-    _handlePositionsRefresh: scanHandlers._handlePositionsRefresh,
-    getPositionScanStatus: () => ({
-      status: _globalScanStatus,
-      progress: _globalScanProgress,
-    }),
     _handleStopWhenAllClear,
-    _handlePositionDetails,
-    _handlePositionLifetime,
-    _handlePositionScanCancel: scanHandlers._handlePositionScanCancel,
-    _handlePositionReload,
-    _handleRescanPrices,
     _tryResolveKey,
-    _autoStartManagedPositions,
     _handleApiKeySave,
     _handleApiKeyStatus,
     _decryptApiKeys,

@@ -108,7 +108,7 @@
 
 "use strict";
 
-const cliHelp = require("./lib/cli-help");
+const cliHelp = require("./server/server-cli-help");
 
 /*- `--help` answers and leaves, ahead of every other line in this file.
  *  It starts no server, so it must not open the operator's log file and
@@ -134,11 +134,18 @@ require("./lib/boot-log-file").bootLogFile();
  */
 require("./lib/settings-check").refuseToStartOnBadSettings();
 
+/*-
+ *  The dashboard settings, read now, just checked, and kept for the life
+ *  of the process (src/lib/ui-defaults.js), so an edit to the operator's
+ *  copy takes effect at the next restart, where the check above refuses
+ *  a bad value.
+ */
+require("./lib/ui-defaults").readUiDefaults();
+
 const { log } = require("./lib/log");
 const { resetErrorLog } = require("./lib/error-log");
-const { writePidFile } = require("./lib/server-pid");
+const { writePidFile } = require("./server/server-pid");
 const { readShutdownTimings } = require("./lib/shutdown-timing");
-const { markStopping } = require("./lib/app-phase");
 // First statement of a real run — `--help` has already exited above, so
 // nothing logs before this and it always tops the log.  Black on light gray (inverse of
 // bot.js), rocket emoji before and after "Started."  ANSI: 30=black fg,
@@ -146,8 +153,6 @@ const { markStopping } = require("./lib/app-phase");
 log.info(
   "\x1b[30;47m[lp-ranger server] \uD83D\uDE80 Started. \uD83D\uDE80\x1b[0m",
 );
-
-const { emojiId } = require("./lib/logger");
 
 const installServerErrorGuard = require("./server/server-error-guard");
 
@@ -161,21 +166,15 @@ const config = require("./lib/config");
 const { handleCors } = require("./server/server-cors");
 const { handleCsrf } = require("./server/server-csrf");
 const walletManager = require("./lib/wallet-manager");
-const { getPositionHistory } = require("./lib/position-history");
-const { createRebalanceLock } = require("./lib/rebalance-lock");
-const { createPositionManager } = require("./lib/position-manager");
-const botRecorder = require("./lib/bot-recorder");
+const { bigIntReplacer } = require("./lib/bigint-json");
 const { loadConfig, managedKeys } = require("./lib/bot-config-v2");
 const { parseCompositeKey } = require("./lib/composite-key");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
-const { buildGasStatusPayload } = require("./lib/gas-monitor");
-const { actualGasCostUsd } = require("./lib/bot-pnl-updater");
 const { userConfigurableRoutes } = require("./server/user-configurable-routes");
 const { createPauseInfra } = require("./server/server-pause");
-const { readPriceCacheSettings } = require("./lib/price-fetcher-gate");
 const { createUnlockHandler } = require("./server/server-unlock");
 const { logVersionBanner } = require("./server/build-info");
-const sendTx = require("./lib/send-transaction");
+const { createBot } = require("./bot/bot-interface");
 
 /*-
  * First log: version/commit banner for support triage. Logged before
@@ -188,31 +187,6 @@ logVersionBanner("[server]");
 // Idempotent: a no-op after the first successful run. See
 // src/lib/migrate-app-config.js and the app-config/ section of this file.
 migrateAppConfig();
-
-// ── RPC provider singleton ─────────────────────────────
-// Initialise the send-transaction module's primary + fallback providers
-// before any route handler can run.  Server-side reads (server-scan,
-// server-routes, position-details, etc.) consult sendTx.getManagedReadProvider()
-// to follow the same active-RPC selection as TX submission, so a sustained
-// primary outage fails over uniformly across reads and writes.  Uses the
-// env-var-aware RPC_URLS so operators can override the chain-default
-// endpoints via .env.
-sendTx.init({ urls: config.RPC_URLS });
-
-// ── Position manager (module-level) ─────────────────
-
-const _rebalanceLock = createRebalanceLock();
-const _positionMgr = createPositionManager({
-  rebalanceLock: _rebalanceLock,
-});
-
-/*- Seed today's per-pool daily rebalance counts from the on-disk
- *  rebalance log so a restart mid-day does not silently reset the
- *  daily cap (which would otherwise allow MAX_REBALANCES_PER_DAY ×
- *  restart-count rebalances against the intended cap). */
-const _seeded = _positionMgr.seedPoolDailyCounts(botRecorder.readLog());
-if (_seeded > 0)
-  log.info("[server] Seeded %d pool rebalance(s) for today's cap", _seeded);
 
 // ── MIME type map ────────────────────────────────────
 
@@ -233,11 +207,16 @@ const MIME = {
 /** Bot config loaded from disk. */
 const _diskConfig = loadConfig();
 
+// ── The bot ─────────────────────────────────────────
 /*-
- *  The price library's three cache lifetimes, read once as the server
- *  starts (src/lib/price-fetcher-gate.js).
+ *  Built through its interface (src/bot/bot-interface.js), the one module
+ *  of the bot this server loads: it puts the rpc endpoints into service
+ *  before any route can run, reads the price library's cache lifetimes,
+ *  and seeds today's per-pool rebalance counts from the rebalance log.
+ *  Every route below asks it for what it needs, through the same
+ *  interface, and the server holds none of its state.
  */
-readPriceCacheSettings();
+const _bot = createBot({ diskConfig: _diskConfig, walletManager });
 
 const _managedAtStartup = managedKeys(_diskConfig);
 if (_managedAtStartup.length > 0)
@@ -364,13 +343,13 @@ function serveStatic(urlPath, res) {
  * text, every digit kept, since the format has none. A position's bot
  * state, which the status answer sends whole, keeps some, such as the
  * wallet's readings the deposit count compares. The rule is the one the
- * rebalance log is written by (`_bigIntReplacer`, src/lib/bot-recorder.js).
+ * rebalance log is written by (src/lib/bigint-json.js).
  * @param {http.ServerResponse} res
  * @param {number}              status
  * @param {object}              body
  */
 function jsonResponse(res, status, body) {
-  const payload = JSON.stringify(body, botRecorder._bigIntReplacer, 2);
+  const payload = JSON.stringify(body, bigIntReplacer, 2);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(payload),
@@ -398,70 +377,29 @@ function readJsonBody(req) {
   });
 }
 
-// ── Mutable private key ref ─────────────────────────
-
-/**
- * Resolved private key — set once during bot start,
- * shared across all loops.  Passed by reference so
- * route handlers in server-routes.js can read/write.
- * @type {{ current: string|null }}
- */
-const _privateKeyRef = { current: null };
-
 // ── Route handlers (delegated to server-routes) ─────
-
-const {
-  getAllPositionBotStates,
-  createPerPositionBotState,
-  attachMultiPosDeps,
-  buildStatusPositions,
-  updatePositionState,
-  createPositionRoutes,
-} = require("./lib/server-positions");
 
 const { createRouteHandlers } = require("./server/server-routes");
 const { getLpProviderDisplayName } = require("./lib/lp-providers");
 const { createApiStatusHandler } = require("./server/handle-api-status");
 const { createPositionStateRoutes } = require("./server/position-state-routes");
-const { primaryRouteLabel } = require("./lib/rebalancer-swap");
-const { moralisEnabledIn } = require("./lib/server-moralis");
-const { positionTag } = require("./lib/position-answer-tag");
-const { isAscanRunningOnThisPosition } = require("./lib/scan-state");
-const { scanRunningRefusal } = require("./lib/scan-refusal");
-
-/**
- * The answer refusing a Rebalance Now or Compound Now while a scan is
- * running on its position (src/lib/scan-state.js). `scanInProgress` lets the
- * dashboard wait for the scan in a dialog, then offer the move again.
- * @param {string} move  "rebalance" or "compound".
- * @param {string} action  The button: "Rebalance Now" or "Compound Now".
- * @param {string} positionKey  The position the request named.
- * @returns {object}
- */
-function _scanRunningAnswer(move, action, positionKey) {
-  return {
-    ok: false,
-    scanInProgress: true,
-    error: scanRunningRefusal(move, `${action} waits until the read finishes`),
-    ...positionTag(positionKey),
-  };
-}
+const {
+  createPositionRoutes,
+  createPositionHistoryRoute,
+  historyTokenId,
+} = require("./server/position-routes");
+const { moralisEnabledIn } = require("./lib/moralis-key");
 const { askPassword: _askPassword } = require("./lib/ask-password");
 const {
   notifyShutdown: _notifyShutdown,
 } = require("./server/telegram-notifications/server-shutdown");
 
 const _routeHandlers = createRouteHandlers({
+  bot: _bot,
   diskConfig: _diskConfig,
-  positionMgr: _positionMgr,
-  privateKeyRef: _privateKeyRef,
   walletManager,
   jsonResponse,
   readJsonBody,
-  getAllPositionBotStates,
-  createPerPositionBotState,
-  attachMultiPosDeps,
-  updatePositionState,
   askPassword: _headless ? _askPassword : null,
   notifyShutdown: _notifyShutdown,
 });
@@ -470,17 +408,18 @@ const _routeHandlers = createRouteHandlers({
 // Server-side tracker + the two pause/unpause endpoints.  See
 // docs/architecture.md "Idle-Driven Price-Lookup Pause".
 
-const _pauseInfra = createPauseInfra({ jsonResponse, readJsonBody });
+const _pauseInfra = createPauseInfra({ bot: _bot, jsonResponse, readJsonBody });
 
-// ── Multi-position management routes ────────────────
+// ── Position routes, each answered by the bot ───────
 
 const _positionRoutes = createPositionRoutes({
-  diskConfig: _diskConfig,
-  positionMgr: _positionMgr,
-  walletManager,
-  getPrivateKey: () => _privateKeyRef.current,
+  bot: _bot,
   jsonResponse,
   readJsonBody,
+});
+const _positionHistory = createPositionHistoryRoute({
+  bot: _bot,
+  jsonResponse,
 });
 
 // ── Route table ─────────────────────────────────────
@@ -495,28 +434,21 @@ const _routes = {
   "GET /api/status": createApiStatusHandler({
     config,
     diskConfig: _diskConfig,
-    positionMgr: _positionMgr,
     walletManager,
-    routeHandlers: _routeHandlers,
-    buildStatusPositions,
-    buildGasStatusPayload,
-    actualGasCostUsd,
+    bot: _bot,
     getLpProviderDisplayName,
-    managedKeys,
-    primaryRouteLabel,
     moralisEnabledIn,
     jsonResponse,
   }),
   "GET /api/wallet/status": (_, res) =>
     jsonResponse(res, 200, {
       ...walletManager.getStatus(),
-      locked: walletManager.hasWallet() && !_privateKeyRef.current,
+      locked: walletManager.hasWallet() && !_bot.hasPrivateKey(),
     }),
   "POST /api/wallet/unlock": createUnlockHandler({
     walletManager,
-    privateKeyRef: _privateKeyRef,
+    bot: _bot,
     decryptApiKeys: (pw) => _routeHandlers._decryptApiKeys(pw),
-    startManagedPositions: () => _routeHandlers._autoStartManagedPositions(),
     jsonResponse,
     readJsonBody,
   }),
@@ -536,136 +468,12 @@ const _routes = {
   "POST /api/telegram/test": _routeHandlers._tgHandlers.handleTelegramTest,
   "POST /api/wallet": _routeHandlers._handleWalletImport,
   "POST /api/wallet/reveal": _routeHandlers._handleWalletReveal,
-  "POST /api/positions/scan": _routeHandlers._handlePositionsScan,
-  "POST /api/positions/refresh": _routeHandlers._handlePositionsRefresh,
-  "POST /api/rebalance": async (req, res) => {
-    let body = {};
-    try {
-      body = await readJsonBody(req);
-    } catch {
-      /* empty body OK */
-    }
-    if (!body.positionKey) {
-      jsonResponse(res, 400, {
-        ok: false,
-        error: "Missing positionKey",
-      });
-      return;
-    }
-    const state = getAllPositionBotStates().get(body.positionKey);
-    if (!state || !state.running) {
-      jsonResponse(res, 409, {
-        ok: false,
-        error: "Position not running or syncing",
-        ...positionTag(body.positionKey),
-      });
-      return;
-    }
-    /*- No Rebalance Now while a scan is running on the position: the
-     *  scan's end would clear the rescan request the rebalance makes, and
-     *  leave its deposits and Activity Log figures out until the next
-     *  start (src/lib/scan-state.js). */
-    if (isAscanRunningOnThisPosition(state)) {
-      jsonResponse(
-        res,
-        409,
-        _scanRunningAnswer("rebalance", "Rebalance Now", body.positionKey),
-      );
-      return;
-    }
-    const tokenId = body.positionKey.split("-").pop();
-    /*- The client no longer sends `customRangeWidthPct` in the body.
-     *  Range-width override is persistent per-position config
-     *  (`rebalanceRangeWidthPct` POSITION_KEY) read by the bot loop via
-     *  `deps._getConfig` in src/lib/bot-cycle-opts.js.  Client sets it via
-     *  the Range Width row in Bot Settings → POST /api/config. */
-    log.info(
-      "[server] Manual rebalance for %s %s",
-      body.positionKey,
-      emojiId(tokenId),
-    );
-    // Asked for: no scan starts until it is made (src/lib/scan-state.js).
-    state.forceRebalance = true;
-    state.rebalanceInProgress = true;
-    state.rebalancePaused = false;
-    state.rebalanceError = null;
-    /*- Wake the poll loop so the flag gets picked up on the next
-     *  tick instead of waiting for the timer-driven poll (up to
-     *  CHECK_INTERVAL_SEC ≈ 5 min at default).  See bot-loop.js
-     *  `botState._kickPoll` for the shape. */
-    state._kickPoll?.();
-    jsonResponse(res, 200, {
-      ok: true,
-      message: "Rebalance requested",
-      ...positionTag(body.positionKey),
-    });
-  },
-  "POST /api/compound": async (req, res) => {
-    let body = {};
-    try {
-      body = await readJsonBody(req);
-    } catch {
-      /* empty body OK */
-    }
-    if (!body.positionKey) {
-      jsonResponse(res, 400, {
-        ok: false,
-        error: "Missing positionKey",
-      });
-      return;
-    }
-    const state = getAllPositionBotStates().get(body.positionKey);
-    if (!state || !state.running) {
-      jsonResponse(res, 409, {
-        ok: false,
-        error: "Position not running or syncing",
-      });
-      return;
-    }
-    /*- No Compound Now while a scan is running on the position: the scan
-     *  rebuilds the compound list and its totals from a chain read begun
-     *  before the compound, so Fees Compounded would leave it out until
-     *  the next rebuild (src/lib/scan-state.js). */
-    if (isAscanRunningOnThisPosition(state)) {
-      jsonResponse(
-        res,
-        409,
-        _scanRunningAnswer("compound", "Compound Now", body.positionKey),
-      );
-      return;
-    }
-    const tokenId = body.positionKey.split("-").pop();
-    log.info(
-      "[server] Manual compound for %s %s",
-      body.positionKey,
-      emojiId(tokenId),
-    );
-    // Asked for: no scan starts until it is made (src/lib/scan-state.js).
-    state.forceCompound = true;
-    /*- Same reasoning as POST /api/rebalance — kick the poll so the
-     *  manual Compound Now doesn't wait for the next scheduled poll. */
-    state._kickPoll?.();
-    jsonResponse(res, 200, {
-      ok: true,
-      message: "Compound requested",
-    });
-  },
-  "POST /api/position/details": _routeHandlers._handlePositionDetails,
-  "POST /api/position/lifetime": _routeHandlers._handlePositionLifetime,
-  "POST /api/position/scan-cancel": _routeHandlers._handlePositionScanCancel,
-  "POST /api/position/reload": _routeHandlers._handlePositionReload,
-  "POST /api/position/rescan-prices": _routeHandlers._handleRescanPrices,
   "POST /api/stop-when-all-clear": (req, res) =>
     _routeHandlers._handleStopWhenAllClear(req, res, server),
 
-  // ── Multi-position management ─────────────────
+  // ── Positions, each answered by the bot ───────
   ..._positionRoutes,
-  ...createPositionStateRoutes({
-    positionMgr: _positionMgr,
-    diskConfig: _diskConfig,
-    managedKeys,
-    jsonResponse,
-  }),
+  ...createPositionStateRoutes({ bot: _bot, jsonResponse }),
 
   // ── Idle-driven price-lookup pause endpoints ──
   ..._pauseInfra.routes,
@@ -707,28 +515,9 @@ async function handleRequest(req, res) {
   }
 
   // ── Dynamic GET routes ────────────────────────
-  if (
-    method === "GET" &&
-    url.startsWith("/api/position/") &&
-    url.endsWith("/history")
-  ) {
-    const tokenId = url.slice("/api/position/".length, -"/history".length);
-    // Find position state matching this tokenId
-    let posState = null;
-    for (const [, s] of getAllPositionBotStates()) {
-      if (s.activePosition && String(s.activePosition.tokenId) === tokenId) {
-        posState = s;
-        break;
-      }
-    }
-    jsonResponse(
-      res,
-      200,
-      await getPositionHistory(tokenId, {
-        rebalanceEvents: posState?.rebalanceEvents,
-        activePosition: posState?.activePosition,
-      }),
-    );
+  const historyOf = historyTokenId(method, url);
+  if (historyOf !== null) {
+    await _positionHistory(historyOf, res);
     return;
   }
 
@@ -847,7 +636,7 @@ if (require.main === module) {
       /*-
        *  Server is up: record the PID so `npm stop` (scripts/stop.js) can send
        *  SIGTERM for the same clean shutdown as Ctrl+C. The file is removed
-       *  when this process exits, however it exits (src/lib/server-pid.js).
+       *  when this process exits, however it exits (src/server/server-pid.js).
        *
        *  Both come before the wallet key is resolved, not after it.
        *  Resolving it can wait on a terminal prompt, and then starts the
@@ -857,11 +646,11 @@ if (require.main === module) {
        */
       writePidFile();
       const shutdown = () => {
-        markStopping();
+        _bot.markStopping();
         log.info("\n[server] Shutting down\u2026");
         _notifyShutdown();
         _pauseInfra.stop();
-        _positionMgr.stopAll().catch(() => {});
+        _bot.stopAll().catch(() => {});
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(0), exitTimeoutMs);
       };
@@ -880,5 +669,4 @@ module.exports = {
   stop,
   handleRequest,
   _diskConfig,
-  _positionMgr,
 };

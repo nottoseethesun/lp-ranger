@@ -35,7 +35,7 @@ function mockTracker(closedEpochs, liveEpoch) {
 }
 
 describe("_consumeRebuildRequest — the one-shot request", () => {
-  const { _consumeRebuildRequest } = require("../src/lib/epoch-reconstructor");
+  const { _consumeRebuildRequest } = require("../src/bot/epoch-reconstructor");
 
   it("does nothing when no rebuild was requested", () => {
     const tracker = mockTracker([{ id: 1 }, { id: 2 }]);
@@ -179,13 +179,13 @@ describe("reconstructEpochs — forced rebuild after a reload", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
-    ({ reconstructEpochs } = require("../src/lib/epoch-reconstructor"));
+    delete require.cache[require.resolve("../src/bot/epoch-reconstructor")];
+    ({ reconstructEpochs } = require("../src/bot/epoch-reconstructor"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/lib/epoch-reconstructor")];
+    delete require.cache[require.resolve("../src/bot/epoch-reconstructor")];
   });
 
   /** Reset per-test observation state. */
@@ -298,7 +298,7 @@ describe("reconstructEpochs — forced rebuild after a reload", () => {
 });
 
 describe("_resetBotState — what Reload asks for", () => {
-  const { _resetBotState } = require("../src/server/server-reload-position");
+  const { _resetBotState } = require("../src/bot/reload-position");
 
   it("requests an epoch rebuild", () => {
     const state = {};

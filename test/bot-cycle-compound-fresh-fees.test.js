@@ -66,11 +66,11 @@ function loadWithProbe(prices) {
     };
   };
   try {
-    delete require.cache[require.resolve("../src/lib/bot-cycle-compound")];
-    const mod = require("../src/lib/bot-cycle-compound");
+    delete require.cache[require.resolve("../src/bot/bot-cycle-compound")];
+    const mod = require("../src/bot/bot-cycle-compound");
     /*- Evicted again so the stubbed copy is not handed to whoever
      *  requires this module next. */
-    delete require.cache[require.resolve("../src/lib/bot-cycle-compound")];
+    delete require.cache[require.resolve("../src/bot/bot-cycle-compound")];
     return { mod, probe };
   } finally {
     Module.prototype.require = orig;

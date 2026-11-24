@@ -15,7 +15,7 @@ modified: 2026-10-24T05:23:58.318Z
   `[csrf] retry succeeded for <METHOD> <url>` and clears the entry.
   Mirrors the existing `[csrf] 403 <METHOD> <url> — <reason>` warn so
   operators can confirm silent recovery.
-- `src/client/web/dashboard-helpers.js` `fetchWithCsrf` now also retries on
+- `src/client/web/js/dashboard-helpers.js` `fetchWithCsrf` now also retries on
   `Unknown CSRF token` (same root cause as `Expired` — token aged
   past TTL AND already pruned from `_issued` because pruning runs
   only when `_issued.size >= 500`).  Closes the gap that left

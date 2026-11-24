@@ -8,9 +8,12 @@
  *   They are ui-defaults_non-layout_for-server-up-scenario.json with an
  *   operator's copy on top, each value held to its rule: true or false for
  *   an on/off setting, the timer rule for one the page turns into a timer
- *   delay, and its range in setting-bounds.json for any other. Read at
- *   startup, strictly, a value outside its rule stops the app; any other
- *   read keeps the shipped value in its place.
+ *   delay, and its range in setting-bounds.json for any other. The app's
+ *   read keeps the shipped value in place of one outside its rule; the
+ *   startup check has already refused it (src/lib/settings-check.js,
+ *   test/settings-check.test.js), and both programs run that check first
+ *   (test/settings-checked-first.test.js). The strict read, which no part
+ *   of the app calls, refuses one instead.
  *
  *   The operator's copy is written to a temporary directory of this
  *   file's own, never to app-config/user-configurable/. The loader reads
@@ -36,9 +39,9 @@ const {
 const {
   readUiDefaults,
   readUiDefaultsStrict,
-  handleUiDefaults,
   _resetMemoForTests,
 } = require("../src/lib/ui-defaults");
+const { handleUiDefaults } = require("../src/server/user-configurable-routes");
 
 const SHIPPED = loadShippedDefaults(_FILE);
 

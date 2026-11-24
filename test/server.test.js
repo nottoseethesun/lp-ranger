@@ -18,9 +18,9 @@ const { start, stop } = require("../src/server");
 const {
   isPaused,
   _resetPauseStateForTests,
-} = require("../src/lib/price-fetcher-gate");
-const { getAllPositionBotStates } = require("../src/lib/server-positions");
-const { isItOkayToStartAscan } = require("../src/lib/scan-state");
+} = require("../src/bot/price-fetcher-gate");
+const { getAllPositionBotStates } = require("../src/bot/position-states");
+const { isItOkayToStartAscan } = require("../src/bot/scan-state");
 
 // Production file protection is handled globally by scripts/check.sh
 // (backup before tests, restore after). No per-test snapshot needed.
@@ -121,7 +121,7 @@ describe("server", () => {
     /*-
      *  Each position's entry carries its whole bot state, and json has no
      *  BigInt. The deposit count keeps the wallet's last reading of the
-     *  pool's two coins there as BigInts (src/lib/deposit-count.js), so the
+     *  pool's two coins there as BigInts (src/bot/deposit-count.js), so the
      *  answer sends each as its decimal text, every digit kept.
      */
     const key =
@@ -296,7 +296,7 @@ describe("server", () => {
     /*-
      *  A position no bot is running is refused 409, and the refusal
      *  names the position, as every answer about one does
-     *  (src/lib/position-answer-tag.js).
+     *  (src/bot/position-answer-tag.js).
      */
     const key =
       "pulsechain-0x1111111111111111111111111111111111111111-" +
@@ -319,7 +319,7 @@ describe("server", () => {
     it(`POST ${path} refuses while a scan is running on the position`, async () => {
       /*-
        *  A move made during its position's scan would be left out of the
-       *  figures the scan rebuilds (src/lib/scan-state.js). The refusal says
+       *  figures the scan rebuilds (src/bot/scan-state.js). The refusal says
        *  so, names the position, is marked for the dialog to wait on,
        *  and asks nothing of the bot.
        */

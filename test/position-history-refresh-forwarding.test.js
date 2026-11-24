@@ -118,13 +118,13 @@ before(() => {
     }
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/lib/position-history")];
-  ({ getPositionHistory } = require("../src/lib/position-history"));
+  delete require.cache[require.resolve("../src/bot/position-history")];
+  ({ getPositionHistory } = require("../src/bot/position-history"));
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/lib/position-history")];
+  delete require.cache[require.resolve("../src/bot/position-history")];
   config.LOG_FILE = _origLogFile;
   fs.rmSync(_tmpDir, { recursive: true, force: true });
 });

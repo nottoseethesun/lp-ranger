@@ -31,7 +31,7 @@ the user exclude information that is not of concern — Unmanaged should
 - **Lifetime is not supported for Unmanaged positions.** The Lifetime
   panel is hidden behind the placeholder "Click “Manage” to get reporting
   of Lifetime values." (`lifetimeVisible` in
-  `src/client/web/dashboard-manage-ui.js`, true only while the position runs).
+  `src/client/web/js/dashboard-manage-ui.js`, true only while the position runs).
   Never describe an Unmanaged position's behavior in terms of the
   Lifetime panel. The server's `/api/position/lifetime` request still
   runs for Unmanaged positions: it fills the Per-Day P&L and Rebalance

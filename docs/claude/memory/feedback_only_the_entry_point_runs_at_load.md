@@ -11,7 +11,7 @@ metadata:
 The only code that runs when a file is loaded is in the program's one
 entry point, the file the program starts from: `src/server.js`,
 `src/bot.js`, `src/telegram-send.js`, a script under `scripts/`, a
-tool's `index.js` under `util/`, `src/client/web/dashboard-init.js`.
+tool's `index.js` under `util/`, `src/client/web/js/dashboard-init.js`.
 Every other module's top level only
 declares: imports, constants, functions, classes and exports. Reading a
 file, `.env`, `process.env` or the command line, writing anything,
@@ -22,7 +22,7 @@ functions all wait until the entry point's code calls them.
 projects, that the only spontaneous execution at load in an app should
 occur at one single entry point for the app. That is basic software
 engineering. If that rule had been followed, we wouldn't be facing
-this." The case: `src/lib/price-fetcher-gate.js` read bot-config.json in a
+this." The case: `src/bot/price-fetcher-gate.js` read bot-config.json in a
 statement outside any function (since f7b49dd, 2026-05-01). Every
 program that loaded the price library ran that read, and the read copies
 the settings files over their backups, so a tool under `util/` replaced

@@ -15,7 +15,30 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createUnlockHandler } = require("../src/server/server-unlock");
+const {
+  createUnlockHandler: unlockRouteOver,
+} = require("../src/server/server-unlock");
+const { botOperations } = require("../src/bot/bot-interface");
+
+/**
+ * The unlock route over the bot's own operations (src/bot/bot-interface.js),
+ * built over the test's `privateKeyRef`, so the key it holds and whether
+ * it holds one are the interface's real `setPrivateKey` and
+ * `hasPrivateKey`, the guard against a second start-up. Only the
+ * start-up itself is the test's `startManagedPositions`, which counts.
+ */
+const createUnlockHandler = (deps) => {
+  const ops = botOperations({
+    diskConfig: { global: {}, positions: {} },
+    walletManager: deps.walletManager,
+    positionMgr: {},
+    privateKeyRef: deps.privateKeyRef,
+  });
+  return unlockRouteOver({
+    ...deps,
+    bot: { ...ops, startManagedPositions: () => deps.startManagedPositions() },
+  });
+};
 
 const KEY = "0x" + "11".repeat(32);
 

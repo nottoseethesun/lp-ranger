@@ -43,7 +43,7 @@ let PARAM_HELP;
 
 before(async () => {
   const { buildParamHelp } =
-    await import("../src/client/web/param-help-content.js");
+    await import("../src/client/web/js/param-help-content.js");
   PARAM_HELP = buildParamHelp(HELP_FIGURES);
 });
 
@@ -208,7 +208,7 @@ describe("defaults and timings the help quotes", () => {
   it("Approval Multiple states its default, as the install resolves it", async () => {
     // Moved off the shipped value, so a literal in the copy cannot pass.
     const { buildParamHelp } =
-      await import("../src/client/web/param-help-content.js");
+      await import("../src/client/web/js/param-help-content.js");
     const moved = buildParamHelp({
       ...HELP_FIGURES,
       approvalMultipleDefault: String(BOT.approvalMultiple + 17),

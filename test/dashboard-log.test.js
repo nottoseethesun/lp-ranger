@@ -1,7 +1,7 @@
 /**
  * @file test/dashboard-log.test.js
  * @description Tests for the browser-side opt-in logger in
- * `src/client/web/dashboard-log.js`.  Covers the rules introduced to fix the
+ * `src/client/web/js/dashboard-log.js`.  Covers the rules introduced to fix the
  * user-reported browser-console issues:
  *
  *   1. Every browser log line MUST start with the `[lp-ranger]` app
@@ -52,7 +52,7 @@ test("dynamically load the ESM browser module under test", async () => {
   /*- node:test doesn't expose `before`/`beforeEach` from `node:test`
    *  as named helpers, so we just inline the import in a leading
    *  test that runs before the others (tests run in file order). */
-  const mod = await import("../src/client/web/dashboard-log.js");
+  const mod = await import("../src/client/web/js/dashboard-log.js");
   _withTimestamp = mod._withTimestamp;
   _scanTags = mod._scanTags;
   _skipFormatNoise = mod._skipFormatNoise;

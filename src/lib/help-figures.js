@@ -38,7 +38,7 @@
  * text `fillFigureSpans` rewrites on every build. Every figure in the
  * manual is therefore in a span, which is what lets the copy the app
  * serves be filled again in the browser with the install's own figures
- * (`src/client/web/dashboard-manual-figures.js`). A name the table lacks stops
+ * (`src/client/web/js/dashboard-manual-figures.js`). A name the table lacks stops
  * the manual's build with an error, so a typo cannot reach a reader as a
  * raw token; the browser fill only warns.
  *

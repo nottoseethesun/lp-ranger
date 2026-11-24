@@ -71,8 +71,8 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  walletMod = await import("../src/client/web/dashboard-wallet.js");
-  importMod = await import("../src/client/web/dashboard-wallet-import.js");
+  walletMod = await import("../src/client/web/js/dashboard-wallet.js");
+  importMod = await import("../src/client/web/js/dashboard-wallet-import.js");
 });
 
 const el = (id) => document.getElementById(id);

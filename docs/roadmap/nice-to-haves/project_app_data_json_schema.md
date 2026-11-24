@@ -40,5 +40,5 @@ same Ajv instance.
 Likely touch points: the records check (`src/lib/config-record-checks.js`,
 `src/lib/bot-config-checks.js`), the startup check
 (`src/lib/settings-check.js`), the rebalance log's readers
-(`src/lib/bot-recorder.js`, `src/lib/position-history.js`) and the cache
-readers (`src/lib/cache-store.js`, `src/lib/epoch-cache.js`).
+(`src/bot/bot-recorder.js`, `src/bot/position-history.js`) and the cache
+readers (`src/lib/cache-store.js`, `src/bot/epoch-cache.js`).

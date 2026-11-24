@@ -32,9 +32,9 @@ before(async () => {
    *  module its status callback at load, so the poll module must have
    *  run before it, which importing the data module first arranges.
    */
-  await import("../src/client/web/dashboard-data.js");
-  poll = await import("../src/client/web/dashboard-data-poll.js");
-  chainMod = await import("../src/client/web/dashboard-chain.js");
+  await import("../src/client/web/js/dashboard-data.js");
+  poll = await import("../src/client/web/js/dashboard-data-poll.js");
+  chainMod = await import("../src/client/web/js/dashboard-chain.js");
 });
 
 // The pill as index.html ships it.

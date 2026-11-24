@@ -4,7 +4,7 @@
  * @file test/lifetime-hodl-additions.test.js
  * @description How the Lifetime scan's tally judges an addition of
  *   liquidity to an NFT after its mint (`computeLifetimeHodl`,
- *   src/lib/lifetime-hodl.js): by who paid for it, from its receipt.
+ *   src/bot/lifetime-hodl.js): by who paid for it, from its receipt.
  *
  *   An addition the wallet paid for took coins already counted: a deposit
  *   counted when it reached the wallet, or the position's own coins, a
@@ -23,7 +23,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { computeLifetimeHodl } = require("../src/lib/lifetime-hodl");
+const { computeLifetimeHodl } = require("../src/bot/lifetime-hodl");
 const {
   ilEvent,
   colEvent,
@@ -58,7 +58,7 @@ const MINT_ENTRY = {
 /**
  * The addition's entry, as the tally records one another wallet paid for,
  * naming the NFT it went into, so the Current panel's deposit can add its
- * own (src/lib/current-lp-deposit.js).
+ * own (src/bot/current-lp-deposit.js).
  */
 const ADDITION_ENTRY = {
   raw0: "11000000000",

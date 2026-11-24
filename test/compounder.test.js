@@ -21,9 +21,9 @@ describe("compounder", () => {
     // but not directly exported; test indirectly through executeCompound mock
 
     it("module exports all expected functions", () => {
-      const mod = require("../src/lib/compounder");
+      const mod = require("../src/bot/compounder");
       assert.equal(
-        typeof require("../src/lib/compound-collect").collectFees,
+        typeof require("../src/bot/compound-collect").collectFees,
         "function",
       );
       assert.equal(typeof mod.addLiquidity, "function");
@@ -40,7 +40,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("returns compounded:false when no fees collected", async () => {
-      const { executeCompound } = require("../src/lib/compounder");
+      const { executeCompound } = require("../src/bot/compounder");
 
       const _collectTx = {
         hash: "0xtest",
@@ -161,7 +161,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("collects fees and returns balance diff", async () => {
-      const { collectFees } = require("../src/lib/compound-collect");
+      const { collectFees } = require("../src/bot/compound-collect");
       let callCount = 0;
       const _collectTx = {
         hash: "0xcollect",
@@ -215,7 +215,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("calls increaseLiquidity and returns amounts", async () => {
-      const { addLiquidity } = require("../src/lib/compounder");
+      const { addLiquidity } = require("../src/bot/compounder");
       const _incTx = {
         hash: "0xinc",
         nonce: 2,
@@ -269,7 +269,7 @@ describe("compounder", () => {
     afterEach(() => _resetSendTx());
 
     it("returns compounded:true with USD value when fees exist", async () => {
-      const { executeCompound } = require("../src/lib/compounder");
+      const { executeCompound } = require("../src/bot/compounder");
       let balCall = 0;
       const _collectTx = {
         hash: "0xc",

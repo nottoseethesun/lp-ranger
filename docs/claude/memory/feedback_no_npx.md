@@ -19,7 +19,7 @@ has already made, which is why it lands as exasperation rather than a note.
 scripts for it — the script is almost always already there. Known ones:
 
 - Prettier → `npm run format` / `npm run format:check` (covers `src/*.js`,
-  `src/lib/`, `src/client/web/dashboard-*.js`, `scripts/`, `util/`, `test/`,
+  `src/lib/`, `src/client/web/js/dashboard-*.js`, `scripts/`, `util/`, `test/`,
   `eslint-rules/`)
 - ESLint + stylelint + markdownlint → `npm run lint` / `npm run lint:fix`
 - Tests → `npm run check` (see [[feedback_never_node_test_directly]]),

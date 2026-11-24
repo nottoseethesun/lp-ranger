@@ -199,7 +199,7 @@ fs.writeFileSync(
 
 // ── Lint (CSS) ─────────────────────────────────────────────────────────────
 const stylelintRun = run(bin("stylelint"), [
-  "src/client/web/*.css",
+  "src/client/web/css/*.css",
   "--formatter",
   "json",
   "-o",
@@ -209,7 +209,8 @@ ensureOrWrite(path.join(RAW_DIR, "stylelint.json"), "[]");
 
 fs.writeFileSync(
   path.join(RAW_DIR, "stylelint-config.json"),
-  run(bin("stylelint"), ["--print-config", "src/client/web/style.css"]).stdout,
+  run(bin("stylelint"), ["--print-config", "src/client/web/css/style.css"])
+    .stdout,
 );
 
 // ── Lint (HTML) ────────────────────────────────────────────────────────────
@@ -299,7 +300,7 @@ ensureOrWrite(
 
 // ── Dead code (knip) — unused FILES only ──────────────────────────────────
 // Only the `files` issue type is a gate.  knip's unused-exports pass is
-// noise here by design: `src/client/web/dashboard-*.js` is reached through HTML
+// noise here by design: `src/client/web/js/dashboard-*.js` is reached through HTML
 // script tags it cannot trace, and both `src/lib/` and `util/` export their
 // internals deliberately so tests and other tools can compose them — an
 // export nothing imports yet is a seam, not a defect.  An unused FILE is
@@ -522,7 +523,7 @@ async function runTestStages() {
       TEST_TIMEOUT,
       "--experimental-test-coverage",
       /*-
-       *  Browser-side files (src/client/web/dashboard-*.js) are covered by their
+       *  Browser-side files (src/client/web/js/dashboard-*.js) are covered by their
        *  own test suites that jsdom-drive them.  They are excluded from
        *  the aggregate coverage figure to preserve the existing 80% floor
        *  for src/ (Node-side) code.  Adding them without a dashboard-

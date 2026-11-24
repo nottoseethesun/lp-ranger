@@ -1,7 +1,7 @@
 "use strict";
 /**
  * @file test/retry-send.test.js
- * @description Unit tests for `_retrySend` in src/lib/tx-retry.js — covers the
+ * @description Unit tests for `_retrySend` in src/bot/tx-retry.js — covers the
  * three classifier buckets (transient, terminal-nonce-unused,
  * terminal-nonce-consumed), NonceManager reset behaviour, the
  * `retryingTxWithSameNonce` opt for explicit-nonce replacements, and the
@@ -24,7 +24,7 @@ process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 const { describe, it } = require("node:test");
 const assert = require("assert");
 
-const { _retrySend } = require("../src/lib/tx-retry");
+const { _retrySend } = require("../src/bot/tx-retry");
 
 describe("_retrySend", () => {
   it("returns immediately on success", async () => {

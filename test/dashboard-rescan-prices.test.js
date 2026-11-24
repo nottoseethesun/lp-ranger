@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-rescan-prices.test.js
- * @description The Re-scan Prices dialog (`src/client/web/dashboard-rescan-prices.js`),
+ * @description The Re-scan Prices dialog (`src/client/web/js/dashboard-rescan-prices.js`),
  *   opened from the real `tplRescanPricesModal` template in
  *   `src/client/web/index.html`. Uses jsdom (via `global-jsdom/register`) so the
  *   browser module can be imported directly. A `globalThis.fetch` stub
@@ -73,9 +73,9 @@ const overlay = () => document.getElementById("rescanPricesModal");
 before(async () => {
   // As at startup: the dashboard knows its chain before it keys a position.
   await learnActiveChain();
-  dialog = await import("../src/client/web/dashboard-rescan-prices.js");
+  dialog = await import("../src/client/web/js/dashboard-rescan-prices.js");
   const { posStore } =
-    await import("../src/client/web/dashboard-positions-store.js");
+    await import("../src/client/web/js/dashboard-positions-store.js");
   posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,

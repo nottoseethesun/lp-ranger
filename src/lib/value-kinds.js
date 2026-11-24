@@ -19,7 +19,8 @@
  *
  * What JSON Schema cannot say, code says, as a named format: whether an
  * address is in its EIP-55 form, a url's protocol, an RPC endpoint the
- * provider can dial, a host name, an image in src/client/web/, a position's key.
+ * provider can dial, a host name, an image in src/client/web/images/, a
+ * position's key.
  * Every format is registered on `AJV`, the one Ajv instance LP Ranger
  * compiles a schema with.
  *
@@ -35,7 +36,8 @@ const { getAddress } = require("ethers");
 const validator = require("validator");
 const { parseCompositeKey } = require("./composite-key");
 
-const _PUBLIC = path.join(__dirname, "..", "client", "web");
+/** Where the web client keeps its images; a chain's logo is named in it. */
+const _IMAGES = path.join(__dirname, "..", "client", "web", "images");
 
 /*-
  *  An RPC endpoint must carry its scheme, because that is what the
@@ -120,8 +122,8 @@ const _FORMATS = Object.freeze({
   "host-name": isHost,
   "iso-time": (v) => validator.isISO8601(v),
   "lower-case": (v) => v === v.toLowerCase(),
-  // The dashboard loads a chain's logo from src/client/web/ by this name.
-  "public-image": (v) => fs.existsSync(path.join(_PUBLIC, v)),
+  // The dashboard loads a chain's logo from src/client/web/images/ by this name.
+  "public-image": (v) => fs.existsSync(path.join(_IMAGES, v)),
   // A pool factory's address and a position manager's, joined by _.
   "lp-provider-key": (v) => {
     const parts = v.split("_");
@@ -221,7 +223,7 @@ const KINDS = Object.freeze({
     format: "position-key",
   }),
   host: kind("a host name", { type: "string", format: "host-name" }),
-  image: kind("the name of an image in src/client/web/", {
+  image: kind("the name of an image in src/client/web/images/", {
     type: "string",
     format: "public-image",
   }),

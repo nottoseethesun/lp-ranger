@@ -10,7 +10,7 @@ metadata:
 
 `npm run build` stamps `?v=<ms>` onto the asset URLs in
 `src/client/web/index.html` (bundle.js, style.css, 9mm-pos-mgr.css) and onto
-the cloud-PNG urls in `src/client/web/9mm-pos-mgr.css`.  Static assets are
+the cloud-PNG urls in `src/client/web/css/9mm-pos-mgr.css`.  Static assets are
 served with `Cache-Control: public, max-age=31536000, immutable`
 (server.js:293-295); only HTML is `no-store`.  **The stamp move is
 the entire cache-invalidation mechanism.**
@@ -26,7 +26,7 @@ browser was executing stale code.  User was rightly angry.
 
 **How to apply:**
 - If a branch changes ANYTHING that lands in the served assets
-  (`src/client/web/dashboard-*.js`, `param-help-content.js`, CSS, images):
+  (`src/client/web/js/dashboard-*.js`, `param-help-content.js`, CSS, images):
   run `npm run build` and **commit the stamped `index.html` (and
   `9mm-pos-mgr.css` if its stamps moved) as part of the change**.
 - Only revert stamp drift when the build artifacts are NOT part of

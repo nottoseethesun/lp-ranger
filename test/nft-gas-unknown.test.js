@@ -29,11 +29,11 @@ const assert = require("node:assert/strict");
 const {
   classifyCompounds,
   _fetchCompoundGas,
-} = require("../src/lib/compounder");
-const { applyCurrentNftFigures } = require("../src/lib/bot-pnl-current-nft");
-const sendTx = require("../src/lib/send-transaction");
-const rpcQueue = require("../src/lib/rpc-request-manager");
-const outOfService = require("../src/lib/rpc-out-of-service");
+} = require("../src/bot/compounder");
+const { applyCurrentNftFigures } = require("../src/bot/bot-pnl-current-nft");
+const sendTx = require("../src/bot/send-transaction");
+const rpcQueue = require("../src/bot/rpc-request-manager");
+const outOfService = require("../src/bot/rpc-out-of-service");
 const logModule = require("../src/lib/log");
 
 const MINT_TX = "0xmint";

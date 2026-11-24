@@ -24,7 +24,7 @@ const {
   _MAX_SECONDS_KEPT,
   _secondsKept,
   _resetForTests,
-} = require("../src/lib/rpc-out-of-service");
+} = require("../src/bot/rpc-out-of-service");
 const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
 
 const URL_A = "http://a.test";

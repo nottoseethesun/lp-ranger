@@ -1,14 +1,18 @@
 /**
  * @file test/server-positions-stale-key-races.test.js
  * @description Regression tests for the stale-key-after-await bug class
- * fixed by `addManagedPosition(diskConfig, keyRef.current)` in
- * handleManage and the entry-reference capture in handleRemove.
+ * fixed by `addManagedPosition(diskConfig, keyRef.current)` in Manage
+ * (`_start`, src/bot/position-lifecycle.js) and the entry-reference
+ * capture in Stop Managing (src/bot/stop-managing.js).
  *
- * These exercise the FULL handler flow with a mocked startBotLoop +
- * positionMgr so that a "migration happened during the await" can be
- * injected without booting a real bot loop.  Lives in a dedicated file
- * because adding to test/server-positions.test.js pushes it past the
- * 500-line max-lines cap.
+ * Manage's steps around a migration are taken by hand here; the real
+ * Manage is driven through one in test/manage-key-migration.test.js.
+ * Stop Managing is driven through its route, over a stand-in position
+ * manager that moves the key while the stop waits, so a "migration
+ * happened during the await" can be injected without booting a real bot
+ * loop.  Lives in a dedicated file because adding to
+ * test/server-positions.test.js pushes it past the 500-line max-lines
+ * cap.
  */
 
 "use strict";
@@ -16,10 +20,10 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const {
-  createPositionRoutes,
   getAllPositionBotStates,
   updatePositionState,
-} = require("../src/lib/server-positions");
+} = require("../src/bot/position-states");
+const { createPositionRoutes } = require("./_bot-route-adapters");
 const {
   addManagedPosition,
   getPositionConfig,
@@ -82,18 +86,19 @@ function makeRouteDeps(overrides = {}) {
   };
 }
 
-describe("handleManage stale-key sequence (direct simulation)", () => {
-  /*- Direct simulation of handleManage's post-await sequence rather
-   *  than a full HTTP-handler integration test.  Mocking `startBotLoop`
-   *  via the require cache is unreliable because server-positions.js
-   *  destructures `startBotLoop` at module-load — a captured local
-   *  reference that subsequent cache mutations cannot reach.
+describe("Manage's stale-key sequence (direct simulation)", () => {
+  /*-
+   *  Manage's steps around the migration, taken here by hand.
+   *  test/manage-key-migration.test.js drives the real Manage through
+   *  one, its bot loop stood in for before position-lifecycle.js loads,
+   *  since that module takes `startBotLoop` as it loads.
    *
-   *  This test verifies the SEMANTIC contract of the fix: after
-   *  updatePositionState mutates keyRef.current via a migration patch,
-   *  the subsequent addManagedPosition call must use keyRef.current —
-   *  NOT the original captured key — to avoid creating a phantom
-   *  status=running stub under the dead old key. */
+   *  The contract pinned here: after updatePositionState mutates
+   *  keyRef.current via a migration patch, the subsequent
+   *  addManagedPosition call must use keyRef.current — NOT the original
+   *  captured key — to avoid creating a phantom status=running stub
+   *  under the dead old key.
+   */
   it("addManagedPosition(keyRef.current) writes only the NEW key after migration", () => {
     const OLD_TOKEN = "159175";
     const NEW_TOKEN = "161616";
@@ -108,7 +113,7 @@ describe("handleManage stale-key sequence (direct simulation)", () => {
     states.delete(oldKey);
     states.delete(newKey);
 
-    /*- handleManage captures key + keyRef = { current: key }. */
+    // `_start` captures key + keyRef = { current: key }.
     const keyRef = { current: oldKey };
 
     /*- Simulate the bot loop's first poll completing a force rebalance
@@ -143,10 +148,11 @@ describe("handleManage stale-key sequence (direct simulation)", () => {
       newTid: NEW_TOKEN,
     });
 
-    /*- THE FIX: handleManage now calls addManagedPosition(dc,
-     *  keyRef.current) instead of addManagedPosition(dc, key).  Verify
-     *  the correct (post-migration) key gets status=running, and NO
-     *  phantom is resurrected under the old key. */
+    /*-
+     *  `_start` marks the position managed under keyRef.current, not
+     *  the captured key: the post-migration key gets status=running,
+     *  and NO phantom is resurrected under the old key.
+     */
     addManagedPosition(dc, keyRef.current);
 
     assert.strictEqual(
@@ -193,7 +199,7 @@ describe("handleManage stale-key sequence (direct simulation)", () => {
     states.delete(newKey);
   });
 
-  it("non-lazy getPositionConfig prevents handleManage from lazy-creating during _persistPositionConfig", () => {
+  it("non-lazy getPositionConfig prevents Manage from lazy-creating during _persistPositionConfig", () => {
     /*- When the bot loop fires updateBotState with persistable fields
      *  (e.g. nftGasWeiByTokenId) but the keyRef points at a key whose
      *  slot has just been migrated away, _persistPositionConfig must
@@ -220,14 +226,14 @@ describe("handleManage stale-key sequence (direct simulation)", () => {
   });
 });
 
-describe("handleRemove stale-key races", () => {
+describe("Stop Managing's stale-key races", () => {
   it("uses migrated entry.key for cleanup when stop() spans a migration", async () => {
     /*- During `await positionMgr.removePosition(body.key)`, the bot's
      *  stop() awaits the in-flight poll, which can complete a
      *  rebalance.  That rebalance fires updatePositionState →
      *  positionMgr.migrateKey, mutating entry.key in place.  By the
-     *  time control returns to handleRemove, the entry.key reflects
-     *  the post-migration key.  handleRemove captures the entry
+     *  time control returns to Stop Managing, the entry.key reflects
+     *  the post-migration key.  Stop Managing captures the entry
      *  reference BEFORE the await and reads entry.key AFTER, so
      *  downstream removeManagedPosition + _positionBotStates.delete
      *  target the right (migrated) key. */
@@ -278,7 +284,7 @@ describe("handleRemove stale-key races", () => {
     /*-
      *  The answer names the position by both keys, so a dashboard that
      *  followed it to its new NFT still knows the answer is its own
-     *  (src/lib/position-answer-tag.js).
+     *  (src/bot/position-answer-tag.js).
      */
     assert.strictEqual(res._body.positionKey, OLD_KEY);
     assert.strictEqual(res._body.livePositionKey, NEW_KEY);
@@ -286,7 +292,7 @@ describe("handleRemove stale-key races", () => {
 
   it("falls back to body.key when positionMgr returns no entry", async () => {
     /*- Edge case: the position was already gone from positionMgr (e.g.
-     *  a prior remove or never-started).  handleRemove falls back to
+     *  a prior remove or never-started).  Stop Managing falls back to
      *  body.key for cleanup, which is correct because no migration
      *  could have happened without an active bot loop. */
     const KEY = key("400");

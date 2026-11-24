@@ -88,7 +88,7 @@ this rule from shipped defaults to any value the app shows or acts on:
 - A value the dashboard needs before the server can answer is bundled
   from the shipped JSON at build time: `chainQueryTimeoutMs` in
   `ui-defaults_non-layout_for-server-down-scenario.json`, imported by
-  `src/client/web/dashboard-chain.js`, as `dialogMaxHeightPx` in
+  `src/client/web/js/dashboard-chain.js`, as `dialogMaxHeightPx` in
   `ui-defaults_layout.json` is baked into `ui-tokens.css`. Every other
   dashboard setting comes from the server.
 

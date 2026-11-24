@@ -1,7 +1,7 @@
 /**
  * @file test/manage-request-check.test.js
  * @description What a Manage request must carry before anything starts,
- * decided by src/lib/manage-request-check.js: a numeric tokenId, no contract
+ * decided by src/bot/manage-request-check.js: a numeric tokenId, no contract
  * but this server's position manager, a wallet and a key. The route's
  * own tests (test/server-positions.test.js) cover that it asks.
  */
@@ -12,7 +12,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
 const config = require("../src/lib/config");
-const { manageRequestRefusal } = require("../src/lib/manage-request-check");
+const { manageRequestRefusal } = require("../src/bot/manage-request-check");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PK = "0xkey";
@@ -42,7 +42,7 @@ describe("manageRequestRefusal", () => {
      *  keyed on another contract would be running and read by nothing.
      */
     const r = refusalOf({ tokenId: "123", contract: "0x" + "ab".repeat(20) });
-    assert.equal(r.status, 400);
+    assert.equal(r.reason, "invalid");
     assert.match(r.error, /not this server's position manager/);
   });
 

@@ -22,7 +22,7 @@ let typedDecimals;
 
 before(async () => {
   ({ typedDecimals } =
-    await import("../src/client/web/dashboard-token-decimals.js"));
+    await import("../src/client/web/js/dashboard-token-decimals.js"));
 });
 
 describe("typedDecimals", () => {

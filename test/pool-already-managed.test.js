@@ -3,13 +3,14 @@
 /**
  * @file test/pool-already-managed.test.js
  * @description Tests for the one-active-position-per-pool decision in
- *   `src/lib/pool-already-managed.js`.
+ *   `src/bot/pool-already-managed.js`.
  *
  *   The rule exists for attribution: two positions open in the same pool
  *   hold indistinguishable tokens in the same wallet, so gains moving
  *   between them cannot be assigned to either, and residual coins cannot
- *   be allocated. These tests pin the decision itself; `handleManage`
- *   and auto-start are the two callers that act on it.
+ *   be allocated. These tests pin the decision itself; the bot's Manage
+ *   (`manage` in src/bot/position-lifecycle.js) and auto-start are the
+ *   two callers that act on it.
  */
 
 const { describe, it } = require("node:test");
@@ -21,11 +22,19 @@ const { captureWarnings } = require("./helpers/capture-warnings");
 const {
   poolKeyOf,
   findPoolConflict,
-  rejectIfPoolManaged,
+  rejectIfPoolManaged: refusalIfPoolManaged,
   poolHoldersForStartUp,
   readPoolOfPosition,
-} = require("../src/lib/pool-already-managed");
-const { PM_ABI } = require("../src/lib/pm-abi");
+} = require("../src/bot/pool-already-managed");
+const { sendBotResult } = require("../src/server/bot-result");
+
+/** The gate as a Manage route meets it: its refusal answered, and whether there was one. */
+async function rejectIfPoolManaged(o) {
+  const refusal = await refusalIfPoolManaged(o);
+  if (refusal !== null) sendBotResult(o.jsonResponse, o.res, refusal);
+  return refusal !== null;
+}
+const { PM_ABI } = require("../src/bot/pm-abi");
 
 const A = "0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39";
 const B = "0x57fde0a71132198BBeC939B98976993d8D89D225";
@@ -36,12 +45,12 @@ const WALLET = "0x1111111111111111111111111111111111111111";
  *  chain/contract/wallet the way the server binds it.  Taken from the
  *  real module so these tests break if that rule ever changes, rather
  *  than passing against a private copy. */
-const { createPositionManager } = require("../src/lib/position-manager");
+const { createPositionManager } = require("../src/bot/position-manager");
 const _pm = createPositionManager({ rebalanceLock: null });
 const poolKeyFn = (t0, t1, fee) =>
   _pm.poolKey("pulsechain", "0xCC05", "0xW", t0, t1, fee);
 
-/** Bot state shaped as `server-positions.js` builds it. */
+/** Bot state shaped as `position-states.js` builds it. */
 function running(tokenId, token0, token1, fee) {
   return { running: true, activePosition: { tokenId, token0, token1, fee } };
 }

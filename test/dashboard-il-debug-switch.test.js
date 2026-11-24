@@ -77,9 +77,9 @@ before(async () => {
   await learnActiveChain("pulsechain", "PulseChain");
   await learnUiSettings();
   document.body.innerHTML = indexHtmlDocument().body.innerHTML;
-  store = await import("../src/client/web/dashboard-positions-store.js");
-  positions = await import("../src/client/web/dashboard-positions.js");
-  ilDebug = await import("../src/client/web/dashboard-il-debug.js");
+  store = await import("../src/client/web/js/dashboard-positions-store.js");
+  positions = await import("../src/client/web/js/dashboard-positions.js");
+  ilDebug = await import("../src/client/web/js/dashboard-il-debug.js");
   store.posStore.add(FIRST);
   store.posStore.add(SECOND);
 });

@@ -5,7 +5,7 @@
  * from the FIRST endpoint, not sit on the dead one.
  *
  * What these pin: the end of the list has to come round.
- * `src/lib/rpc-read-retry.js` ignores whether failover actually moved — its
+ * `src/bot/rpc-read-retry.js` ignores whether failover actually moved — its
  * comment says `false` "is a reason to come back round to the first one
  * rather than to give up" — and its loop has no exit condition. A last
  * endpoint that failover leaves selection sitting on is therefore a dead
@@ -24,8 +24,8 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { format } = require("node:util");
 
-const sendTx = require("../src/lib/send-transaction");
-const rpcQueue = require("../src/lib/rpc-request-manager");
+const sendTx = require("../src/bot/send-transaction");
+const rpcQueue = require("../src/bot/rpc-request-manager");
 const logModule = require("../src/lib/log");
 const { condemn } = require("./helpers/send-tx-stubs");
 

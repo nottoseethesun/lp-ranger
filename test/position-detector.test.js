@@ -18,7 +18,7 @@ const {
   _enumerateOwnerNfts,
   _shapeNftPosition,
   MAX_NFT_SCAN,
-} = require("../src/lib/position-detector");
+} = require("../src/bot/position-detector");
 
 // ── Mock builders ─────────────────────────────────────────────────────────────
 

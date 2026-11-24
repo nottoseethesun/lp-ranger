@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-24T05:24:12.652Z
+  modified: 2026-11-24T06:47:28.016Z
 ---
 
 # Logging
@@ -19,16 +19,16 @@ When logging anything about a token, always include the human-readable symbol ne
 
 **Why:** User explicitly said "include the human-readable token name, as you always should do." This is a project-wide rule, not a one-off. Logs are the primary debugging surface and a bare 0x… makes them useless at a glance.
 
-**How to apply:** Wherever a log mentions a token address, render it with `formatToken(addr)` from `src/lib/price-source-cascade.js`: `WPLS (0xA107…9a27)`, or the abbreviated address alone if the symbol cache hasn't loaded the token yet. Compute it on its own line before the log call ([[feedback_no_computation_in_params]]). For the bare symbol, `getTokenSymbol(addr)` lives in `src/lib/token-symbol-cache.js` and answers null when unknown; never print a stand-in such as `?` for it.
+**How to apply:** Wherever a log mentions a token address, render it with `formatToken(addr)` from `src/bot/price-source-cascade.js`: `WPLS (0xA107…9a27)`, or the abbreviated address alone if the symbol cache hasn't loaded the token yet. Compute it on its own line before the log call ([[feedback_no_computation_in_params]]). For the bare symbol, `getTokenSymbol(addr)` lives in `src/lib/token-symbol-cache.js` and answers null when unknown; never print a stand-in such as `?` for it.
 
 ## log nft id emoji
 
 Every log line that mentions an NFT position must include both:
 
 1. The numeric `tokenId` (e.g. `161234`)
-2. The 3-emoji fingerprint from `emojiId(tokenId)` (defined in `src/lib/logger.js`; the dashboard has its own, same algorithm, in `src/client/web/dashboard-helpers.js`) &mdash; an MD5-derived 3-emoji sequence wrapped in an ANSI black-background reset
+2. The 3-emoji fingerprint from `emojiId(tokenId)` (defined in `src/bot/logger.js`; the dashboard has its own, same algorithm, in `src/client/web/js/dashboard-helpers.js`) &mdash; an MD5-derived 3-emoji sequence wrapped in an ANSI black-background reset
 
-**Why:** Two-fold identification: the number is for grep / search / cross-referencing with on-chain explorers, the emoji fingerprint is for instant visual recognition when scanning a long log without reading every digit. The user works with many concurrent positions; the emoji fingerprint disambiguates at a glance. Existing reference impls: `src/lib/position-manager.js:242`, `src/lib/position-manager.js:294`, `src/server/server-routes.js`.
+**Why:** Two-fold identification: the number is for grep / search / cross-referencing with on-chain explorers, the emoji fingerprint is for instant visual recognition when scanning a long log without reading every digit. The user works with many concurrent positions; the emoji fingerprint disambiguates at a glance. Existing reference impls: `src/bot/position-manager.js:242`, `src/bot/position-manager.js:294`, `src/server/server-routes.js`.
 
 **How to apply:**
 
@@ -57,7 +57,7 @@ Required fields in every such log line:
 
 **How to apply:**
 
-- Audit `_logCompoundSummary` (`src/lib/compounder.js`), the rebalance entrypoint loggers (`src/lib/rebalancer.js`), and the swap entrypoint loggers (`src/lib/rebalancer-swap.js` / `rebalancer-aggregator.js`) when adding new log lines or modifying existing ones.
+- Audit `_logCompoundSummary` (`src/bot/compounder.js`), the rebalance entrypoint loggers (`src/bot/rebalancer.js`), and the swap entrypoint loggers (`src/bot/rebalancer-swap.js` / `rebalancer-aggregator.js`) when adding new log lines or modifying existing ones.
 - Compose the line with all 6 fields whenever the event class is one of compound / rebalance / swap.
 - If a caller is missing a field, **fix the caller** (don't silently render `?`). Cross-reference with the rule that opts objects should not use inconsistent field names (`wallet` vs `walletAddress`).
 - This rule does NOT apply to high-frequency cycle logs (poll, skip, threshold-check, etc.) — those are best kept compact. The rule is for the three named operation classes.
@@ -67,3 +67,18 @@ Required fields in every such log line:
 Always add meaningful logs to new features. User said "add good logs dude" when the fresh deposit detection had no visibility into what was happening.
 **Why:** Without logs, debugging requires guesswork. The user monitors the server console to verify correctness.
 **How to apply:** Log key decision points: what was found, what was filtered, what was counted, final totals. Include identifying info (TX hashes, block numbers, amounts, USD values). Use `[prefix]` tags consistently (e.g., `[hodl]`, `[deposit]`).
+
+## the prefix names the part of the app
+
+A bot module's log lines open `[bot]` (or a bot subsystem tag), never
+`[server]`; a server module's open `[server]`, never `[bot]`; a src/lib/
+module, which both programs load, uses its own subsystem tag and neither.
+**Why:** the user, 2026-11-24, after the separation refactor moved code
+between the parts: "Did you check all the logging to make sure that the
+correct `[...] ` log line prefix classifier is used, now that a lot of code
+has been moved from one of the four major sections (bot, server, client,
+lib) to another?" I had not; 23 bot lines still read `[server]`, the
+start-up's among them, printing `[server]` in the headless bot.
+**How to apply:** when code moves between src/bot/, src/server/ and
+src/lib/, change its log prefixes in the same change.
+test/log-prefix-by-part.test.js fails on a wrong one.

@@ -3,19 +3,21 @@
 /**
  * @file test/app-phase.test.js
  * @description What the app as a whole is doing, where that decides
- *   whether anything may start (src/lib/app-phase.js): the start-up, which
- *   starts the positions saved as managed one at a time, and the stop for
- *   good.
+ *   whether anything may start (src/bot/app-phase.js): the start-up, which
+ *   starts the positions saved as managed one at a time, a wallet import,
+ *   and the stop for good.
  *
  *   While the start-up runs, a request that would start positions is
  *   refused, naming its progress, and a second start-up does not begin.
- *   Once the app is stopping, nothing starts and no start-up begins, and
- *   nothing clears it.
+ *   While a wallet import runs, a Manage and a second import are refused,
+ *   and the import's own closing start-up still begins. Once the app is
+ *   stopping, nothing starts and no start-up begins, and nothing clears
+ *   it.
  */
 
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const phase = require("../src/lib/app-phase");
+const phase = require("../src/bot/app-phase");
 
 beforeEach(() => phase._resetAppPhaseForTests());
 
@@ -79,5 +81,38 @@ describe("the stop for good", () => {
     phase.beginStartUp(3);
     phase.markStopping();
     assert.match(phase.refusalToStart(), /stopping/);
+  });
+});
+
+describe("a wallet import", () => {
+  it("is under way from its beginning to its end, refusing a Manage meanwhile", () => {
+    assert.equal(phase.walletImportUnderWay(), false);
+    assert.equal(phase.beginWalletImport(), null);
+    assert.equal(phase.walletImportUnderWay(), true);
+    assert.match(phase.refusalToStart(), /importing a wallet/);
+    phase.endWalletImport();
+    assert.equal(phase.walletImportUnderWay(), false);
+    assert.equal(phase.refusalToStart(), null);
+  });
+
+  it("does not begin during a start-up, another import, or a stop", () => {
+    phase.beginStartUp(2);
+    assert.match(phase.beginWalletImport(), /still starting/);
+    phase.endStartUp();
+    assert.equal(phase.beginWalletImport(), null);
+    assert.match(phase.beginWalletImport(), /importing a wallet/);
+    phase.endWalletImport();
+    phase.markStopping();
+    assert.match(phase.beginWalletImport(), /stopping/);
+    assert.equal(phase.walletImportUnderWay(), false);
+  });
+
+  it("lets its own closing start-up begin, naming that start-up's progress", () => {
+    phase.beginWalletImport();
+    assert.equal(phase.beginStartUp(2), true);
+    phase.noteStartUpProgress(1);
+    assert.match(phase.refusalToStart(), /still starting .*\(1 of 2\)/);
+    phase.endStartUp();
+    assert.match(phase.refusalToStart(), /importing a wallet/);
   });
 });

@@ -199,7 +199,7 @@ describe("composeRpcUrls", () => {
 });
 
 describe("an added RPC takes effect without a restart", () => {
-  const sendTx = require("../src/lib/send-transaction");
+  const sendTx = require("../src/bot/send-transaction");
   const config = require("../src/lib/config");
 
   class StubProvider {
@@ -240,7 +240,7 @@ describe("an added RPC takes effect without a restart", () => {
     sendTx.setRpcUrls(urls, LIB);
     /*- Selection moves on a failure RATE, so the added endpoint has to
      *  actually be failing before the shipped list behind it is used. */
-    const { noteRpcResult } = require("../src/lib/rpc-out-of-service");
+    const { noteRpcResult } = require("../src/bot/rpc-out-of-service");
     for (let i = 0; i < 4; i++) noteRpcResult("https://my-node.local", false);
     assert.strictEqual(sendTx.failoverToNextRPC(), true);
     assert.strictEqual(sendTx.getCurrentRPC()._url, config.RPC_URLS_BASE[0]);
@@ -265,7 +265,7 @@ describe("an added RPC takes effect without a restart", () => {
 
 describe("config.setRpcUrls keeps the live list truthful", () => {
   /*- `GET /api/rpc-endpoints`, `rebalancer-pools` and
-   *  `server-can-reopen` all read `config.RPC_URLS` directly, so the
+   *  `can-reopen` all read `config.RPC_URLS` directly, so the
    *  live list has to change in place.  A rebind would leave all three
    *  walking the endpoints the process started with — which is exactly
    *  the "saved but not in use" failure this whole feature exists to
@@ -314,7 +314,7 @@ describe("config.setRpcUrls keeps the live list truthful", () => {
      *  Driven through the real modules, in the real order, because the
      *  failure is an interaction between them and neither one looks
      *  wrong on its own. */
-    const sendTx = require("../src/lib/send-transaction");
+    const sendTx = require("../src/bot/send-transaction");
     class StubProvider {
       constructor(url) {
         this._url = url;

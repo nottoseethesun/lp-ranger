@@ -24,7 +24,7 @@ const {
   loadMergedDefaults,
   loadShippedDefaults,
 } = require("../lib/load-merged-defaults");
-const { CSRF_REFUSALS } = require("../lib/csrf-refusals");
+const { CSRF_REFUSALS } = require("./csrf-refusals");
 
 const _tokens = new Tokens();
 

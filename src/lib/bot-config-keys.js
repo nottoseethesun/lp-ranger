@@ -41,14 +41,14 @@ const GLOBAL_KEYS = [
   "approvalMultiple",
   /*-
    *  Maximum gas cost as a percentage of swap value before the gas gate
-   *  trips (see `src/lib/swap-gates.js`).  Single global knob shared by all
+   *  trips (see `src/bot/swap-gates.js`).  Single global knob shared by all
    *  three swap call sites: initial Rebalance, corrective Rebalance,
    *  Compound.  Stored as a percent (e.g. `1` = 1%); UI bounds 0.1–15.
    *  Default in `app-config/app-defaults-for-user-configurable/bot-config-defaults.json`.
    */
   "gasFeePct",
   /*-
-   *  Price-source cache TTL in milliseconds for `src/lib/price-fetcher.js`
+   *  Price-source cache TTL in milliseconds for `src/bot/price-fetcher.js`
    *  (the in-memory cache that backs `fetchTokenPriceUsd`).  Read once
    *  per process at module-load time (no live reload — restart to
    *  apply).  Default `120000` (2 min).  See the idle-driven price-
@@ -57,7 +57,7 @@ const GLOBAL_KEYS = [
   "priceCacheTtlMs",
   /*-
    *  Multiplier that derives the dust-unit price's cache lifetime
-   *  (`getDustUnitPriceCacheTtlMs`, src/lib/price-fetcher-gate.js) from
+   *  (`getDustUnitPriceCacheTtlMs`, src/bot/price-fetcher-gate.js) from
    *  `priceCacheTtlMs` (`dust = price * multiplier`).  Default `30`
    *  reproduces the original 1-h dust-unit-price cache when paired with
    *  the 120000 ms price TTL default (120000 * 30 = 3_600_000 ms).
@@ -72,11 +72,11 @@ const GLOBAL_KEYS = [
    *  caused the rapid-fire burst when multiple rebalance stages each
    *  called `fetchTokenPriceUsd` for the same token within a few
    *  seconds (4-6 source hits per token per move).  See
-   *  `src/lib/price-fetcher-gate.js#inMove`.
+   *  `src/bot/price-fetcher-gate.js#inMove`.
    */
   "moveCacheTtlMs",
   /*-
-   *  Balanced-band Telegram notifier (`src/lib/telegram-notifications/balanced-notifier.js`):
+   *  Balanced-band Telegram notifier (`src/bot/telegram-notifications/balanced-notifier.js`):
    *  multiplier on `CHECK_INTERVAL_SEC` for the cadence at which the
    *  notifier fetches fresh USD prices to evaluate the balanced band
    *  (`positionBalancedBandPct`): a fetch every this many poll
@@ -98,7 +98,7 @@ const GLOBAL_KEYS = [
  * disk as settled and skips re-deriving it. Two callers clear exactly
  * this set, and must agree on it:
  *
- * - Reload Current Position (`server-reload-position.js`), for one
+ * - Reload Current Position (`reload-position.js`), for one
  *   position, so the rebuild it triggers is authoritative;
  * - `npm run clear-blockchain-scan-cache`, for every position, so a
  *   cold start is actually cold rather than cold for the scan caches only.
@@ -111,7 +111,7 @@ const GLOBAL_KEYS = [
  * carry what the bot recorded when each compound happened: whether it was
  * Auto or Manual, and its Activity Log figures. The rebuild replaces the
  * list and keeps those, matched by transaction
- * (src/lib/compound-activity-figures.js), so it needs the old list in place
+ * (src/bot/compound-activity-figures.js), so it needs the old list in place
  * until the new one is written. The rebuild still runs, because clearing
  * the compounded totals here is what starts it.
  */
@@ -138,14 +138,14 @@ const CHAIN_DERIVED_POSITION_KEYS = Object.freeze([
  * three the bot records live that no scan can reproduce: `residuals`
  * (collected minus minted at each rebalance), `lastCompoundAt` (the
  * auto-compound spacing) and `failedMoveGas` (the gas each failed
- * rebalance or compound paid, with when: src/lib/spent-gas.js). Reload Current
+ * rebalance or compound paid, with when: src/bot/spent-gas.js). Reload Current
  * Position clears the chain-derived ones for its rebuild, which also
  * replaces `compoundHistory`, and leaves those three alone.
  *
  * They are kept in `app-data/position-records.json`, apart from the
- * settings in bot-config.json (src/lib/position-records.js), and each is saved
+ * settings in bot-config.json (src/lib/util/position-records.js), and each is saved
  * as the bot reports it (`_persistPositionConfig`,
- * src/lib/server-positions.js). `POST /api/config` takes none of them: only
+ * src/bot/position-states.js). `POST /api/config` takes none of them: only
  * settings are saved from outside the bot.
  */
 const RECORD_POSITION_KEYS = Object.freeze([
@@ -256,9 +256,9 @@ const POSITION_KEYS = [
    * coins the held NFT was minted with, at today's prices (the Current
    * panel's IL/G), and the rebalance is rejected when the projection
    * falls more than this far below holding.
-   * Evaluated read-only in `checkIlGuard` (src/lib/il-guard.js), upstream
+   * Evaluated read-only in `checkIlGuard` (src/bot/il-guard.js), upstream
    * of `executeRebalance`, so a rejection can never drain the position.
-   * See src/lib/il-guard.js for the rule and its consequences.
+   * See src/bot/il-guard.js for the rule and its consequences.
    */
   "impermanentLossGuardPct",
   "rebalanceOutOfRangeThresholdPercent",
@@ -267,12 +267,12 @@ const POSITION_KEYS = [
    * Persistent per-position override for the rebalance range width, in
    * percent of current price.  When set, every subsequent rebalance
    * (manual OR automatic) uses this width via `_computeRange()` in
-   * src/lib/rebalancer.js.  When unset, the bot falls back to
+   * src/bot/rebalancer.js.  When unset, the bot falls back to
    * `rangeMath.preserveRange()` (existing default — preserves the
    * on-chain tick spread).  No shipped default literal per
    * feedback_one_literal_per_shipped_default; empty === use fallback.
    * Set from the "Price Range Extension" input in the Range subsection
-   * of Bot Settings (see src/client/web/dashboard-price-range-extension.js
+   * of Bot Settings (see src/client/web/js/dashboard-price-range-extension.js
    * `saveRangeWidth`).  Only consulted when `rangeOverrideEnabled`
    * resolves true.
    */
@@ -282,7 +282,7 @@ const POSITION_KEYS = [
    * the position's existing on-chain range on the next rebalance,
    * ignoring every other Range key; `true` means apply them.  Absent
    * means "the user has not touched the toggle" and is resolved by
-   * `resolveRangeOverrideEnabled` in src/lib/range-override.js — an empty
+   * `resolveRangeOverrideEnabled` in src/bot/range-override.js — an empty
    * slot resolves to `false`, a slot already carrying Range settings
    * resolves to `true`.  The toggle never clears the other Range keys:
    * they stay on disk (greyed out in the UI) so flipping it back
@@ -374,7 +374,7 @@ const POSITION_KEYS = [
   "depositUsedFallback",
   /*-
    *  The gas each failed rebalance or compound paid, with when
-   *  (`src/lib/spent-gas.js`): no chain scan finds it, so it is a record the
+   *  (`src/bot/spent-gas.js`): no chain scan finds it, so it is a record the
    *  P&L counts in its period on every poll, and Reload leaves it alone.
    */
   "failedMoveGas",
@@ -429,7 +429,7 @@ const SETTING_POSITION_KEYS = Object.freeze(
  * long as the position runs. Only absence means "not asked yet". That is
  * also why a zero reached by clearing must delete the keys rather than
  * write `0` over them: see `_resetBotState` in
- * `server-reload-position.js`, which nulls them for exactly this reason.
+ * `reload-position.js`, which nulls them for exactly this reason.
  *
  * A non-finite or negative value is treated as absent. Neither is a
  * figure any classification produced — coins re-deposited cannot be

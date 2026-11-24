@@ -1,6 +1,6 @@
 /**
  * @file test/server-pid.test.js
- * @description Tests for src/lib/server-pid.js — write / read / remove the PID
+ * @description Tests for src/server/server-pid.js — write / read / remove the PID
  *   file using a temp path, so the real tmp/lp-ranger.pid is never touched.
  */
 
@@ -17,7 +17,7 @@ const {
   removePidFile,
   readPid,
   getPidFilePath,
-} = require("../src/lib/server-pid");
+} = require("../src/server/server-pid");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 function _tmpPath() {
@@ -66,7 +66,7 @@ test("readPid rejects zero and negative PIDs", () => {
  * test process cannot fire on itself.
  */
 function _childWritesThen(how, p) {
-  const serverPid = require.resolve("../src/lib/server-pid");
+  const serverPid = require.resolve("../src/server/server-pid");
   const script =
     `const s = require(${JSON.stringify(serverPid)});` +
     `s.writePidFile({ filePath: ${JSON.stringify(p)} });` +

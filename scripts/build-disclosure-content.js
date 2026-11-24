@@ -1,7 +1,7 @@
 /**
  * @file scripts/build-disclosure-content.js
  * @description Extracts the disclosure body from src/client/web/disclosure.html and
- * generates src/client/web/disclosure-content.js (a generated artifact, gitignored).
+ * generates src/client/web/js/disclosure-content.js (a generated artifact, gitignored).
  *
  * Single source of truth for disclosure text: src/client/web/disclosure.html.
  * The standalone HTML serves a GitHub Pages deployment; the generated JS
@@ -36,6 +36,7 @@ const OUT = path.join(
   "src",
   "client",
   "web",
+  "js",
   "disclosure-content.js",
 );
 

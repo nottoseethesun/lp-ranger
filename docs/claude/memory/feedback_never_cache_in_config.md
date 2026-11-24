@@ -21,7 +21,7 @@ Where each kind of data goes instead:
 | What | Where |
 | --- | --- |
 | Anything read from the chain or a price service, kept to save reading it again | `app-data/scan-cache/`, its path from `scanCachePath` (src/lib/scan-cache-dir.js) |
-| What the bot worked out or recorded about a position | `app-data/position-records.json`, a key in `RECORD_POSITION_KEYS` (src/lib/position-records.js) |
+| What the bot worked out or recorded about a position | `app-data/position-records.json`, a key in `RECORD_POSITION_KEYS` (src/lib/util/position-records.js) |
 | The operator's settings and which positions are managed | `app-config/user-configurable/bot-config.json` |
 | Nothing worth keeping | `tmp/` |
 

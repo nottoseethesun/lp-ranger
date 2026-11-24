@@ -7,7 +7,7 @@
  * Single source of truth for the shared copy: the JSON.  Two consumers
  * read it and neither holds its own wording:
  *
- *   - `src/client/web/param-help-content.js` imports it for the in-app circle-i
+ *   - `src/client/web/js/param-help-content.js` imports it for the in-app circle-i
  *     dialog (esbuild inlines the JSON into the bundle);
  *   - this script writes it into the User Manual, which the app serves
  *     at `/help-and-user-manual.html` and which GitHub Pages publishes.
@@ -36,7 +36,7 @@
  * span in the manual's own prose has its text rewritten.  A name the
  * table lacks stops the build.  Every figure being in a span is what lets
  * the copy the app serves be filled again in the browser with the
- * install's own figures, by `src/client/web/dashboard-manual-figures.js`; the copy
+ * install's own figures, by `src/client/web/js/dashboard-manual-figures.js`; the copy
  * GitHub Pages publishes keeps the shipped ones.
  *
  * Idempotent: running twice produces the same file.
@@ -151,7 +151,7 @@ function helpKeys(data) {
  * runs on before any override or `.env` value, on the chain it ships
  * set to (`defaults.chain`). They are what the copy GitHub Pages
  * publishes states. The copy the app serves is filled again in the
- * browser with the install's own (`src/client/web/dashboard-manual-figures.js`).
+ * browser with the install's own (`src/client/web/js/dashboard-manual-figures.js`).
  * @returns {Readonly<Record<string, string>>}
  */
 function shippedFigures() {

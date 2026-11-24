@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-10-24T04:54:38.388Z
+  modified: 2026-11-24T17:40:59.240Z
 ---
 
 # Prose style
@@ -179,11 +179,11 @@ upper-casing common tech initials."*
 
 ## paused vs aborted
 
-The bot has an internal flag `botState.rebalancePaused: true` that gets set in `src/lib/bot-loop.js`'s `_handleError` when a swap aborts on slippage. The flag name suggests "paused with intent to resume" but the actual semantics are:
+The bot has an internal flag `botState.rebalancePaused: true` that gets set in `src/bot/bot-loop.js`'s `_handleError` when a swap aborts on slippage. The flag name suggests "paused with intent to resume" but the actual semantics are:
 
 - The rebalance effort has **terminated**, not paused.
 - The bot will NOT retry on its own. Slippage problems require user action 99.9% of the time.
-- To re-attempt, the user must change Slippage in Mission Control (server-routes.js's POST /api/config auto-clears the flag) AND/OR re-click Manage (handleManage's `_stampReopenFlagsOnLive` re-arms forceRebalance).
+- To re-attempt, the user must change Slippage in Mission Control (the settings save, `_clearSlippagePause` in src/bot/settings-save.js, auto-clears the flag) AND/OR re-click Manage (`_stampReopenFlagsOnLive` in src/bot/position-lifecycle.js re-arms forceRebalance).
 - Auto-retire (30-min drain timer) eventually flips the position to `status=stopped` if the user does nothing.
 
 **Why:** User explicitly corrected me 2026-06-18 in two separate turns: first "Re-open isn't paused — it's been aborted" when I tried to put "Re-open paused" on a tooltip, then "What were you thinking of?" when I wrote "paused re-open" in an audit summary. The flag name leaks into prose if I'm not careful.

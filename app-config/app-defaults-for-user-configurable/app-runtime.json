@@ -16,20 +16,20 @@
     "chain": "pulsechain"
   },
   "tx": {
-    "_comment": "TX recovery pipeline timing, cross-chain. speedupSec: after this many seconds of the original TX not confirming, submit a same-nonce replacement with 1.5x gas (Phase 2 of _waitOrSpeedUp). deadlineSec: on-chain contract deadline (`require(block.timestamp <= deadline)`) stamped into removeLiquidity / swap / mint calldata. cancelToDeadlineMultiple: the bot's per-TX give-up timer (TX_CANCEL_SEC in code) is derived as deadlineSec × cancelToDeadlineMultiple — how much total time to wait before sending a 0-PLS self-transfer cancel at the stuck nonce. Rule of thumb: set the multiple ≥ 4 so a slow-chain retry cycle can complete before the bot gives up on the nonce. See src/lib/config.js for the derivation and src/lib/rebalancer-pools.js for the deadline enforcement.",
+    "_comment": "TX recovery pipeline timing, cross-chain. speedupSec: after this many seconds of the original TX not confirming, submit a same-nonce replacement with 1.5x gas (Phase 2 of _waitOrSpeedUp). deadlineSec: on-chain contract deadline (`require(block.timestamp <= deadline)`) stamped into removeLiquidity / swap / mint calldata. cancelToDeadlineMultiple: the bot's per-TX give-up timer (TX_CANCEL_SEC in code) is derived as deadlineSec × cancelToDeadlineMultiple — how much total time to wait before sending a 0-PLS self-transfer cancel at the stuck nonce. Rule of thumb: set the multiple ≥ 4 so a slow-chain retry cycle can complete before the bot gives up on the nonce. See src/lib/config.js for the derivation and src/bot/rebalancer-pools.js for the deadline enforcement.",
     "speedupSec": 120,
     "deadlineSec": 900,
     "cancelToDeadlineMultiple": 4,
-    "_midwayRetryLimit_comment": "How many times a rebalance left mid-way (the old position drained, no new one minted, the coins in the wallet) is tried again before the bot aborts and asks the operator to act. Read by src/lib/bot-loop.js; its range is in setting-bounds.json.",
+    "_midwayRetryLimit_comment": "How many times a rebalance left mid-way (the old position drained, no new one minted, the coins in the wallet) is tried again before the bot aborts and asks the operator to act. Read by src/bot/bot-loop.js; its range is in setting-bounds.json.",
     "midwayRetryLimit": 4,
     "_cancelPhaseFloorSec_comment": "The least time, in seconds, a sped-up transaction gets to confirm before the zero-value cancel goes out. The speed-up's wait normally runs until TX_CANCEL_SEC has passed since the original was sent; when getting the speed-up sent took that long already (its send backs off between retries), the wait still lasts this long, so the replacement is never cancelled the moment it is sent.",
     "cancelPhaseFloorSec": 10,
-    "_sendRetries_comment": "How often a transaction whose sending failed for a passing reason (a timeout, a dropped connection, a rate limit) is sent again, and how long to wait first. The wait grows with each try: sendRetryBaseDelayMs before the first retry, twice that before the second, and so on, so the defaults wait 30, 60 and 90 seconds. 0 retries sends once and gives up on the first such failure. A failure that says the transaction can never go through is not retried. Read by src/lib/tx-retry.js for every send in the app. sendRetryBaseDelayMs is checked as a timer setting by src/lib/timer-bounds.js, and both stop startup when unusable, naming the setting.",
+    "_sendRetries_comment": "How often a transaction whose sending failed for a passing reason (a timeout, a dropped connection, a rate limit) is sent again, and how long to wait first. The wait grows with each try: sendRetryBaseDelayMs before the first retry, twice that before the second, and so on, so the defaults wait 30, 60 and 90 seconds. 0 retries sends once and gives up on the first such failure. A failure that says the transaction can never go through is not retried. Read by src/bot/tx-retry.js for every send in the app. sendRetryBaseDelayMs is checked as a timer setting by src/lib/timer-bounds.js, and both stop startup when unusable, naming the setting.",
     "sendRetries": 3,
     "sendRetryBaseDelayMs": 30000
   },
   "dashboard": {
-    "_comment": "pollsBeforeAssumedSeen: how many dashboard poll intervals (dashboardPollIntervalMs, in ui-defaults_non-layout_for-server-up-scenario.json) the server waits after a change the dashboard must show before assuming it was shown. 2.5 covers two whole polls even when one went out just before the change. The server waits this long before retiring a position whose re-open failed, so its alert is on screen first; the dashboard keeps the Manage button disabled as long after a retire. GET /api/status sends the milliseconds as guaranteedDashboardHasPolledMs. Startup stops outside its range in setting-bounds.json.",
+    "_comment": "pollsBeforeAssumedSeen: how many dashboard poll intervals (dashboardPollIntervalMs, in ui-defaults_non-layout_for-server-up-scenario.json) the bot waits after a change the dashboard must show before assuming it was shown. 2.5 covers two whole polls even when one went out just before the change. The bot waits this long before retiring a position whose re-open failed, so its alert is on screen first; the dashboard keeps the Manage button disabled as long after a retire. GET /api/status sends the milliseconds as guaranteedDashboardHasPolledMs. Startup stops outside its range in setting-bounds.json.",
     "pollsBeforeAssumedSeen": 2.5
   },
   "poll": {
@@ -38,11 +38,11 @@
     "lifetimeRescanCheckMs": 1800000
   },
   "retire": {
-    "_comment": "drainedAfterMs: how long a managed position may sit drained, with no rebalance under way, before the bot stops managing it. The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too: the operator has this long to raise Slippage or click Rebalance Now. Read by src/lib/bot-cycle-drain.js; its range is in setting-bounds.json.",
+    "_comment": "drainedAfterMs: how long a managed position may sit drained, with no rebalance under way, before the bot stops managing it. The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too: the operator has this long to raise Slippage or click Rebalance Now. Read by src/bot/bot-cycle-drain.js; its range is in setting-bounds.json.",
     "drainedAfterMs": 1800000
   },
   "rescanPrices": {
-    "_comment": "How long the dashboard's Re-scan Prices dialog waits for the scan it started before handing the button back, rather than spinning forever. Read by src/client/web/dashboard-rescan-prices.js via the rescanPricesTimeoutMs field on GET /api/status. It bounds a button, not a scan: nothing server-side reads it, and the scan it is waiting on runs to completion either way.",
+    "_comment": "How long the dashboard's Re-scan Prices dialog waits for the scan it started before handing the button back, rather than spinning forever. Read by src/client/web/js/dashboard-rescan-prices.js via the rescanPricesTimeoutMs field on GET /api/status. It bounds a button, not a scan: nothing server-side reads it, and the scan it is waiting on runs to completion either way.",
     "timeoutMs": 7200000
   },
   "compound": {
@@ -50,7 +50,7 @@
     "defaultThresholdUsd": 5,
     "_repositionWindowSec_comment": "Compound detection: an IncreaseLiquidity on an NFT within this many seconds after a DecreaseLiquidity that drained it is a reposition (a drain, then a re-deposit), not a compound, and its amounts are not counted as compounded fees. Turned into blocks with the active chain's blockTimeSec in chains.json, so the window is the same length of time on every chain. 500000 s is about 5.8 days: 50,000 blocks at ten seconds a block.",
     "repositionWindowSec": 500000,
-    "_autoSpacing_comment": "The least time between two automatic compounds of one position: autoSpacingPolls poll intervals (CHECK_INTERVAL_SEC), never less than autoSpacingFloorSec. Each compound pays gas for a collect and a deposit, so a short poll interval must not mean one every poll. Compound Now is not held to it. Read by src/lib/bot-cycle-compound.js; ranges are in setting-bounds.json.",
+    "_autoSpacing_comment": "The least time between two automatic compounds of one position: autoSpacingPolls poll intervals (CHECK_INTERVAL_SEC), never less than autoSpacingFloorSec. Each compound pays gas for a collect and a deposit, so a short poll interval must not mean one every poll. Compound Now is not held to it. Read by src/bot/bot-cycle-compound.js; ranges are in setting-bounds.json.",
     "autoSpacingPolls": 5,
     "autoSpacingFloorSec": 300
   },

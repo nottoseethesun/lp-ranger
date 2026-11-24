@@ -2,10 +2,10 @@
  * @file test/compound-fees-on-chain.test.js
  * @description The fees a compound's deposit put back, worked out from
  * the chain for a compound whose record names none
- * (src/lib/compound-fees-on-chain.js), the rebuild of the compound list
+ * (src/bot/compound-fees-on-chain.js), the rebuild of the compound list
  * that keeps them on its entry (`compoundHistoryFrom`,
- * src/lib/compound-activity-figures.js), and the counts that read them
- * (src/lib/compounded-coins.js).
+ * src/bot/compound-activity-figures.js), and the counts that read them
+ * (src/bot/compounded-coins.js).
  *
  * The fixture compound on NFT #7 collected 10 of token0 and 20 of token1
  * at block 5000, swapped 4 of token0 for 6 of token1 at block 5002, and
@@ -27,14 +27,14 @@ const {
   feeFieldsOf,
   walletSwapsBetween,
   feesFromChain,
-} = require("../src/lib/compound-fees-on-chain");
+} = require("../src/bot/compound-fees-on-chain");
 const {
   feeRecords,
   namesNoFeesOn,
   compoundedCoinsByNft,
   walletCoinsPutIn,
   feesLeftInWallet,
-} = require("../src/lib/compounded-coins");
+} = require("../src/bot/compounded-coins");
 
 /*-
  *  The historical price lookup is the rebuild module's one way out of
@@ -48,8 +48,8 @@ Module.prototype.require = function (id) {
     };
   return _origRequire.apply(this, arguments);
 };
-delete require.cache[require.resolve("../src/lib/compound-activity-figures")];
-const { compoundHistoryFrom } = require("../src/lib/compound-activity-figures");
+delete require.cache[require.resolve("../src/bot/compound-activity-figures")];
+const { compoundHistoryFrom } = require("../src/bot/compound-activity-figures");
 Module.prototype.require = _origRequire;
 
 const WALLET = "0x00000000000000000000000000000000000000aa";

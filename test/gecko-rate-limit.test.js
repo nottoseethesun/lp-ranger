@@ -14,7 +14,7 @@ const {
   _getPenaltyUntilMs,
   _resetForTest,
   _MAX_CALLS,
-} = require("../src/lib/gecko-rate-limit");
+} = require("../src/bot/gecko-rate-limit");
 
 describe("gecko-rate-limit", () => {
   let _origSetTimeout;

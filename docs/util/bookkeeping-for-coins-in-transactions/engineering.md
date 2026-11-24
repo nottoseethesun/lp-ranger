@@ -160,13 +160,13 @@ Moralis key typed into the report is saved in the app's own key store.
 | `src/lib/config.js` | The chain, its contracts and coins, and the endpoint list |
 | `src/lib/load-merged-defaults.js` | `chains.json` with the operator's copy over it, which `--blockchain` is checked against |
 | `src/lib/bot-config-defaults.js` | The pace of requests and the span of a log search |
-| `src/lib/historical-token-price.js` | A price: Moralis's at a block, else GeckoTerminal's close for the UTC day |
-| `src/lib/price-cache.js`, `src/lib/gecko-pool-cache.js`, `src/lib/shared-json-file.js` | The price library's two caches, and how a cache file is written |
+| `src/bot/historical-token-price.js` | A price: Moralis's at a block, else GeckoTerminal's close for the UTC day |
+| `src/bot/price-cache.js`, `src/bot/gecko-pool-cache.js`, `src/bot/shared-json-file.js` | The price library's two caches, and how a cache file is written |
 | `src/lib/scan-cache-dir.js` | Where those caches go under `node --test` |
 | `src/lib/api-key-store.js`, `src/lib/api-key-holder.js` | The saved Moralis key, and the plain key in memory |
 | `src/lib/ask-password.js` | The prompt for the key's password, which shows nothing of what is typed |
-| `src/lib/server-moralis.js` | `pingMoralis`, which asks Moralis about the key |
-| `src/lib/nft-move-rules.js` | The rules for which NFT event began a move, a rebalance's drain (`drainBefore`) and a compound's collect (`collectBeforeDeposit`), which the bot also applies for the Activity Log's figures; and `sameHex`, how two hashes or addresses are compared |
+| `src/lib/moralis-key.js` | `pingMoralis`, which asks Moralis about the key |
+| `src/bot/nft-move-rules.js` | The rules for which NFT event began a move, a rebalance's drain (`drainBefore`) and a compound's collect (`collectBeforeDeposit`), which the bot also applies for the Activity Log's figures; and `sameHex`, how two hashes or addresses are compared |
 | `util/diagnostic/check-rpc-health.js` | `parseEndpoint`, which reads `--rpc-endpoint` |
 
 **What they write.** The report writes its csv to
@@ -730,7 +730,7 @@ means for a report, back-to-back ranges included, is in
 ### Prices
 
 `usd-prices.js` prices each coin through LP Ranger's own library,
-`fetchHistoricalTokenPriceUsd` (`src/lib/historical-token-price.js`), the
+`fetchHistoricalTokenPriceUsd` (`src/bot/historical-token-price.js`), the
 lookup the app uses to price gas on a past day. It passes the
 transaction's block, so the library asks Moralis first, for the price at
 that block, and GeckoTerminal for the UTC day's close where Moralis has
@@ -748,7 +748,7 @@ first (`cachePath`), so the tools never write LP Ranger's own caches in
 process's own folder (`src/lib/scan-cache-dir.js`). A price is written as it
 arrives. Each write reads the file as it is at that moment, lays the
 run's own prices over it and replaces it whole
-(`src/lib/shared-json-file.js`).
+(`src/bot/shared-json-file.js`).
 
 ### One Run at a Time
 
@@ -780,7 +780,7 @@ would keep, and it is kept nowhere. The plain key is only in memory, in
 `src/lib/api-key-holder.js`, where the price library reads it.
 
 Every run asks Moralis about the key once, before it prices anything
-(`pingMoralis`, `src/lib/server-moralis.js`). The library answers a refused
+(`pingMoralis`, `src/lib/moralis-key.js`). The library answers a refused
 key as it answers a coin with no price, by asking CoinGecko. Without
 the check, a key Moralis stopped taking would leave CoinGecko to answer
 alone, and the run would stop only at the first day older than 180

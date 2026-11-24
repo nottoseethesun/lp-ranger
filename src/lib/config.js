@@ -41,7 +41,6 @@ const {
   loadShippedDefaults,
 } = require("./load-merged-defaults");
 const { readBotConfigDefaultsStrict } = require("./bot-config-defaults");
-const { readUiDefaultsStrict } = require("./ui-defaults");
 const botConfigV2 = require("./bot-config-v2");
 const { composeRpcUrls } = require("./rpc-url-list");
 const { assertTimerSec } = require("./timer-bounds");
@@ -161,11 +160,13 @@ const RPC_URL = RPC_URLS[0] || "";
 /**
  * Replace the live endpoint list, in place, after the operator adds one.
  *
- * Mutates rather than rebinding because `RPC_URLS` is read directly by
- * `src/server/rpc-endpoints.js`, `src/lib/rebalancer-pools.js` and
- * `src/lib/server-can-reopen.js`, each of which captured the array. A
- * rebind would leave all three walking the endpoints the process
- * started with.
+ * Mutates rather than rebinding because every reader takes the one array
+ * this module exports, through `config.RPC_URLS`: the server's endpoint
+ * list and status answer (`src/server/rpc-endpoints.js`,
+ * `src/server/handle-api-status.js`) and the bot as it puts the
+ * endpoints into service (`src/bot/bot-interface.js`, `bot-loop.js`,
+ * `position-manager.js`). A rebind would leave them all walking the
+ * endpoints the process started with.
  * @param {string[]} urls  Ordered endpoints, most-preferred first.
  * @returns {void}
  */
@@ -337,7 +338,7 @@ const MAX_REBALANCES_PER_DAY = parseBoundedSetting(
  * Env-over-JSON like every tunable around it, per this file's header:
  * shipped default, operator override, then env on top.  That layer is
  * what makes a setting reachable on a headless install, where there is
- * no Bot Settings panel to press Save in.  `src/lib/il-guard.js` reads this
+ * no Bot Settings panel to press Save in.  `src/bot/il-guard.js` reads this
  * same export for its fallback, so the badge and the enforced threshold
  * cannot disagree — reading the JSON directly there is what made
  * `IMPERMANENT_LOSS_GUARD_PCT=30` show 30 while the bot enforced 50.
@@ -347,49 +348,6 @@ const IMPERMANENT_LOSS_GUARD_PCT = parseBoundedSetting(
   _BOT_DEFAULTS.impermanentLossGuardPct,
   "impermanentLossGuardPct",
 );
-
-/*-
- *  The dashboard settings the server sends, read here once, at startup,
- *  by the strict reader: a value an operator wrote outside its rule stops
- *  the app, naming it. Every later read of them returns this answer
- *  (src/lib/ui-defaults.js), the one `GET /api/ui-defaults` sends the page.
- */
-const _UI_SETTINGS = readUiDefaultsStrict();
-
-/*-
- *  How often the dashboard polls `GET /api/status`, for server-side
- *  timing that depends on "the dashboard has had a chance to poll": the
- *  very value the page is sent, so the two cannot disagree.
- */
-const DASHBOARD_POLL_INTERVAL_MS = _UI_SETTINGS.dashboardPollIntervalMs;
-
-/**
- * Read how long after a server-side state change the dashboard can be
- * assumed to have POLLED at least once and captured it: the poll
- * interval times `dashboard.pollsBeforeAssumedSeen` in app-runtime.json,
- * whose comment explains the figure.
- *
- * Used by `bot-loop.js`'s re-open-failure path to delay the auto-retire,
- * so the dashboard sees `rebalancePaused=true` and raises its alert
- * before the state is deleted on retire. The result becomes a timer, so
- * the multiple is held to its range in setting-bounds.json, which gives
- * the reason for it.
- *
- * @returns {number} Whole milliseconds.
- * @throws {Error} When the multiple is outside that range.
- */
-function _guaranteedDashboardHasPolledMs() {
-  const polls = APP_CONFIG.dashboard?.pollsBeforeAssumedSeen;
-  const bound = SETTING_BOUNDS.dashboard.pollsBeforeAssumedSeen;
-  if (withinBound(polls, bound))
-    return Math.round(DASHBOARD_POLL_INTERVAL_MS * polls);
-  throw new Error(
-    "[config] app-runtime.json → dashboard.pollsBeforeAssumedSeen must be " +
-      `${boundText(bound)}; it is ${JSON.stringify(polls)}.`,
-  );
-}
-
-const GUARANTEED_DASHBOARD_HAS_POLLED_MS = _guaranteedDashboardHasPolledMs();
 
 /** File path for the JSON rebalance event log. */
 const LOG_FILE = readEnv("LOG_FILE") ?? APP_CONFIG.log.file;
@@ -551,7 +509,7 @@ const AGGREGATOR_NAME = _aggregatorName();
 
 /**
  * Read where the active chain's token list lives, the list the dashboard
- * takes token logos from (`src/client/web/dashboard-token-logos.js`).
+ * takes token logos from (`src/client/web/js/dashboard-token-logos.js`).
  *
  * The entry must say one way or the other. An empty url means the chain
  * has no list, and every token there shows a transparent placeholder. A
@@ -612,7 +570,7 @@ _checkChainSetting("homepage", _isText, "the chain's website");
 _checkChainSetting(
   "logo",
   _isText,
-  "the file name of its logo under src/client/web/",
+  "the file name of its logo under src/client/web/images/",
 );
 _checkChainSetting(
   "blockTimeSec",
@@ -807,8 +765,6 @@ module.exports = {
   POLL_AFTER_ACTION_MS,
   LIFETIME_RESCAN_CHECK_MS,
   DRAINED_RETIRE_MS,
-  DASHBOARD_POLL_INTERVAL_MS,
-  GUARANTEED_DASHBOARD_HAS_POLLED_MS,
   LOG_FILE,
 
   // Contracts

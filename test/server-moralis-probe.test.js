@@ -28,10 +28,8 @@ const assert = require("node:assert/strict");
 
 const config = require("../src/lib/config");
 const { setApiKey } = require("../src/lib/api-key-holder");
-const {
-  moralisProbeUrl,
-  handleApiKeyStatus,
-} = require("../src/lib/server-moralis");
+const { moralisProbeUrl } = require("../src/lib/moralis-key");
+const { handleApiKeyStatus } = require("../src/server/moralis-key-status");
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");
 
 const TOKEN = "0x" + "12".repeat(20);

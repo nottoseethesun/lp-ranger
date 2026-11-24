@@ -11,8 +11,8 @@
 Total Lifetime Deposit prices each deposit at its own block. The
 deposit count records each one at its block as it arrives, and the
 Lifetime scan enters each one it finds the same way
-(`src/lib/lifetime-hodl.js`). The price comes from the historical-price
-lookup (`fetchHistoricalPriceGecko`, `src/lib/price-fetcher.js`):
+(`src/bot/lifetime-hodl.js`). The price comes from the historical-price
+lookup (`fetchHistoricalPriceGecko`, `src/bot/price-fetcher.js`):
 
 - **With a Moralis API key,** Moralis answers for the block itself.
 - **Without one,** or for a coin Moralis has no price for,
@@ -39,7 +39,7 @@ minute's or the hour's, as of just after the block's time rather than
 the end of its day. Two things to settle first:
 
 - **Requests.** GeckoTerminal's free tier allows about thirty a minute,
-  shared by every GeckoTerminal call (`src/lib/gecko-rate-limit.js`).
+  shared by every GeckoTerminal call (`src/bot/gecko-rate-limit.js`).
   Asking for the minute's candle first adds a request wherever it comes
   back empty and the lookup falls back to a coarser one.
 - **A pool with no trade yet.** For a block at the pool's start, before

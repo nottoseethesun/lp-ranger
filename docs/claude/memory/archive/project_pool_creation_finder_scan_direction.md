@@ -18,7 +18,7 @@ Kept for history below.
 
 ---
 
-`src/lib/pool-creation-finder.js` `findPoolCreationBlock` walks the V3
+`src/bot/pool-creation-finder.js` `findPoolCreationBlock` walks the V3
 Factory's `PoolCreated` event log from oldest to newest. For a pool
 created today inside a 5-year scan window, that traverses ~150 chunks of
 empty history before finding the creation event in the most recent

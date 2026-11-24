@@ -51,7 +51,7 @@ const { Command, InvalidArgumentError } = require("commander");
 const { ethers } = require("ethers");
 const { parseBlockchain, oneChainNotice } = require("./blockchain");
 const config = require("../../src/lib/config");
-const { sameHex } = require("../../src/lib/nft-move-rules");
+const { sameHex } = require("../../src/bot/nft-move-rules");
 const { parseEndpoint } = require("../diagnostic/check-rpc-health");
 
 /**
@@ -203,7 +203,7 @@ function buildProgram() {
 
 /**
  * Whether two addresses are the same, whatever their letters' case, by
- * LP Ranger's own comparison (`sameHex`, src/lib/nft-move-rules.js).
+ * LP Ranger's own comparison (`sameHex`, src/bot/nft-move-rules.js).
  * @param {string} a  An address.
  * @param {string} b  Another address.
  * @returns {boolean}

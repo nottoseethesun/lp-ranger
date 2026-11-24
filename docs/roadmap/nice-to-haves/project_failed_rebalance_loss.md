@@ -27,7 +27,7 @@ Between a failed rebalance and the one run again, the coins are not
 managed: they sit in the wallet, held by no position. The rebalance run
 again has nothing to empty, so its readings before and after the
 emptying are the same coins, the wallet as it found it
-(`_walletBalances`, `src/lib/rebalancer-execute.js`). Its figure covers
+(`_walletBalances`, `src/bot/rebalancer-execute.js`). Its figure covers
 only what it did itself and does not reach back to the prior position.
 The entry's record names the prior position, but nothing measures from
 it.
@@ -45,7 +45,7 @@ The chain already holds what this needs. For a Rebalance entry with no
 readings of its own, the scan finds the emptying among the old
 position's events, its latest decrease of liquidity before the new
 mint, and reads the wallet around it (`_chainReadings`,
-`src/lib/rebalance-activity-figures.js`). For a rebalance run again,
+`src/bot/rebalance-activity-figures.js`). For a rebalance run again,
 that emptying is the failed attempt's. Today the rebalance's own
 readings come first, so the chain is not asked.
 

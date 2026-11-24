@@ -4,10 +4,10 @@
  * @file test/position-details-current-deposit.test.js
  * @description An unmanaged position's Current panel counts its deposit
  *   and its Net P&L as the dashboard does for a managed one
- *   (`computeQuickDetails`, src/server/position-details-quick.js): Initial
+ *   (`computeQuickDetails`, src/bot/position-details-quick.js): Initial
  *   Deposit for This LP is the minted coins with the wallet's coins its
  *   compounds took in beyond their fees, each at its compound's prices
- *   (src/lib/current-lp-deposit.js), from the compound list the bot saved
+ *   (src/bot/current-lp-deposit.js), from the compound list the bot saved
  *   while it managed the position, and Net P&L adds the fees those
  *   compounds left in the wallet.
  *
@@ -23,7 +23,7 @@ const assert = require("node:assert/strict");
 const Module = require("module");
 const config = require("../src/lib/config");
 const { compositeKey } = require("../src/lib/bot-config-v2");
-const { setCachedLifetimeHodl } = require("../src/lib/epoch-cache");
+const { setCachedLifetimeHodl } = require("../src/bot/epoch-cache");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -63,14 +63,14 @@ before(() => {
       };
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/server/position-details-quick")];
-  ({ computeQuickDetails } = require("../src/server/position-details-quick"));
+  delete require.cache[require.resolve("../src/bot/position-details-quick")];
+  ({ computeQuickDetails } = require("../src/bot/position-details-quick"));
   key = compositeKey(config.CHAIN_NAME, WALLET, PM, TOKEN_ID);
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/server/position-details-quick")];
+  delete require.cache[require.resolve("../src/bot/position-details-quick")];
 });
 
 const request = () => ({

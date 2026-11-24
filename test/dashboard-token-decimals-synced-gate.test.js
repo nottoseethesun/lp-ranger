@@ -33,8 +33,8 @@ const assert = require("node:assert/strict");
 let mod, store;
 
 before(async () => {
-  mod = await import("../src/client/web/dashboard-token-decimals.js");
-  store = await import("../src/client/web/dashboard-positions-store.js");
+  mod = await import("../src/client/web/js/dashboard-token-decimals.js");
+  store = await import("../src/client/web/js/dashboard-positions-store.js");
 });
 
 /** The two token blocks, as Pool Details renders them. */
@@ -241,7 +241,15 @@ describe("poll wiring", () => {
     const fs = require("node:fs");
     const path = require("node:path");
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "src", "client", "web", "dashboard-data.js"),
+      path.join(
+        __dirname,
+        "..",
+        "src",
+        "client",
+        "web",
+        "js",
+        "dashboard-data.js",
+      ),
       "utf8",
     );
     assert.match(src, /refreshDecimalsOverrideOnPoll\(\);/);
@@ -375,7 +383,7 @@ describe("Re-scan Prices: the tool header", () => {
   });
 
   it("the row centres them against each other", () => {
-    const css = read("9mm-pos-mgr.css");
+    const css = read("css/9mm-pos-mgr.css");
     const i = css.indexOf("mm-pos-mgr-modal-tool-head {");
     const rule = css.slice(i, css.indexOf("}", i));
     assert.match(rule, /display:\s*flex/);
@@ -385,7 +393,7 @@ describe("Re-scan Prices: the tool header", () => {
   it("the title's own margins are cleared so centring holds", () => {
     /*- An h3 keeps its block margins inside a flex row, which would push
      *  it off the icon's centre line. */
-    const css = read("9mm-pos-mgr.css");
+    const css = read("css/9mm-pos-mgr.css");
     const i = css.indexOf("mm-pos-mgr-modal-tool-head h3 {");
     assert.notEqual(i, -1, "the override must exist");
     assert.match(css.slice(i, css.indexOf("}", i)), /margin:\s*0/);
@@ -394,7 +402,7 @@ describe("Re-scan Prices: the tool header", () => {
   it("the notice slot collapses when empty", () => {
     /*- Reserving its height cost three blank lines above the window
      *  checkbox and pushed it below the fold. */
-    const css = read("9mm-pos-mgr.css");
+    const css = read("css/9mm-pos-mgr.css");
     const i = css.indexOf("mm-pos-mgr-dialog-notice {");
     assert.notEqual(i, -1, "the notice rule must exist");
     const rule = css.slice(i, css.indexOf("}", i));

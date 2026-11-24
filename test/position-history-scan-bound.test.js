@@ -27,13 +27,13 @@ process.env.LP_RANGER_USER_CONFIG_DIR = SETTINGS_DIR;
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const Module = require("module");
-const { topicForTokenId } = require("../src/lib/nft-token-topic");
+const { topicForTokenId } = require("../src/bot/nft-token-topic");
 const config = require("../src/lib/config");
 
 /*-
  *  How far back the lookback reaches, in blocks, worked out here from
  *  the two settings it is made of rather than asked of
- *  src/lib/history-lookback.js, so a wrong conversion there cannot agree
+ *  src/bot/history-lookback.js, so a wrong conversion there cannot agree
  *  with itself.
  */
 const LOOKBACK_BLOCKS = Math.round(
@@ -105,7 +105,7 @@ describe("position-history scan bound", () => {
     /* Reset the in-memory pool-creation-block cache so each test starts
        from a clean slate (otherwise the first test's lookup pollutes
        subsequent tests). */
-    const pcb = require("../src/lib/pool-creation-block");
+    const pcb = require("../src/bot/pool-creation-block");
     if (typeof pcb._resetForTests === "function") pcb._resetForTests();
   });
 
@@ -121,7 +121,7 @@ describe("position-history scan bound", () => {
     };
     const {
       scanCollectAndDrain,
-    } = require("../src/lib/position-history-scan-helpers");
+    } = require("../src/bot/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     await scanCollectAndDrain("12345", provider, 5_000_000);
     /*- Collect + DecreaseLiquidity, both bounded.  The scan is chunked,
@@ -153,7 +153,7 @@ describe("position-history scan bound", () => {
     };
     const {
       scanCollectAndDrain,
-    } = require("../src/lib/position-history-scan-helpers");
+    } = require("../src/bot/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     await scanCollectAndDrain("12345", provider);
     const lowest = Math.min(...getLogsCalls.map((c) => c.fromBlock));
@@ -173,7 +173,7 @@ describe("position-history scan bound", () => {
     };
     const {
       resolveScanFromBlock,
-    } = require("../src/lib/position-history-scan-helpers");
+    } = require("../src/bot/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     const from = await resolveScanFromBlock(provider, stub, "12345");
     assert.strictEqual(from, latestBlock - LOOKBACK_BLOCKS);
@@ -208,7 +208,7 @@ describe("position-history scan bound", () => {
     };
     const {
       scanCollectAndDrain,
-    } = require("../src/lib/position-history-scan-helpers");
+    } = require("../src/bot/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     const out = await scanCollectAndDrain("12345", provider, 5_000_000);
     assert.ok(out, "must return a result when logs are present");
@@ -231,7 +231,7 @@ describe("position-history scan bound", () => {
     };
     const {
       resolveScanFromBlock,
-    } = require("../src/lib/position-history-scan-helpers");
+    } = require("../src/bot/position-history-scan-helpers");
     const provider = new stub.JsonRpcProvider();
     const from = await resolveScanFromBlock(provider, stub, "12345");
     assert.strictEqual(from, 0, "the lookback's floor clamps to 0");

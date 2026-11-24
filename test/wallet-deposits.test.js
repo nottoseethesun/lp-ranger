@@ -1,7 +1,7 @@
 /**
  * @file test/wallet-deposits.test.js
  * @description The wallet's deposits in a range of blocks, one entry per
- *   transaction (`depositsInWindow`, src/lib/wallet-deposits.js).
+ *   transaction (`depositsInWindow`, src/bot/wallet-deposits.js).
  *
  *   The Lifetime scan sums these for each gap between mints, and the
  *   deposit count records them one by one, at their own blocks, so a
@@ -23,7 +23,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { depositsInWindow } = require("../src/lib/wallet-deposits");
+const { depositsInWindow } = require("../src/bot/wallet-deposits");
 const {
   TRANSFER_TOPIC0,
   DEPOSIT_TOPIC0,

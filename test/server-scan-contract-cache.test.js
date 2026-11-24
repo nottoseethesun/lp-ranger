@@ -25,12 +25,12 @@ const os = require("os");
 const path = require("path");
 
 const config = require("../src/lib/config");
-const sendTx = require("../src/lib/send-transaction");
-const { createScanHandlers } = require("../src/lib/server-scan");
+const sendTx = require("../src/bot/send-transaction");
+const { createScanHandlers } = require("./_bot-route-adapters");
 const {
   saveLpPositionCache,
   loadLpPositionCache,
-} = require("../src/lib/lp-position-cache");
+} = require("../src/bot/lp-position-cache");
 
 const OTHER_PM = "0x" + "c".repeat(40);
 const WALLET = "0x" + "d".repeat(39) + "1";

@@ -78,13 +78,13 @@ process.chdir(
 
 const { ethers } = require("ethers");
 const config = require("../../src/lib/config");
-const { PM_ABI } = require("../../src/lib/pm-abi");
+const { PM_ABI } = require("../../src/bot/pm-abi");
 const {
   BLOCKS_PER_YEAR,
   LOOKBACK_YEARS,
   historyFloorBlock,
-} = require("../../src/lib/history-lookback");
-const { _DEFAULT_CHUNK_SIZE } = require("../../src/lib/get-logs-chunked");
+} = require("../../src/bot/history-lookback");
+const { _DEFAULT_CHUNK_SIZE } = require("../../src/bot/get-logs-chunked");
 const { readBotConfigDefaults } = require("../../src/lib/bot-config-defaults");
 const { Command, InvalidArgumentError } = require("commander");
 const { sleep, addrTopic, fmtTs, fetchTimestamps } = require("./_helpers");

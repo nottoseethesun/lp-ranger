@@ -4,7 +4,7 @@
  * A failover has to move every read, not only the reads that ask where
  * to go.
  *
- * Endpoint selection lives in `src/lib/send-transaction.js`, and one path
+ * Endpoint selection lives in `src/bot/send-transaction.js`, and one path
  * consults it properly: the managed read proxy, which resolves the
  * selected provider on every property access and retries a
  * failover-eligible error on the next endpoint. Two other kinds of
@@ -41,18 +41,26 @@ const assert = require("node:assert/strict");
 
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const sendTx = require("../src/lib/send-transaction");
-const rpcQueue = require("../src/lib/rpc-request-manager");
+const sendTx = require("../src/bot/send-transaction");
+const rpcQueue = require("../src/bot/rpc-request-manager");
 const config = require("../src/lib/config");
 const {
   getPoolState,
   _setRetryDelayForTests,
-} = require("../src/lib/rebalancer-pools");
+} = require("../src/bot/rebalancer-pools");
 const {
-  createCanReopenHandler,
+  createCanReopenCheck,
   _setRetryDelayForTests: _setCanReopenRetryDelay,
-} = require("../src/lib/server-can-reopen");
-const { FailoverNonceManager } = require("../src/lib/nonce-manager-wrapper");
+} = require("../src/bot/can-reopen");
+const { createPositionRoutes } = require("../src/server/position-routes");
+
+/** The server's re-open route over the bot's check, one set of deps for both. */
+const createCanReopenHandler = (deps) =>
+  createPositionRoutes({
+    ...deps,
+    bot: { canReopen: createCanReopenCheck(deps) },
+  })["POST /api/position/can-reopen"];
+const { FailoverNonceManager } = require("../src/bot/nonce-manager-wrapper");
 const { condemn } = require("./helpers/send-tx-stubs");
 
 const URLS = ["http://one.test", "http://two.test", "http://three.test"];

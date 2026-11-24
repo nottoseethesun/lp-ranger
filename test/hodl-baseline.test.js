@@ -15,12 +15,12 @@ const {
   initHodlBaseline,
   getPositionBaseline,
   _positionValueUsd,
-} = require("../src/lib/hodl-baseline");
-const { _resetForTest } = require("../src/lib/gecko-rate-limit");
-const { _setRetryDelayForTests } = require("../src/lib/rebalancer-pools");
-const sendTx = require("../src/lib/send-transaction");
-const rpcQueue = require("../src/lib/rpc-request-manager");
-const outOfService = require("../src/lib/rpc-out-of-service");
+} = require("../src/bot/hodl-baseline");
+const { _resetForTest } = require("../src/bot/gecko-rate-limit");
+const { _setRetryDelayForTests } = require("../src/bot/rebalancer-pools");
+const sendTx = require("../src/bot/send-transaction");
+const rpcQueue = require("../src/bot/rpc-request-manager");
+const outOfService = require("../src/bot/rpc-out-of-service");
 /*- Shared with test/hodl-baseline-unreadable-mint.test.js. These stubs
  *  have to track what `getPoolState` validates, and a second copy would
  *  drift the moment that validation gained a field. */

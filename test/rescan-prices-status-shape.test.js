@@ -5,7 +5,7 @@
  * the Re-scan Prices dialog reads.
  *
  * The dialog does not receive the raw API body. `flattenV2Status` in
- * `src/client/web/dashboard-data-cache.js` reshapes it into
+ * `src/client/web/js/dashboard-data-cache.js` reshapes it into
  * `{ ...global, ...activePositionData, _allPositionStates, … }`, so the
  * server's `global.*` fields end up at the TOP level.
  *
@@ -23,9 +23,9 @@ require("global-jsdom/register");
 const { test, before } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createApiStatusHandler } = require("../src/server/handle-api-status");
-const { primaryRouteLabel } = require("../src/lib/rebalancer-swap");
-const { moralisEnabledIn } = require("../src/lib/server-moralis");
+const { createApiStatusHandler } = require("./_bot-route-adapters");
+const { primaryRouteLabel } = require("../src/bot/rebalancer-swap");
+const { moralisEnabledIn } = require("../src/lib/moralis-key");
 const config = require("../src/lib/config");
 const APP_RUNTIME = require("../app-config/app-defaults-for-user-configurable/app-runtime.json");
 
@@ -33,7 +33,7 @@ let flattenV2Status;
 
 before(async () => {
   ({ flattenV2Status } =
-    await import("../src/client/web/dashboard-data-cache.js"));
+    await import("../src/client/web/js/dashboard-data-cache.js"));
 });
 
 /** The real `/api/status` body, from the real handler. */

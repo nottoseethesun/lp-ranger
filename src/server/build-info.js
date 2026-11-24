@@ -1,7 +1,7 @@
 /**
  * @file src/server/build-info.js
  * @description Server-side build/version info helper. Mirrors the browser's
- * auto-generated src/client/web/build-info.js.
+ * auto-generated src/client/web/js/build-info.js.
  *
  * Resolution order:
  *   1. `src/server/build-info.json` — baked sidecar written by

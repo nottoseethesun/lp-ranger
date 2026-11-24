@@ -21,7 +21,7 @@ const { loadShippedDefaults } = require("../../src/lib/load-merged-defaults");
  */
 async function learnUiSettings(overrides = {}) {
   const { loadUiSettings } =
-    await import("../../src/client/web/dashboard-ui-settings.js");
+    await import("../../src/client/web/js/dashboard-ui-settings.js");
   const body = {
     ...loadShippedDefaults(
       "ui-defaults_non-layout_for-server-up-scenario.json",

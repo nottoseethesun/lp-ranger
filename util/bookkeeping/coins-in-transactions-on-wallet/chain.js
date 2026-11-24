@@ -42,7 +42,7 @@ const {
 const {
   drainBefore,
   collectBeforeDeposit,
-} = require("../../../src/lib/nft-move-rules");
+} = require("../../../src/bot/nft-move-rules");
 
 /** bot-config-defaults.json as LP Ranger resolves it, overrides applied. */
 const BOT_DEFAULTS = readBotConfigDefaults();
@@ -165,7 +165,7 @@ async function nftLogsBefore(provider, search) {
 }
 
 /**
- * A log as the shared move rules (src/lib/nft-move-rules.js) read an event:
+ * A log as the shared move rules (src/bot/nft-move-rules.js) read an event:
  * its block, its transaction, and its place in the block when the
  * endpoint gave one.
  * @param {object} log  A log as the provider returns it.
@@ -178,7 +178,7 @@ function asMoveEvent(log) {
 }
 
 /**
- * The block of a rebalance's drain, by the rule in src/lib/nft-move-rules.js
+ * The block of a rebalance's drain, by the rule in src/bot/nft-move-rules.js
  * (`drainBefore`): the latest `DecreaseLiquidity` of the replaced NFT at
  * or before the mint. Searched back to the block that NFT was minted in
  * when the event cache knows it, else across the spans a month of blocks
@@ -206,7 +206,7 @@ async function drainBlockBefore(provider, search) {
 }
 
 /**
- * The block of a compound's collect, by the rule in src/lib/nft-move-rules.js
+ * The block of a compound's collect, by the rule in src/bot/nft-move-rules.js
  * (`collectBeforeDeposit`): the latest `Collect` of the NFT within one
  * span of blocks before its deposit, provided no other deposit into the
  * NFT came after it. Without one, the deposit was coins the owner added

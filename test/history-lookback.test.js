@@ -1,6 +1,6 @@
 /**
  * @file test/history-lookback.test.js
- * @description `src/lib/history-lookback.js` answers how far back a scan of a
+ * @description `src/bot/history-lookback.js` answers how far back a scan of a
  * pool's past reaches: `historyLookbackYears` from bot-config-defaults.json,
  * turned into blocks at the active chain's `blockTimeSec` in chains.json.
  *
@@ -39,7 +39,7 @@ const {
   BLOCKS_PER_YEAR,
   LOOKBACK_YEARS,
   historyFloorBlock,
-} = require("../src/lib/history-lookback");
+} = require("../src/bot/history-lookback");
 
 describe("history lookback", () => {
   it("counts a year of blocks at the chain's own block time", () => {

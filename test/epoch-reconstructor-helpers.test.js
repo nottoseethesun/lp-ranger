@@ -15,7 +15,7 @@ const {
   _hasValidTimestamps,
   _assembleEpoch,
   reconstructEpochs,
-} = require("../src/lib/epoch-reconstructor");
+} = require("../src/bot/epoch-reconstructor");
 const config = require("../src/lib/config");
 
 // ── _hasValidTimestamps ─────────────────────────────────────────────

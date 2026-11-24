@@ -12,9 +12,9 @@ const {
   getPoolScanLock,
   clearPoolCache,
   appendToPoolCache,
-} = require("../src/lib/pool-scanner");
+} = require("../src/bot/pool-scanner");
 const { createCacheStore, eventCachePath } = require("../src/lib/cache-store");
-const { buildCacheKey } = require("../src/lib/event-scanner");
+const { buildCacheKey } = require("../src/bot/event-scanner");
 const config = require("../src/lib/config");
 
 /*-

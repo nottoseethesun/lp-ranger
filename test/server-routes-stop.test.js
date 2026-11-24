@@ -13,13 +13,13 @@
 
 const { describe, it, afterEach, beforeEach, mock } = require("node:test");
 const assert = require("assert");
-const { createRouteHandlers } = require("../src/server/server-routes");
+const { createRouteHandlers } = require("./_bot-route-adapters");
 const { readShutdownTimings } = require("../src/lib/shutdown-timing");
 const { compositeKey, managedKeys } = require("../src/lib/bot-config-v2");
 const { CHAIN_NAME } = require("../src/lib/config");
-const appPhase = require("../src/lib/app-phase");
-const { createPositionManager } = require("../src/lib/position-manager");
-const { updatePositionState } = require("../src/lib/server-positions");
+const appPhase = require("../src/bot/app-phase");
+const { createPositionManager } = require("../src/bot/position-manager");
+const { updatePositionState } = require("../src/bot/position-states");
 const { makeDeps, makeRes } = require("./helpers/route-handler-deps");
 
 const WALLET_0X = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";

@@ -34,9 +34,9 @@ let chain;
 let storage;
 
 before(async () => {
-  chain = await import("../src/client/web/dashboard-chain.js");
-  store = await import("../src/client/web/dashboard-positions-store.js");
-  storage = await import("../src/client/web/dashboard-chain-storage.js");
+  chain = await import("../src/client/web/js/dashboard-chain.js");
+  store = await import("../src/client/web/js/dashboard-positions-store.js");
+  storage = await import("../src/client/web/js/dashboard-chain-storage.js");
 });
 
 beforeEach(() => {

@@ -76,8 +76,8 @@ const STATE_FILES = [
  *  server is started without them. All four are gitignored, so a fresh
  *  clone does not have them either. */
 const BUILD_ARTIFACTS = [
-  "src/client/web/disclosure-content.js",
-  "src/client/web/ui-tokens.css",
+  "src/client/web/js/disclosure-content.js",
+  "src/client/web/css/ui-tokens.css",
 ];
 const BUILD_DIRS = ["src/client/web/dist", "src/client/web/fonts"];
 

@@ -1,7 +1,7 @@
 /**
  * @file test/compound-success-fees.test.js
  * @description A successful compound, through the bot's compound step
- *   (`executeCompound`, src/lib/bot-cycle-compound.js), counts only fees as
+ *   (`executeCompound`, src/bot/bot-cycle-compound.js), counts only fees as
  *   fees. The running Lifetime Fees Compounded total takes every fee it
  *   collected, those it left in the wallet included, and never the coins
  *   the wallet already held that its deposit took in. Its Telegram message
@@ -65,7 +65,7 @@ let standIn = SWEPT;
 
 const notified = [];
 
-/** Whether `mod` is the file `name` in src/lib/. */
+/** Whether `mod` is the file `name` in src/bot/. */
 const from = (mod, name) => path.basename(mod.filename || "") === name;
 
 const _origRequire = Module.prototype.require;
@@ -75,12 +75,12 @@ Module.prototype.require = function (id) {
       return { executeCompound: async () => ({ ...standIn }) };
     if (id === "./deposit-count")
       return { countDeposits: async () => ({ counted: true, added: false }) };
-    if (id === "./telegram-notifications/telegram")
+    if (id === "../lib/telegram-notifications/telegram")
       return { notify: (event, data) => notified.push({ event, data }) };
   }
   return _origRequire.apply(this, arguments);
 };
-const { executeCompound } = require("../src/lib/bot-cycle-compound");
+const { executeCompound } = require("../src/bot/bot-cycle-compound");
 Module.prototype.require = _origRequire;
 
 /**

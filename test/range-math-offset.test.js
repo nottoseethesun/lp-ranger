@@ -12,7 +12,7 @@ const {
   priceToTick,
   computeNewRange,
   preserveRange,
-} = require("../src/lib/range-math");
+} = require("../src/bot/range-math");
 
 // ── computeNewRange — offset ────────────────────────────────────────────────
 

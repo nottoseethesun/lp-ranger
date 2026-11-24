@@ -70,6 +70,20 @@ The bot can run in two modes:
 - **Headless** (`npm run bot`): `src/bot.js` runs the bot without any UI. Useful
   for server deployments where no browser access is needed.
 
+In the code the two concerns are kept apart. The bot's modules live in
+`src/bot/` and the server's in `src/server/`; no module holds both, and
+`src/lib/` holds only what two or more parts use: the settings, logging,
+generic infrastructure, and the formulas the web app bundles. Anything
+only one part uses lives in that part's folder. With the dashboard,
+the server reaches the bot only through one module, the bot's interface
+(`src/bot/bot-interface.js`). Its `createBot` builds the bot and returns
+the operations a caller may ask for: start and stop positions, make a
+move, read a position from the chain, scan the wallet, save settings,
+report the bot's state. An operation that refuses says why with a reason
+of the bot's own; the server alone turns that into an HTTP status. The
+headless bot builds its bot through the same `createBot`, so both modes
+build it one way.
+
 ### Frontend: The Web App
 
 The web app is a single-page dashboard served as static files from the same
@@ -77,8 +91,10 @@ Node.js process that runs the bot. It provides a real-time view of every
 managed position — current value, fee earnings, P&L breakdown, range status,
 rebalance history — and a set of controls for managing the bot's behavior.
 
-The dashboard is built from small ES module source files in `src/client/web/`
-(`dashboard-*.js`), bundled by esbuild into a single `bundle.js`. It uses no
+The dashboard is built from small ES module source files in `src/client/web/js/`
+(`dashboard-*.js`), bundled by esbuild into a single `bundle.js`. Its
+stylesheets sit in `src/client/web/css/` and its images in
+`src/client/web/images/`, beside the pages. It uses no
 frontend framework — just vanilla JavaScript, DOM manipulation, and CSS.
 Fonts are self-hosted (no CDN dependencies). Client-side URL routing via
 Navigo provides bookmarkable deep links to specific positions.
@@ -104,7 +120,8 @@ The endpoints fall into these groups, which are the reference's tags:
 - **Status** — `GET /api/status`, which the dashboard polls every
   `dashboardPollIntervalMs` (three seconds as shipped), returns the full
   state of all managed positions: pool prices, P&L snapshots, throttle
-  state and scan progress.
+  state and scan progress. `GET /api/csrf-token` hands out the token every
+  request but a GET carries.
 - **Config** — `POST /api/config` saves per-position settings (slippage,
   threshold, timeout, auto-compound) and global ones (rpc list, gas fee
   limit, approval multiple).
@@ -137,8 +154,8 @@ Each managed position runs its own independent `startBotLoop()` instance.
 Every poll cycle (default 300 seconds), the bot reads the pool's current state
 from the blockchain, computes P&L, and writes the results to an in-memory
 state map via an `updateBotState` callback. When the dashboard polls
-`GET /api/status`, the server reads this map and returns the full state for
-all positions.
+`GET /api/status`, the server asks the bot for its report, which the bot
+builds from this map, and returns the full state for all positions.
 
 The dashboard flattens the response, matches it to the currently-viewed
 position by composite key (`blockchain-wallet-contract-tokenId`), and updates
@@ -149,10 +166,12 @@ refresh picks up exactly where it left off.
 
 User actions flow in the opposite direction as HTTP POST/DELETE requests.
 When the user clicks "Manage" on a position, the dashboard sends
-`POST /api/position/manage { tokenId }`. The server starts a new bot loop
-for that position and responds with success. When the user saves a slippage
+`POST /api/position/manage { tokenId }`. The server asks the bot to manage
+it; the bot starts a new bot loop for that position, and the server
+responds with success. When the user saves a slippage
 setting, the dashboard sends `POST /api/config { slippagePctToken0,
-positionKey }` (or `slippagePctToken1`), and the server updates the
+positionKey }` (or `slippagePctToken1`), the server asks the bot to save
+it, and the bot's settings save (`src/bot/settings-save.js`) updates the
 per-position config on disk.
 
 ### Persistence
@@ -210,7 +229,7 @@ sequence under the rebalance lock:
    primary path is the active chain's aggregator: on PulseChain, the
    Watergun Aggregator, which routes across PulseChain DEXes for the lowest
    slippage. The V3 SwapRouter is the fallback, and the only path on a
-   chain with no aggregator. Two **swap-gates** (`src/lib/swap-gates.js`) run
+   chain with no aggregator. Two **swap-gates** (`src/bot/swap-gates.js`) run
    before every swap:
    - **Dust gate** (first) — skips a swap worth less than the gold-pegged
      dust threshold. It is cheaper and more reliable to evaluate than the
@@ -222,7 +241,7 @@ sequence under the rebalance lock:
    When either gate trips, the rebalance goes on to mint with the balances
    unswapped; any leftover is mopped up later by the corrective swaps or the
    residual-cleanup rebalance.
-6. **Corrective swaps** (`src/lib/rebalancer-correct.js`) — a swap routed
+6. **Corrective swaps** (`src/bot/rebalancer-correct.js`) — a swap routed
    through the position's own pool moves that pool's price, which can leave
    the coins off the new range's ratio. The pool is read again, and while
    the imbalance is above the dust threshold another swap follows, up to
@@ -231,7 +250,7 @@ sequence under the rebalance lock:
    swapped balances.
 
 A transaction stuck in this pipeline is recovered in four phases
-(`_waitOrSpeedUp`, in `src/lib/tx-speedup.js`): wait for confirmation; resend at
+(`_waitOrSpeedUp`, in `src/bot/tx-speedup.js`): wait for confirmation; resend at
 the same nonce with higher gas (1.5× on PulseChain); wait again; then send a
 zero-value self-transfer at that nonce to cancel it, and wait until something
 mines there. This covers every transaction that goes through
@@ -248,7 +267,7 @@ Compounds are simpler than rebalances — same NFT, same range, just sweep
 unclaimed fees back into liquidity. The flow:
 
 1. **collect** — pull unclaimed fees from the position into the wallet.
-2. **swapForCompound** (`src/lib/compounder-swap.js`) — optional
+2. **swapForCompound** (`src/bot/compounder-swap.js`) — optional
    ratio-correcting swap so the collected fees match the ratio the
    position currently expects. Without this step, the Position Manager
    would only accept the side that fits and leave the rest as residual.
@@ -311,7 +330,7 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
 
 - **Lifetime deposited amounts** (`lifetimeHodlAmounts`) — the tokens
   deposited into the pool from outside across the whole rebalance chain,
-  computed by `src/lib/lifetime-hodl.js` and kept in the pool's epoch cache
+  computed by `src/bot/lifetime-hodl.js` and kept in the pool's epoch cache
   (`app-data/scan-cache/pnl-epochs-cache.json`). The first NFT's mint is the original
   deposit; a later IncreaseLiquidity is money put in only when another
   wallet paid for it, as its receipt shows. One the wallet paid for took
@@ -371,7 +390,7 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
   the one new boundary is scanned and the rest come back from cache.
 
   **Counted as they arrive.** Coins the owner sends to the wallet are
-  also counted as they arrive (`src/lib/deposit-count.js`): as the first
+  also counted as they arrive (`src/bot/deposit-count.js`): as the first
   step of every rebalance and compound, saved into `lifetimeHodlAmounts`
   at each deposit's own block, and when a poll sees the wallet's coins
   rise, held in memory until the next move's count. The Lifetime scan's
@@ -383,12 +402,12 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
 
   **A coin two positions hold.** A deposit of a coin two or more running
   managed positions hold is in each one's list, and counts once in all,
-  where its coins went (`src/lib/deposit-attribution.js`): while the
+  where its coins went (`src/bot/deposit-attribution.js`): while the
   coins wait in the wallet, each position counts the share of them the
   Wallet Residual (Pool) credits it; a rebalance takes all that waits of
   its two coins, and a compound the deposits' proportional part of the
   wallet's coins it took. Every poll replays it from what the running
-  positions hold (`src/lib/deposit-attribution-inputs.js`), with nothing
+  positions hold (`src/bot/deposit-attribution-inputs.js`), with nothing
   saved, and the lifetime holding and Total Lifetime Deposit take the
   change.
 
@@ -440,10 +459,10 @@ comparison the Impermanent Loss Guard measures with: the position as it
 was minted against the same position now (the user's ruling,
 2026-10-23). Its LP side has no wallet residual, and its HODL side is
 the NFT's minted coins plus the wallet's coins its compounds took in
-beyond their fees (`walletCoinsPutIn`, `src/lib/compounded-coins.js`).
+beyond their fees (`walletCoinsPutIn`, `src/bot/compounded-coins.js`).
 
-`ilFigures` (`src/lib/bot-pnl-il.js`) computes both, and is the only place
-either is computed; it calls `computeHodlIL` from `src/lib/il-calculator.js`.
+`ilFigures` (`src/bot/bot-pnl-il.js`) computes both, and is the only place
+either is computed; it calls `computeHodlIL` from `src/bot/il-calculator.js`.
 It is pure — every input is an argument — which is what lets the bot tier
 and the unmanaged details endpoint share it despite holding their state in
 different shapes. A position therefore reports the same IL/G managed or
@@ -462,7 +481,7 @@ HODL baseline while the scan has not run yet.
 
 To avoid duplicate RPC calls, the lifetime scan fetches IncreaseLiquidity,
 DecreaseLiquidity, and Collect events for the **whole rebalance chain in one
-batched read** (`scanChainNftEvents` in `src/lib/nft-events-batch.js`). `tokenId`
+batched read** (`scanChainNftEvents` in `src/bot/nft-events-batch.js`). `tokenId`
 is the first indexed parameter on all three events, and a log filter's topic
 slot OR-matches an array, so one filter carries every NFT in the chain. The
 node returns the logs interleaved; the batch partitions them by `topics[1]`,
@@ -509,7 +528,7 @@ A read starts at the pool's creation block, lifted to the chain's first mint
 and taken from the pool when the read runs, because a figure computed from
 scratch needs the whole chain. The compound total and the lifetime deposit
 are saved and restored with the position's config (`PERSISTED_STATE_KEYS` in
-`src/lib/server-positions.js`), and compounds and rebalances add to the compound
+`src/bot/position-states.js`), and compounds and rebalances add to the compound
 total as they happen. The HODL amounts are kept in the pool's epoch cache.
 
 A pass whose event scan fails computes none of these figures. The chain the
@@ -531,11 +550,14 @@ Kept apart, a position's badge does not depend on when its own bot loop
 starts. Only a managed position has a Lifetime panel, so only its own scan
 can mark it "Synced": an unmanaged position's details fetch never sets the
 flag, so it cannot show "Synced" for a position whose managed scan has not
-started yet. One thing overrides every position's badge: after a launch,
-while the server is still starting the positions saved as managed, one at
-a time, the badge reads "Syncing" whatever is on screen. The server reports
-that start-up's progress in `GET /api/status` (`startingManagedPositions`),
-and the Syncing state keeps Manage and Stop Managing disabled until it ends.
+started yet. Two things override every position's badge, and each reads
+"Syncing" whatever is on screen. After a launch, while the server is still
+starting the positions saved as managed, one at a time, it reports that
+start-up's progress in `GET /api/status` (`startingManagedPositions`).
+While a wallet is imported, from its first step until the start-up of the
+new wallet's saved positions has finished, it reports `importingWallet`,
+and refuses a Manage. The Syncing state keeps Manage and Stop Managing
+disabled until each ends.
 
 ---
 
@@ -547,12 +569,16 @@ imminent, fetching prices on every poll cycle just burns quota for data
 nobody reads. The idle-driven pause stops the cascade in those windows
 while keeping it instantly available for any move.
 
-All gating happens at the public API of `src/lib/price-fetcher.js`, before the
-source cascade. The same module is required by both the bot tier
-(rebalance / compound hot path) and the server tier (view-only endpoints
-for unmanaged-position detail and closed-position history) — it is the
-single chokepoint. Adding or removing a price source later requires zero
-changes here.
+All gating happens at the public API of `src/bot/price-fetcher.js`, before the
+source cascade. Every price lookup goes through it: the rebalance /
+compound hot path, and the view-only answers for unmanaged-position
+detail and closed-position history, which the server asks the bot for
+through its interface. Adding or removing a price source later requires
+zero changes here. The one other request of a price service is the
+server's check of the stored Moralis key (`pingMoralis`,
+`src/lib/moralis-key.js`): it asks Moralis one price to prove the key,
+on a key save, the key dialog's status check and the check after the
+wallet unlock, and the pause does not gate it.
 
 These set the pause flag, or bypass it:
 
@@ -560,7 +586,7 @@ These set the pause flag, or bypass it:
 | --- | --- | --- |
 | `src/server.js` startup | flag = `false` | Browser idle tracker / endpoints take over from there. |
 | Server-side idle tracker | flag = `true` after 15 min of no `/api/*` traffic | Catches the "browser fully closed" case (`src/server/server-idle-tracker.js`). |
-| Browser-side idle (`src/client/web/dashboard-idle.js`) | flag = `true` via `POST /api/pause-price-lookups` after 15 min with no input; flag = `false` via `POST /api/unpause-price-lookups` on the next activity (focus / mouse / keyboard / touch / pointer) | 500 ms throttle on activity events. |
+| Browser-side idle (`src/client/web/js/dashboard-idle.js`) | flag = `true` via `POST /api/pause-price-lookups` after 15 min with no input; flag = `false` via `POST /api/unpause-price-lookups` on the next activity (focus / mouse / keyboard / touch / pointer) | 500 ms throttle on activity events. |
 | Move scope (`withFreshPricesAllowed`) | counter increment > 0 forces fresh fetches inside the move; restores prior flag on completion (success or throw) | Wraps every auto- and manual-triggered rebalance / compound. Purely scoped — no "remember to re-pause." |
 | `src/bot.js` headless startup | flag = `true` (default); opt out with `--start-with-price-lookups-unpaused` | No dashboard, no idle signal — only moves need prices. |
 
@@ -578,14 +604,14 @@ scope, so it always gets a fresh price.
 Three global keys tune the caching. They are saved in `bot-config.json`'s
 global section, with their defaults in `bot-config-defaults.json`:
 `priceCacheTtlMs` (120000 as shipped), `dustUnitPriceCacheMultiplier` (30)
-and `moveCacheTtlMs` (4000, the cache's life inside a move). The server
-and the bot read them as they start (`readPriceCacheSettings`,
-`src/lib/price-fetcher-gate.js`); until a program reads them, each is its
-default. The dust-unit-price TTL is `priceCacheTtlMs × multiplier`, with
+and `moveCacheTtlMs` (4000, the cache's life inside a move). Each program
+reads them as it builds the bot (`readPriceCacheSettings`,
+`src/bot/price-fetcher-gate.js`, called by `buildBotParts` in
+`src/bot/bot-interface.js`); until then, each is its default. The dust-unit-price TTL is `priceCacheTtlMs × multiplier`, with
 a runtime assertion guarding the integer-multiple invariant.
 
-The browser-side flag (`isBrowserPaused()` in `src/client/web/dashboard-idle.js`)
-is also the gate for `playSound()` in `src/client/web/dashboard-sounds.js`:
+The browser-side flag (`isBrowserPaused()` in `src/client/web/js/dashboard-idle.js`)
+is also the gate for `playSound()` in `src/client/web/js/dashboard-sounds.js`:
 polling-driven rebalance and compound jingles are suppressed while the
 dashboard is idle, so a user returning to a long-untouched tab is not
 greeted with a backlog of event sounds. `playSoundAlways()` (Easter Egg,

@@ -1,15 +1,20 @@
 /**
  * @file test/server-routes-extra.test.js
- * @description Additional coverage for server-routes.js: getPositionScanStatus,
- *   _handleApiConfig edge cases, _handlePositionLifetime trigger-scan path,
- *   and _autoStartManagedPositions with no managed keys.
+ * @description Additional coverage for the server's routes over the bot's
+ *   operations, as test/_bot-route-adapters.js builds them
+ *   (`createRouteHandlers`): the wallet scan's progress
+ *   (`getPositionScanStatus`), `POST /api/config` edge cases
+ *   (`_handleApiConfig`, src/server/server-routes.js), the lifetime
+ *   route's trigger-scan path (`_handlePositionLifetime`), the details
+ *   route's error path, a reveal with no seed phrase, and the refresh and
+ *   scan-cancel routes' refusals.
  */
 
 "use strict";
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createRouteHandlers } = require("../src/server/server-routes");
+const { createRouteHandlers } = require("./_bot-route-adapters");
 
 /** Build a minimal deps object with stubs. */
 function makeDeps(overrides = {}) {

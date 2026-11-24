@@ -5,9 +5,9 @@
  * @description A transaction an endpoint answers "already known" is one it
  *   holds, still waiting to be mined, not a failure.
  *
- *   `heldTransaction` (src/lib/held-transaction.js) rebuilds that transaction
+ *   `heldTransaction` (src/bot/held-transaction.js) rebuilds that transaction
  *   from the signed bytes the request carried, so the bot can wait on it;
- *   `_retrySend` (src/lib/tx-retry.js) hands it back as the send's result
+ *   `_retrySend` (src/bot/tx-retry.js) hands it back as the send's result
  *   rather than failing the rebalance or compound. A signed transaction
  *   made here stands in for the one an endpoint would hold, and the error
  *   is shaped the way ethers 6 raises the answer: UNKNOWN_ERROR, with the
@@ -22,10 +22,10 @@ const logModule = require("../src/lib/log");
 const {
   heldTransaction,
   signedTransactionHash,
-} = require("../src/lib/held-transaction");
+} = require("../src/bot/held-transaction");
 const { nonceTooLow } = require("./helpers/ethers-rpc-errors");
-const { _retrySend } = require("../src/lib/tx-retry");
-const { classifyRpcError } = require("../src/lib/rpc-error-classifier");
+const { _retrySend } = require("../src/bot/tx-retry");
+const { classifyRpcError } = require("../src/bot/rpc-error-classifier");
 
 const TO = "0x" + "22".repeat(20);
 let RAW;

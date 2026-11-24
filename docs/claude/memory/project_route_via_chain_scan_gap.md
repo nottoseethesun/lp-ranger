@@ -21,7 +21,7 @@ data alone) the title.
 ## Detail
 
 
-Rebalance events reconstructed by `src/lib/event-scanner.js :: scanRebalanceHistory` lack a `swapSources` field — on-chain Transfer logs don't carry route info. `src/client/web/dashboard-history.js` renders these as em-dash in the "Routed Via" column. Same gap when a rebalance doesn't show up in the gui log at all on a fresh install / second machine, because the live `appendToPoolCache` path only runs on the install that executed the rebalance.
+Rebalance events reconstructed by `src/bot/event-scanner.js :: scanRebalanceHistory` lack a `swapSources` field — on-chain Transfer logs don't carry route info. `src/client/web/js/dashboard-history.js` renders these as em-dash in the "Routed Via" column. Same gap when a rebalance doesn't show up in the gui log at all on a fresh install / second machine, because the live `appendToPoolCache` path only runs on the install that executed the rebalance.
 
 **Why:** Pre-existing behavior, not a bug. Production install (where rebalances actually happen) always shows correct route info via the live path. Only dev-mirror or fresh-install views see the gap.
 

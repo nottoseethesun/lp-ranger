@@ -29,7 +29,7 @@ parenthetical only where it adds something.
 
 ## Implementation sketch
 
-- `src/lib/bot-cycle.js#_handleRebalanceSuccess`: detect retry via
+- `src/bot/bot-cycle.js#_handleRebalanceSuccess`: detect retry via
   `deps._rebalanceEvents.length === 0` at the time of the success
   call (the history-scan populates this array; the just-completed
   rebalance is not in it yet at that point — zero means initial,

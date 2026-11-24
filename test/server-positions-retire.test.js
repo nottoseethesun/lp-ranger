@@ -1,7 +1,7 @@
 /**
  * @file test/server-positions-retire.test.js
- * @description Tests for `createOnRetire(deps)` — the server-side
- * callback fired by the bot loop when it auto-retires a drained
+ * @description Tests for `createOnRetire(deps)` (src/bot/position-states.js)
+ * — the callback the bot loop fires when it auto-retires a drained
  * managed position.  Retirement is a pure software state flip:
  * status `running`→`stopped`, autoCompoundEnabled cleared, in-memory
  * bot-state dropped, position manager entry removed.  The NFT is
@@ -18,7 +18,7 @@ const fs = require("fs");
 const {
   createOnRetire,
   getAllPositionBotStates,
-} = require("../src/lib/server-positions");
+} = require("../src/bot/position-states");
 
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
 const CONTRACT = "0xCC05BF51E2B8f0A457E8F15FD5E8e25F34f8b279";

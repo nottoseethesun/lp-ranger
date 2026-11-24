@@ -95,8 +95,8 @@ module.exports = [
       "test/**/*.js",
       "scripts/**/*.js",
       "util/**/*.js",
-      "src/client/web/dashboard-*.js",
-      "src/client/web/ethers-adapter.js",
+      "src/client/web/js/dashboard-*.js",
+      "src/client/web/js/ethers-adapter.js",
       "eslint-rules/**/*.js",
       "stylelint-rules/**/*.js",
     ],
@@ -185,8 +185,8 @@ module.exports = [
   // ── 4. Dashboard files — browser ES modules ───────────────────────────────
   {
     files: [
-      "src/client/web/dashboard-*.js",
-      "src/client/web/ethers-adapter.js",
+      "src/client/web/js/dashboard-*.js",
+      "src/client/web/js/ethers-adapter.js",
     ],
     plugins: {
       "9mm": {
@@ -247,7 +247,7 @@ module.exports = [
         ...globals.node,
         /*- Browser tests use jsdom (via `global-jsdom/register`) to
          *  populate `document`, `window`, `HTMLElement`, etc. as real
-         *  globals so `src/client/web/dashboard-*.js` can be imported and
+         *  globals so `src/client/web/js/dashboard-*.js` can be imported and
          *  driven directly.  Registering the browser globals here
          *  means individual tests do not need a per-file
          *  `eslint-env browser` pragma. */

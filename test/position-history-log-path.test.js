@@ -5,7 +5,7 @@
  * @description A closed NFT's history reads the rebalance log from where
  *   the bot writes it.
  *
- *   `src/lib/bot-recorder.js` writes the log at `path.resolve(config.LOG_FILE)`,
+ *   `src/bot/bot-recorder.js` writes the log at `path.resolve(config.LOG_FILE)`,
  *   and the reader must resolve the setting the same way. Joining it onto
  *   the working directory instead agrees for a relative path and not for
  *   an absolute one: a log set to an absolute path in `.env` would be
@@ -20,7 +20,7 @@ const os = require("os");
 const path = require("path");
 
 const config = require("../src/lib/config");
-const { _readRebalanceLog } = require("../src/lib/position-history");
+const { _readRebalanceLog } = require("../src/bot/position-history");
 
 describe("the rebalance log a closed NFT's history reads", () => {
   it("is found at an absolute path, where the bot writes it", () => {

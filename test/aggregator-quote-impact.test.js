@@ -22,9 +22,9 @@ const assert = require("node:assert/strict");
 const util = require("util");
 
 const { _setSinkForTests } = require("../src/lib/log");
-const { swapViaAggregator } = require("../src/lib/rebalancer-aggregator");
-const { quoteImpactPct } = require("../src/lib/rebalancer-swap-impact");
-const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
+const { swapViaAggregator } = require("../src/bot/rebalancer-aggregator");
+const { quoteImpactPct } = require("../src/bot/rebalancer-swap-impact");
+const { swapIfNeeded } = require("../src/bot/rebalancer-swap");
 const {
   ADDR,
   makeTx,

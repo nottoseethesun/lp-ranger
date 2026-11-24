@@ -45,11 +45,6 @@
 const { ethers } = require("ethers");
 const { log } = require("./log");
 const { loadMergedDefaults } = require("./load-merged-defaults");
-const { CHAIN_NAME } = require("./runtime-flags");
-const {
-  buildDexDetailPageUrlTemplate,
-  readDexDetailPageName,
-} = require("./dex-detail-page-url-generator");
 
 const _FILENAME = "lp-providers.json";
 
@@ -210,62 +205,9 @@ function isChainSupported(factory, positionManager, chainId) {
   return false;
 }
 
-/**
- * Resolve each entry's Dex Detail Page link for the ACTIVE chain and
- * attach it to the served map.
- *
- * Done here rather than in `readLpProviders` because the underlying
- * JSON is chain-agnostic — only the HTTP tier knows which chain the
- * server is running, and the bot-side callers of `readLpProviders`
- * have no use for a URL.  Mirrors `src/server/chart-providers.js`: the
- * server substitutes everything except `{poolId}`, so the browser does
- * one string replace for both link families instead of learning two
- * different composition rules.
- *
- * Entries with no usable link get neither key, so the client's
- * "should I render this row?" test is a plain presence check.
- * @param {Record<string, object>} providers
- * @param {string} chainName  Canonical chain id — KEY of chains.json.
- * @returns {Record<string, object>}
- */
-function _withDexDetailPage(providers, chainName) {
-  const out = {};
-  for (const [key, entry] of Object.entries(providers)) {
-    const urlTemplate = buildDexDetailPageUrlTemplate(entry, chainName);
-    const name = readDexDetailPageName(entry);
-    out[key] =
-      urlTemplate !== null && name !== null
-        ? {
-            ...entry,
-            dexDetailPageName: name,
-            dexDetailPageUrlTemplate: urlTemplate,
-          }
-        : entry;
-  }
-  return out;
-}
-
-/**
- * Route handler for `GET /api/lp-providers`.  Serves the raw map with
- * keys in canonical EIP-55 casing and object values (displayName +
- * supportedBlockchainsByLpRangerAndLpProvider), each enriched with a
- * resolved `dexDetailPageName` + `dexDetailPageUrlTemplate` when the
- * provider configures one for the active chain.  Always returns 200
- * with a well-formed map (possibly empty); parse failures surface via
- * the empty-map path inside `readLpProviders()`.
- * @param {import('http').IncomingMessage} _req
- * @param {import('http').ServerResponse} res
- * @param {Function} jsonResponse  `(res, status, body) => void`
- */
-function handleLpProviders(_req, res, jsonResponse) {
-  jsonResponse(res, 200, _withDexDetailPage(readLpProviders(), CHAIN_NAME));
-}
-
 module.exports = {
   readLpProviders,
   getLpProvider,
   getLpProviderDisplayName,
   isChainSupported,
-  handleLpProviders,
-  _withDexDetailPage,
 };

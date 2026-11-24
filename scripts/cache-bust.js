@@ -2,7 +2,8 @@
  * @file scripts/cache-bust.js
  * @description Stamps the build's time as a `?v=` query on every script
  *   and stylesheet the app's pages load (every `src/client/web/*.html`), and on
- *   the drifting cloud PNGs `9mm-pos-mgr.css` names. The server lets a
+ *   the drifting cloud PNGs `css/9mm-pos-mgr.css` names, which sit in
+ *   `images/`. The server lets a
  *   browser keep anything but HTML for a year (`serveStatic`,
  *   server.js), so a reference without a fresh stamp would leave a
  *   browser on an old copy after an upgrade.
@@ -17,7 +18,7 @@ const path = require("path");
 const PUBLIC = path.join("src", "client", "web");
 
 /*-
- *  A page's own script or stylesheet, stamped or not: `href="/style.css"`,
+ *  A page's own script or stylesheet, stamped or not: `href="/css/style.css"`,
  *  `src="dist/bundle.js?v=123"`. A url naming a host is not the app's.
  */
 const ASSET_REF =
@@ -44,15 +45,17 @@ function main() {
     fs.writeFileSync(file, stampPage(fs.readFileSync(file, "utf8"), v));
   }
 
-  const cssPath = path.join(PUBLIC, "9mm-pos-mgr.css");
+  const cssPath = path.join(PUBLIC, "css", "9mm-pos-mgr.css");
   let c = fs.readFileSync(cssPath, "utf8");
   for (const layer of ["top", "middle", "bottom"]) {
     // eslint-disable-next-line security/detect-non-literal-regexp -- Safe: `layer` is one of three hard-coded string literals above
     const re = new RegExp(
-      'url\\("background-cloud_' + layer + '\\.png(\\?v=[^"]*)?"\\)',
+      'url\\("\\.\\./images/background-cloud_' +
+        layer +
+        '\\.png(\\?v=[^"]*)?"\\)',
       "g",
     );
-    c = c.replace(re, `url("background-cloud_${layer}.png?v=${v}")`);
+    c = c.replace(re, `url("../images/background-cloud_${layer}.png?v=${v}")`);
   }
   fs.writeFileSync(cssPath, c);
 

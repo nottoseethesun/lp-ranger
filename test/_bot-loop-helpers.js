@@ -6,7 +6,7 @@
 
 "use strict";
 
-const { pollCycle } = require("../src/lib/bot-loop");
+const { pollCycle } = require("../src/bot/bot-loop");
 const config = require("../src/lib/config");
 const { initSendTx } = require("./helpers/send-tx-mock");
 

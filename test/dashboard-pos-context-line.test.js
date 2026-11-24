@@ -7,7 +7,7 @@
  *   wallet. A server alert's line, which names the event's position
  *   rather than the one on screen, ran the chain into the wallet:
  *   "PulseChain0x1111…". Both lines now come from one filler
- *   (`_fillPosContext`, src/client/web/dashboard-data-status.js), so they read
+ *   (`_fillPosContext`, src/client/web/js/dashboard-data-status.js), so they read
  *   alike, a middle dot between the chain and the wallet.
  */
 
@@ -38,10 +38,10 @@ before(async () => {
     json: async () => ({}),
   });
   await learnActiveChain("pulsechain", "PulseChain");
-  alerts = await import("../src/client/web/dashboard-alerts.js");
-  status = await import("../src/client/web/dashboard-data-status.js");
+  alerts = await import("../src/client/web/js/dashboard-alerts.js");
+  status = await import("../src/client/web/js/dashboard-data-status.js");
   const { posStore } =
-    await import("../src/client/web/dashboard-positions-store.js");
+    await import("../src/client/web/js/dashboard-positions-store.js");
   posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,

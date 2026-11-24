@@ -140,7 +140,7 @@ describe("the dialog control itself", () => {
   let mod;
 
   before(async () => {
-    mod = await import("../src/client/web/dashboard-moralis-key.js");
+    mod = await import("../src/client/web/js/dashboard-moralis-key.js");
   });
 
   /** The dialog fragment, matching src/client/web/index.html. */

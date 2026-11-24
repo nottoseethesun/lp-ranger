@@ -34,7 +34,7 @@ before(async () => {
   await learnActiveChain();
   await learnUiSettings();
   document.body.innerHTML = indexHtmlDocument().body.innerHTML;
-  ilDebug = await import("../src/client/web/dashboard-il-debug.js");
+  ilDebug = await import("../src/client/web/js/dashboard-il-debug.js");
 });
 
 /**
@@ -124,7 +124,7 @@ describe("the IL/G popover's sections and the Wallet Residual", () => {
   it("leaves the residual out of the Current Position IL/G", () => {
     /*-
      *  The current figure counts no coin in the wallet, so that it
-     *  compares evenly (src/lib/bot-pnl-il.js).
+     *  compares evenly (src/bot/bot-pnl-il.js).
      */
     const root = open("cur");
     assert.equal(tpl(root, "residualRow").hidden, true);

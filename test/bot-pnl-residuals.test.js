@@ -21,8 +21,8 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
-const { overridePnlWithRealValues } = require("../src/lib/bot-pnl-updater");
-const { _resetForTest } = require("../src/lib/gecko-rate-limit");
+const { overridePnlWithRealValues } = require("../src/bot/bot-pnl-updater");
+const { _resetForTest } = require("../src/bot/gecko-rate-limit");
 
 let _originalFetch;
 beforeEach(() => {

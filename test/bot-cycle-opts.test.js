@@ -1,6 +1,6 @@
 /**
  * @file test/bot-cycle-opts.test.js
- * @description Tests for `buildRebalanceOpts` in `src/lib/bot-cycle-opts.js`.
+ * @description Tests for `buildRebalanceOpts` in `src/bot/bot-cycle-opts.js`.
  *
  * Focus: the persistent per-position range-width override.  The seam
  * moved on 2026-07-11 (per the "Migrate Rebalance UI dialog into Bot
@@ -16,7 +16,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { buildRebalanceOpts } = require("../src/lib/bot-cycle-opts");
+const { buildRebalanceOpts } = require("../src/bot/bot-cycle-opts");
 const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
 
 /*- Minimal deps: only the fields buildRebalanceOpts actually reads.

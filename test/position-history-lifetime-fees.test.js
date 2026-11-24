@@ -22,13 +22,13 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const ethers = require("ethers");
 
-const { PM_ABI } = require("../src/lib/pm-abi");
-const { lifetimeFeeAmounts } = require("../src/lib/compounder");
+const { PM_ABI } = require("../src/bot/pm-abi");
+const { lifetimeFeeAmounts } = require("../src/bot/compounder");
 const {
   scanCollectAndDrain,
-} = require("../src/lib/position-history-scan-helpers");
-const { _assembleEpoch } = require("../src/lib/epoch-reconstructor");
-const { createPnlTracker } = require("../src/lib/pnl-tracker");
+} = require("../src/bot/position-history-scan-helpers");
+const { _assembleEpoch } = require("../src/bot/epoch-reconstructor");
+const { createPnlTracker } = require("../src/bot/pnl-tracker");
 
 const _IFACE = new ethers.Interface(PM_ABI);
 const _TOKEN_ID = 164418n;
@@ -259,7 +259,7 @@ describe("epoch assembly — where the corrected fee lands", () => {
 });
 
 describe("per-day IL — a difference, with no fees in it", () => {
-  const { _buildDailyPnl } = require("../src/lib/pnl-tracker");
+  const { _buildDailyPnl } = require("../src/bot/pnl-tracker");
 
   /** One closed epoch: 100 of each token deposited, prices 1.0 at close. */
   function epoch(fees, exitValue) {

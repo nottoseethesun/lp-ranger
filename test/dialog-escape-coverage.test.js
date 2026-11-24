@@ -46,7 +46,7 @@ function markupOverlayIds() {
 
 /** The source of one dashboard module. */
 const source = (name) =>
-  fs.readFileSync(path.join(ROOT, "src", "client", "web", name), "utf8");
+  fs.readFileSync(path.join(ROOT, "src", "client", "web", "js", name), "utf8");
 
 /** The two sources the Escape handler's table is written in. */
 function escapeTableSources() {

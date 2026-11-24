@@ -1,7 +1,8 @@
 /**
  * @file test/bot-recorder.test.js
- * @description Unit tests for pure helper functions in bot-recorder.js:
- *   _bigIntReplacer, _activePosSummary, _collectTokenIds,
+ * @description Unit tests for the BigInt replacer the rebalance log is
+ *   written with (bigIntReplacer, src/lib/bigint-json.js) and for pure
+ *   helper functions in bot-recorder.js: _activePosSummary, _collectTokenIds,
  *   _pushRebalanceEvent, _recordResidual, appendLog, and
  *   _notifyRebalance; and for `updateHodlBaseline`, split out of it into
  *   bot-recorder-baseline.js.
@@ -15,34 +16,34 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const {
-  _bigIntReplacer,
   _activePosSummary,
   _collectTokenIds,
   _pushRebalanceEvent,
   _recordResidual,
   _notifyRebalance,
-} = require("../src/lib/bot-recorder");
+} = require("../src/bot/bot-recorder");
+const { bigIntReplacer } = require("../src/lib/bigint-json");
 const {
   updateHodlBaseline: _updateHodlBaseline,
-} = require("../src/lib/bot-recorder-baseline");
+} = require("../src/bot/bot-recorder-baseline");
 
-// ── _bigIntReplacer ─────────────────────────────────────────────────
+// ── bigIntReplacer ─────────────────────────────────────────────────
 
-describe("_bigIntReplacer", () => {
+describe("bigIntReplacer", () => {
   it("converts BigInt to string", () => {
-    assert.strictEqual(_bigIntReplacer("k", 123n), "123");
+    assert.strictEqual(bigIntReplacer("k", 123n), "123");
   });
 
   it("passes through non-BigInt values", () => {
-    assert.strictEqual(_bigIntReplacer("k", 42), 42);
-    assert.strictEqual(_bigIntReplacer("k", "hello"), "hello");
-    assert.strictEqual(_bigIntReplacer("k", null), null);
-    assert.strictEqual(_bigIntReplacer("k", true), true);
+    assert.strictEqual(bigIntReplacer("k", 42), 42);
+    assert.strictEqual(bigIntReplacer("k", "hello"), "hello");
+    assert.strictEqual(bigIntReplacer("k", null), null);
+    assert.strictEqual(bigIntReplacer("k", true), true);
   });
 
   it("works with JSON.stringify", () => {
     const obj = { a: 100n, b: "text", c: 200n };
-    const s = JSON.stringify(obj, _bigIntReplacer);
+    const s = JSON.stringify(obj, bigIntReplacer);
     assert.deepStrictEqual(JSON.parse(s), { a: "100", b: "text", c: "200" });
   });
 });
@@ -379,7 +380,7 @@ describe("_notifyRebalance", () => {
 // ── _applyRebalanceResult ───────────────────────────────────────────
 
 describe("_applyRebalanceResult", () => {
-  const { _applyRebalanceResult } = require("../src/lib/bot-recorder");
+  const { _applyRebalanceResult } = require("../src/bot/bot-recorder");
 
   it("updates position tokenId and ticks from result", () => {
     const position = {
@@ -491,8 +492,8 @@ describe("appendLog", () => {
     process.env.LOG_FILE = logPath;
     // Clear require cache so config picks up new LOG_FILE
     delete require.cache[require.resolve("../src/lib/config")];
-    delete require.cache[require.resolve("../src/lib/bot-recorder")];
-    const { appendLog: al } = require("../src/lib/bot-recorder");
+    delete require.cache[require.resolve("../src/bot/bot-recorder")];
+    const { appendLog: al } = require("../src/bot/bot-recorder");
     al({ action: "test", value: 123n });
     const entries = JSON.parse(fs.readFileSync(logPath, "utf8"));
     assert.strictEqual(entries.length, 1);
@@ -508,6 +509,6 @@ describe("appendLog", () => {
     if (origLog) process.env.LOG_FILE = origLog;
     else delete process.env.LOG_FILE;
     delete require.cache[require.resolve("../src/lib/config")];
-    delete require.cache[require.resolve("../src/lib/bot-recorder")];
+    delete require.cache[require.resolve("../src/bot/bot-recorder")];
   });
 });

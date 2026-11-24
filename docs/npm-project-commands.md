@@ -60,8 +60,10 @@ npm run debug-bot -- --help
 prints no startup banner — so a help listing can never be mistaken for a
 running process.
 
-The same text is produced by `src/lib/cli-help.js`, so the help output and
-the tables below describe the same flags.
+The text comes from `src/server/server-cli-help.js` (the server's and
+build-and-start's) and `src/bot/bot-cli-help.js` (the headless bot's),
+which share the options and environment in `src/lib/cli-help.js`, so the
+help output and the tables below describe the same flags.
 
 ---
 
@@ -246,7 +248,7 @@ is under way.
 
 `npm stop` (alias `npm run stop`) shuts down without switching to the
 server's terminal. It reads the server PID from `tmp/lp-ranger.pid`
-(written on startup by `src/lib/server-pid.js`) and sends **SIGTERM** — the
+(written on startup by `src/server/server-pid.js`) and sends **SIGTERM** — the
 same handler as Ctrl+C, so it stops all managed positions and closes the
 HTTP server. It escalates to SIGKILL if the process is still there after
 the server's exit timeout plus a margin (`exitTimeoutMs` plus
@@ -276,7 +278,7 @@ want it.
 Why a CLI tool instead of an ESLint rule: the server-side code is
 CommonJS (`require`/`module.exports`) because Node loads it directly with
 no `"type": "module"` in `package.json`; the dashboard code under
-`src/client/web/dashboard-*.js` is ESM (`import`/`export`) because esbuild bundles
+`src/client/web/js/dashboard-*.js` is ESM (`import`/`export`) because esbuild bundles
 it into `src/client/web/dist/bundle.js` for the browser. The standard ESLint cycle
 rules (`import/no-cycle`, `import-x/no-cycle`) only reliably detect ESM
 cycles — they cannot trace `require()` calls because `require` is a
@@ -306,8 +308,8 @@ task.
   then deletes operator state (`bot-config.json`,
   `bot-config.backup.json`, `api-keys.json`, `rebalance_log.json`),
   every scan cache in `app-data/scan-cache/`, `logs/*.log`, the build artifacts
-  (`src/client/web/dist/`, `src/client/web/fonts/`, `src/client/web/ui-tokens.css`,
-  `src/client/web/disclosure-content.js`) and `test/report-artifacts/`.
+  (`src/client/web/dist/`, `src/client/web/fonts/`, `src/client/web/css/ui-tokens.css`,
+  `src/client/web/js/disclosure-content.js`) and `test/report-artifacts/`.
   It leaves `app-data/util/bookkeeping/`, where the bookkeeping tools
   keep their reports and the prices they fetched. The report's Moralis
   key is the app's own, in `api-keys.json`, so a clean deletes it.

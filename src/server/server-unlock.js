@@ -11,7 +11,7 @@
  * with the same password the stored api keys (Telegram, Moralis). It is
  * idempotent: entering the password again changes nothing but those, and
  * they decrypt to what they already were. The start-up, which starts the
- * positions saved as managed (src/lib/server-auto-start.js), runs only when
+ * positions saved as managed (src/bot/auto-start.js), runs only when
  * this unlock is the one that takes the server from locked to unlocked.
  *
  * Why it matters: each open dashboard tab shows the dialog until it is
@@ -34,23 +34,17 @@ const unlockLog = require("./server-unlock-log");
  * @param {object} deps
  * @param {object} deps.walletManager  Decrypts the wallet
  *   (`revealWallet(password)`), throwing on a wrong password.
- * @param {{current: (string|null)}} deps.privateKeyRef  The decrypted
- *   key, null while the wallet is locked.
+ * @param {object} deps.bot  The bot's interface (src/bot/bot-interface.js):
+ *   it is handed the decrypted key (`setPrivateKey`, `hasPrivateKey`) and
+ *   starts the positions saved as managed (`startManagedPositions`).
  * @param {(password: string) => Promise<void>} deps.decryptApiKeys
- * @param {() => Promise<void>} deps.startManagedPositions  The start-up.
  * @param {Function} deps.jsonResponse
  * @param {Function} deps.readJsonBody
  * @returns {(req: object, res: object) => Promise<void>}
  */
 function createUnlockHandler(deps) {
-  const {
-    walletManager,
-    privateKeyRef,
-    decryptApiKeys,
-    startManagedPositions,
-    jsonResponse,
-    readJsonBody,
-  } = deps;
+  const { walletManager, bot, decryptApiKeys, jsonResponse, readJsonBody } =
+    deps;
   const warn = (what) => (e) => log.warn("[server] %s: %s", what, e.message);
 
   return async function handleUnlock(req, res) {
@@ -61,19 +55,18 @@ function createUnlockHandler(deps) {
       return jsonResponse(res, 400, { ok: false, error: "Missing password" });
     }
     unlockLog.logUnlockAttempt(String(body.password).length);
-    const wasLocked =
-      privateKeyRef.current === null || privateKeyRef.current === undefined;
+    const wasLocked = !bot.hasPrivateKey();
     try {
-      privateKeyRef.current = (
-        await walletManager.revealWallet(body.password)
-      ).privateKey;
+      bot.setPrivateKey(
+        (await walletManager.revealWallet(body.password)).privateKey,
+      );
     } catch (err) {
       unlockLog.logUnlockFail(err);
       return jsonResponse(res, 401, { ok: false, error: "Wrong password" });
     }
     unlockLog.logUnlockSuccess(req);
     decryptApiKeys(body.password).catch(warn("API key decrypt failed"));
-    if (wasLocked) startManagedPositions().catch(warn("Auto-start failed"));
+    if (wasLocked) bot.startManagedPositions().catch(warn("Auto-start failed"));
     else
       log.info(
         "[server] Wallet already unlocked: password confirmed, managed positions left as they are",

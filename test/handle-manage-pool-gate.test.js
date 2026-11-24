@@ -5,8 +5,10 @@
  *   position in a pool that already has a running one.
  *
  *   `test/pool-already-managed.test.js` pins the decision itself. This
- *   file pins the wiring — that `handleManage` consults it, refuses
- *   before anything starts, and leaves nothing behind.
+ *   file pins the wiring — that the bot's Manage (`manage` in
+ *   src/bot/position-lifecycle.js, driven here through the Manage route
+ *   the test adapters build) consults it, refuses before anything
+ *   starts, and leaves nothing behind.
  *
  *   Helpers mirror `test/handle-manage-pool-state-err.test.js`, which
  *   duplicates them from `test/server-positions.test.js` on purpose so
@@ -17,10 +19,8 @@
 
 const { describe, it, afterEach } = require("node:test");
 const assert = require("assert");
-const {
-  createPositionRoutes,
-  getAllPositionBotStates,
-} = require("../src/lib/server-positions");
+const { getAllPositionBotStates } = require("../src/bot/position-states");
+const { createPositionRoutes } = require("./_bot-route-adapters");
 const { compositeKey } = require("../src/lib/bot-config-v2");
 
 const WALLET = "0x4E448BeF0DBD0e2F7bd2e6209E6f44dc8af0E5cE";
@@ -124,7 +124,7 @@ async function manage(opts) {
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-describe("handleManage one-position-per-pool gate", () => {
+describe("Manage's one-position-per-pool gate", () => {
   afterEach(() => getAllPositionBotStates().clear());
 
   it("refuses a second position in a managed pool with 409", async () => {
@@ -138,7 +138,7 @@ describe("handleManage one-position-per-pool gate", () => {
      *  refused needs to know which position to stop. */
     assert.strictEqual(res._body.conflictTokenId, "111");
     assert.strictEqual(res._body.conflictKey, held);
-    // The refusal names the position refused (src/lib/position-answer-tag.js).
+    // The refusal names the position refused (src/bot/position-answer-tag.js).
     assert.match(res._body.positionKey, /-222$/);
     /*- Refused BEFORE anything starts — no bot loop, no disk entry. */
     assert.deepStrictEqual(started, []);
@@ -162,7 +162,7 @@ describe("handleManage one-position-per-pool gate", () => {
 
     assert.notStrictEqual(res._status, 409);
     assert.strictEqual(started.length, 1);
-    // The answer names the position started (src/lib/position-answer-tag.js).
+    // The answer names the position started (src/bot/position-answer-tag.js).
     assert.match(res._body.positionKey, /-222$/);
   });
 
@@ -207,7 +207,7 @@ describe("handleManage one-position-per-pool gate", () => {
   });
 });
 
-describe("handleManage concurrent starts in one pool", () => {
+describe("Manage: concurrent starts in one pool", () => {
   afterEach(() => getAllPositionBotStates().clear());
 
   it("refuses the second of two simultaneous starts in the same pool", async () => {
@@ -270,7 +270,7 @@ describe("handleManage concurrent starts in one pool", () => {
   });
 });
 
-describe("handleManage releases the pool claim on failure", () => {
+describe("Manage releases the pool claim on failure", () => {
   afterEach(() => getAllPositionBotStates().clear());
 
   /** Run manage twice in sequence against the same deps-maker. */
@@ -339,7 +339,7 @@ describe("handleManage releases the pool claim on failure", () => {
   });
 });
 
-describe("handleManage re-open while the pool holds an open position", () => {
+describe("Manage's re-open while the pool holds an open position", () => {
   afterEach(() => getAllPositionBotStates().clear());
 
   /*-

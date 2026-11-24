@@ -3,7 +3,7 @@
 /**
  * @file test/send-transaction-read-failover.test.js
  * @description Tests for the read-side RPC failover surface added to
- *   `src/lib/send-transaction.js`:
+ *   `src/bot/send-transaction.js`:
  *
  *     - `init()` idempotency (same URLs → no-op; different URLs → throws)
  *     - `ensureReachable()` boot-time reachability probe + failover engagement
@@ -23,7 +23,7 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { format } = require("node:util");
 
-const sendTx = require("../src/lib/send-transaction");
+const sendTx = require("../src/bot/send-transaction");
 const {
   PRI,
   FALL,
@@ -60,7 +60,8 @@ describe("send-transaction: init idempotency", () => {
     }
     assert.equal(sendTx.getCurrentRPC()._url, FALL);
     /*- Re-init must NOT wipe the sticky failover state, otherwise a
-        second boot path (server.js running after bot-loop.js) would
+        second boot path (bot-loop.js running after the bot's parts,
+        src/bot/bot-interface.js) would
         silently revert us to a known-broken primary. */
     sendTx.init({ urls: [PRI, FALL] }, lib);
     assert.equal(sendTx.getCurrentRPC()._url, FALL);

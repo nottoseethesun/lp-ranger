@@ -3,7 +3,7 @@
 /**
  * @file test/rebalancer-swap-balance.test.js
  * @description The balance read after a swap has landed
- *   (src/lib/rebalancer-swap-balance.js).
+ *   (src/bot/rebalancer-swap-balance.js).
  *
  *   The swap behind that read cannot be undone, so a failed read must
  *   neither end on the first endpoint's say-so nor let `swapIfNeeded`
@@ -17,16 +17,16 @@
 
 const { describe, it, before, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const sendTx = require("../src/lib/send-transaction");
+const sendTx = require("../src/bot/send-transaction");
 const {
   balanceDiff,
   _setLandedReadDelayForTests,
-} = require("../src/lib/rebalancer-swap-balance");
-const { exchangeInTx } = require("../src/lib/swap-exchange");
-const { swapIfNeeded } = require("../src/lib/rebalancer-swap");
-const { swapViaRouter } = require("../src/lib/rebalancer-router");
+} = require("../src/bot/rebalancer-swap-balance");
+const { exchangeInTx } = require("../src/bot/swap-exchange");
+const { swapIfNeeded } = require("../src/bot/rebalancer-swap");
+const { swapViaRouter } = require("../src/bot/rebalancer-router");
 const { readBotConfigDefaults } = require("../src/lib/bot-config-defaults");
-const { spentGasOf } = require("../src/lib/spent-gas");
+const { spentGasOf } = require("../src/bot/spent-gas");
 const { initSendTx, resetSendTx } = require("./helpers/send-tx-mock");
 const { ADDR, ONE_ETH } = require("./helpers/rebalancer-mocks");
 

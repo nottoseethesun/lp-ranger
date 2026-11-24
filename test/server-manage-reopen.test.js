@@ -1,10 +1,10 @@
 /**
  * @file test/server-manage-reopen.test.js
- * @description The Manage route's re-open path in src/lib/server-positions.js
+ * @description Manage's re-open path (src/bot/position-lifecycle.js)
  *   (`POST /api/position/manage` with `forceRebalance: true`): the flag a
  *   re-open stamps on the position's bot state before its first poll, the
  *   retry on a position already running, and that retry refused while a
- *   scan is running on the position (src/lib/scan-state.js). Split from
+ *   scan is running on the position (src/bot/scan-state.js). Split from
  *   test/server-can-reopen.test.js at the line cap.
  */
 
@@ -12,10 +12,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
-const {
-  createPositionRoutes,
-  getAllPositionBotStates,
-} = require("../src/lib/server-positions");
+const { getAllPositionBotStates } = require("../src/bot/position-states");
+const { createPositionRoutes } = require("./_bot-route-adapters");
 const { compositeKey } = require("../src/lib/bot-config-v2");
 const config = require("../src/lib/config");
 const { poolReadStandIn } = require("./helpers/pool-read-stand-in");
@@ -70,7 +68,7 @@ function _makeRouteDeps(overrides = {}) {
   };
 }
 
-describe("handleManage re-open flag propagation", () => {
+describe("Manage's re-open flag propagation", () => {
   it("stamps forceRebalance on posBotState BEFORE startPosition fires (re-open path)", async () => {
     /*- When the dashboard re-opens a closed position via Manage, it
      *  POSTs `{ forceRebalance: true }` alongside `tokenId`.  Server
@@ -164,7 +162,7 @@ describe("handleManage re-open flag propagation", () => {
   it("stamps forceRebalance + clears paused state on already-running position (retry path)", async () => {
     /*- User clicks Manage on a closed-but-running position to retry
      *  after the previous re-open's swap aborted on slippage.
-     *  handleManage's "already running — skipping" short-circuit must
+     *  Manage's "already running — skipping" short-circuit must
      *  route through `_stampReopenFlagsOnLive` so the flag is wired
      *  through to the live posBotState AND the paused/midway state
      *  cleared, otherwise the bot would keep returning early at the
@@ -248,7 +246,7 @@ describe("handleManage re-open flag propagation", () => {
 
   it("refuses a re-open retried while a scan is running on the position", async () => {
     /*- The bot would make the rebalance during the scan, and leave it
-     *  out of the figures the scan rebuilds (src/lib/scan-state.js), so the
+     *  out of the figures the scan rebuilds (src/bot/scan-state.js), so the
      *  retry is refused as a Rebalance Now is, and nothing is stamped.
      *  A plain Manage of the same position is answered as before. */
     const dc = _makeDiskConfig();

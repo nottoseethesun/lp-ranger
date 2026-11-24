@@ -40,7 +40,7 @@ const EVENT_DEFAULTS = Object.freeze({
   ilGuardRejected: true,
   /*-
    *  Balanced-band notifier
-   *  (src/lib/telegram-notifications/balanced-notifier.js). Default OFF:
+   *  (src/bot/telegram-notifications/balanced-notifier.js). Default OFF:
    *  enabling it bypasses the idle-driven price-lookup pause for these
    *  positions, so price-source quota is consumed even when the
    *  dashboard is closed.

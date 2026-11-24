@@ -16,11 +16,11 @@ blocks. Multiple such scans accumulated unnoticed across `hodl-baseline`,
 `bot-recorder._scanLifetimePoolData`, `position-history._supplementMintFromChain`,
 and `position-details` lifetime IL — fixed in the
 "add-compound-to-activity-log-and-start-all-historical-scans-from-pool-creation"
-branch by routing every site through `src/lib/pool-creation-block.js`.
+branch by routing every site through `src/bot/pool-creation-block.js`.
 
 **How to apply:**
 - For NFT or pool-event scans, use the cached pool-creation-block helper at
-  `src/lib/pool-creation-block.js` (`getPoolCreationBlockCached`,
+  `src/bot/pool-creation-block.js` (`getPoolCreationBlockCached`,
   `resolvePoolCreationBlockForPosition`, `resolvePoolAddressForToken`).
 - For incremental scans, persist a `lastScannedBlock` checkpoint and resume.
 - Only fall back to `0` as a last-resort default when the tight bound cannot

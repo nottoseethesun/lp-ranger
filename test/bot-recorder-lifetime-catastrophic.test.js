@@ -30,7 +30,7 @@ before(() => {
 const {
   _recordScanFailure,
   _recordScanSuccess,
-} = require("../src/lib/bot-recorder-lifetime");
+} = require("../src/bot/bot-recorder-lifetime");
 const errorLog = require("../src/lib/error-log");
 
 function _ctx() {

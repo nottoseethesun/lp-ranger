@@ -18,7 +18,7 @@ describe("classifyCompounds — fees from rebalance vs standalone", () => {
    *  history) — `_fetchCompoundGas` short-circuits when there is
    *  nothing to fetch.
    */
-  const { classifyCompounds } = require("../src/lib/compounder");
+  const { classifyCompounds } = require("../src/bot/compounder");
 
   it("counts fees re-deposited via rebalance (no standalone compounds)", async () => {
     /*-

@@ -2,7 +2,7 @@
 
 /**
  * @file test/coin-decimals.test.js
- * @description `coinDecimals` (src/lib/coin-decimals.js): a rebalance result's
+ * @description `coinDecimals` (src/bot/coin-decimals.js): a rebalance result's
  *   or a position's decimals, with 18 standing in for any not carried.
  *
  *   The user ruled the guess acceptable on the condition that reaching it
@@ -16,7 +16,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { log } = require("../src/lib/log");
-const { coinDecimals } = require("../src/lib/coin-decimals");
+const { coinDecimals } = require("../src/bot/coin-decimals");
 
 /** Run `fn` with the warning log captured as formatted-enough lines. */
 function captureWarns(t) {

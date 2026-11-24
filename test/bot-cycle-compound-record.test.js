@@ -26,13 +26,13 @@ describe("recordCompound", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/lib/bot-cycle-compound")];
-    ({ recordCompound } = require("../src/lib/bot-cycle-compound"));
+    delete require.cache[require.resolve("../src/bot/bot-cycle-compound")];
+    ({ recordCompound } = require("../src/bot/bot-cycle-compound"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/lib/bot-cycle-compound")];
+    delete require.cache[require.resolve("../src/bot/bot-cycle-compound")];
   });
 
   it("records compound with gas cost and updates history", async () => {
@@ -345,7 +345,7 @@ describe("recordCompound", () => {
   it("keeps the deposit's block and the wallet's coins before the collect on the compound's record", async () => {
     /*- A deposit to the wallet still waiting there is taken by the
      *  compound in proportion to its share of that balance
-     *  (src/lib/deposit-attribution.js). */
+     *  (src/bot/deposit-attribution.js). */
     const read = {
       ...swept,
       depositBlock: 1234,
@@ -375,7 +375,7 @@ describe("recordCompound", () => {
 describe("the compound's Telegram message", () => {
   let _compoundMessage;
   before(() => {
-    ({ _compoundMessage } = require("../src/lib/bot-cycle-compound"));
+    ({ _compoundMessage } = require("../src/bot/bot-cycle-compound"));
   });
   const base = {
     amount0Deposited: "110",

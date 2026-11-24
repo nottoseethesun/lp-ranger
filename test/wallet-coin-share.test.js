@@ -2,9 +2,9 @@
  * @file test/wallet-coin-share.test.js
  * @description The part of the wallet's balance of a coin that a running
  * managed position's Wallet Residual (Pool) line counts as its own
- * (src/lib/wallet-coin-share.js), and the poll that asks for it
- * (`walletResiduals`, src/lib/bot-pnl-updater.js), with the other running
- * positions as src/lib/server-positions.js shows each position.
+ * (src/bot/wallet-coin-share.js), and the poll that asks for it
+ * (`walletResiduals`, src/bot/bot-pnl-updater.js), with the other running
+ * positions as src/bot/position-states.js shows each position.
  *
  * Coin `0xc` stands for WPLS: the asking position's pool contains it as
  * its token0 and the other position's pool as its token1, as #167040's
@@ -21,16 +21,16 @@ const {
   coinInOtherNfts,
   coinShare,
   poolCoinShares,
-} = require("../src/lib/wallet-coin-share");
+} = require("../src/bot/wallet-coin-share");
 const {
   positionValueUsd,
   walletResiduals,
-} = require("../src/lib/bot-pnl-updater");
+} = require("../src/bot/bot-pnl-updater");
 const {
   attachMultiPosDeps,
   getAllPositionBotStates,
-} = require("../src/lib/server-positions");
-const rangeMath = require("../src/lib/range-math");
+} = require("../src/bot/position-states");
+const rangeMath = require("../src/bot/range-math");
 
 const near = (actual, expected, label) =>
   assert.ok(
@@ -139,7 +139,7 @@ describe("poolCoinShares", () => {
   });
 });
 
-describe("walletResiduals, with the other positions as src/lib/server-positions.js shows them", () => {
+describe("walletResiduals, with the other positions as src/bot/position-states.js shows them", () => {
   /** A wallet holding 30 of the coin and 10 of the other, read through a stub of ethers. */
   const ethersStub = {
     Contract: function (address) {

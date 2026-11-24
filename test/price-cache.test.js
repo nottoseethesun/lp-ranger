@@ -27,7 +27,7 @@ const {
   toUtcDayKey,
   _resetForTest,
   _CACHE_PATH,
-} = require("../src/lib/price-cache");
+} = require("../src/bot/price-cache");
 
 describe("price-cache", () => {
   after(() => {
@@ -203,10 +203,10 @@ describe("price-cache", () => {
    * bookkeeping report.
    */
   function anotherProcess() {
-    const id = require.resolve("../src/lib/price-cache");
+    const id = require.resolve("../src/bot/price-cache");
     const ours = require.cache[id];
     delete require.cache[id];
-    const theirs = require("../src/lib/price-cache");
+    const theirs = require("../src/bot/price-cache");
     require.cache[id] = ours;
     return theirs;
   }
@@ -283,7 +283,7 @@ describe("price-cache", () => {
 
 // ── gasNative in pnl-tracker ─────────────────────────────────────────────────
 
-const { createPnlTracker } = require("../src/lib/pnl-tracker");
+const { createPnlTracker } = require("../src/bot/pnl-tracker");
 
 describe("pnl-tracker gasNative", () => {
   it("addGas stores both USD and native amounts", () => {

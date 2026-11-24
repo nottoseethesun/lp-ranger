@@ -39,7 +39,7 @@ asked. It happened twice in three hours.
 
 ## Why
 
-`retryRead` (`src/lib/rpc-read-retry.js`) takes its provider from one place:
+`retryRead` (`src/bot/rpc-read-retry.js`) takes its provider from one place:
 `current()`, which is `sendTx.getCurrentRPC()`. Selection is
 process-wide, and it advances only when `failoverToNextRPC` agrees to
 move — which requires `decideIfCurrentRPCIsOutOfService` to find the
@@ -66,7 +66,7 @@ the first.
 
 ## The fix already exists on the write path
 
-`_estimateWithFailover` (`src/lib/send-transaction.js`) walks each remaining
+`_estimateWithFailover` (`src/bot/send-transaction.js`) walks each remaining
 endpoint in turn and **commits the selection change only on success**, so
 a total outage leaves the bot on its preferred endpoint rather than
 pinned to whichever it tried last. That is exactly the shape the read

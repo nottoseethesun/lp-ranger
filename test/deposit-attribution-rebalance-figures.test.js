@@ -1,9 +1,9 @@
 /**
  * @file test/deposit-attribution-rebalance-figures.test.js
  * @description A Rebalance entry's Activity Log figures for a coin another
- * running position holds (src/lib/rebalance-activity-figures.js): the
+ * running position holds (src/bot/rebalance-activity-figures.js): the
  * deposit set aside is what the running positions' deposits and moves
- * show the rebalance took (src/lib/deposit-attribution.js), in place of
+ * show the rebalance took (src/bot/deposit-attribution.js), in place of
  * the entries this position lists between the two mints.
  *
  * The fixture rebalance is the one test/rebalance-activity-figures.test.js
@@ -19,7 +19,7 @@ const assert = require("node:assert/strict");
 const {
   cachedDepositFor,
   finishRebalanceFigures,
-} = require("../src/lib/rebalance-activity-figures");
+} = require("../src/bot/rebalance-activity-figures");
 
 const READINGS = Object.freeze({
   beforeDrain: { amount0: 100, amount1: 50 },

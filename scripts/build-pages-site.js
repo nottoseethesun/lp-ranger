@@ -13,12 +13,13 @@
  * remove: the same page list in YAML and in JS, free to drift.
  *
  * Why the site must be assembled at all: the published pages reference
- * their CSS absolutely and stamped (`/style.css?v=123`), which only
+ * their CSS absolutely and stamped (`/css/style.css?v=123`), which only
  * resolves while the dashboard server is running, the manual loads a
  * script that asks the running app, and the gallery references images
  * as `images/…`, which sits next to the HTML rather than in
- * `docs/images/`. A static host needs everything flat and relative, and
- * no script that asks for an app.
+ * `docs/images/`. A static host needs every link relative to the page,
+ * each file at the place the link names, and no script that asks for an
+ * app.
  *
  * Both callers — the deploy workflow and `npm run show-gallery` — go
  * through this function, so a local preview cannot drift from what
@@ -72,7 +73,8 @@ function copyTree(src, dest) {
 }
 
 /**
- * Flatten `href="/sheet.css?v=123"` to `href="sheet.css"`.
+ * Make `href="/css/sheet.css?v=123"` relative and unstamped:
+ * `href="css/sheet.css"`.
  *
  * Done with string scanning rather than a constructed RegExp: the sheet
  * name comes from the spec file, and building a pattern from it would
@@ -84,7 +86,8 @@ function copyTree(src, dest) {
  * against `gallery.css` — is left alone rather than silently truncated.
  *
  * @param {string} html
- * @param {string} css  Stylesheet filename, e.g. `gallery.css`.
+ * @param {string} css  The stylesheet's path under the web root, e.g.
+ *   `css/gallery.css`.
  * @returns {string}
  */
 function flattenStampedHref(html, css) {
@@ -199,9 +202,15 @@ function buildPagesSite(outDir) {
     writePage(page, spec, outDir);
   }
 
-  for (const file of spec.flatAssets || []) {
+  /*-
+   *  Each asset keeps its folder under the web root (css/, images/), so
+   *  a page's relative link to it, which names that folder, finds it.
+   */
+  for (const file of spec.webAssets || []) {
     if (fs.existsSync(file)) {
-      fs.copyFileSync(file, path.join(outDir, path.basename(file)));
+      const to = path.join(outDir, path.relative(spec.webRoot, file));
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(file, to);
     }
   }
 

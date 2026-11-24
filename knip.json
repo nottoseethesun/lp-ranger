@@ -7,8 +7,8 @@
     "eslint-security.config.js",
     "eslint-rules/*.js",
     "stylelint-rules/*.js",
-    "src/client/web/dashboard-init.js",
-    "src/client/web/dashboard-manual-figures.js",
+    "src/client/web/js/dashboard-init.js",
+    "src/client/web/js/dashboard-manual-figures.js",
     "test/**/*.test.js"
   ],
   "project": ["**/*.js"]

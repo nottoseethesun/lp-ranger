@@ -9,7 +9,7 @@
  *   The manual's build writes the shipped figures into every
  *   `<span data-figure="name">`, the shared Impermanent Loss Guard
  *   section's included. The served copy loads the build's stamped bundle
- *   of `src/client/web/dashboard-manual-figures.js`, which asks
+ *   of `src/client/web/js/dashboard-manual-figures.js`, which asks
  *   `GET /api/help-figures` and rewrites each span; the Pages build drops
  *   the tag that loads it, and makes the stylesheets relative and
  *   unstamped. Each half is checked here: the module under jsdom with a
@@ -54,7 +54,7 @@ before(async () => {
   globalThis.fetch = async () => ({ ok: false, status: 404 });
   console.warn = (...args) => warned.push(args.join(" "));
   try {
-    mod = await import("../src/client/web/dashboard-manual-figures.js");
+    mod = await import("../src/client/web/js/dashboard-manual-figures.js");
     await new Promise((resolve) => setImmediate(resolve));
   } finally {
     globalThis.fetch = realFetch;

@@ -16,13 +16,13 @@ tell from the screen which one happened.
 The four writers:
 
 1. A swap refused because its price impact exceeds the slippage setting
-   (`_handleError`, `src/lib/bot-loop.js`).
+   (`_handleError`, `src/bot/bot-loop.js`).
 2. Mid-rebalance recovery that has failed four times (same function).
 3. A failed attempt to re-open a closed position, just before the
    position is retired again (same file).
 4. A rebalance the price outran: the price left the new range before the
    mint, with the old position already emptied (`holdAfterPriceMove`,
-   `src/lib/price-moved-stop.js`).
+   `src/bot/price-moved-stop.js`).
 
 All four stop automatic rebalances at the same gate, turn the status
 pill to a red ABORTED, and raise the same alert dialog with the error's
@@ -31,9 +31,11 @@ otherwise a position left drained is retired, within seconds in case 3
 and after thirty minutes in the others.
 
 The shared flag already shows through in one place. While it is set,
-the Manage button is disabled with a tooltip written for case 3 alone,
-"Re-open just failed — the bot will auto-retire shortly", whichever case
-set it (`_MANAGE_PAUSED_HELP`, `src/client/web/dashboard-manage-ui.js`). Beyond
+the Manage button is disabled with a tooltip that names the stop's
+reason (`abortReasonSummary`, `src/client/web/js/dashboard-abort-reason.js`)
+but frames every case as case 3's, "Re-open just failed: … The bot will
+auto-retire shortly", whichever case set it (`_pausedHelp`,
+`src/client/web/js/dashboard-manage-ui.js`). Beyond
 that the behaviour is right; it is the naming that makes correct prose
 about any one case hard to write.
 

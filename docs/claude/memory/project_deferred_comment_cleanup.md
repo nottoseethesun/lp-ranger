@@ -13,7 +13,7 @@ the unmanaged view saving an empty rebuild (#2.2), and the Sync badge
 that stays on "Syncing…" with no reason shown (#3). The user set that
 order on 2026-09-17.
 
-**1. `src/lib/position-history.js` — storytelling, and one false claim.**
+**1. `src/bot/position-history.js` — storytelling, and one false claim.**
 The JSDoc on `_supplementFeesFromChain` retells the 2026-09-02 fix: the
 "$149 of a lifetime $1,084" case and the old
 `Collect(last) − DecreaseLiquidity(last)` formula. Rewrite to state the

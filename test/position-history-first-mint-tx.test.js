@@ -51,13 +51,13 @@ describe("the oldest NFT's mint lookup is reached", () => {
       }
       return _origRequire.apply(this, arguments);
     };
-    delete require.cache[require.resolve("../src/lib/position-history")];
-    ({ getPositionHistory } = require("../src/lib/position-history"));
+    delete require.cache[require.resolve("../src/bot/position-history")];
+    ({ getPositionHistory } = require("../src/bot/position-history"));
   });
 
   after(() => {
     Module.prototype.require = _origRequire;
-    delete require.cache[require.resolve("../src/lib/position-history")];
+    delete require.cache[require.resolve("../src/bot/position-history")];
   });
 
   beforeEach(() => {
@@ -118,7 +118,7 @@ describe("the mint lookup is scoped to one NFT contract", () => {
      *  date, wrong opening value, wrong creation gas, no error. */
     const {
       supplementMintFromChain,
-    } = require("../src/lib/position-history-mint");
+    } = require("../src/bot/position-history-mint");
 
     const seen = [];
     const a = { mintBlockNumber: 1000 };
@@ -146,7 +146,7 @@ describe("the mint lookup is scoped to one NFT contract", () => {
 
   it("accepts the contract as a parameter rather than assuming one", () => {
     const src = require("node:fs").readFileSync(
-      require.resolve("../src/lib/position-history-mint"),
+      require.resolve("../src/bot/position-history-mint"),
       "utf8",
     );
     assert.match(

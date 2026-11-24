@@ -23,8 +23,8 @@ The fourth is the instructive one: it was found immediately after *editing that 
 
 ## Re-pointing a sentence at a different file makes every number in it a new claim (2026-09-30)
 
-Correcting "`_waitOrSpeedUp()` in `src/lib/rebalancer.js`" to
-`src/lib/tx-speedup.js` across three docs looked like relocating a pointer.
+Correcting "`_waitOrSpeedUp()` in `src/bot/rebalancer.js`" to
+`src/bot/tx-speedup.js` across three docs looked like relocating a pointer.
 It is not. **The rest of the sentence was written about a different
 implementation, and each of its claims has to be re-checked against the
 new one.** Two were wrong once re-pointed:

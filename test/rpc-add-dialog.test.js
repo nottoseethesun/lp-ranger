@@ -105,6 +105,7 @@ describe("the Network section's markup", () => {
         "src",
         "client",
         "web",
+        "js",
         "dashboard-events-manage.js",
       ),
       "utf8",

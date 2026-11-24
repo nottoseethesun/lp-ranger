@@ -2,7 +2,7 @@
 
 /**
  * @file test/dashboard-compound-scan-wait.test.js
- * @description The Compound Now dialog (src/client/web/dashboard-compound.js),
+ * @description The Compound Now dialog (src/client/web/js/dashboard-compound.js),
  *   which opens when the server refuses a Compound Now because a scan is
  *   running on the position: the server's words beside a spinner, with
  *   Cancel and no confirm button. Once a status answer says the scan has
@@ -45,8 +45,9 @@ let requests;
 before(async () => {
   await learnActiveChain();
   pollMs = (await learnUiSettings()).dashboardPollIntervalMs;
-  compound = await import("../src/client/web/dashboard-compound.js");
-  const store = await import("../src/client/web/dashboard-positions-store.js");
+  compound = await import("../src/client/web/js/dashboard-compound.js");
+  const store =
+    await import("../src/client/web/js/dashboard-positions-store.js");
   store.posStore.add({
     walletAddress: WALLET,
     contractAddress: PM,
@@ -56,7 +57,7 @@ before(async () => {
   store.posStore.select(0);
   store.setPositionManaged("2", true);
   const { _setStatusReaderForTests } =
-    await import("../src/client/web/dashboard-scan-wait.js");
+    await import("../src/client/web/js/dashboard-scan-wait.js");
   _setStatusReaderForTests(() => ({
     _allPositionStates: { [KEY]: { scanInProgress: scanning } },
   }));

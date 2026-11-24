@@ -4,9 +4,9 @@
  *   page, then stamps every page and composes the dashboard's: the last
  *   steps of `npm run build`.
  *
- *   The two bundles are the dashboard's (`src/client/web/dashboard-init.js` →
+ *   The two bundles are the dashboard's (`src/client/web/js/dashboard-init.js` →
  *   `src/client/web/dist/bundle.js`) and the User Manual's
- *   (`src/client/web/dashboard-manual-figures.js` →
+ *   (`src/client/web/js/dashboard-manual-figures.js` →
  *   `src/client/web/dist/manual-figures.js`). The server lets a browser keep any
  *   script for a year, so a page must load each of its scripts under the
  *   build's fresh stamp (`scripts/cache-bust.js`). A module a page loaded
@@ -29,11 +29,11 @@ const { log } = require("../src/lib/log");
 
 const BUNDLES = [
   {
-    entryPoints: ["src/client/web/dashboard-init.js"],
+    entryPoints: ["src/client/web/js/dashboard-init.js"],
     outfile: "src/client/web/dist/bundle.js",
   },
   {
-    entryPoints: ["src/client/web/dashboard-manual-figures.js"],
+    entryPoints: ["src/client/web/js/dashboard-manual-figures.js"],
     outfile: "src/client/web/dist/manual-figures.js",
   },
 ];

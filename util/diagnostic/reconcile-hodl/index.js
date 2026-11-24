@@ -94,10 +94,10 @@ process.chdir(path.resolve(__dirname, "..", ".."));
 
 const { ethers } = require("ethers");
 const config = require("../../../src/lib/config");
-const { PM_ABI } = require("../../../src/lib/pm-abi");
-const { topicForTokenId } = require("../../../src/lib/nft-token-topic");
+const { PM_ABI } = require("../../../src/bot/pm-abi");
+const { topicForTokenId } = require("../../../src/bot/nft-token-topic");
 const { parseCompositeKey } = require("../../../src/lib/composite-key");
-const { _DEFAULT_CHUNK_SIZE } = require("../../../src/lib/get-logs-chunked");
+const { _DEFAULT_CHUNK_SIZE } = require("../../../src/bot/get-logs-chunked");
 const {
   readBotConfigDefaults,
 } = require("../../../src/lib/bot-config-defaults");
@@ -107,7 +107,7 @@ const render = require("./render");
 const {
   readPositionRecords,
   mergePositionRecords,
-} = require("../../../src/lib/position-records");
+} = require("../../../src/lib/util/position-records");
 
 /**
  * Describe the command line, so Commander both parses it and renders

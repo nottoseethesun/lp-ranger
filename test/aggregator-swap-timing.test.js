@@ -19,11 +19,11 @@
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
-const sendTx = require("../src/lib/send-transaction");
+const sendTx = require("../src/bot/send-transaction");
 const {
   swapViaAggregator,
   _setWaitMsForTests,
-} = require("../src/lib/rebalancer-aggregator");
+} = require("../src/bot/rebalancer-aggregator");
 const { buildMockEthersLib } = require("./helpers/rebalancer-mocks");
 const {
   EXCHANGE,

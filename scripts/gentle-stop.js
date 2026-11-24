@@ -43,7 +43,7 @@ const http = require("http");
 const { log } = require("../src/lib/log");
 const { serverHost, serverPort } = require("../src/lib/server-address");
 const { readShutdownTimings } = require("../src/lib/shutdown-timing");
-const { readPid } = require("../src/lib/server-pid");
+const { readPid } = require("../src/server/server-pid");
 const { isAlive } = require("./stop");
 
 const _PATH = "/api/stop-when-all-clear";

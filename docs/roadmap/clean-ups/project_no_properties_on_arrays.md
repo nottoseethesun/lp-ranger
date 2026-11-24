@@ -66,10 +66,10 @@ Two parts.
 **1. Return the values properly.** Have the scanner return an object,
 `{ events, firstMintBlockNumber, firstMintTimestamp, … }` with all six
 values as fields, and have callers take them as ordinary values.
-Touches `src/lib/event-scanner.js`,
-`src/lib/pool-scanner.js`, `src/lib/bot-recorder.js`,
-`src/lib/bot-recorder-lifetime.js`, `src/server/position-details*.js` and
-`src/lib/nft-mint-blocks.js` (`chainScanFloor`). Once done, delete the
+Touches `src/bot/event-scanner.js`,
+`src/bot/pool-scanner.js`, `src/bot/bot-recorder.js`,
+`src/bot/bot-recorder-lifetime.js`, `src/bot/position-details*.js` and
+`src/bot/nft-mint-blocks.js` (`chainScanFloor`). Once done, delete the
 re-attach lines and their test.
 
 **2. Add a lint rule.** A custom ESLint rule &mdash; sibling to the

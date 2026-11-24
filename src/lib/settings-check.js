@@ -48,7 +48,7 @@ const {
   positionRecordsProblems,
 } = require("./bot-config-checks");
 const { botConfigPath } = require("./bot-config-v2");
-const { positionRecordsPath } = require("./position-records");
+const { positionRecordsPath } = require("./util/position-records");
 
 /*-
  *  Files the app keeps in the operator's folder that are not copies of a
@@ -141,7 +141,7 @@ function _resolveFiles(shippedDir, userDir, problems) {
  *   as it is when the app loads `.env`.
  * @param {string} [o.botConfigFile]  bot-config.json.
  * @param {string} [o.recordsFile]    The records file,
- *   app-data/position-records.json (src/lib/position-records.js).
+ *   app-data/position-records.json (src/lib/util/position-records.js).
  * @returns {{shipped: object, resolved: object, envText: (string|undefined),
  *   env: object, botText: (string|undefined),
  *   recordsText: (string|undefined), problems: string[]}}

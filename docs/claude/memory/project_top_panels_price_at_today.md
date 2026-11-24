@@ -25,17 +25,17 @@ accounting period, and a closed period keeps the dollars it closed at.
 
 These call sites price gas at today and are **correct**:
 
-- `src/lib/bot-pnl-current-nft.js` `_weiToUsd` — managed Current panel.
-- `src/server/position-details-compound.js` `_currentValuesFromScan` —
+- `src/bot/bot-pnl-current-nft.js` `_weiToUsd` — managed Current panel.
+- `src/bot/position-details-compound.js` `_currentValuesFromScan` —
   unmanaged Current panel. Same figure, so the two views agree.
-- `src/lib/bot-pnl-updater.js` `overridePnlWithRealValues` — the Lifetime
+- `src/bot/bot-pnl-updater.js` `overridePnlWithRealValues` — the Lifetime
   Gas line, re-derived every poll as `totalGasNative × current price`.
 
 These are past-dated charges that DO need historical pricing, because
 they land in a Per-Day row:
 
-- `src/lib/epoch-reconstructor.js` — each epoch's gas, at its close day.
-- `src/lib/bot-pnl-updater.js` `_applyMintGas` — the NFT's mint gas, at
+- `src/bot/epoch-reconstructor.js` — each epoch's gas, at its close day.
+- `src/bot/bot-pnl-updater.js` `_applyMintGas` — the NFT's mint gas, at
   `hodlBaseline.mintTimestamp`.
 
 **Why:** a reader looking at Current or Lifetime is asking what the

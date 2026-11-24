@@ -20,7 +20,7 @@
  */
 async function learnActiveChain(chainId = "pulsechain", displayName) {
   const { loadActiveChain } =
-    await import("../../src/client/web/dashboard-chain.js");
+    await import("../../src/client/web/js/dashboard-chain.js");
   const answer =
     displayName === undefined ? { chainId } : { chainId, displayName };
   return loadActiveChain({

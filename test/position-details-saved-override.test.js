@@ -9,7 +9,7 @@
  *   The Price Override dialog saves to the server (`POST /api/config`,
  *   under the position's key), as it does for a managed position, so the
  *   override holds in any browser and after Clear Local Storage.
- *   `computeQuickDetails` (src/server/position-details-quick.js) reads it there.
+ *   `computeQuickDetails` (src/bot/position-details-quick.js) reads it there.
  *   The pool, its prices and the token reads are stubbed; the override
  *   rule itself (`_applyPriceOverrides`) is tested in
  *   test/position-details-quick.test.js.
@@ -59,14 +59,14 @@ before(() => {
       };
     return _origRequire.apply(this, arguments);
   };
-  delete require.cache[require.resolve("../src/server/position-details-quick")];
-  ({ computeQuickDetails } = require("../src/server/position-details-quick"));
+  delete require.cache[require.resolve("../src/bot/position-details-quick")];
+  ({ computeQuickDetails } = require("../src/bot/position-details-quick"));
   key = compositeKey(config.CHAIN_NAME, WALLET, PM, TOKEN_ID);
 });
 
 after(() => {
   Module.prototype.require = _origRequire;
-  delete require.cache[require.resolve("../src/server/position-details-quick")];
+  delete require.cache[require.resolve("../src/bot/position-details-quick")];
 });
 
 /** A details request; `extra` adds what an older dashboard sent. */

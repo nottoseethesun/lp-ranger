@@ -5,7 +5,7 @@
  * @description Unit tests for the pure `computeManageUI` decision tree
  *   that owns the dashboard's Manage button + badge + Lifetime panel +
  *   Pool-details button rendering.  Drives the real
- *   `computeManageUI` export from `src/client/web/dashboard-manage-ui.js`
+ *   `computeManageUI` export from `src/client/web/js/dashboard-manage-ui.js`
  *   under jsdom — no mirror.  `MANAGE_SYNCING_HELP` is imported from
  *   the same module so tests match the exact string the UI paints.
  */
@@ -14,18 +14,20 @@ require("global-jsdom/register");
 
 const { test, before } = require("node:test");
 const assert = require("node:assert");
-const { GUARANTEED_DASHBOARD_HAS_POLLED_MS } = require("../src/lib/config");
+const {
+  guaranteedDashboardHasPolledMs,
+} = require("../src/bot/dashboard-has-polled");
 
 let computeManageUI;
 let MANAGE_SYNCING_HELP;
 
 before(async () => {
-  const mod = await import("../src/client/web/dashboard-manage-ui.js");
+  const mod = await import("../src/client/web/js/dashboard-manage-ui.js");
   computeManageUI = mod.computeManageUI;
   MANAGE_SYNCING_HELP = mod.MANAGE_SYNCING_HELP;
 });
 
-const RETIRE_DEBOUNCE_MS = GUARANTEED_DASHBOARD_HAS_POLLED_MS;
+const RETIRE_DEBOUNCE_MS = guaranteedDashboardHasPolledMs();
 
 // ── Test fixtures ────────────────────────────────────────────────────
 

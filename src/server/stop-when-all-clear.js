@@ -7,14 +7,15 @@
  * until nothing it has under way is left.
  *
  * The first request starts the stop at once. From then on the app is
- * stopping for good (src/lib/app-phase.js): no position starts, no bot loop
+ * stopping for good (src/bot/app-phase.js): no position starts, no bot loop
  * starts a rebalance or compound, and Reload Current Position and Re-scan
  * Prices are refused, so nothing new begins. The stop then waits for what
  * was under way: each position's poll, so a rebalance or compound in
  * progress finishes (`stopAll`); then each scan still running, so the
  * scan that follows a rebalance, starting right after it, finishes too,
  * and the next start does not find the position's figures short of that
- * rebalance. Then the server exits.
+ * rebalance. Then the server exits. What is under way is the bot's to say
+ * (src/bot/under-way.js), asked through its interface.
  *
  * Deciding at the server closes the gap a separate question would leave:
  * between an answer that nothing is under way and a stop sent after it, a
@@ -25,64 +26,6 @@
 "use strict";
 
 const { log } = require("../lib/log");
-const { isAscanRunningOnThisPosition } = require("../lib/scan-state");
-
-/** A position as the stop's answer and the log name it. */
-function _label(key, state) {
-  const p = state?.activePosition;
-  const pair =
-    p?.token0Symbol && p?.token1Symbol
-      ? `${p.token0Symbol}/${p.token1Symbol} `
-      : "";
-  const id = p?.tokenId ?? String(key).split("-").pop();
-  return `${pair}NFT #${id}`;
-}
-
-/**
- * What the stop still waits for, position by position: a rebalance or
- * compound in progress until every position's poll has ended, and a scan
- * still running.
- *
- * @param {Map<string, object>} states  Each position's bot state, by key.
- * @param {boolean} movesOver  Every position's poll has ended, so a move
- *   still marked in progress is one no poll will make.
- * @returns {Array<{position: string, activity: string}>}  `activity` is
- *   `"rebalance"`, `"compound"` or `"scan"`.
- */
-function underWay(states, movesOver) {
-  const out = [];
-  for (const [key, st] of states) {
-    const position = _label(key, st);
-    if (!movesOver && st?.rebalanceInProgress === true)
-      out.push({ position, activity: "rebalance" });
-    if (!movesOver && st?.compoundInProgress === true)
-      out.push({ position, activity: "compound" });
-    if (isAscanRunningOnThisPosition(st))
-      out.push({ position, activity: "scan" });
-  }
-  return out;
-}
-
-/**
- * Wait until no scan is running: each running scan's pass, which the bot
- * loop keeps as `_scanDone`, is awaited, and the positions are looked at
- * again, since a scan can end only after another has started.
- *
- * @param {Function} getStates  Each position's bot state, by key.
- * @returns {Promise<void>}
- */
-async function _scansEnded(getStates) {
-  for (;;) {
-    const passes = [...getStates().values()]
-      .filter(
-        (s) =>
-          isAscanRunningOnThisPosition(s) && s._scanDone instanceof Promise,
-      )
-      .map((s) => s._scanDone.catch(() => {}));
-    if (passes.length === 0) return;
-    await Promise.all(passes);
-  }
-}
 
 /**
  * Create the held stop.
@@ -92,7 +35,9 @@ async function _scansEnded(getStates) {
  * @param {Function} deps.notifyShutdown Sends the shutdown alert.
  * @param {Function} deps.stopAll        Stops every position, each once
  *   its poll has ended.
- * @param {Function} deps.getStates      Each position's bot state, by key.
+ * @param {Function} deps.underWay       `(movesOver) => Array<{position,
+ *   activity}>`: what the bot still has under way.
+ * @param {Function} deps.scansEnded     Resolves once no scan is running.
  * @param {Function} deps.exit           Ends the process.
  * @returns {{request: () => {waitingFor: Array<{position: string,
  *   activity: string}>}}}  `request` starts the stop the first time and
@@ -106,20 +51,20 @@ function createStopWhenAllClear(deps) {
     deps.notifyShutdown();
     await deps.stopAll();
     movesOver = true;
-    const scans = underWay(deps.getStates(), true);
+    const scans = deps.underWay(true);
     if (scans.length > 0)
       log.info(
         "[server] Every position has stopped; waiting for %d scan(s) to finish: %s",
         scans.length,
         scans.map((u) => u.position).join(", "),
       );
-    await _scansEnded(deps.getStates);
+    await deps.scansEnded();
   }
   return {
     request() {
       if (!started) {
         started = true;
-        const now = underWay(deps.getStates(), false);
+        const now = deps.underWay(false);
         log.info(
           "[server] Stop requested: stopping once nothing is under way (%s)",
           now.length === 0
@@ -135,9 +80,9 @@ function createStopWhenAllClear(deps) {
             deps.exit();
           });
       }
-      return { waitingFor: underWay(deps.getStates(), movesOver) };
+      return { waitingFor: deps.underWay(movesOver) };
     },
   };
 }
 
-module.exports = { createStopWhenAllClear, underWay };
+module.exports = { createStopWhenAllClear };

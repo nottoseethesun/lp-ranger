@@ -4,7 +4,7 @@
  * @file test/dashboard-manage-refusal.test.js
  * @description What the page says when the server refuses a Manage or a
  *   re-open under the one-active-position-per-pool rule
- *   (src/client/web/dashboard-manage-refusal.js): which position holds the pool,
+ *   (src/client/web/js/dashboard-manage-refusal.js): which position holds the pool,
  *   and what to do, rather than the code the server answers with and a
  *   "click again" that would only be refused again.
  *
@@ -63,11 +63,11 @@ let refusal, manage, confirm, posStore;
 
 before(async () => {
   await learnActiveChain("pulsechain", "PulseChain");
-  refusal = await import("../src/client/web/dashboard-manage-refusal.js");
-  manage = await import("../src/client/web/dashboard-events-manage.js");
-  confirm = await import("../src/client/web/dashboard-rebalance-confirm.js");
+  refusal = await import("../src/client/web/js/dashboard-manage-refusal.js");
+  manage = await import("../src/client/web/js/dashboard-events-manage.js");
+  confirm = await import("../src/client/web/js/dashboard-rebalance-confirm.js");
   ({ posStore } =
-    await import("../src/client/web/dashboard-positions-store.js"));
+    await import("../src/client/web/js/dashboard-positions-store.js"));
   posStore.add(A);
 });
 

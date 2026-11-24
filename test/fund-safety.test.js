@@ -11,16 +11,16 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const { startLocalAggregator } = require("./helpers/local-aggregator");
-const { mintPosition, executeRebalance } = require("../src/lib/rebalancer");
+const { mintPosition, executeRebalance } = require("../src/bot/rebalancer");
 const {
   computeDesiredAmounts,
   swapIfNeeded,
-} = require("../src/lib/rebalancer-swap");
+} = require("../src/bot/rebalancer-swap");
 const {
   removeLiquidity,
   _MAX_UINT128,
-} = require("../src/lib/rebalancer-pools");
-const { computeNewRange, priceToTick } = require("../src/lib/range-math");
+} = require("../src/bot/rebalancer-pools");
+const { computeNewRange, priceToTick } = require("../src/bot/range-math");
 
 // ── Shared helpers (test/helpers/rebalancer-mocks.js) ───────────────────────
 const {
@@ -390,8 +390,8 @@ describe("Fund safety — new range validity", () => {
 describe("Fund safety — one swap intent, at most one swap", () => {
   const {
     swapIfNeeded: realSwapIfNeeded,
-  } = require("../src/lib/rebalancer-swap");
-  const { _setWaitMsForTests } = require("../src/lib/rebalancer-aggregator");
+  } = require("../src/bot/rebalancer-swap");
+  const { _setWaitMsForTests } = require("../src/bot/rebalancer-aggregator");
 
   /** Quote the stubbed aggregator endpoint returns for both calls. */
   const QUOTE = {
@@ -527,9 +527,9 @@ describe("Fund safety — a pending swap is distinguishable", () => {
  * and the corrective and residual-cleanup paths pick up the rest.
  */
 describe("Fund safety — a partial chunked swap is not swapped again", () => {
-  const AGG_PATH = require.resolve("../src/lib/rebalancer-aggregator");
-  const ROUTER_PATH = require.resolve("../src/lib/rebalancer-router");
-  const SWAP_PATH = require.resolve("../src/lib/rebalancer-swap");
+  const AGG_PATH = require.resolve("../src/bot/rebalancer-aggregator");
+  const ROUTER_PATH = require.resolve("../src/bot/rebalancer-router");
+  const SWAP_PATH = require.resolve("../src/bot/rebalancer-swap");
 
   const CHUNK_OUT = 500n;
 

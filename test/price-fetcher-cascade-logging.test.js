@@ -1,6 +1,6 @@
 /**
  * @file test/price-fetcher-cascade-logging.test.js
- * @description What the current-price cascade in src/lib/price-fetcher.js
+ * @description What the current-price cascade in src/bot/price-fetcher.js
  * logs: the source that answered, with the token's address abbreviated;
  * each source that missed and a final "All sources failed"; and nothing
  * at all on a chain no price service covers. Split out of
@@ -13,10 +13,10 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { format } = require("node:util");
 
-const { fetchTokenPriceUsd, _cache } = require("../src/lib/price-fetcher");
+const { fetchTokenPriceUsd, _cache } = require("../src/bot/price-fetcher");
 const {
   _resetForTest: _resetGeckoRateLimit,
-} = require("../src/lib/gecko-rate-limit");
+} = require("../src/bot/gecko-rate-limit");
 const { _setSinkForTests } = require("../src/lib/log");
 const config = require("../src/lib/config");
 const CHAINS = require("../app-config/app-defaults-for-user-configurable/chains.json");

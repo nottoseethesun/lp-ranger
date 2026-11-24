@@ -49,7 +49,7 @@ seconds later.
 
 ## Cause
 
-`failoverToNextRPC()` (`src/lib/send-transaction.js`) takes no argument
+`failoverToNextRPC()` (`src/bot/send-transaction.js`) takes no argument
 saying **which** endpoint failed. It reads the shared `_activeIdx`,
 advances one, and returns. Nothing ties the advance to the endpoint the
 error came from, so every concurrent failing read advances it again.

@@ -13,7 +13,7 @@ const fs = require("fs");
 const path = require("path");
 const config = require("../src/lib/config");
 const { eventCachePath } = require("../src/lib/cache-store");
-const poolScanner = require("../src/lib/pool-scanner");
+const poolScanner = require("../src/bot/pool-scanner");
 
 const {
   scanPoolHistory,

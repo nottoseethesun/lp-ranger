@@ -22,11 +22,11 @@
  * - It summed the deposits each rebalance's mint took in into one entry
  *   at the mint's block, so Total Lifetime Deposit priced them all at the
  *   mint's day. This release enters each deposit on its own, at its own
- *   block and naming its transaction (src/lib/lifetime-hodl.js). Among
+ *   block and naming its transaction (src/bot/lifetime-hodl.js). Among
  *   those deposits 0.9.10 also counted the coins another managed pool's
  *   rebalance or compound brought the wallet, when the two pools share a
  *   coin; this release counts no transaction the wallet sent itself as a
- *   deposit (src/lib/wallet-deposits.js).
+ *   deposit (src/bot/wallet-deposits.js).
  * - It judged an addition of liquidity to a position NFT after its mint
  *   by the NFT's fees. Once the NFT's additions passed the fees it had
  *   collected, all of the addition was money put in, filed at the NFT's
@@ -47,7 +47,7 @@
  * each position in that pool. The saved figure has to go too: a start
  * that builds a list from nothing prices it only when no figure is saved,
  * a guard against a partial list overwriting a whole one
- * (`_resolveDiskState`, src/lib/bot-recorder-lifetime.js). The first start
+ * (`_resolveDiskState`, src/bot/bot-recorder-lifetime.js). The first start
  * then builds the list from the blockchain and prices it, which takes
  * minutes for a position rather than the hour Reload Current Position
  * takes. Nothing else changes: the pool's per-day P&L history stays, and

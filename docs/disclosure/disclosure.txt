@@ -53,7 +53,7 @@ counsel before operating LP Ranger as a hosted service for others.
 
 LP Ranger charges no fees. No percentage, flat, per-transaction, or protocol
 fee is collected. All trading fees earned from liquidity provision go directly
-to the user's wallet (recipient: opts.recipient in src/lib/compounder.js). The
+to the user's wallet (recipient: opts.recipient in src/bot/compounder.js). The
 only costs incurred are standard blockchain gas fees paid to the PulseChain
 network.
 
@@ -163,7 +163,7 @@ Slippage protections in place:
 - amountOutMinimum calculated from a staticCall quote (real expected output),
   not spot price
 - Price impact check aborts the swap if impact exceeds the user's slippage
-  setting (_checkSwapImpact() in src/lib/rebalancer-pools.js)
+  setting (_checkSwapImpact() in src/bot/rebalancer-swap-impact.js)
 - Aggregator quotes include guaranteedPrice floor
 
 The existing disclaimer warns users (in src/client/web/index.html lines 15-59): users

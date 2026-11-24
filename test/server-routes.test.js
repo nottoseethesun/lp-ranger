@@ -1,21 +1,27 @@
 /**
  * @file test/server-routes.test.js
- * @description Unit tests for src/server/server-routes.js createRouteHandlers.
+ * @description Unit tests for the server's routes over the bot's
+ *   operations, as test/_bot-route-adapters.js builds them
+ *   (`createRouteHandlers`): the wallet import and reveal
+ *   (src/server/server-routes.js), the wallet scan, details and lifetime
+ *   (src/server/position-routes.js), and the token-symbol lookup; and
+ *   that the map holds every handler the server mounts. Settings saves
+ *   are tested in test/server-routes-extra.test.js, the held stop in
+ *   test/server-routes-stop.test.js, and the start-up in
+ *   test/server-auto-start.test.js.
  */
 
 "use strict";
 
 const { describe, it, afterEach } = require("node:test");
 const assert = require("assert");
-const { createRouteHandlers } = require("../src/server/server-routes");
+const { createRouteHandlers } = require("./_bot-route-adapters");
 const { compositeKey } = require("../src/lib/bot-config-v2");
 const { CHAIN_NAME } = require("../src/lib/config");
-const appPhase = require("../src/lib/app-phase");
+const appPhase = require("../src/bot/app-phase");
 const { makeDeps, makeRes } = require("./helpers/route-handler-deps");
 
 describe("server-routes createRouteHandlers", () => {
-  // ── _handleApiConfig ──────────────────────────────────────────────────────
-
   // ── _handleWalletImport ───────────────────────────────────────────────────
 
   describe("_handleWalletImport", () => {
@@ -171,6 +177,60 @@ describe("server-routes createRouteHandlers", () => {
         assert.strictEqual(res._status, 409);
         assert.match(res._body.error, /stopping/);
         assert.deepStrictEqual(seen, { imported: false, stopped: false });
+      });
+
+      it("is refused while another import is under way", async () => {
+        appPhase.beginWalletImport();
+        const { res, seen } = await importRecorded();
+        assert.strictEqual(res._status, 409);
+        assert.match(res._body.error, /importing a wallet/);
+        assert.deepStrictEqual(seen, { imported: false, stopped: false });
+      });
+    });
+
+    describe("holds the import as under way", () => {
+      /*-
+       *  From its first step until its closing start-up has finished,
+       *  so a Manage meanwhile is refused and the dashboard reads
+       *  Syncing; and however the import ends, so a failed one leaves
+       *  nothing refused.
+       */
+      afterEach(() => appPhase._resetAppPhaseForTests());
+
+      /** The route over a wallet store whose import runs `whileImporting`. */
+      function importing(whileImporting) {
+        const base = makeDeps();
+        return createRouteHandlers(
+          makeDeps({
+            walletManager: {
+              ...base.walletManager,
+              importWallet: async () => whileImporting(),
+            },
+          }),
+        );
+      }
+
+      it("from its first step until it has finished", async () => {
+        const seen = [];
+        const h = importing(() => {
+          seen.push(appPhase.walletImportUnderWay());
+          seen.push(appPhase.refusalToStart());
+        });
+        const res = makeRes();
+        await h._handleWalletImport({}, res);
+        assert.strictEqual(res._status, 200);
+        assert.strictEqual(seen[0], true, "under way while it imports");
+        assert.match(seen[1], /importing a wallet/);
+        assert.strictEqual(appPhase.walletImportUnderWay(), false);
+        assert.strictEqual(appPhase.refusalToStart(), null);
+      });
+
+      it("until a failed import ends", async () => {
+        const h = importing(() => {
+          throw new Error("bad key");
+        });
+        await assert.rejects(h._handleWalletImport({}, makeRes()), /bad key/);
+        assert.strictEqual(appPhase.walletImportUnderWay(), false);
       });
     });
   });
@@ -387,14 +447,16 @@ describe("server-routes createRouteHandlers", () => {
   // ── _tryResolveKey ────────────────────────────────────────────────────────
 
   describe("_tryResolveKey", () => {
-    it("sets privateKeyRef when key is resolved", async () => {
-      // This test is limited because resolvePrivateKey requires real modules.
-      // We just verify it doesn't crash when called.
+    it("is in the map", () => {
+      /*-
+       *  It picks the key from PRIVATE_KEY, then the wallet unlocked by
+       *  WALLET_PASSWORD or the terminal prompt (src/server/server-routes.js).
+       *  Driving it needs the process's own environment and wallet file,
+       *  so this checks only that the map holds it.
+       */
       const deps = makeDeps();
       deps.diskConfig.positions = {};
       const h = createRouteHandlers(deps);
-      // _tryResolveKey calls resolvePrivateKey which depends on external state.
-      // Just confirm the function exists and is callable.
       assert.strictEqual(typeof h._tryResolveKey, "function");
     });
   });

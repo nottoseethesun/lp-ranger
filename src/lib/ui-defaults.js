@@ -7,10 +7,13 @@
  * copy under `app-config/user-configurable/` on top (the layered loader,
  * `src/lib/load-merged-defaults.js`), each value held to its rule.
  * `GET /api/ui-defaults` returns them, and the dashboard asks for them at
- * startup, before it polls (`src/client/web/dashboard-ui-settings.js`). The server
- * reads the same values for what depends on them, its copy of the poll
- * interval (`src/lib/config.js`) and the figures the help quotes
- * (`src/server/resolved-settings.js`), so the server, the page and the help agree.
+ * startup, before it polls (`src/client/web/js/dashboard-ui-settings.js`). The
+ * server and the bot read the same values for what depends on them: the
+ * poll interval the status answer repeats (`src/server/handle-api-status.js`),
+ * the bot's wait for the dashboard to see a change
+ * (`src/bot/dashboard-has-polled.js`) and the figures the help quotes
+ * (`src/server/resolved-settings.js`), so the bot, the server, the page and
+ * the help agree.
  *
  * Each setting has one of three rules. An on/off setting must be true or
  * false. A timer setting, one the page turns into a `setTimeout` or
@@ -23,13 +26,14 @@
  * `ui-defaults_non-layout_for-server-down-scenario.json` into the page,
  * which needs it while it cannot reach the server.
  *
- * **Read once, at startup.** `src/lib/config.js` calls the strict reader as it
- * loads, so a value an operator wrote outside its rule stops the app with
- * one message naming each such setting. That answer is kept, and every
- * later read returns it, so an edit takes effect on restart. Read once,
- * the server's copy of the poll interval cannot drift from the one it
- * sends the page. A file that cannot be read or parsed leaves the shipped
- * values standing, with a warning, so the route never fails.
+ * **Read once, as each program starts.** A value an operator wrote outside
+ * its rule has stopped the app before it got this far: the startup check
+ * (`src/lib/settings-check.js`) names each one. The server and the bot
+ * make the first read right after that check (src/server.js, src/bot.js),
+ * and it is kept: every later read returns it, so an edit takes effect on
+ * restart and the poll interval the server sends cannot drift from the
+ * one the bot waits on. A file that cannot be read or parsed leaves the
+ * shipped values standing, with a warning, so the route never fails.
  */
 
 "use strict";
@@ -148,9 +152,9 @@ function _read({ strict }) {
 let _memo = null;
 
 /**
- * The dashboard settings in force. Returns the answer read at startup;
- * read before startup has, it reads the file itself, keeping the shipped
- * value for any setting written outside its rule.
+ * The dashboard settings in force: the first read, kept for the life of
+ * the process. That read keeps the shipped value for any setting written
+ * outside its rule, which the startup check has refused already.
  *
  * @returns {Readonly<object>} Every setting the shipped file holds.
  */
@@ -160,10 +164,10 @@ function readUiDefaults() {
 }
 
 /**
- * The same settings, refusing any written outside its rule. **Call once,
- * at startup, and nowhere else:** `src/lib/config.js` does, so the app does
- * not come up on a value nobody chose. Its answer becomes the one every
- * later read returns.
+ * The same settings, refusing any written outside its rule, for a caller
+ * that must not run on a value nobody chose. The app itself reads only
+ * `readUiDefaults`, since the startup check refuses such a value first.
+ * Its answer becomes the one every later read returns.
  *
  * @returns {Readonly<object>} Same as `readUiDefaults`.
  * @throws {Error} Tagged `badSettingValue`, naming each refused setting.
@@ -178,21 +182,9 @@ function _resetMemoForTests() {
   _memo = null;
 }
 
-/**
- * Route handler for `GET /api/ui-defaults`: the dashboard settings in
- * force. Always 200.
- * @param {import('http').IncomingMessage} _req
- * @param {import('http').ServerResponse} res
- * @param {Function} jsonResponse  `(res, status, body) => void`
- */
-function handleUiDefaults(_req, res, jsonResponse) {
-  jsonResponse(res, 200, readUiDefaults());
-}
-
 module.exports = {
   UI_SETTING_KEYS,
   readUiDefaults,
   readUiDefaultsStrict,
-  handleUiDefaults,
   _resetMemoForTests,
 };

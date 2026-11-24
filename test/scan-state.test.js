@@ -3,14 +3,14 @@
 /**
  * @file test/scan-state.test.js
  * @description Whether a scan is running on a position, and whether one
- *   may start (src/lib/scan-state.js): no move starts while a scan runs, and
+ *   may start (src/bot/scan-state.js): no move starts while a scan runs, and
  *   no scan starts until every move of the position is cleared, so none
  *   while a poll decides a rebalance or compound, and none while a
  *   Rebalance Now or Compound Now waits to be made. A waiting scan holds
- *   back no move. Whether a coin move is under way, which the server asks
+ *   back no move. Whether a coin move is under way, which the bot asks
  *   before a Reload Current Position or Re-scan Prices, covers that same
  *   window. Driven over a bare bot state, as the bot loop, the poll cycle
- *   and the server's routes mark it.
+ *   and the bot's manual moves (src/bot/manual-moves.js) mark it.
  */
 
 const { describe, it } = require("node:test");
@@ -24,7 +24,7 @@ const {
   duringMoveInitiation,
   claimScanStart,
   endScan,
-} = require("../src/lib/scan-state");
+} = require("../src/bot/scan-state");
 
 describe("isAscanRunningOnThisPosition", () => {
   it("is a scan running, never one waiting to start", () => {
@@ -190,7 +190,7 @@ describe("a Rebalance Now or Compound Now waiting to be made", () => {
  */
 describe("the bot's use of these rules", () => {
   const read = (file) =>
-    fs.readFileSync(path.join(__dirname, "..", "src", "lib", file), "utf8");
+    fs.readFileSync(path.join(__dirname, "..", "src", "bot", file), "utf8");
 
   it("starts a waiting scan when a poll ends", () => {
     const src = read("bot-loop.js");

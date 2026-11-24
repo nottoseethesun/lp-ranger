@@ -1,6 +1,6 @@
 /**
  * @file test/server-scan-helpers.test.js
- * @description Additional coverage for server-scan.js pure helpers and handler
+ * @description Additional coverage for wallet-scan.js pure helpers and handler
  *   edge cases: getTokenSymbol, resolveTokenSymbol, formatNftResponse,
  *   poolKey, fetchPoolTicks, and scan handler concurrency guard.
  */
@@ -15,8 +15,8 @@ const {
   formatNftResponse,
   poolKey,
   fetchPoolTicks,
-  createScanHandlers,
-} = require("../src/lib/server-scan");
+} = require("../src/bot/wallet-scan");
+const { createScanHandlers } = require("./_bot-route-adapters");
 const { getTokenSymbol } = require("../src/lib/token-symbol-cache");
 
 // ── getTokenSymbol ──────────────────────────────────────────────────

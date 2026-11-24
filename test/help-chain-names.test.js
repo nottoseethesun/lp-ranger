@@ -61,7 +61,7 @@ let buildParamHelp;
 
 before(async () => {
   ({ buildParamHelp } =
-    await import("../src/client/web/param-help-content.js"));
+    await import("../src/client/web/js/param-help-content.js"));
 });
 
 /** Every section body of one dialog, joined. */

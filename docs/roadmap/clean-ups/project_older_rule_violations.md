@@ -38,13 +38,13 @@ Eight runtime modules re-export names they import:
   `src/lib/runtime-flags.js`: the port, the private key, the dry-run and
   verbose flags, and the chain. The header of `runtime-flags.js` calls
   this deliberate, so that existing callers keep working.
-- `src/lib/price-fetcher.js` re-exports the price gate's pause functions
+- `src/bot/price-fetcher.js` re-exports the price gate's pause functions
   and the cascade's `tryPriceSources`.
-- `src/lib/bot-loop.js`, `src/lib/bot-cycle.js`, `src/lib/bot-recorder.js`,
-  `src/lib/bot-pnl-updater.js`, `src/lib/pnl-tracker.js` and
-  `src/server/position-details.js` re-export helpers, mostly for their tests.
+- `src/bot/bot-loop.js`, `src/bot/bot-cycle.js`, `src/bot/bot-recorder.js`,
+  `src/bot/bot-pnl-updater.js`, `src/bot/pnl-tracker.js` and
+  `src/bot/position-details.js` re-export helpers, mostly for their tests.
 
-`src/client/web/ethers-adapter.js` is not on the list. It adapts an npm package
+`src/client/web/js/ethers-adapter.js` is not on the list. It adapts an npm package
 for the dashboard bundle, by design.
 
 **History in CLAUDE.md.** Technical docs describe how the system works,

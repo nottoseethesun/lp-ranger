@@ -40,7 +40,7 @@ delegated `document.body.addEventListener('click', ...)` that reads
 buttons across the four dialogs before deleting the IDs.
 
 **Trigger conditions to clean up:** any code change in
-`src/client/web/dashboard-data-deposit.js`, `src/client/web/dashboard-events-manage.js`,
+`src/client/web/js/dashboard-data-deposit.js`, `src/client/web/js/dashboard-events-manage.js`,
 or the inline-edit dialog markup in `src/client/web/index.html`.
 
 ---
@@ -60,7 +60,7 @@ wallet-import UI was written around; nothing reads or writes them
 today.  Probably safe to remove without further investigation.
 
 **Trigger conditions to clean up:** any code change in
-`src/client/web/dashboard-wallet.js`, `src/client/web/dashboard-wallet-import.js`,
+`src/client/web/js/dashboard-wallet.js`, `src/client/web/js/dashboard-wallet-import.js`,
 or the wallet-import dialog markup in `src/client/web/index.html`.
 
 ---
@@ -85,10 +85,10 @@ layout anchor or a small drift like Cluster 1.
 - `syncRow` (968) — bottom Sync-status row wrapper.  Verify the
   Sync badge painter targets the badge id, not the row wrapper.
 - `privacySubform` (625) — Privacy Mode sub-options wrapper.
-  Check `src/client/web/dashboard-privacy-subform.js` for the actual
+  Check `src/client/web/js/dashboard-privacy-subform.js` for the actual
   handles it uses.
 - `tgBalancedNote` (1320) — Telegram-config note.  Check
-  `src/client/web/dashboard-telegram.js`.
+  `src/client/web/js/dashboard-telegram.js`.
 
 **Trigger conditions to clean up:** each individual find lives near
 a specific dashboard module — the trigger is any code change in

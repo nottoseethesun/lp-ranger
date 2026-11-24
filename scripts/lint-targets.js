@@ -29,7 +29,7 @@
  * Prettier-style globs for every JS file under lint/format gates.
  * Order matches the ESLint target list in the `lint` npm script. The
  * server side (`src/*.js`, `src/lib/`, `src/server/`, `src/bot/`) and the
- * web client's dashboard modules (`src/client/web/dashboard-*.js`) are
+ * web client's dashboard modules (`src/client/web/js/dashboard-*.js`) are
  * named apart: the web client's folder also holds the build's output and
  * generated files, which no gate checks.
  * @type {string[]}
@@ -42,7 +42,7 @@ const JS_TARGETS = [
   "test/**/*.js",
   "scripts/**/*.js",
   "util/**/*.js",
-  "src/client/web/dashboard-*.js",
+  "src/client/web/js/dashboard-*.js",
   "eslint-rules/**/*.js",
   "stylelint-rules/**/*.js",
 ];

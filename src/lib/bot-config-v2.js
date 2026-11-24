@@ -21,7 +21,7 @@
  * Storage location: `app-config/user-configurable/bot-config.json`
  * (gitignored) holds the settings and each position's status; the bot's
  * records for each position (`RECORD_POSITION_KEYS`) are in
- * `app-data/position-records.json` (src/lib/position-records.js). In memory a
+ * `app-data/position-records.json` (src/lib/util/position-records.js). In memory a
  * position's slot holds both. See the `app-config/` section of server.js
  * for the full layout. Tests pass a `dir` override to `loadConfig(dir)` /
  * `saveConfig(cfg, dir)` and write directly to `${dir}/bot-config.json`
@@ -46,7 +46,7 @@ const {
   splitPositionSlots,
   backUpPositionRecords,
   writePositionRecords,
-} = require("./position-records");
+} = require("./util/position-records");
 
 const CONFIG_FILE = "bot-config.json";
 
@@ -121,7 +121,7 @@ function _empty() {
 /**
  * Load bot config from disk: the settings in bot-config.json, with each
  * position's records from the records file merged into its slot
- * (src/lib/position-records.js), so a position's figures are read from one
+ * (src/lib/util/position-records.js), so a position's figures are read from one
  * place. The records are merged before the phantom purge, since a
  * managed position's slot in bot-config.json can hold its status alone
  * when everything else it has is a record.
@@ -131,9 +131,10 @@ function _empty() {
  * the bot load once as they start, so the copies hold the files as they
  * were before that run saved anything: a way back from a save that went
  * wrong. A caller that only reads a setting passes `skipBackups`, and
- * leaves the copies as the last start made them. The price library does
- * so as it loads (src/lib/price-fetcher-gate.js), since a tool under util/
- * loads it too and must not replace the app's copies.
+ * leaves the copies as the last start made them: a tool under util/ that
+ * reads the price library's settings does
+ * (`readPriceCacheSettings(true)`, src/bot/price-fetcher-gate.js), so it
+ * never replaces the app's copies.
  * @param {string} [dir]  Directory override (default: cwd).
  * @param {boolean} [skipBackups]  True to make no copies. Default false.
  * @returns {object}       Config object (or empty structure if no file).
@@ -211,10 +212,11 @@ function _loadSettingsFile(filePath, skipBackups) {
  * etc.) — by the time a position is started, `_persistPositionConfig`
  * has at minimum written `nftGasWeiByTokenId` or similar.
  *
- * A phantom is a stale composite key: `handleManage` writes the key it
- * was called with, and a force-rebalance that migrates the key in
- * between leaves the old one behind carrying nothing but its status.
- * An on-disk file may already hold one, so the purge runs on load.
+ * A phantom is a slot left under a composite key a force-rebalance has
+ * migrated away from, carrying nothing but its status. Manage writes the
+ * live key (`keyRef.current`, in `_start`, src/bot/position-lifecycle.js),
+ * so it makes none, and the purge runs on load for any a saved file
+ * already holds.
  *
  * Conservative — never touches an entry with any field besides status
  * (no false positives possible for a legitimately-running position).
@@ -374,7 +376,7 @@ function saveConfig(cfg, dir) {
 
 /**
  * Write a config, each key to its own file: the records to the records
- * file, the rest to bot-config.json (src/lib/position-records.js), each
+ * file, the rest to bot-config.json (src/lib/util/position-records.js), each
  * atomically. The slots in memory keep both.
  * @param {object} cfg
  * @param {string} filePath  bot-config.json.
@@ -427,8 +429,9 @@ function managedKeys(cfg) {
  * tokenId, leaving a `{ status: "running" }`-only stub that the
  * dashboard's `isPositionManaged` then treated as a live managed
  * position forever.  Callers that legitimately need to create a fresh
- * slot (handleManage's first-time creation, addManagedPosition's
- * status flip) use `getOrCreatePositionConfig` explicitly.
+ * slot (Manage's first-time creation, addManagedPosition's status
+ * flip, a settings save for a position not yet managed) use
+ * `getOrCreatePositionConfig` explicitly.
  *
  * @param {object} cfg          Config object.
  * @param {string} positionKey  Composite key.
@@ -440,9 +443,12 @@ function getPositionConfig(cfg, positionKey) {
 
 /**
  * Look up a position's config section, creating an empty slot if
- * absent.  Sole legitimate callers are `addManagedPosition` (which
- * flips `status="running"` immediately after) and `handleManage`'s
- * first-time fresh-position creation path.  ANY other caller should
+ * absent.  Its three legitimate callers: `addManagedPosition` (which
+ * flips `status="running"` immediately after); Manage's first-time
+ * fresh-position creation path (`_start`, src/bot/position-lifecycle.js);
+ * and a settings save (src/bot/settings-save.js), so settings saved
+ * before Manage carry into the managed position, its key first
+ * resolved to the live one (`resolveLiveKey`).  ANY other caller should
  * use the non-lazy `getPositionConfig` to avoid resurrecting phantoms.
  *
  * @param {object} cfg          Config object.

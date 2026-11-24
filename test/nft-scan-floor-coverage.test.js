@@ -16,7 +16,7 @@
  * Five files scan a chain of NFTs, and nothing in the code connects
  * them, so this is a structural guard rather than a per-file rule. Any
  * file that scans one NFT's events must route its floor through
- * `src/lib/nft-mint-blocks.js`, or be listed in `EXEMPT` below with a
+ * `src/bot/nft-mint-blocks.js`, or be listed in `EXEMPT` below with a
  * reason. A new scan site fails CI until one of those is true.
  *
  * Sites are identified two ways, by helper name and by shape — see the
@@ -98,12 +98,17 @@ function scanSites() {
     .map((m) => m.name);
 }
 
-/*- Whether a module routes its floor through the shared helper: from
- *  src/lib/ it is `./nft-mint-blocks`, from the server's or the bot's
- *  folder `../lib/nft-mint-blocks`. */
+/**
+ * Whether a module routes its floor through the shared helper,
+ * src/bot/nft-mint-blocks.js. Only a bot module may load it, and every
+ * module this test reads beside it (the top of src/bot/) names it
+ * `./nft-mint-blocks`.
+ * @param {string} file  The module's file name.
+ * @returns {boolean}
+ */
 function isBounded(file) {
   const { src } = _modules().find((m) => m.name === file);
-  return /require\(["'](?:\.\/|\.\.\/lib\/)nft-mint-blocks["']\)/.test(src);
+  return /require\(["']\.\/nft-mint-blocks["']\)/.test(src);
 }
 
 describe("per-NFT scan floors", () => {
@@ -137,7 +142,7 @@ describe("per-NFT scan floors", () => {
       unbounded,
       [],
       `these scan NFT events without a per-NFT floor: ${unbounded.join(", ")}. ` +
-        "Use nftScanFrom() from src/lib/nft-mint-blocks.js, or add an entry to " +
+        "Use nftScanFrom() from src/bot/nft-mint-blocks.js, or add an entry to " +
         "EXEMPT in this test saying why the NFT's mint block is not the " +
         "right lower bound.",
     );
@@ -193,7 +198,10 @@ describe("the reads that cover a rebalance chain", () => {
 
   for (const file of CHAIN_READS) {
     it(`${file} reads the chain in one batch, floored per NFT`, () => {
-      const src = fs.readFileSync(path.join(SRC, file), "utf8");
+      const src = fs.readFileSync(
+        path.join(__dirname, "..", "src", "bot", file),
+        "utf8",
+      );
       assert.match(
         src,
         PASSES_MINT_BLOCKS,

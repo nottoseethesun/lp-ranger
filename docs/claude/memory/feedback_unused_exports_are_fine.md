@@ -30,7 +30,7 @@ delete signal for the finding.
   finished work.
 - Do not delete one to quiet knip or any other dead-code pass. knip
   cannot see CLI entry points or test-only seams; its unused-file and
-  unused-export rows for `util/`, `scripts/` and `src/client/web/dashboard-*.js`
+  unused-export rows for `util/`, `scripts/` and `src/client/web/js/dashboard-*.js`
   are known false positives, and knip gates nothing — it is in neither
   `npm run lint` nor `npm run check`.
 - Export the internals when writing a new tool, before any test exists.

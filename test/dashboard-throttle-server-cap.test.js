@@ -39,9 +39,9 @@ before(async () => {
   });
   await learnActiveChain();
   await learnUiSettings();
-  throttleMod = await import("../src/client/web/dashboard-throttle.js");
-  statusMod = await import("../src/client/web/dashboard-data-status.js");
-  const events = await import("../src/client/web/dashboard-events.js");
+  throttleMod = await import("../src/client/web/js/dashboard-throttle.js");
+  statusMod = await import("../src/client/web/js/dashboard-data-status.js");
+  const events = await import("../src/client/web/js/dashboard-events.js");
   document.body.innerHTML = indexHtmlDocument().body.innerHTML;
   events.bindAllEvents();
 });

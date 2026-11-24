@@ -34,7 +34,7 @@ let frag;
 
 before(async () => {
   ({ applySyncGate, reloadDurationText } =
-    await import("../src/client/web/dashboard-reload-flow.js"));
+    await import("../src/client/web/js/dashboard-reload-flow.js"));
   // As at startup: the reload's longest wait is a setting the server sends.
   await learnUiSettings();
 });

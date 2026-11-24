@@ -212,7 +212,7 @@ to a localhost-only listener buys nothing and complicates setup.
 ### Rate Limiting
 
 The GeckoTerminal API caps free-tier callers at 30 calls/min.
-[`src/lib/gecko-rate-limit.js`](../src/lib/gecko-rate-limit.js) enforces a
+[`src/bot/gecko-rate-limit.js`](../src/bot/gecko-rate-limit.js) enforces a
 shared sliding-window limiter across every caller (price fetches, HODL
 baseline, epoch reconstruction, pool-orientation bootstraps) so a single
 misbehaving code path cannot burn the budget and trigger a 429 cascade.
@@ -259,7 +259,7 @@ defines two values:
 | `refreshIntervalMs` | `300000` (5 min) | Delivered to the dashboard in every `GET /api/csrf-token` response. Must be strictly less than `tokenTtlMs`, with a wide margin for a throttled hidden tab, a slow fetch and clock skew. |
 
 **Dashboard refresh mechanism.** The dashboard fetches a token at
-startup (`src/client/web/dashboard-init.js`), then again every
+startup (`src/client/web/js/dashboard-init.js`), then again every
 `refreshIntervalMs`, and whenever its tab becomes visible or its window
 gains focus. Until the first token arrives it uses the `refreshIntervalMs`
 built into the page from the shipped `csrf.json`. The timer is
@@ -275,10 +275,10 @@ To change either value, put it in an override copy at
 dashboard takes the new `refreshIntervalMs` with its next token.
 
 **Silent retry on a refused token.** `fetchWithCsrf` in
-`src/client/web/dashboard-helpers.js` answers a `403` that refuses its token by
+`src/client/web/js/dashboard-helpers.js` answers a `403` that refuses its token by
 fetching a fresh token and sending the request once more, at once. It
 does so for every refusal the server gives, listed in
-`src/lib/csrf-refusals.js`, which `verifyToken` and the dashboard both read:
+`src/server/csrf-refusals.js`, which `verifyToken` and the dashboard both read:
 
 | Server reason | Meaning |
 | --- | --- |
@@ -322,7 +322,7 @@ through them would bypass both.
 ### Path Traversal in Static Serving
 
 `serveStatic()` in `src/server.js` resolves every request path against
-`path.resolve(__dirname, 'public', relative)` and returns `403 Forbidden`
+`path.resolve(__dirname, 'client', 'web', relative)` and returns `403 Forbidden`
 when the result does not start with the `src/client/web/` directory, blocking
 the classic `../../etc/passwd` escape. All three loopback origins
 (`localhost`, `127.0.0.1`, `[::1]`) go through the same guard.
@@ -410,11 +410,17 @@ workflows, depending on how you run LP Ranger:
 Both workflows produce the same file and use the same password.
 There is no separate "CLI password" or "dashboard password."
 
-[`src/lib/bot-cycle.js`](../src/lib/bot-cycle.js)'s `resolvePrivateKey()`
-picks the signing-key source in fixed priority:
-`PRIVATE_KEY` (plaintext hex in `.env` — *not recommended*) →
-encrypted wallet unlocked by `WALLET_PASSWORD` env var, `--headless`
-terminal prompt, or dashboard dialog.
+The server picks its signing key in fixed priority
+([`src/server/server-routes.js`](../src/server/server-routes.js)'s
+`_tryResolveKey`): `PRIVATE_KEY` (plaintext hex in `.env` — *not
+recommended*) → the encrypted wallet, unlocked by the `WALLET_PASSWORD`
+env var, else by the terminal prompt under `--headless`, else by the
+dashboard's Unlock Wallet dialog
+([`src/server/server-unlock.js`](../src/server/server-unlock.js)).
+The headless bot (`npm run bot`) has no dashboard. It picks its key
+the same way, with the terminal prompt in place of the dialog
+([`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js)'s
+`resolvePrivateKey()`).
 
 The three unlock methods differ only in how the password reaches the
 server; the encrypted files, the decryption and the in-memory handling
@@ -472,7 +478,7 @@ format stability.
 
 Once the wallet is unlocked, its plaintext key lives in the shared
 signer (an ethers `Wallet`, built in
-[`src/lib/position-manager.js`](../src/lib/position-manager.js)) for as long as
+[`src/bot/position-manager.js`](../src/bot/position-manager.js)) for as long as
 the server runs, and the wallet password in `_sessionPassword` for the
 session. Neither is ever written to disk unencrypted, returned by
 `GET /api/status`, or included in any log line. The key leaves the
@@ -609,8 +615,10 @@ that body into the config object would let an attacker inject
 unexpected keys (for example, overwriting `status` to mark a
 position as stopped).
 
-LP Ranger prevents this with a strict `allowlist`. The route handler
-in `src/server/server-config-route.js` walks two hardcoded arrays —
+LP Ranger prevents this with a strict `allowlist`. The route
+(`_handleApiConfig`, `src/server/server-routes.js`) asks the bot to save
+the body, and the bot's settings save (`src/bot/settings-save.js`) walks
+two hardcoded arrays —
 `GLOBAL_KEYS` (RPC URLs, gas fee limit, etc.) and
 `SETTING_POSITION_KEYS` (slippage, threshold, timeout, auto-compound
 settings, etc.) defined in `src/lib/bot-config-keys.js` — and copies only
@@ -622,7 +630,7 @@ range by `src/lib/config-bounds.js` before anything is saved. A test fails
 any key the route accepts without a check.
 The outer layers (the localhost binding, the origin check and the
 CSRF token) still stand in front of all of it. Because
-the `allowlist` is a constant inside server code (never derived from
+the `allowlist` is a constant in the app's own code (never derived from
 user input), the bracket access `diskConfig[k]` that merges each
 field is safe — which is why `eslint-plugin-security`'s
 `detect-object-injection` rule is disabled with a documented reason
@@ -723,7 +731,7 @@ addresses. There is no external script tag in
 `src/client/web/index.html` — fonts are self-hosted via `@fontsource`, and the
 only bundled JavaScript is `src/client/web/dist/bundle.js`, with the User
 Manual's `src/client/web/dist/manual-figures.js`, produced by esbuild from the
-audited `src/client/web/dashboard-*.js` sources. Copy-to-clipboard
+audited `src/client/web/js/dashboard-*.js` sources. Copy-to-clipboard
 operations use `textContent`, never `innerHTML`, so pasted wallet
 addresses cannot be reflected as executable markup. The custom rule
 [`9mm/no-interpolated-innerhtml`](../eslint-rules/no-interpolated-innerhtml.js)
@@ -764,7 +772,7 @@ itself.
 ### Nonce Serialization
 
 A single async-mutex rebalance lock in
-[`src/lib/rebalance-lock.js`](../src/lib/rebalance-lock.js) serializes every
+[`src/bot/rebalance-lock.js`](../src/bot/rebalance-lock.js) serializes every
 transaction across every managed position. Only one position signs at a
 time (same wallet = same nonce). The lock has no timeout because
 blockchains can hold a TX pending for days — a timeout would free the
@@ -774,7 +782,7 @@ recovery pipeline to completion before releasing.
 
 ### TX Recovery Pipeline
 
-`_waitOrSpeedUp()` in `src/lib/tx-speedup.js` wraps the `tx.wait()` of every
+`_waitOrSpeedUp()` in `src/bot/tx-speedup.js` wraps the `tx.wait()` of every
 send that goes through `sendTx.sendTransaction` — approve, the
 removeLiquidity multicall, the V3-router swap, mint, and the compound's
 collect and increaseLiquidity. It recovers a stuck transaction in four
@@ -857,7 +865,7 @@ A swap's minimum output is set from a quote, not the spot price: on the
 V3 router, a `staticCall` quote less the slippage (`amountOutMinimum`);
 on the aggregator, the guaranteed price it quotes for the slippage sent
 with the request. If the quoted price impact exceeds the slippage setting
-(`_checkSwapImpact()` in `src/lib/rebalancer-swap-impact.js`), the swap is
+(`_checkSwapImpact()` in `src/bot/rebalancer-swap-impact.js`), the swap is
 aborted, and the bot makes no further automatic rebalance of that
 position until the operator changes a Slippage setting or clicks
 Rebalance Now. An aggregator quote that names no price impact is
@@ -868,7 +876,7 @@ aggregator routes from silently draining the position on a single TX.
 
 Every swap call site (initial rebalance swap, post-swap corrective loop,
 and the ratio-correcting compound swap) routes through a single
-helper, `shouldSkipSwap()` in [`src/lib/swap-gates.js`](../src/lib/swap-gates.js).
+helper, `shouldSkipSwap()` in [`src/bot/swap-gates.js`](../src/bot/swap-gates.js).
 Two gates run in a fixed order:
 
 1. **Dust gate (first).** Skip when the swap value (in USD) is below the
@@ -1065,7 +1073,7 @@ error, so real bugs are never silently swallowed.
 `POST /api/stop-when-all-clear` (CSRF-protected like every other
 mutating route) marks the app stopping for good, so no position starts
 and no rebalance, compound or Reload begins after it
-(`src/lib/app-phase.js`). It then calls `positionMgr.stopAll()`, waits for
+(`src/bot/app-phase.js`). It then calls `positionMgr.stopAll()`, waits for
 every scan still running, and exits cleanly so nonces are not left
 hanging. Each position's stop waits for a rebalance or compound under
 way, a position still starting included, so none is cut off
@@ -1094,7 +1102,7 @@ directives, but the security pass reports every directive that
 suppresses nothing there, runs none of the quality rules, and fails on
 a single warning. So a directive silencing `max-lines` or `complexity`
 in `src/`, `scripts/` or `util/` fails
-`npm run audit:security`. The dashboard's `src/client/web/dashboard-*.js` files
+`npm run audit:security`. The dashboard's `src/client/web/js/dashboard-*.js` files
 are outside the security pass, so there the rule is held by review.
 
 The only directives allowed are per-line `eslint-disable-next-line`
@@ -1103,13 +1111,14 @@ documenting why the deviation is intentional. Current exceptions:
 
 | File | Line | Rule | Reason |
 | ---- | ---- | ---- | ------ |
-| `src/lib/hodl-baseline.js` | 41 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/lib/range-math.js` | 305 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/lib/position-detector.js` | 185 | `9mm/no-number-from-bigint` | Zero-check only |
-| `scripts/cache-bust.js` | 24 | `security/detect-unsafe-regex` | Input is the app's own `src/client/web/*.html` pages, not user-supplied |
-| `scripts/cache-bust.js` | 50 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
+| `src/bot/hodl-baseline.js` | 41 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/bot/range-math.js` | 305 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/bot/position-detector.js` | 188 | `9mm/no-number-from-bigint` | Zero-check only |
+| `scripts/cache-bust.js` | 25 | `security/detect-unsafe-regex` | Input is the app's own `src/client/web/*.html` pages, not user-supplied |
+| `scripts/cache-bust.js` | 51 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
 | `scripts/check-report-parse.js` | 283 | `security/detect-unsafe-regex` | Input is deterministic TAP v14 from `node --test` |
-| `scripts/import-wallet.js` | 97 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
+| `scripts/import-wallet.js` | 88 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
+| `util/bookkeeping/moralis-key.js` | 164 | `security/detect-possible-timing-attacks` | Comparing two strings the user typed, to confirm one, not verifying a secret |
 
 Whole files are never excluded from linting. Every exception is a
 single `eslint-disable-next-line` comment. It sits on the exact line

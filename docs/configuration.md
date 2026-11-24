@@ -534,7 +534,7 @@ setting:
 | Key | PulseChain | What it is for |
 | --- | --- | --- |
 | `displayName` | `PulseChain` | The chain's name wherever the dashboard and the logs show it. |
-| `homepage`, `logo` | `https://pulsechain.com/`, `pulsechain-logo-transparent.png` | The chain link in the dashboard header; `logo` is a file under `src/client/web/`. |
+| `homepage`, `logo` | `https://pulsechain.com/`, `pulsechain-logo-transparent.png` | The chain link in the dashboard header; `logo` is a file under `src/client/web/images/`. |
 | `tokenList.url` | `https://raw.githubusercontent.com/ninemm-pro/app-tokens/main/9mm-tokenlist-extended.json` | Where the dashboard reads token logos: a token list in the [Uniswap format](https://tokenlists.org), each token's logo at its `logoURI`, shown left of the token's name in the Pool line and atop Position Stats. On PulseChain, 9MM's extended list ([ninemm-pro/app-tokens](https://github.com/ninemm-pro/app-tokens)). `""` for a chain with none, where every token shows a transparent placeholder. |
 | `blockTimeSec` | `10` | Average seconds per block, which turns a span of time into a block count: the history scan's lookback (`bot-config-defaults.json` → `historyLookbackYears`), and the compounder's reposition window (`app-runtime.json` → `compound.repositionWindowSec`). |
 | `nativeCurrencySymbol` | `PLS` | The native token's symbol in messages and logs. |
@@ -582,11 +582,11 @@ these as a supported way to lay out an install, which they are not.
 | --- | --- | --- | --- |
 | `WALLET_FILE_PATH` | `app-config/user-configurable/wallet.json` | **none** | Encrypted wallet file, read and written by [`src/lib/wallet-manager.js`](../src/lib/wallet-manager.js). |
 | `API_KEYS_FILE_PATH` | `app-config/user-configurable/api-keys.json` | **none** | Encrypted third-party API keys, read and written by [`src/lib/api-key-store.js`](../src/lib/api-key-store.js). |
-| `PRICE_CACHE_PATH` | `app-data/scan-cache/historical-price-cache.json` | **none** | Historical USD price cache ([`src/lib/price-cache.js`](../src/lib/price-cache.js)). |
-| `BLOCK_TIME_CACHE_PATH` | `app-data/scan-cache/block-time-cache.json` | **none** | Block-number-to-timestamp cache ([`src/lib/block-time-cache.js`](../src/lib/block-time-cache.js)). |
-| `GECKO_POOL_CACHE_PATH` | `app-data/scan-cache/gecko-pool-cache.json` | **none** | Which way round GeckoTerminal quotes each pool ([`src/lib/gecko-pool-cache.js`](../src/lib/gecko-pool-cache.js)). |
-| `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` | `app-data/scan-cache/liquidity-pair-details-cache.json` | **none** | Initial-residual snapshot per pool scope ([`src/lib/liquidity-pair-details.js`](../src/lib/liquidity-pair-details.js)). |
-| `POOL_CREATION_BLOCK_CACHE_PATH` | `app-data/scan-cache/pool-creation-blocks-cache.json` | **none** | Resolved pool deployment blocks ([`src/lib/pool-creation-block.js`](../src/lib/pool-creation-block.js)). |
+| `PRICE_CACHE_PATH` | `app-data/scan-cache/historical-price-cache.json` | **none** | Historical USD price cache ([`src/bot/price-cache.js`](../src/bot/price-cache.js)). |
+| `BLOCK_TIME_CACHE_PATH` | `app-data/scan-cache/block-time-cache.json` | **none** | Block-number-to-timestamp cache ([`src/bot/block-time-cache.js`](../src/bot/block-time-cache.js)). |
+| `GECKO_POOL_CACHE_PATH` | `app-data/scan-cache/gecko-pool-cache.json` | **none** | Which way round GeckoTerminal quotes each pool ([`src/bot/gecko-pool-cache.js`](../src/bot/gecko-pool-cache.js)). |
+| `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` | `app-data/scan-cache/liquidity-pair-details-cache.json` | **none** | Initial-residual snapshot per pool scope ([`src/bot/liquidity-pair-details.js`](../src/bot/liquidity-pair-details.js)). |
+| `POOL_CREATION_BLOCK_CACHE_PATH` | `app-data/scan-cache/pool-creation-blocks-cache.json` | **none** | Resolved pool deployment blocks ([`src/bot/pool-creation-block.js`](../src/bot/pool-creation-block.js)). |
 | `TOKEN_SYMBOL_CACHE_PATH` | `app-data/scan-cache/token-symbol-cache.json` | **none** | Token names and symbols read from the chain ([`src/lib/token-symbol-cache.js`](../src/lib/token-symbol-cache.js)). |
 | `INSPECTOR_PORT` | `9229` | **none** | Port `npm run debug-attach` reports the V8 inspector on ([`scripts/_debug-attach.js`](../scripts/_debug-attach.js)). |
 | `LP_RANGER_PID` | *(unset)* | **none** | The process for `npm run debug-attach` to signal, for when its port and `pgrep` lookups find the wrong one. It changes with every start, so it suits the command line better than `.env`. |
@@ -672,7 +672,7 @@ rejects anything over 10,000 blocks with JSON-RPC `-32602`, "eth_getLogs is
 limited to a 10000 block range". A five-year history scan asks for ~15.8M
 blocks, so without splitting, the query simply fails.
 
-`src/lib/get-logs-chunked.js` is the only place that arithmetic lives. Callers hand
+`src/bot/get-logs-chunked.js` is the only place that arithmetic lives. Callers hand
 it a range and a query function; it walks the range in capped windows.
 
 The default of 9,000 is 90% of the published 10,000-block limit, verified
@@ -695,7 +695,7 @@ the real code nested, which is not actionable as raised.
 
 Rate limits are published per IP, not per endpoint object or per scan. This
 process may hold three providers and run a history scan while the bot polls, all
-from one address. `src/lib/rpc-request-manager.js` is therefore a single FIFO queue
+from one address. `src/bot/rpc-request-manager.js` is therefore a single FIFO queue
 for the whole process: every request enqueues and is released one at a time on a
 fixed schedule.
 
@@ -705,7 +705,7 @@ the only thing that actually guarantees a rate, and every exception (a fast path
 for reads, a priority lane for transactions) is a hole the rate escapes through.
 If something needs to go sooner, the answer is a shorter interval.
 
-It is wired in by `buildProvider` (`src/lib/bot-provider.js`), which wraps ethers'
+It is wired in by `buildProvider` (`src/bot/bot-provider.js`), which wraps ethers'
 `send()` — the single funnel all JSON-RPC traffic passes through, reads and
 writes alike. Anything added later is paced automatically, with nothing to
 remember at the call site. A delay between chunks could not do this job: a
@@ -823,7 +823,7 @@ In `app-runtime.json`.
 | `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. Half a second to one minute. |
 | `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop`, and `npm run gentle-stop` once the server has taken its stop, check whether the server has gone. 10 milliseconds to five seconds. |
 | `shutdown.gentleStopPollMs` | `2000` | How often `npm run gentle-stop` sends its stop request, each answered with what the server is still finishing, and how long it waits for each answer. One second to one minute. |
-| `dashboard.pollsBeforeAssumedSeen` | `2.5` | How many dashboard polls the server waits, after a change the dashboard must show, before assuming it was seen: the alert for a failed re-open comes up before the position is retired. 1 to 100. |
+| `dashboard.pollsBeforeAssumedSeen` | `2.5` | How many dashboard polls the bot waits, after a change the dashboard must show, before assuming it was seen: the alert for a failed re-open comes up before the position is retired. 1 to 100. |
 | `compound.autoSpacingPolls` | `5` | The least time between two automatic compounds of one position, in polls of `CHECK_INTERVAL_SEC`. 1 to 100. |
 | `compound.autoSpacingFloorSec` | `300` | The floor under that time, in seconds, however short the poll interval. Compound Now is held to neither. 1 to 86400. |
 

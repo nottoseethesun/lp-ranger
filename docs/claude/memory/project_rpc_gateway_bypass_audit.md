@@ -43,7 +43,7 @@ grep -rn "fetch(" src/lib/*.js | grep -iE "rpc|RPC_URL"
 ## What the trace found
 
 **Construction is centralized.** `JsonRpcProvider` is instantiated only
-in `src/lib/bot-provider.js`, the factory. Nothing else in the app builds
+in `src/bot/bot-provider.js`, the factory. Nothing else in the app builds
 one.
 
 **Twenty-eight provider assignments, two origins.** Twenty are

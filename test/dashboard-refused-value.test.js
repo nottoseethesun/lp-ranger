@@ -115,15 +115,17 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../src/client/web/dashboard-positions-store.js");
-  positions = await import("../src/client/web/dashboard-positions.js");
-  slippage = await import("../src/client/web/dashboard-per-token-slippage.js");
+  const store =
+    await import("../src/client/web/js/dashboard-positions-store.js");
+  positions = await import("../src/client/web/js/dashboard-positions.js");
+  slippage =
+    await import("../src/client/web/js/dashboard-per-token-slippage.js");
   // Loaded as the page loads it: it announces how the panel refills.
-  await import("../src/client/web/dashboard-data.js");
+  await import("../src/client/web/js/dashboard-data.js");
   const { setConfigInputDefault } =
-    await import("../src/client/web/dashboard-config-inputs.js");
+    await import("../src/client/web/js/dashboard-config-inputs.js");
   setConfigInputDefault("slippagePct", SHIPPED.slippagePct);
-  const { wallet } = await import("../src/client/web/dashboard-wallet.js");
+  const { wallet } = await import("../src/client/web/js/dashboard-wallet.js");
   wallet.address = WALLET;
   store.posStore.add(A);
   store.posStore.add(B);

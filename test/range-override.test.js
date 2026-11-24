@@ -3,7 +3,7 @@
 /**
  * @file test/range-override.test.js
  * @description Tests for `resolveRangeOverrideEnabled` in
- * `src/lib/range-override.js` — the sole decider of whether a position's
+ * `src/bot/range-override.js` — the sole decider of whether a position's
  * saved Range settings apply on the next rebalance.
  *
  * The rule has three tiers and each one exists for a concrete reason:
@@ -30,7 +30,7 @@ const {
   resolveRangeOverrideEnabled,
   resolveRebalanceOffsetPct,
   RANGE_OVERRIDE_KEYS,
-} = require("../src/lib/range-override");
+} = require("../src/bot/range-override");
 const { CENTERED_OFFSET_PCT } = require("../src/lib/centered-offset");
 const { loadShippedDefaults } = require("../src/lib/load-merged-defaults");
 

@@ -3,8 +3,9 @@
 /**
  * @file test/dashboard-position-dialogs.test.js
  * @description When another position comes on screen, every dialog that
- *   belonged to the one before closes (src/client/web/dashboard-position-
- *   dialogs.js), as the user decided on 2026-10-18. A dialog's Save acts
+ *   belonged to the one before closes
+ *   (src/client/web/js/dashboard-position-dialogs.js), as the user
+ *   decided on 2026-10-18. A dialog's Save acts
  *   on the position on screen when it is clicked, so a dialog left open
  *   across a switch, by the browser's Back button say, would save the
  *   first position's prices or decimals under the second.
@@ -82,15 +83,16 @@ before(async () => {
   document.body.replaceChildren(
     ...[...page.body.childNodes].map((n) => document.importNode(n, true)),
   );
-  const store = await import("../src/client/web/dashboard-positions-store.js");
-  positions = await import("../src/client/web/dashboard-positions.js");
-  status = await import("../src/client/web/dashboard-data-status.js");
-  confirm = await import("../src/client/web/dashboard-confirm-dialog.js");
-  baseline = await import("../src/client/web/dashboard-data-baseline.js");
-  deposit = await import("../src/client/web/dashboard-data-deposit.js");
+  const store =
+    await import("../src/client/web/js/dashboard-positions-store.js");
+  positions = await import("../src/client/web/js/dashboard-positions.js");
+  status = await import("../src/client/web/js/dashboard-data-status.js");
+  confirm = await import("../src/client/web/js/dashboard-confirm-dialog.js");
+  baseline = await import("../src/client/web/js/dashboard-data-baseline.js");
+  deposit = await import("../src/client/web/js/dashboard-data-deposit.js");
   const slippage =
-    await import("../src/client/web/dashboard-per-token-slippage.js");
-  const { wallet } = await import("../src/client/web/dashboard-wallet.js");
+    await import("../src/client/web/js/dashboard-per-token-slippage.js");
+  const { wallet } = await import("../src/client/web/js/dashboard-wallet.js");
   wallet.address = WALLET;
   slippage.wirePerTokenSlippageEvents(
     (id, fn) => document.getElementById(id)?.addEventListener("click", fn),
@@ -198,9 +200,9 @@ describe("a switch to another position", () => {
      *  once per episode: closed by a switch, the operator would never
      *  learn a rebalance had been aborted.
      */
-    const alerts = await import("../src/client/web/dashboard-alerts.js");
+    const alerts = await import("../src/client/web/js/dashboard-alerts.js");
     const warnings =
-      await import("../src/client/web/dashboard-post-rebalance-modal.js");
+      await import("../src/client/web/js/dashboard-post-rebalance-modal.js");
     alerts._resetAlertsState();
     warnings._resetPostRebalanceModalState();
     alerts.showPerPositionAlerts({

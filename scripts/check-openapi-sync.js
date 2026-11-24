@@ -37,11 +37,18 @@ const { UI_SETTING_KEYS } = require("../src/lib/ui-defaults");
 const ROOT = path.join(__dirname, "..");
 const SPEC_PATH = path.join(ROOT, "docs", "openapi.json");
 
-/*- Routes registered by matching on the URL rather than by a
- *  `"METHOD /path"` handler-map key, so the scan below cannot see them.
- *  An explicit list, one line per route, so a second dynamic route has
- *  to be added deliberately instead of by widening a regex. */
-const DYNAMIC_ROUTES = ["GET /api/position/{tokenId}/history"];
+/*-
+ *  Routes registered by matching on the URL rather than by a
+ *  `"METHOD /path"` handler-map key, so the scan below cannot see them:
+ *  a closed position's history, and the csrf token, which the csrf check
+ *  answers before the route table (src/server/server-csrf.js). An
+ *  explicit list, one line per route, so another such route has to be
+ *  added deliberately instead of by widening a regex.
+ */
+const DYNAMIC_ROUTES = [
+  "GET /api/position/{tokenId}/history",
+  "GET /api/csrf-token",
+];
 
 /*- Path params are spelled `{tokenId}` in the spec and `:tokenId` in a
  *  route, so compare with both collapsed to a single placeholder. */

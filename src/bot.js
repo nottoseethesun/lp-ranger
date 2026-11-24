@@ -16,7 +16,7 @@
 
 "use strict";
 
-const cliHelp = require("./lib/cli-help");
+const cliHelp = require("./bot/bot-cli-help");
 
 /*- `--help` answers and leaves, ahead of every other line in this file.
  *  It starts no bot, so it must not open the operator's log file and
@@ -24,7 +24,7 @@ const cliHelp = require("./lib/cli-help");
  *  which is what put it ahead of this check: moving the check up is the
  *  only way to stay in front of it. */
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  cliHelp("bot");
+  cliHelp();
   process.exit(0);
 }
 
@@ -42,14 +42,22 @@ require("./lib/boot-log-file").bootLogFile();
  */
 require("./lib/settings-check").refuseToStartOnBadSettings();
 
+/*-
+ *  The dashboard settings, which the bot's wait for the dashboard is
+ *  built on: read now, just checked, and kept for the life of the
+ *  process (src/lib/ui-defaults.js), so an edit to the operator's copy
+ *  takes effect at the next restart, where the check above refuses a bad
+ *  value.
+ */
+require("./lib/ui-defaults").readUiDefaults();
+
 const { log } = require("./lib/log");
 // First statement of a real run — bot-banner prints on require (side
 // effect, cached so it fires exactly once per process). Required here so
 // the banner lands at the top of the log before any other module loads.
-require("./lib/bot-banner");
+require("./bot/bot-banner");
 
-const { pausePriceLookups } = require("./lib/price-fetcher");
-const { readPriceCacheSettings } = require("./lib/price-fetcher-gate");
+const { pausePriceLookups } = require("./bot/price-fetcher");
 
 /*- Headless default: pause price lookups at startup.  Without a server
  *  there is no idle tracker and no browser to drive pause/unpause, so
@@ -64,25 +72,13 @@ const _startUnpaused = process.argv.includes(
 );
 if (!_startUnpaused) pausePriceLookups("headless startup");
 
-const ethers = require("ethers");
 const config = require("./lib/config");
-const { startBotLoop } = require("./lib/bot-loop");
+const { createBot } = require("./bot/bot-interface");
+const { startBotLoop } = require("./bot/bot-loop");
 const { resetErrorLog } = require("./lib/error-log");
 const { resolvePrivateKey } = require("./bot/bot-private-key");
-const { createRebalanceLock } = require("./lib/rebalance-lock");
-const { createPositionManager } = require("./lib/position-manager");
-const {
-  loadConfig,
-  managedKeys,
-  readConfigValue,
-} = require("./lib/bot-config-v2");
-const {
-  createPerPositionBotState,
-  attachMultiPosDeps,
-  updatePositionState,
-  getAllPositionBotStates,
-} = require("./lib/server-positions");
-const { createAutoStartManagedPositions } = require("./lib/server-auto-start");
+const { loadConfig, managedKeys } = require("./lib/bot-config-v2");
+const { createPerPositionBotState } = require("./bot/position-states");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
 const { askPassword: _askPassword } = require("./lib/ask-password");
 const { readShutdownTimings } = require("./lib/shutdown-timing");
@@ -111,20 +107,28 @@ async function main() {
   }
 
   const diskConfig = loadConfig();
-  readPriceCacheSettings();
-  const rebalanceLock = createRebalanceLock();
-  const positionMgr = createPositionManager({
-    rebalanceLock,
-    dailyMax:
-      diskConfig.global.maxRebalancesPerDay || config.MAX_REBALANCES_PER_DAY,
+  /*-
+   *  The wallet whose saved positions the start-up starts: the signer's,
+   *  or any wallet's in a dry run with no key, whose signer is a random
+   *  wallet. It is known once the shared signer is built, below, and the
+   *  start-up reads it only after that.
+   */
+  let wallet = null;
+  /*-
+   *  The bot is built the one way the server builds it
+   *  (src/bot/bot-interface.js), today's per-pool rebalance counts read
+   *  from the rebalance log included, so a restart keeps each pool's
+   *  daily cap.
+   */
+  const bot = createBot({
+    diskConfig,
+    walletManager: { getAddress: () => wallet },
   });
+  bot.setPrivateKey(privateKey);
   /*- App-wide shared signer: every bot-loop below must sign through the
    *  same NonceManager so per-position counters cannot drift. */
-  const shared = await positionMgr.getSharedSigner({
-    privateKey,
-    ethersLib: ethers,
-    dryRun,
-  });
+  const shared = await bot.sharedSigner();
+  wallet = privateKey === null ? null : shared.address;
 
   // If no managed positions in config, fall back to POSITION_ID env var (single-position start)
   if (managedKeys(diskConfig).length === 0 && (config.POSITION_ID || !dryRun)) {
@@ -147,32 +151,20 @@ async function main() {
     });
     _awaitShutdown(() => {
       handle.stop();
-      positionMgr.stopAll();
+      bot.stopAll();
     }, exitTimeoutMs);
     return;
   }
 
   /*-
    *  Start the positions saved as managed the way the server does
-   *  (src/lib/server-auto-start.js), so the same rules hold headless: one
+   *  (src/bot/auto-start.js), so the same rules hold headless: one
    *  active position per pool, and a position that cannot be managed comes
-   *  off the list. The wallet is the signer's, or any wallet's in a dry run
-   *  with no key, whose signer is a random wallet.
+   *  off the list.
    */
-  const wallet = privateKey === null ? null : shared.address;
-  await createAutoStartManagedPositions({
-    diskConfig,
-    positionMgr,
-    privateKeyRef: { current: privateKey },
-    walletManager: { getAddress: () => wallet },
-    getAllPositionBotStates,
-    createPerPositionBotState,
-    attachMultiPosDeps,
-    updatePositionState,
-    readConfigValue,
-  })();
+  await bot.startManagedPositions();
 
-  _awaitShutdown(() => positionMgr.stopAll(), exitTimeoutMs);
+  _awaitShutdown(() => bot.stopAll(), exitTimeoutMs);
 }
 
 /**

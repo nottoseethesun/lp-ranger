@@ -3,14 +3,14 @@
 /**
  * @file test/bot-rebalance-figures.test.js
  * @description The end of a scan pass (`finishPassRebalanceFigures`,
- *   src/lib/bot-rebalance-figures.js): the Rebalance events still waiting for
+ *   src/bot/bot-rebalance-figures.js): the Rebalance events still waiting for
  *   their Activity Log figures are finished from what the pass and
  *   app-data/ already hold, and written back to the pool's event cache,
  *   the bot's own list of events and the next status answer.
  *
  *   The epoch cache, the event cache, the price lookup and the balance
  *   reads are stood in for; the figures are worked out by the real code
- *   (src/lib/rebalance-activity-figures.js). The fixture rebalance is the one
+ *   (src/bot/rebalance-activity-figures.js). The fixture rebalance is the one
  *   test/rebalance-activity-figures.test.js describes: the wallet held
  *   100 and 50 before the drain at block 900, 1,100 and 50 after it, and
  *   600 and 545 just before the mint at block 1,000.
@@ -79,10 +79,10 @@ Module.prototype.require = function (id) {
     };
   return _origRequire.apply(this, arguments);
 };
-delete require.cache[require.resolve("../src/lib/bot-rebalance-figures")];
+delete require.cache[require.resolve("../src/bot/bot-rebalance-figures")];
 const {
   finishPassRebalanceFigures,
-} = require("../src/lib/bot-rebalance-figures");
+} = require("../src/bot/bot-rebalance-figures");
 Module.prototype.require = _origRequire;
 
 const POSITION = Object.freeze({
@@ -232,7 +232,7 @@ describe("finishPassRebalanceFigures", () => {
     /*-
      *  This position lists a deposit of 80 of token0 at block 950, but
      *  another position holding the same coin rebalanced at block 960
-     *  and took it into its own NFT (src/lib/deposit-attribution.js), so
+     *  and took it into its own NFT (src/bot/deposit-attribution.js), so
      *  none of it was in the wallet at this mint.
      */
     const listed = {

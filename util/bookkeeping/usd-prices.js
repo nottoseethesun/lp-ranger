@@ -6,7 +6,7 @@
  * @description
  * A coin's price in USD for a transaction, from LP Ranger's own price
  * library rather than a copy of it: `fetchHistoricalTokenPriceUsd`
- * (src/lib/historical-token-price.js), the lookup the app uses to price gas
+ * (src/bot/historical-token-price.js), the lookup the app uses to price gas
  * on a past day. It prices one coin by its address, so the one call
  * serves a pool's two coins, the chain's own coin through its wrapped
  * form, and any other coin.
@@ -72,7 +72,7 @@ process.env.GECKO_POOL_CACHE_PATH = cachePath("gecko-pool-cache.json");
 
 const {
   fetchHistoricalTokenPriceUsd,
-} = require("../../src/lib/historical-token-price");
+} = require("../../src/bot/historical-token-price");
 
 /**
  * What a run that stops for want of a price tells the user to do.
