@@ -187,6 +187,10 @@ loop while working on one. Those suites also run as
 part of plain `npm test` and `npm run check`, and count toward the 80%
 coverage gate — `util/` is held to the same bar as `src/`.
 
+Every test command, `npm run check` included, fails a test or hook
+still running after a minute, by name (`--test-timeout=60000`), and goes
+on with the rest of its file.
+
 ### Logging to a File
 
 `--log-file` copies the console to a file: with no path given,

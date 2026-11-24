@@ -45,6 +45,9 @@ jobs:
   check:
     name: Check (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    # The job takes about four minutes. The cap ends a hang no test's time
+    # limit can, such as a test file whose process never exits.
+    timeout-minutes: 20
 
     strategy:
       # Run every matrix version even if one fails, so we see the full picture.

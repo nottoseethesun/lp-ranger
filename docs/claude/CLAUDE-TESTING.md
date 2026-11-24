@@ -26,6 +26,8 @@ npm run test:watch      # watch mode
 npm run check           # Combined lint (JS+CSS) + test + coverage check (≥80%)
 ```
 
+Every test run, `npm run check` and the npm `test` scripts alike, passes `--test-timeout=60000`. A test or hook still running after a minute fails, by name, and the rest of its file runs. The limit is per test, about six times the slowest today. It cannot end a test file that leaves a timer running, whose process never exits. In CI the check job's 20-minute cap does (`timeout-minutes` in `.github/workflows/ci.yml`); locally the gate waits until stopped.
+
 ## 95% Coverage Regions
 
 The suite as a whole must keep at least 80% line coverage, and

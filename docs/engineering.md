@@ -3438,7 +3438,8 @@ runs either way.
    `node scripts/check-report.js` — the aggregator reads the
    previously-captured `raw-data/` files and regenerates everything.
 4. GitHub Actions (`.github/workflows/ci.yml`) runs `npm run check` on the
-   Node 24/26 matrix, appends `text-reports/summary.md` to
+   Node 24/26 matrix, each job capped at 20 minutes against a hang no
+   test's time limit can end, appends `text-reports/summary.md` to
    `$GITHUB_STEP_SUMMARY` so the rollup renders inline on every run page,
    and uploads the whole `test/report-artifacts/` directory as a
    downloadable workflow artifact (`check-report-node-<ver>`). Reviewers

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-11-24T02:19:10.575Z
+  modified: 2026-11-24T02:54:05.455Z
 ---
 
 `npm run check` exercises **one** Node version: whichever is on `PATH`,
@@ -64,6 +64,10 @@ failed with it. Nothing local could have caught that, and
   cancelled such a test at once. Node 24 and Node 26 do not: measured
   2026-11-23 with a test whose promise never settles, each kept the
   file's process up until it was killed, then reported the same error.
-  The gate sets no test timeout, so on both CI versions such a test now
-  hangs the run instead of failing it. A gate that never finishes is
-  this defect: look for the test file still running.
+  So since that day, at the user's word, every test run passes
+  `--test-timeout=60000` (scripts/check.js and the npm `test` scripts):
+  such a test fails after a minute, by name, as "test timed out after
+  60000ms". A test file that leaves a timer running still never exits;
+  in CI the check job's 20-minute cap ends it, and locally the gate
+  waits. A gate that never finishes is that defect: look for the test
+  file still running.
