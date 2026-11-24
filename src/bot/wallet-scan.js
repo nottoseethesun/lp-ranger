@@ -4,9 +4,10 @@
  * The wallet scan: the LP positions a wallet holds, enumerated with the
  * LP position cache, their liquidity refreshed in the background, and
  * their tokens' symbols resolved. Also the scan's progress, which the
- * status report publishes, and the cancel of a pool's event scan that
- * Reload Current Position sends. Each operation returns a result the
- * server answers with (src/server/bot-result.js).
+ * status report publishes, and the cancel of a pool's event scan
+ * (`POST /api/position/scan-cancel`), an operator's escape hatch that no
+ * dashboard control sends. Each operation returns a result the server
+ * answers with (src/server/bot-result.js).
  *
  * The bot's own: the server reaches it only through the bot's interface
  * (src/bot/bot-interface.js).
@@ -503,8 +504,9 @@ function createWalletScan(deps) {
   /**
    * POST /api/position/scan-cancel — abort any in-flight event scan for
    * the pool of the caller's position and clear its sync flag so the
-   * badge re-syncs on the next restart. Used by the "Reload Current
-   * Position" Settings button to recover from a stuck-sync state.
+   * badge re-syncs on the next restart. An operator's escape hatch from
+   * a stuck sync: no dashboard control sends it, since Reload Current
+   * Position cancels the pool's scan itself (src/bot/reload-position.js).
    * @param {object} body  `token0`, `token1`, `fee`, and optionally
    *   `positionKey` and `walletAddress`.
    * @returns {object}  The result (src/server/bot-result.js).

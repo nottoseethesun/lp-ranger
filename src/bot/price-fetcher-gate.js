@@ -18,9 +18,10 @@
  *
  * The three cache lifetimes come from bot-config.json's `global` section,
  * with the defaults (`readBotConfigDefaults()`) for any it does not set.
- * They are read when a program's entry point calls
- * `readPriceCacheSettings`, never when this file is loaded; until then
- * each is its default. The server and the bot call it as they start. A
+ * They are read when `readPriceCacheSettings` is called, never when this
+ * file is loaded; until then each is its default. The bot's parts call it
+ * as they are built (`buildBotParts`, src/bot/bot-interface.js), which
+ * each program does as it starts. A
  * tool under util/ that needs them passes `skipBackups`, so its read
  * leaves LP Ranger's backups of its settings files alone. The
  * dust-unit-price TTL is derived as `priceTtl * multiplier`; an assertion
@@ -38,7 +39,7 @@ let _allowOverrideCount = 0;
 
 /*-
  *  The three cache lifetimes `readPriceCacheSettings` read from the
- *  settings, or null until a program's entry point calls it.
+ *  settings, or null until it is called.
  */
 let _settingsTtls = null;
 
@@ -85,7 +86,9 @@ function _ttlsFrom(cfg) {
  * `global` section, for the rest of the run: the price cache's
  * (`priceCacheTtlMs`), the dust-unit price's (that times
  * `dustUnitPriceCacheMultiplier`) and the one inside a move
- * (`moveCacheTtlMs`). A program's entry point calls it as it starts.
+ * (`moveCacheTtlMs`). Called as the bot's parts are built
+ * (`buildBotParts`, src/bot/bot-interface.js), when each program starts,
+ * and by a tool under util/ that needs them.
  * There is no live reload: a change applies at the next start, as with
  * every other global key. A setting that is missing, or a file that
  * cannot be read, leaves the default.

@@ -234,7 +234,9 @@ async function startBotLoop(opts) {
       "\n  ┌──────────────────────────────────────────────┐\n  │  DRY RUN MODE — no transactions will be sent │\n  └──────────────────────────────────────────────┘\n",
     );
   /*- Shared {provider, signer, address} wins when the caller passes one
-   *  in.  Production callers (position-states, bot.js) fetch the
+   *  in.  Production callers (Manage in position-lifecycle.js, the
+   *  start-up in auto-start.js, and bot.js's single-position mode
+   *  through the interface's `sharedSigner`) fetch the
    *  singleton from positionMgr.getSharedSigner so every managed
    *  position signs through the SAME NonceManager.  One NonceManager per
    *  position means each keeps its own counter for one wallet, and they

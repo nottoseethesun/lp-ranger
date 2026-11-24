@@ -19,7 +19,8 @@
  *
  * What JSON Schema cannot say, code says, as a named format: whether an
  * address is in its EIP-55 form, a url's protocol, an RPC endpoint the
- * provider can dial, a host name, an image in src/client/web/, a position's key.
+ * provider can dial, a host name, an image in src/client/web/images/, a
+ * position's key.
  * Every format is registered on `AJV`, the one Ajv instance LP Ranger
  * compiles a schema with.
  *

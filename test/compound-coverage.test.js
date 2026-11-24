@@ -13,8 +13,9 @@ const sendTx = require("../src/bot/send-transaction");
 
 /*- A poll cycle reads pool state, and that read takes its endpoint from
  *  the app's failover the way every other read does — so the rpc layer
- *  has to be stood up here as `server.js` and `bot-loop.js` stand it up
- *  at boot.  File scope rather than per-describe, because more than one
+ *  has to be stood up here as the bot stands it up at boot (its parts,
+ *  `buildBotParts` in src/bot/bot-interface.js, and `bot-loop.js`).
+ *  File scope rather than per-describe, because more than one
  *  block below drives a poll cycle.  The provider itself is never
  *  exercised: the mocked `Contract` in each block serves the pool data
  *  and ignores what it was constructed with. */

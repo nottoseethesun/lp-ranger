@@ -6,9 +6,11 @@
  *   it in.
  *
  *   Why side-effect-on-require (not an exported function): the bot announces
- *   itself when bot code loads. Server-side callers should not have to call
- *   a "start bot" function — server.js loads bot machinery for unmanaged
- *   data fetches anyway, and the banner falls out of that naturally.
+ *   itself when bot code loads. Neither program should have to call a
+ *   "start bot" function: the server loads the bot's modules anyway, when
+ *   it loads the bot's interface (bot-recorder.js requires this file), and
+ *   the headless bot requires it first, so the banner falls out of that
+ *   naturally.
  *
  *   Style: light gray on very dark gray, rocket emoji before/after "Started."
  *   ANSI: 38;2;211;211;211 = lt-gray fg, 48;2;25;25;25 = very dark gray bg.

@@ -98,12 +98,12 @@ function scanSites() {
     .map((m) => m.name);
 }
 
-/*- Whether a module routes its floor through the shared helper: from
- *  src/lib/ it is `./nft-mint-blocks`, from the server's or the bot's
- *  folder `../lib/nft-mint-blocks`. */
+/*- Whether a module routes its floor through the shared helper,
+ *  src/bot/nft-mint-blocks.js. Only a bot module may load it, and every
+ *  bot module sits beside it, so the one form is `./nft-mint-blocks`. */
 function isBounded(file) {
   const { src } = _modules().find((m) => m.name === file);
-  return /require\(["'](?:\.\/|\.\.\/lib\/)nft-mint-blocks["']\)/.test(src);
+  return /require\(["']\.\/nft-mint-blocks["']\)/.test(src);
 }
 
 describe("per-NFT scan floors", () => {

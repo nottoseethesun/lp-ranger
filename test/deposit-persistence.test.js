@@ -58,7 +58,7 @@ after(() => {
   getAllPositionBotStates().delete(KEY);
 });
 
-/** A disk config with a managed slot, as handleManage leaves it. */
+/** A disk config with a managed slot, as Manage leaves it. */
 function freshConfig() {
   return { global: {}, positions: { [KEY]: { status: "running" } } };
 }

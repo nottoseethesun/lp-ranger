@@ -36,8 +36,8 @@
  *
  * Callers are responsible for rejecting incomplete identities before
  * calling: `String(undefined)` is `"undefined"`, which would make two
- * unknown pools compare equal. `src/bot/pool-already-managed.js` guards on
- * the server side and `_poolKeyOf` in `src/client/web/js/dashboard-manage-ui.js`
+ * unknown pools compare equal. `src/bot/pool-already-managed.js` guards in
+ * the bot and `_poolKeyOf` in `src/client/web/js/dashboard-manage-ui.js`
  * guards on the client side, each returning null rather than a partial
  * key.
  *

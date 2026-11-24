@@ -19,21 +19,33 @@ const { createReloadPosition } = require("../src/bot/reload-position");
 const { createRescanPrices } = require("../src/bot/rescan-prices");
 const { createStatusReport } = require("../src/bot/status-report");
 const { botOperations } = require("../src/bot/bot-interface");
-const { createPositionLifecycle } = require("../src/bot/position-lifecycle");
 const {
   createPositionRoutes: positionRoutesOver,
 } = require("../src/server/position-routes");
 
 /**
- * The position routes over the bot's position lifecycle (Manage, Stop
- * Managing, the re-open check, the managed list), both built from the
- * one set of deps the test passes.
+ * The position routes over the bot's operations, as the server has them:
+ * `botOperations` (src/bot/bot-interface.js) over the parts the test
+ * passes, so Manage, Stop Managing, the re-open check and the managed
+ * list run through the interface's own bindings, not around them.
  * @param {object} deps  As for `createPositionLifecycle`, with
  *   `jsonResponse` and `readJsonBody`.
  * @returns {object}  Map of route key → handler.
  */
 function createPositionRoutes(deps) {
-  return positionRoutesOver({ ...deps, bot: createPositionLifecycle(deps) });
+  const getPrivateKey = deps.getPrivateKey ?? (() => null);
+  const bot = botOperations({
+    ...deps,
+    /*- The key the test's `getPrivateKey` gives, asked each time the bot
+     *  reads its key. These routes never hand the bot a key, so it has no
+     *  setter: one that tried would throw. */
+    privateKeyRef: {
+      get current() {
+        return getPrivateKey();
+      },
+    },
+  });
+  return positionRoutesOver({ ...deps, bot });
 }
 const {
   createApiStatusHandler: statusRouteOver,

@@ -10,8 +10,8 @@
  *
  * Shared by the single-NFT scanner in `src/bot/compounder.js` and the
  * whole-chain batch fetch in `src/bot/nft-events-batch.js`, so both decode
- * logs with the same code. A **leaf module**: nothing in `src/lib/` but the
- * ABI is required here, so both can depend on it without `src/lib/` gaining
+ * logs with the same code. A **leaf module**: nothing in `src/bot/` but the
+ * ABI is required here, so both can depend on it without `src/bot/` gaining
  * a dependency cycle.
  */
 

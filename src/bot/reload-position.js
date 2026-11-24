@@ -18,7 +18,9 @@
  * be several hours on a Pi-class RPC).  The server answers with what it
  * returns (src/server/bot-result.js).
  *
- * Reserved for the escape-hatch flow.  Not called by any bot code path.
+ * Reserved for that flow: only the Reload Current Position route asks
+ * for it, through the bot's interface (src/bot/bot-interface.js). No bot
+ * loop calls it.
  */
 
 "use strict";

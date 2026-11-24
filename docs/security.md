@@ -410,11 +410,17 @@ workflows, depending on how you run LP Ranger:
 Both workflows produce the same file and use the same password.
 There is no separate "CLI password" or "dashboard password."
 
-[`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js)'s `resolvePrivateKey()`
-picks the signing-key source in fixed priority:
-`PRIVATE_KEY` (plaintext hex in `.env` — *not recommended*) →
-encrypted wallet unlocked by `WALLET_PASSWORD` env var, `--headless`
-terminal prompt, or dashboard dialog.
+The server picks its signing key in fixed priority
+([`src/server/server-routes.js`](../src/server/server-routes.js)'s
+`_tryResolveKey`): `PRIVATE_KEY` (plaintext hex in `.env` — *not
+recommended*) → the encrypted wallet, unlocked by the `WALLET_PASSWORD`
+env var, else by the terminal prompt under `--headless`, else by the
+dashboard's Unlock Wallet dialog
+([`src/server/server-unlock.js`](../src/server/server-unlock.js)).
+The headless bot (`npm run bot`) has no dashboard. It picks its key
+the same way, with the terminal prompt in place of the dialog
+([`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js)'s
+`resolvePrivateKey()`).
 
 The three unlock methods differ only in how the password reaches the
 server; the encrypted files, the decryption and the in-memory handling
@@ -1105,11 +1111,12 @@ documenting why the deviation is intentional. Current exceptions:
 | ---- | ---- | ---- | ------ |
 | `src/bot/hodl-baseline.js` | 41 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
 | `src/bot/range-math.js` | 305 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/bot/position-detector.js` | 185 | `9mm/no-number-from-bigint` | Zero-check only |
-| `scripts/cache-bust.js` | 24 | `security/detect-unsafe-regex` | Input is the app's own `src/client/web/*.html` pages, not user-supplied |
-| `scripts/cache-bust.js` | 50 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
+| `src/bot/position-detector.js` | 188 | `9mm/no-number-from-bigint` | Zero-check only |
+| `scripts/cache-bust.js` | 25 | `security/detect-unsafe-regex` | Input is the app's own `src/client/web/*.html` pages, not user-supplied |
+| `scripts/cache-bust.js` | 51 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
 | `scripts/check-report-parse.js` | 283 | `security/detect-unsafe-regex` | Input is deterministic TAP v14 from `node --test` |
-| `scripts/import-wallet.js` | 97 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
+| `scripts/import-wallet.js` | 88 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
+| `util/bookkeeping/moralis-key.js` | 164 | `security/detect-possible-timing-attacks` | Comparing two strings the user typed, to confirm one, not verifying a secret |
 
 Whole files are never excluded from linting. Every exception is a
 single `eslint-disable-next-line` comment. It sits on the exact line

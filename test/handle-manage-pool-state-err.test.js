@@ -1,6 +1,6 @@
 /**
  * @file test/handle-manage-pool-state-err.test.js
- * @description Coverage for `handleManage`'s Pool*Error → 503
+ * @description Coverage for Manage's Pool*Error → 503
  *   mapping.  Extracted from `test/server-positions.test.js` so that
  *   parent file stays under the 500-line cap.  Helpers are
  *   intentionally duplicated (small footprint) rather than extracted
@@ -84,7 +84,7 @@ function makeRouteDeps(overrides = {}) {
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
-describe("handleManage Pool*Error mapping", () => {
+describe("Manage's Pool*Error mapping", () => {
   it("maps PoolStateUnavailableError to 503 + pool-info-unavailable, cleans state", async () => {
     /*- When startLoop throws a Pool*Error (raised by
      *  `_tryInitPnlTracker` after `getPoolState`'s retry chain

@@ -23,7 +23,7 @@ require("./helpers/price-stand-ins");
 
 let order = [];
 
-/** Whether `mod` is the file `name` in src/lib/. */
+/** Whether `mod` is the file `name` in src/bot/. */
 const from = (mod, name) => path.basename(mod.filename || "") === name;
 
 const _origRequire = Module.prototype.require;

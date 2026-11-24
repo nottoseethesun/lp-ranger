@@ -1,9 +1,11 @@
 /**
  * @file test/server-positions.test.js
- * @description Unit tests for src/bot/position-states.js.
- *
- * Tests createPerPositionBotState, attachMultiPosDeps,
- * updatePositionState, getAllPositionBotStates, and createPositionRoutes.
+ * @description Unit tests for src/bot/position-states.js
+ * (createPerPositionBotState, attachMultiPosDeps, updatePositionState,
+ * getAllPositionBotStates), and for Manage, Stop Managing and the managed
+ * list through the position routes (src/server/position-routes.js) over
+ * the bot's operations, as test/_bot-route-adapters.js builds them
+ * (`createPositionRoutes`).
  */
 
 "use strict";
@@ -206,8 +208,8 @@ describe("updatePositionState", () => {
     const keyRef = { current: key };
     /*- Pre-seed an existing entry — _persistPositionConfig now refuses
      *  to lazy-create a slot under a missing key (would resurrect the
-     *  phantom).  In production this entry exists because handleManage
-     *  created it before starting the bot loop. */
+     *  phantom).  In production this entry exists because Manage
+     *  (`_start`) created it before starting the bot loop. */
     const diskConfig = makeDiskConfig({
       positions: { [key]: { status: "running" } },
     });
@@ -334,9 +336,9 @@ describe("createPositionRoutes", () => {
     }
   });
 
-  // ── handleManage ────────────────────────────────────────────────────────
+  // ── Manage ──────────────────────────────────────────────────────────────
 
-  describe("handleManage", () => {
+  describe("Manage", () => {
     it("returns 400 for missing tokenId", async () => {
       const deps = makeRouteDeps({
         readJsonBody: async () => ({}),
@@ -530,9 +532,9 @@ describe("createPositionRoutes", () => {
      *  file under the 500-line cap. */
   });
 
-  // ── handleRemove ────────────────────────────────────────────────────────
+  // ── Stop Managing ───────────────────────────────────────────────────────
 
-  describe("handleRemove", () => {
+  describe("Stop Managing", () => {
     it("returns 400 for missing key", async () => {
       const deps = makeRouteDeps({
         readJsonBody: async () => ({}),
@@ -565,14 +567,14 @@ describe("createPositionRoutes", () => {
       assert.ok(!getAllPositionBotStates().has("rm-key"));
     });
 
-    /*- handleRemove's migration-during-stop test lives in
+    /*- Stop Managing's migration-during-stop test lives in
      *  `test/server-positions-stale-key-races.test.js` to keep this
      *  file under the 500-line cap. */
   });
 
-  // ── handleManagedList ───────────────────────────────────────────────────
+  // ── The managed list ────────────────────────────────────────────────────
 
-  describe("handleManagedList", () => {
+  describe("the managed list", () => {
     it("returns list with bot state attached", () => {
       const testKey = "list-test-key";
       getAllPositionBotStates().set(testKey, {

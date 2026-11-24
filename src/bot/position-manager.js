@@ -74,9 +74,9 @@ function createPositionManager(opts) {
     _sharedPromise = (async () => {
       const { privateKey, ethersLib, dryRun } = signerOpts || {};
       /*- Initialise the send-transaction module's primary + fallback
-          providers from chain config.  init() is idempotent: a
-          subsequent call from bot-loop or server.js with the same
-          URLs is a no-op.  ensureReachable() probes the primary and
+          providers from chain config.  init() is idempotent: any
+          other call with the same URLs (the bot's parts, built in
+          bot-interface.js, or bot-loop) is a no-op.  ensureReachable() probes the primary and
           engages failoverToNextRPC() if it's down at boot. */
       sendTx.init({ urls: config.RPC_URLS }, ethersLib);
       await sendTx.ensureReachable();
@@ -108,7 +108,8 @@ function createPositionManager(opts) {
   /**
    * Forget the shared signer, so the next `getSharedSigner` builds one
    * from the key it is then given. Called when a different wallet is
-   * imported (`_handleWalletImport`, src/server/server-routes.js): the cached
+   * imported (the interface's `forgetWallet`, src/bot/bot-interface.js,
+   * which the server's wallet import asks for): the cached
    * signer would otherwise go on signing with the old wallet's key, and
    * every rebalance of the new wallet's positions would fail at the
    * ownership check.
@@ -221,8 +222,9 @@ function createPositionManager(opts) {
    * @param {object} posOpts
    * @param {string}   posOpts.tokenId    NFT token ID.
    * @param {Function} posOpts.startLoop  Async function that starts the bot loop.
-   *   Returns `{ stop() }`.  The caller (position-states.js) is responsible
-   *   for wiring up the bot state and dependencies.
+   *   Returns `{ stop() }`.  The caller (Manage in position-lifecycle.js,
+   *   or the start-up in auto-start.js) is responsible for wiring up the
+   *   bot state and dependencies.
    * @param {object}   [posOpts.savedConfig]  Saved position config from disk.
    * @returns {Promise<void>} Rejects when the app is stopping, when the
    *   loop fails to start, or when the position was removed while it

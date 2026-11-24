@@ -3714,17 +3714,33 @@ What happens when the process starts, in order:
 9. **If imported as a module (e.g. from a test)**: nothing in step 8
    runs. The caller controls `start()` / `stop()` lifecycle explicitly.
 
-The dashboard is served as static files from `src/client/web/` by `serveStatic()`;
-all JSON APIs are dispatched by `handleRequest()` through a route table
-that maps method+path to handlers in `src/server/`:
-[`server-routes.js`](../src/server/server-routes.js),
-[`position-routes.js`](../src/server/position-routes.js),
-`position-state-routes.js`, `user-configurable-routes.js`,
-`server-pause.js`, `server-unlock.js` and `handle-api-status.js`. Each
-reads the request, asks the bot through its interface and answers; the
-bot's refusals become statuses in
-[`src/server/bot-result.js`](../src/server/bot-result.js). The full route surface is covered by the OpenAPI
-spec (see [API Documentation](#api-documentation) above).
+`handleRequest()` takes every request, in this order:
+
+1. CORS, then CSRF (`src/server/server-cors.js`,
+   `src/server/server-csrf.js`). The CSRF check answers
+   `GET /api/csrf-token` itself and refuses every request but a GET
+   without a valid token.
+2. The route table, which maps method+path to a handler. Three small
+   routes are answered in `src/server.js` itself: `GET /health`,
+   `GET /api/wallet/status` and `DELETE /api/wallet`. The rest are
+   built in `src/server/`:
+   [`server-routes.js`](../src/server/server-routes.js) (settings, api
+   keys, wallet import and reveal, the held stop, and the Telegram
+   routes from `telegram-notifications/server-telegram.js`),
+   [`position-routes.js`](../src/server/position-routes.js),
+   `position-state-routes.js`, `user-configurable-routes.js`,
+   `server-pause.js`, `server-unlock.js` and `handle-api-status.js`.
+3. A closed position's history, `GET /api/position/:tokenId/history`,
+   matched by the shape of its path (`historyTokenId`,
+   `position-routes.js`).
+4. Any other GET: a static file from `src/client/web/`, or
+   `index.html` for a client-side route (`_serveStaticOrSpa`).
+
+A route that needs the bot asks it through its interface. The bot's
+refusals become statuses in
+[`src/server/bot-result.js`](../src/server/bot-result.js). The full
+route surface is covered by the OpenAPI spec (see
+[API Documentation](#api-documentation) above).
 
 ---
 

@@ -1,8 +1,12 @@
 /**
  * @file test/server-routes-extra.test.js
- * @description Additional coverage for server-routes.js: getPositionScanStatus,
- *   _handleApiConfig edge cases, _handlePositionLifetime trigger-scan path,
- *   and _autoStartManagedPositions with no managed keys.
+ * @description Additional coverage for the server's routes over the bot's
+ *   operations, as test/_bot-route-adapters.js builds them
+ *   (`createRouteHandlers`): the wallet scan's progress
+ *   (`getPositionScanStatus`), `POST /api/config` edge cases
+ *   (`_handleApiConfig`, src/server/server-routes.js), the lifetime
+ *   route's trigger-scan path (`_handlePositionLifetime`), and the
+ *   start-up with no managed keys (`_autoStartManagedPositions`).
  */
 
 "use strict";

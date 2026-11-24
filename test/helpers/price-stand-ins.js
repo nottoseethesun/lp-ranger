@@ -20,7 +20,8 @@
  *   test file requires this before any of them: at its top, after any
  *   setting the file moves and before any bot module (src/bot/, where
  *   the price readers are) or a module that loads one, such as the bot's
- *   interface or a server route.
+ *   interface or test/_bot-route-adapters.js, which builds the server's
+ *   routes over it. No server module loads a bot module.
  */
 
 const config = require("../../src/lib/config");

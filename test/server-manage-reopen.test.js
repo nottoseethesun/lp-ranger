@@ -68,7 +68,7 @@ function _makeRouteDeps(overrides = {}) {
   };
 }
 
-describe("handleManage re-open flag propagation", () => {
+describe("Manage's re-open flag propagation", () => {
   it("stamps forceRebalance on posBotState BEFORE startPosition fires (re-open path)", async () => {
     /*- When the dashboard re-opens a closed position via Manage, it
      *  POSTs `{ forceRebalance: true }` alongside `tokenId`.  Server
@@ -162,7 +162,7 @@ describe("handleManage re-open flag propagation", () => {
   it("stamps forceRebalance + clears paused state on already-running position (retry path)", async () => {
     /*- User clicks Manage on a closed-but-running position to retry
      *  after the previous re-open's swap aborted on slippage.
-     *  handleManage's "already running — skipping" short-circuit must
+     *  Manage's "already running — skipping" short-circuit must
      *  route through `_stampReopenFlagsOnLive` so the flag is wired
      *  through to the live posBotState AND the paused/midway state
      *  cleared, otherwise the bot would keep returning early at the

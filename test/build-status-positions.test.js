@@ -7,7 +7,8 @@
  * auto-retired now needs the /api/status payload to publish a
  * terminal sync state so the dashboard's syncBadge resolves to
  * "Synced" (and the closed-position Manage button re-enables for the
- * user to retry).  See position-states.js's loop-2 comment block.
+ * user to retry).  See the loop-2 comment block in
+ * src/bot/build-status-positions.js.
  */
 
 "use strict";

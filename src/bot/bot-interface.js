@@ -128,6 +128,12 @@ function createBot(opts) {
  * @param {Function} [parts.setGlobalScanStatus]  Where the wallet scan
  *   keeps its progress (src/bot/wallet-scan.js); its own unless given.
  * @param {Function} [parts.getGlobalScanStatus]
+ * @param {object} [parts.ethersLib]  Manage's chain reads
+ *   (src/bot/position-lifecycle.js): the ethers library, the read
+ *   provider thunk and the scan-cache reader its pool check uses; the
+ *   real ones unless given.
+ * @param {Function} [parts.readProvider]
+ * @param {Function} [parts.loadScanCache]
  * @returns {object}  The bot's operations, listed below.
  */
 function botOperations(parts) {
@@ -147,7 +153,13 @@ function botOperations(parts) {
     getAllPositionBotStates: states,
   };
 
-  const lifecycle = createPositionLifecycle(shared);
+  /*- An `undefined` seam leaves the lifecycle's own default in place. */
+  const lifecycle = createPositionLifecycle({
+    ...shared,
+    ethersLib: parts.ethersLib,
+    readProvider: parts.readProvider,
+    loadScanCache: parts.loadScanCache,
+  });
   const moves = createManualMoves(shared);
   const walletScan = createWalletScan({
     ...shared,
@@ -202,9 +214,10 @@ function botOperations(parts) {
         dryRun: config.DRY_RUN,
       }),
     /**
-     * Before another wallet is imported: stop every position, then keep
-     * nothing of the previous wallet — its key, and the signer built from
-     * it, which would otherwise sign for the new wallet's positions.
+     * Once another wallet is imported, before it is unlocked: stop every
+     * position, then keep nothing of the previous wallet — its key, and
+     * the signer built from it, which would otherwise sign for the new
+     * wallet's positions.
      */
     forgetWallet: async () => {
       await positionMgr.stopAll();

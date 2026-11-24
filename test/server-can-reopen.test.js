@@ -45,8 +45,9 @@ const TOKEN1 = "0xAEbcD0F8f69ECF9587e292bdfc4d731c1abedB68";
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
 
 /*- The balance read takes its endpoint from the app's failover, so the
- *  rpc layer has to be stood up here as `server.js` stands it up at
- *  boot.  The provider itself is never exercised.
+ *  rpc layer has to be stood up here as the bot's parts stand it up at
+ *  boot (`buildBotParts`, src/bot/bot-interface.js).  The provider
+ *  itself is never exercised.
  *
  *  Per test, not once for the file.  Each case that exhausts its retry
  *  budget reports failures, which walks selection along the endpoint
@@ -98,7 +99,7 @@ function makeDeps(overrides = {}) {
   };
 }
 
-describe("handleCanReopen", () => {
+describe("the re-open check", () => {
   it("returns 400 when wallet not loaded", async () => {
     const deps = makeDeps({
       walletManager: { getAddress: () => null },

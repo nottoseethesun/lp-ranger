@@ -124,7 +124,7 @@ async function manage(opts) {
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-describe("handleManage one-position-per-pool gate", () => {
+describe("Manage's one-position-per-pool gate", () => {
   afterEach(() => getAllPositionBotStates().clear());
 
   it("refuses a second position in a managed pool with 409", async () => {
@@ -207,7 +207,7 @@ describe("handleManage one-position-per-pool gate", () => {
   });
 });
 
-describe("handleManage concurrent starts in one pool", () => {
+describe("Manage: concurrent starts in one pool", () => {
   afterEach(() => getAllPositionBotStates().clear());
 
   it("refuses the second of two simultaneous starts in the same pool", async () => {
@@ -270,7 +270,7 @@ describe("handleManage concurrent starts in one pool", () => {
   });
 });
 
-describe("handleManage releases the pool claim on failure", () => {
+describe("Manage releases the pool claim on failure", () => {
   afterEach(() => getAllPositionBotStates().clear());
 
   /** Run manage twice in sequence against the same deps-maker. */
@@ -339,7 +339,7 @@ describe("handleManage releases the pool claim on failure", () => {
   });
 });
 
-describe("handleManage re-open while the pool holds an open position", () => {
+describe("Manage's re-open while the pool holds an open position", () => {
   afterEach(() => getAllPositionBotStates().clear());
 
   /*-

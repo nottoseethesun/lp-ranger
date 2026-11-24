@@ -3,8 +3,9 @@
 /**
  * @file test/price-fetcher-gate-backups.test.js
  * @description The price library reads its three cache lifetimes only when
- *   a program's entry point calls `readPriceCacheSettings`, never when the
- *   library is loaded, and a tool under util/ can make that read without
+ *   `readPriceCacheSettings` is called (as the bot's parts are built, when
+ *   each program starts), never when the library is loaded, and a tool
+ *   under util/ can make that read without
  *   touching LP Ranger's backups of its settings files.
  *
  *   The read goes through `loadConfig`, which copies bot-config.json and

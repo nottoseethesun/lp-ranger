@@ -1,6 +1,11 @@
 /**
  * @file test/server-routes.test.js
- * @description Unit tests for src/server/server-routes.js createRouteHandlers.
+ * @description Unit tests for the server's routes over the bot's
+ *   operations, as test/_bot-route-adapters.js builds them
+ *   (`createRouteHandlers`): the server's own (src/server/server-routes.js:
+ *   settings, wallet import and reveal, the held stop) and the position
+ *   routes (src/server/position-routes.js: the wallet scan, details,
+ *   lifetime), with the start-up and the token-symbol lookup.
  */
 
 "use strict";

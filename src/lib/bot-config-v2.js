@@ -211,10 +211,12 @@ function _loadSettingsFile(filePath, skipBackups) {
  * etc.) — by the time a position is started, `_persistPositionConfig`
  * has at minimum written `nftGasWeiByTokenId` or similar.
  *
- * A phantom is a stale composite key: Manage (`_start`,
- * src/bot/position-lifecycle.js) writes the key it was called with, and a force-rebalance that migrates the key in
- * between leaves the old one behind carrying nothing but its status.
- * An on-disk file may already hold one, so the purge runs on load.
+ * A phantom is a stale composite key. Manage once wrote the key it was
+ * called with, so a force-rebalance that migrated the key in between
+ * left the old one behind carrying nothing but its status. Manage now
+ * writes the live key (`keyRef.current`, in `_start`,
+ * src/bot/position-lifecycle.js), but a file an earlier run wrote may
+ * still hold one, so the purge runs on load.
  *
  * Conservative — never touches an entry with any field besides status
  * (no false positives possible for a legitimately-running position).
@@ -428,7 +430,8 @@ function managedKeys(cfg) {
  * dashboard's `isPositionManaged` then treated as a live managed
  * position forever.  Callers that legitimately need to create a fresh
  * slot (Manage's first-time creation, addManagedPosition's status
- * flip) use `getOrCreatePositionConfig` explicitly.
+ * flip, a settings save for a position not yet managed) use
+ * `getOrCreatePositionConfig` explicitly.
  *
  * @param {object} cfg          Config object.
  * @param {string} positionKey  Composite key.
@@ -440,9 +443,12 @@ function getPositionConfig(cfg, positionKey) {
 
 /**
  * Look up a position's config section, creating an empty slot if
- * absent.  Sole legitimate callers are `addManagedPosition` (which
- * flips `status="running"` immediately after) and Manage's first-time
- * fresh-position creation path (`_start`, src/bot/position-lifecycle.js).  ANY other caller should
+ * absent.  Its three legitimate callers: `addManagedPosition` (which
+ * flips `status="running"` immediately after); Manage's first-time
+ * fresh-position creation path (`_start`, src/bot/position-lifecycle.js);
+ * and a settings save (src/bot/settings-save.js), so settings saved
+ * before Manage carry into the managed position, its key first
+ * resolved to the live one (`resolveLiveKey`).  ANY other caller should
  * use the non-lazy `getPositionConfig` to avoid resurrecting phantoms.
  *
  * @param {object} cfg          Config object.

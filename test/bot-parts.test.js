@@ -5,21 +5,22 @@
  * @description The bot's parts, built the one way both programs build them
  *   (`buildBotParts`, src/bot/bot-interface.js), start with each pool's
  *   count of today's rebalances read from the rebalance log, so a restart
- *   mid-day keeps every pool's Max Rebalances / Day. Bug #19: the headless
- *   bot built its parts itself and left the count empty, so after a
- *   restart its first check could rebalance a pool already at its cap.
- *   test/bot-start-up-shared.test.js pins that src/bot.js builds its bot
- *   through `createBot`, which builds these parts.
+ *   mid-day keeps every pool's Max Rebalances / Day; and the bot `createBot`
+ *   returns is built over those parts, so its report carries the same
+ *   count. Bug #19: the headless bot built its parts itself and left the
+ *   count empty, so after a restart its first check could rebalance a pool
+ *   already at its cap. test/bot-start-up-shared.test.js pins that
+ *   src/bot.js builds its bot through `createBot`.
  */
 
-const { describe, it, mock, after } = require("node:test");
+const { describe, it, mock, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 const config = require("../src/lib/config");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { poolKey } = require("../src/lib/pool-key");
-const { buildBotParts } = require("../src/bot/bot-interface");
+const { buildBotParts, createBot } = require("../src/bot/bot-interface");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -37,14 +38,12 @@ const entry = (pool, iso) => ({
 const keyOf = (pool) =>
   poolKey("pulsechain", PM, WALLET, pool.token0, pool.token1, pool.fee);
 
+/** Today's counts the log below holds: two in pool A, one in pool B. */
+const TODAY = { [keyOf(A)]: 2, [keyOf(B)]: 1 };
+
 describe("the bot's parts", () => {
   const savedLogFile = config.LOG_FILE;
-  after(() => {
-    config.LOG_FILE = savedLogFile;
-    mock.timers.reset();
-  });
-
-  it("count each pool's rebalances today from the rebalance log", () => {
+  before(() => {
     /*- The day is fixed, so no run can cross midnight between writing
      *  the log and reading it. */
     mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 10, 23, 12) });
@@ -59,14 +58,30 @@ describe("the bot's parts", () => {
       ]),
     );
     config.LOG_FILE = logFile;
+  });
+  after(() => {
+    config.LOG_FILE = savedLogFile;
+    mock.timers.reset();
+  });
 
+  it("count each pool's rebalances today from the rebalance log", () => {
     const { positionMgr } = buildBotParts();
 
-    assert.deepEqual(positionMgr.getPoolDailyCounts(), {
-      [keyOf(A)]: 2,
-      [keyOf(B)]: 1,
-    });
+    assert.deepEqual(positionMgr.getPoolDailyCounts(), TODAY);
     assert.equal(positionMgr.canRebalancePool(keyOf(A), 2), false);
     assert.equal(positionMgr.canRebalancePool(keyOf(B), 2), true);
+  });
+
+  it("are the parts createBot builds the bot over", async () => {
+    /*- No gas reading has been taken in this process, so the report asks
+     *  nothing of the chain. */
+    const bot = createBot({
+      diskConfig: { global: {}, positions: {} },
+      walletManager: { getAddress: () => null },
+    });
+
+    const report = await bot.statusReport({});
+
+    assert.deepEqual(report.poolDailyCounts, TODAY);
   });
 });
