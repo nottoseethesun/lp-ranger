@@ -3438,7 +3438,7 @@ runs either way.
    `node scripts/check-report.js` — the aggregator reads the
    previously-captured `raw-data/` files and regenerates everything.
 4. GitHub Actions (`.github/workflows/ci.yml`) runs `npm run check` on the
-   Node 22/24 matrix, appends `text-reports/summary.md` to
+   Node 24/26 matrix, appends `text-reports/summary.md` to
    `$GITHUB_STEP_SUMMARY` so the rollup renders inline on every run page,
    and uploads the whole `test/report-artifacts/` directory as a
    downloadable workflow artifact (`check-report-node-<ver>`). Reviewers
@@ -5184,8 +5184,8 @@ inputs for the site assembly, not any script execution.
 
 ### Node.js Engine Requirement
 
-`"engines": { "node": ">=22.0.0" }` in `package.json` pins the
-minimum runtime. CI runs the Node 22/24 matrix on every PR, and the
+`"engines": { "node": ">=24.0.0" }` in `package.json` pins the
+minimum runtime. CI runs the Node 24/26 matrix on every PR, and the
 release workflow uses Node 24 specifically. End users who try to
 install on an older Node are told so by `npm ci` before anything
 downloads.

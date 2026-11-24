@@ -10,7 +10,7 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [always build](feedback_always_build.md) — Edited src/client/web/? Run `npm run build`
 - [branching](feedback_branching.md) — Never push to main: branch + PR, ONE branch at a time
 - [check before push](feedback_check_before_push.md) — Full local check before every push; not again for code that just passed
-- [check both Node versions](feedback_check_both_node_versions.md) — Run the gate under Node 22 too; CI runs 22 and 24
+- [check both Node versions](feedback_check_both_node_versions.md) — Run the gate under Node 26 too; CI runs 24 and 26
 - [ci protocol](feedback_ci_protocol.md) — "Full c.i." = all eight steps, the local merge check and the PR merge included
 - [full repo grep](feedback_full_repo_grep.md) — Renames and pattern audits grep the WHOLE repo
 - [git workflow](feedback_git_workflow.md) — No push/merge/rebase/delete-branch/release without OK

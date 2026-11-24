@@ -8,7 +8,7 @@ Smell: docstrings that say `Mirror of …`, `In-test replica`, or "mirror is sma
 
 **Correct pattern** — when a function is module-private and needs testing, **extract it as an exported pure decision** and drive the export directly:
 
-- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `src/client/web/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../src/client/web/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`.
+- **Browser tests** (`test/dashboard-*.test.js` and any other test targeting `src/client/web/*.js`): use `require("global-jsdom/register")` at the top of the file, then `await import("../src/client/web/<module>.js")` inside a `before` hook, then assert against the real exports. Templates: `test/dashboard-throttle.test.js`, `test/dashboard-helpers.test.js`, `test/dashboard-idle.test.js`. Every test run passes `--no-experimental-webstorage` (`scripts/check.js` and the npm `test` scripts): Node 25 and later put a `localStorage` of their own on the global object, which reads as `undefined` without a storage file, and `global-jsdom` would leave it in place of jsdom's.
 - **Server tests** (`src/lib/*.js`): direct `require("../src/lib/<module>.js")`. No import obstacle — mirrors have no excuse.
 
 When the private helper's logic is entangled with I/O (DOM writes, network, module-singleton state), extract only the **pure decision** (accepts state as parameters, returns the intended action) and leave the I/O in the wrapper. See PRs #167–#172 for the extract-then-test pattern applied across ~30 dashboard helpers.

@@ -50,8 +50,8 @@ jobs:
       # Run every matrix version even if one fails, so we see the full picture.
       fail-fast: false
       matrix:
-        # Node 22 = current LTS, Node 24 = latest stable.
-        node-version: ["22", "24"]
+        # Node 24 = oldest supported (package.json "engines"), Node 26 = newest supported.
+        node-version: ["24", "26"]
 
     steps:
       - name: Checkout repository

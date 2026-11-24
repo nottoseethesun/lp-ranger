@@ -20,7 +20,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 
 ## Stack
 
-- **Runtime:** Node.js ≥ 22 (no framework)
+- **Runtime:** Node.js ≥ 24 (no framework)
 - **HTTP server:** Node built-in `http` module (`src/server.js`) — dashboard + bot auto-start
 - **Bot loop:** `src/lib/bot-loop.js` — shared rebalance logic (used by both src/server.js and src/bot.js)
 - **Bot (headless):** `src/bot.js` — standalone bot without dashboard UI
@@ -35,7 +35,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 - **Linter:** ESLint v10 flat config (`eslint.config.js`) + stylelint (`stylelint-config-standard`)
 - **Dead code:** knip (devDependency) for unused files; a madge walk from the app's entry points for a module under `src/` only tests load
 - **Tests:** Node built-in `node:test` runner + ganache (in-memory EVM for blockchain mocks)
-- **CI:** GitHub Actions (`.github/workflows/ci.yml`) — lint → test (Node 22/24 matrix)
+- **CI:** GitHub Actions (`.github/workflows/ci.yml`) — lint → test (Node 24/26 matrix)
 
 ---
 
@@ -44,7 +44,7 @@ Accumulated context — decisions, user preferences, open items: [docs/claude/me
 ```text
 9mm-manager/
 ├── .env.example                  # All config keys with defaults and comments
-├── .github/workflows/ci.yml      # CI: lint → test (Node 22/24 matrix)
+├── .github/workflows/ci.yml      # CI: lint → test (Node 24/26 matrix)
 ├── .github/pages-site.yml       # Declarative spec for the GitHub Pages site; read by scripts/build-pages-site.js
 ├── eslint.config.js              # ESLint v10 flat config, complexity ≤17, max-lines ≤500
 ├── package.json                  # Scripts: start, dev, bot, stop, lint, lint:fix, test, test:coverage, test:watch, check

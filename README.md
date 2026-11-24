@@ -3,7 +3,7 @@
 ![LP Ranger banner: the name in Western-style lettering around a purple star, with "Auto-Rebalancer w/ P&L" beneath.](./assets/lp-ranger-readme-banner.png "LP Ranger Banner")
 
 [![Lint (JS+CSS+MD)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/ci.yml?branch=main&label=lint)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/ci.yml)
-[![Tests (Node 22/24)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/ci.yml)
+[![Tests (Node 24/26)](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/ci.yml?branch=main&label=tests)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/ci.yml)
 [![Security Audit](https://img.shields.io/github/actions/workflow/status/nottoseethesun/lp-ranger/security-audit.yml?branch=main&label=security)](https://github.com/nottoseethesun/lp-ranger/actions/workflows/security-audit.yml)
 
 ## Overview
@@ -84,7 +84,7 @@ and the responsive layout &mdash; see the
   - Known working light-weight computer: Raspberry Pi 5 (recommended configuration: with Heat Sink and Fan, 5GB RAM, and Ethernet cable Internet connection instead of Wi-Fi).
     - If using a lightweight machine such as a Raspberry Pi 5, avoid all unnecessary software, including any unnecessary browser extensions. You can install browser extensions if you need them, but simply disable them in the Web browser so that they don't soak up memory and CPU when you don't need to use them.
   - Machine must be kept secure: Up-to-date with updates, free of malware, and physically secure.
-- Node.js 22+
+- Node.js 24+
   - For Linux (including for arm64 versions of Raspberry Pi), Mac, install:
     1. <https://brew.sh/>
     2. <https://formulae.brew.sh/formula/node#default>

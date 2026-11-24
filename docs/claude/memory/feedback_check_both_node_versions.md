@@ -1,27 +1,28 @@
 ---
 name: feedback_check_both_node_versions
-description: "`npm run check` runs on whichever Node is on PATH; CI runs a 22/24 matrix. Green locally never means green in CI. Node 22 lives at ~/.nvm/versions/node/v22.23.1/bin — run the whole gate under it too (PATH first), never the raw suite, which writes operator caches."
+description: "`npm run check` runs on whichever Node is on PATH; CI runs a 24/26 matrix (22/24 until 2026-11-23). Green locally never means green in CI. Node 26 lives at ~/.nvm/versions/node/v26.13.1/bin — run the whole gate under it too (PATH first), never the raw suite, which writes operator caches."
 metadata:
   node_type: memory
   type: feedback
   originSessionId: 5204a00a-4efb-4764-869d-4cdadbf354e2
-  modified: 2026-10-24T04:55:08.982Z
+  modified: 2026-11-24T02:19:10.575Z
 ---
 
 `npm run check` exercises **one** Node version: whichever is on `PATH`,
 which on this machine is v24. `.github/workflows/ci.yml` runs
-`node-version: ["22", "24"]`. So a local pass says nothing about half
-of CI.
+`node-version: ["24", "26"]`. So a local pass says nothing about half
+of CI. The pair was 22 and 24 until 2026-11-23, when the user shifted
+the supported versions to 24 and 26.
 
 The second one is already installed. Run the whole gate under it, so the
 tests get the gate's protection of operator state:
 
 ```bash
-PATH=$HOME/.nvm/versions/node/v22.23.1/bin:$PATH npm run check
+PATH=$HOME/.nvm/versions/node/v26.13.1/bin:$PATH npm run check
 ```
 
 `scripts/check.js` spawns `node` from `PATH`, so this runs every test on
-Node 22, inside the backup and restore of `app-config/user-configurable/`,
+Node 26, inside the backup and restore of `app-config/user-configurable/`,
 `app-data/` and the scan caches in `app-data/scan-cache/`.
 
 **Never the raw suite instead** (`node --test test/*.test.js`), not even
@@ -50,7 +51,7 @@ failed with it. Nothing local could have caught that, and
 
 **How to apply:**
 
-- Before pushing, run the suite under Node 22 as well. The full gate
+- Before pushing, run the suite under Node 26 as well. The full gate
   (lint, coverage, audits) only needs to run once; it is the *tests*
   that differ by version.
 - Suspect this immediately when CI splits by Node version while local
@@ -59,5 +60,10 @@ failed with it. Nothing local could have caught that, and
   seconds.
 - The class it catches is real beyond the runner: a promise left
   pending, a timer left armed, a `Promise.race` loser still working.
-  Node 22 is stricter about those, so it is worth having as a check on
-  exactly the defects [[project_total_rpc_outage_oom]] came from.
+  It is the class [[project_total_rpc_outage_oom]] came from. Node 22
+  cancelled such a test at once. Node 24 and Node 26 do not: measured
+  2026-11-23 with a test whose promise never settles, each kept the
+  file's process up until it was killed, then reported the same error.
+  The gate sets no test timeout, so on both CI versions such a test now
+  hangs the run instead of failing it. A gate that never finishes is
+  this defect: look for the test file still running.
