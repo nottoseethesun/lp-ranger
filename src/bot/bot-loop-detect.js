@@ -295,8 +295,9 @@ async function _tryInitPnlTracker(
     log.warn("[bot] Could not fetch token prices — P&L tracking disabled");
   } catch (err) {
     /*- The pool-state errors are user-actionable (manage fails, dialog
-     *  shown).  Re-throw so they propagate up to `handleManage`'s catch
-     *  in `position-states.js`.  Other errors (price-fetch failures,
+     *  shown).  Re-throw so they propagate up to Manage's catch, `_start`
+     *  in `position-lifecycle.js`, which answers `pool-info-unavailable`.
+     *  Other errors (price-fetch failures,
      *  generic RPC hiccups) keep the historical swallow-and-return-null
      *  behaviour so the bot can run with PnL tracking disabled rather
      *  than refusing to manage. */

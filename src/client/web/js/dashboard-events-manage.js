@@ -296,12 +296,13 @@ export function _handleManageFailure(verb, payload, active, tell = alert) {
   try {
     /*- Normalize the payload: accept legacy bare strings (network
      *  errors, HTTP-status-only fallbacks) and the new structured body
-     *  emitted by `handleManage` (`{ error, message, tokenId }`). */
+     *  the server sends from the bot's Manage (`manage` in
+     *  src/bot/position-lifecycle.js) (`{ error, message, tokenId }`). */
     const isObj = payload && typeof payload === "object";
     const code = isObj ? payload.error : payload;
     const message = isObj ? payload.message : payload;
     log.warn("[lp-ranger] [manage] %s failed: %s", verb, code || message);
-    /*- `pool-info-unavailable` (503 from handleManage when the position's
+    /*- `pool-info-unavailable` (503 from Manage when the position's
      *  pool, or the pool's state, could not be read) is shown in a
      *  dedicated warning modal so the raw error message can be displayed
      *  in a scrollable code block.  Other failures keep the alert() path. */
@@ -532,7 +533,7 @@ export async function _toggleManagePosition() {
    *  the SERVER currently has it in the managed set (it may, if a
    *  prior re-open started the bot loop but the rebalance aborted).
    *  The re-open flow always sends `forceRebalance: true`, and
-   *  `handleManage` honors that on already-running positions via
+   *  the bot's Manage honors that on already-running positions via
    *  `_stampReopenFlagsOnLive`, so this is the correct path for
    *  both "fresh auto-retired" and "running-but-aborted" closed
    *  positions.  Without this branch the user would fall through

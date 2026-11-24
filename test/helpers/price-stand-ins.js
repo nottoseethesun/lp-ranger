@@ -18,7 +18,9 @@
  *
  *   The modules that read a price take the lookup when they load, so a
  *   test file requires this before any of them: at its top, after any
- *   setting the file moves and before anything else under src/lib/.
+ *   setting the file moves and before any bot module (src/bot/, where
+ *   the price readers are) or a module that loads one, such as the bot's
+ *   interface or a server route.
  */
 
 const config = require("../../src/lib/config");

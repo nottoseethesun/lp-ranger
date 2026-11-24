@@ -4,8 +4,8 @@
 #
 # Assembles the site from docs/ (images, architecture docs) plus src/client/web/
 # (help-and-user-manual.html, CSS, fonts) so there are no duplicate files in the repo.
-# The help-and-user-manual.html CSS paths are rewritten from absolute (/style.css) to
-# relative (style.css) since GitHub Pages serves under /lp-ranger/.
+# The help-and-user-manual.html CSS paths are rewritten from absolute (/css/style.css) to
+# relative (css/style.css) since GitHub Pages serves under /lp-ranger/.
 
 name: Deploy GitHub Pages
 

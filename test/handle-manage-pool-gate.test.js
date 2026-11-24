@@ -5,8 +5,10 @@
  *   position in a pool that already has a running one.
  *
  *   `test/pool-already-managed.test.js` pins the decision itself. This
- *   file pins the wiring — that `handleManage` consults it, refuses
- *   before anything starts, and leaves nothing behind.
+ *   file pins the wiring — that the bot's Manage (`manage` in
+ *   src/bot/position-lifecycle.js, driven here through the Manage route
+ *   the test adapters build) consults it, refuses before anything
+ *   starts, and leaves nothing behind.
  *
  *   Helpers mirror `test/handle-manage-pool-state-err.test.js`, which
  *   duplicates them from `test/server-positions.test.js` on purpose so

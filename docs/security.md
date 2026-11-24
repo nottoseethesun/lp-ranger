@@ -410,7 +410,7 @@ workflows, depending on how you run LP Ranger:
 Both workflows produce the same file and use the same password.
 There is no separate "CLI password" or "dashboard password."
 
-[`src/bot/bot-cycle.js`](../src/bot/bot-cycle.js)'s `resolvePrivateKey()`
+[`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js)'s `resolvePrivateKey()`
 picks the signing-key source in fixed priority:
 `PRIVATE_KEY` (plaintext hex in `.env` — *not recommended*) →
 encrypted wallet unlocked by `WALLET_PASSWORD` env var, `--headless`

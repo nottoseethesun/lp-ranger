@@ -3,8 +3,8 @@
  * @module scan-state
  * @description
  * Whether a scan is running on a position, and whether one may start:
- * the one answer every caller asks, from the server's routes to the bot
- * loop's own gates. Dependency-free; it reads and writes only the
+ * the one answer every caller asks, from the bot's operations the server
+ * calls through its interface to the bot loop's own gates. Dependency-free; it reads and writes only the
  * position's bot state.
  *
  * A scan pass reads the chain and rebuilds the position's figures

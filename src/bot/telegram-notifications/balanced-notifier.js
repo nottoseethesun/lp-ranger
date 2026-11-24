@@ -7,8 +7,10 @@
  * within `positionBalancedBandPct` points of 50/50 (±2.5 as shipped, so
  * ratio0 ∈ [0.475, 0.525]).  Pure logic module — no module-level
  * mutable state; per-position transient state lives on `botState` (set
- * up in `src/bot/position-states.js`).  Lives under `src/lib/telegram-notifications/`
- * alongside the rest of the Telegram surface.
+ * up in `src/bot/position-states.js`).  Lives under
+ * `src/bot/telegram-notifications/`, beside the bot's other Telegram
+ * alerts; the parts both programs share are in
+ * `src/lib/telegram-notifications/`.
  *
  * Trigger semantics:
  *   - Edge-trigger: notify only on FALSE→TRUE entry into the band.

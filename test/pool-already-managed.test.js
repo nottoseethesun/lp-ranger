@@ -8,8 +8,9 @@
  *   The rule exists for attribution: two positions open in the same pool
  *   hold indistinguishable tokens in the same wallet, so gains moving
  *   between them cannot be assigned to either, and residual coins cannot
- *   be allocated. These tests pin the decision itself; `handleManage`
- *   and auto-start are the two callers that act on it.
+ *   be allocated. These tests pin the decision itself; the bot's Manage
+ *   (`manage` in src/bot/position-lifecycle.js) and auto-start are the
+ *   two callers that act on it.
  */
 
 const { describe, it } = require("node:test");

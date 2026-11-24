@@ -81,7 +81,8 @@ let _stickyUntilMs = 0;
 
 /**
  * Register the chain's RPC providers.  Idempotent: safe to call from
- * multiple boot paths (server.js, bot-loop.js, position-manager.js).  A
+ * multiple boot paths (the bot's interface, bot-loop.js,
+ * position-manager.js).  A
  * second call with the SAME URLs is a no-op; a second call with DIFFERENT
  * URLs throws — the process can only have one active RPC pair at a time.
  *

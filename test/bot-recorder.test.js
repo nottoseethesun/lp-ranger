@@ -1,7 +1,8 @@
 /**
  * @file test/bot-recorder.test.js
- * @description Unit tests for pure helper functions in bot-recorder.js:
- *   _bigIntReplacer, _activePosSummary, _collectTokenIds,
+ * @description Unit tests for the BigInt replacer the rebalance log is
+ *   written with (bigIntReplacer, src/lib/bigint-json.js) and for pure
+ *   helper functions in bot-recorder.js: _activePosSummary, _collectTokenIds,
  *   _pushRebalanceEvent, _recordResidual, appendLog, and
  *   _notifyRebalance; and for `updateHodlBaseline`, split out of it into
  *   bot-recorder-baseline.js.

@@ -1171,7 +1171,7 @@
                     },
                     "logo": {
                       "type": "string",
-                      "description": "File name under src/client/web/ of the chain's logo, shown in the dashboard header."
+                      "description": "File name under src/client/web/images/ of the chain's logo, shown in the dashboard header; the page loads it from /images/<logo>."
                     },
                     "tokenListUrl": {
                       "type": "string",
@@ -1378,7 +1378,7 @@
       "get": {
         "summary": "Telegram configuration status",
         "tags": ["Telegram"],
-        "description": "Never returns the token or chat ID — only whether each is stored. balancedThresholdPct and balancedCooldownMs surface code-only constants from balanced-notifier.js so the dashboard can render the checkbox label percent and cadence without a second literal.",
+        "description": "Never returns the token or chat ID — only whether each is stored. balancedThresholdPct and balancedCooldownMs surface positionBalancedBandPct and positionBalancedCooldownMs from bot-config-defaults.json (an operator's copy applied) so the dashboard can render the checkbox label percent and cadence without a second literal.",
         "responses": {
           "200": {
             "description": "Status.",

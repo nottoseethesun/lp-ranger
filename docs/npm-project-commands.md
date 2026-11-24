@@ -60,8 +60,10 @@ npm run debug-bot -- --help
 prints no startup banner — so a help listing can never be mistaken for a
 running process.
 
-The same text is produced by `src/lib/cli-help.js`, so the help output and
-the tables below describe the same flags.
+The text comes from `src/server/server-cli-help.js` (the server's and
+build-and-start's) and `src/bot/bot-cli-help.js` (the headless bot's),
+which share the options and environment in `src/lib/cli-help.js`, so the
+help output and the tables below describe the same flags.
 
 ---
 

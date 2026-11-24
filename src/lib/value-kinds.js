@@ -121,7 +121,7 @@ const _FORMATS = Object.freeze({
   "host-name": isHost,
   "iso-time": (v) => validator.isISO8601(v),
   "lower-case": (v) => v === v.toLowerCase(),
-  // The dashboard loads a chain's logo from src/client/web/ by this name.
+  // The dashboard loads a chain's logo from src/client/web/images/ by this name.
   "public-image": (v) => fs.existsSync(path.join(_IMAGES, v)),
   // A pool factory's address and a position manager's, joined by _.
   "lp-provider-key": (v) => {

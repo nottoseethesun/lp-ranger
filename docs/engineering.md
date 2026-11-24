@@ -2211,8 +2211,9 @@ previous session, and the server may have retired the position while
 the page was closed. Suppressing on it would leave a genuinely
 unmanaged position with nothing to populate its KPIs.
 
-After the first response the value is authoritative. The server's
-`managedPositions` (`src/server/handle-api-status.js`) is the union of live bot
+After the first response the value is authoritative. The status
+answer's `managedPositions` (built by `src/bot/managed-positions.js` for
+the bot's status report; `src/server/handle-api-status.js` sends it) is the union of live bot
 loops **and** positions whose saved status is `running` but whose loop
 has not started yet, so a position the bot is about to pick up already
 reads as managed. This matters because the bot starts positions on a
@@ -2420,7 +2421,7 @@ page with no images whatsoever.
 
 [`scripts/build-pages-site.js`](../scripts/build-pages-site.js) assembles
 those pieces into a target directory, rewriting the absolute, stamped CSS
-hrefs (`/style.css?v=…`) to relative ones and dropping the manual's
+hrefs (`/css/style.css?v=…`) to relative ones (`css/style.css`) and dropping the manual's
 script, which asks the running app.
 [`scripts/show-gallery.js`](../scripts/show-gallery.js) calls it with
 `tmp/gallery-preview/` (gitignored) and serves the result. What you see
@@ -2443,7 +2444,8 @@ resolve.
 **One spec, one builder, two callers.** What gets published is declared
 in [`.github/pages-site.yml`](../.github/pages-site.yml) — the pages,
 each page's stylesheet, the shared absolute-to-relative href rewrites,
-the flat assets, the fonts, and the directory trees. Nothing in that list
+the assets copied beside the pages, each keeping its folder
+(`webAssets`), the fonts, and the directory trees. Nothing in that list
 is restated in JavaScript: `build-pages-site.js` parses the spec and
 executes it, so there is exactly one place to add a page or an asset.
 
@@ -3627,17 +3629,25 @@ dynamic route has to be added there deliberately.
 
 What happens when the process starts, in order:
 
-1. **Colored logging is installed.** `installColorLogger()` from
-   [`src/bot/logger.js`](../src/bot/logger.js) wraps `console.log`/`warn`/`error`
-   so bracketed prefixes like `[server]`, `[bot]`, `[rebalance]` render
-   in distinct colors and module-specific emoji IDs.
-2. **`--help` / `-h` short-circuit.** If the flag is on `argv`,
-   [`src/lib/cli-help.js`](../src/lib/cli-help.js) prints the usage text and the
-   process exits with status 0 — nothing below runs.
+1. **`--help` / `-h` short-circuit.** If the flag is on `argv`,
+   [`src/server/server-cli-help.js`](../src/server/server-cli-help.js)
+   prints the usage text (its shared options and environment from
+   [`src/lib/cli-help.js`](../src/lib/cli-help.js)) and the process
+   exits with status 0 — nothing below runs.
+2. **The log file opens and every setting is checked.**
+   `bootLogFile()` ([`src/lib/boot-log-file.js`](../src/lib/boot-log-file.js))
+   opens the log file when one is asked for, then
+   `refuseToStartOnBadSettings()`
+   ([`src/lib/settings-check.js`](../src/lib/settings-check.js)) names
+   every setting that is wrong and stops the process if there is one.
+   Every line goes through [`src/lib/log.js`](../src/lib/log.js), which
+   colors bracketed prefixes like `[server]`, `[bot]`, `[rebalance]`.
 3. **Core modules are required.** `http`, `fs`, `path`, then the app's
    own modules: `config` (env-var parsing), `walletManager`,
-   `position-history`, `rebalance-lock`, `position-manager`,
-   `bot-config-v2`, `migrate-app-config`. Requiring `src/lib/config.js`
+   `bot-config-v2`, `migrate-app-config`, the server's own modules in
+   `src/server/`, and the bot's interface,
+   [`src/bot/bot-interface.js`](../src/bot/bot-interface.js), the one
+   bot module the server loads. Requiring `src/lib/config.js`
    also loads `app-config/app-defaults-for-user-configurable/chains.json` for the current
    `CHAIN_NAME`, and runs the startup checks that stop the process on a
    setting outside its range (see
@@ -3648,14 +3658,17 @@ What happens when the process starts, in order:
    `app-config/`. Idempotent — a no-op after the first successful run.
    See the [The `app-config` Directory](#the-app-config-directory)
    section for details.
-5. **Module-level singletons are created.** A single `rebalanceLock`
-   (async mutex) and a single `positionManager` are instantiated and
-   shared by every route handler and bot loop in the process.
-6. **On-disk bot config is loaded.** `loadConfig()` reads
+5. **On-disk bot config is loaded.** `loadConfig()` reads
    `app-config/user-configurable/bot-config.json`. Every managed position's composite
    key and `status` is logged so config-stomp incidents are visible in
    the console at boot. A successful load also writes the sibling
    `app-config/user-configurable/bot-config.backup.json` as a safety net.
+6. **The bot is built.** `createBot()` puts the rpc endpoints into
+   service, reads the price library's cache lifetimes, makes the single
+   rebalance lock (async mutex) and position manager every bot loop in
+   the process shares, and seeds today's per-pool rebalance counts from
+   the rebalance log. Every route asks the bot for what it needs through
+   the operations `createBot` returns.
 7. **The HTTP server is created.** `http.createServer(handleRequest)`
    builds the server object. `requestTimeout` is left at Node's own
    default: it bounds how long a client may take to **send** a request,
@@ -3674,18 +3687,20 @@ What happens when the process starts, in order:
       resolved, which can wait on a prompt, so a signal during a slow
       start still shuts down cleanly. The handler marks the app
       stopping for good, so no position starts and no move begins
-      after it (src/bot/app-phase.js), sends the shutdown alert, starts
-      `_positionMgr.stopAll()`, closes the HTTP server,
+      after it (`_bot.markStopping()`, src/bot/app-phase.js), sends the
+      shutdown alert, starts `_bot.stopAll()`, closes the HTTP server,
       and exits within `shutdown.exitTimeoutMs` (three seconds as
       shipped) whether or not a rebalance or compound has finished.
       `npm run gentle-stop` is the stop that waits for one, and for a
       scan under way.
-   3. `_tryResolveKey()` tries to obtain the wallet private key —
-      either from `PRIVATE_KEY` in `.env`, from a
+   3. `_tryResolveKey()` (src/server/server-routes.js) tries to obtain
+      the wallet private key — either from `PRIVATE_KEY` in `.env`, from a
       `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or from
       an interactive prompt.
-      - On success: `_autoStartManagedPositions()` spins up one bot
-        loop per position whose v2 config has `status: 'running'`, on
+      - On success: it hands the bot the key (`setPrivateKey`) and asks
+        it to start the positions saved as managed
+        (`startManagedPositions`), one bot loop per position whose v2
+        config has `status: 'running'`, on
         this chain and in this wallet (src/bot/auto-start.js). The
         starts are staggered by the poll interval divided by the
         number of positions (150 seconds apart for two at the default
@@ -3701,10 +3716,14 @@ What happens when the process starts, in order:
 
 The dashboard is served as static files from `src/client/web/` by `serveStatic()`;
 all JSON APIs are dispatched by `handleRequest()` through a route table
-that maps method+path to handlers defined in
-[`src/server/server-routes.js`](../src/server/server-routes.js),
-[`src/bot/position-states.js`](../src/bot/position-states.js) and the other
-`src/lib/` route modules. The full route surface is covered by the OpenAPI
+that maps method+path to handlers in `src/server/`:
+[`server-routes.js`](../src/server/server-routes.js),
+[`position-routes.js`](../src/server/position-routes.js),
+`position-state-routes.js`, `user-configurable-routes.js`,
+`server-pause.js`, `server-unlock.js` and `handle-api-status.js`. Each
+reads the request, asks the bot through its interface and answers; the
+bot's refusals become statuses in
+[`src/server/bot-result.js`](../src/server/bot-result.js). The full route surface is covered by the OpenAPI
 spec (see [API Documentation](#api-documentation) above).
 
 ---
@@ -4142,13 +4161,15 @@ themselves.
 
 When `_tryInitPnlTracker` (`src/bot/bot-loop-detect.js`) sees a Pool*Error
 from `getPoolState`, it **re-throws** (the catch otherwise swallows
-everything and returns null). The throw propagates to `handleManage`
-in `src/bot/position-states.js`, which:
+everything and returns null). The throw propagates to Manage's start,
+`_start` in `src/bot/position-lifecycle.js`, which:
 
-1. Discriminates the error type and returns **`HTTP 503`** with body
-   `{ ok: false, error: "pool-info-unavailable", message: err.message, tokenId }`.
+1. Discriminates the error type (`_startFailure`) and returns the reason
+   `unavailable` with `{ error: "pool-info-unavailable", message: err.message, tokenId }`,
+   which the server answers as **`HTTP 503`** with that body
+   (`src/server/bot-result.js`).
 2. Runs the existing cleanup (drops the in-memory bot state, restores
-   prior disk-config status, clears the `_starting` Set guard), so a
+   prior disk-config status, clears its entry in the `_starting` map), so a
    subsequent Manage click starts from a clean slate.
 
 The dashboard's `_handleManageFailure` in
@@ -4212,10 +4233,11 @@ bot loop directly:
    (Bot Configuration → Range) as any rebalance does. With No Override
    on, or no width saved, the rebalancer preserves the on-chain tick
    spread via `preserveRange()`. `liquidity` is deliberately omitted:
-   `handleManage`'s autoCompound-default branch keys off
+   the autoCompound-default branch of Manage's start (`_start` in
+   `src/bot/position-lifecycle.js`) keys off
    `body.liquidity === "0"` and would persist
    `autoCompoundEnabled: false`, wrong for an actively-managed
-   re-open. `handleManage` stamps `forceRebalance` on the fresh
+   re-open. `_start` stamps `forceRebalance` on the fresh
    `posBotState` BEFORE starting the bot loop (via
    `_stampReopenFlags`), so the bot's first `pollCycle` sees the flag
    and `bot-cycle-drain.js`'s drain guard lets the rebalance pipeline
@@ -4223,7 +4245,7 @@ bot loop directly:
    timer.
    If the position is ALREADY running (e.g. the user comes back to
    Manage after a prior re-open's swap aborted on slippage),
-   `handleManage`'s "already running, skipping" short-circuit instead
+   Manage's "already running, skipping" short-circuit (`manage`) instead
    routes through `_stampReopenFlagsOnLive`, which stamps the flag
    onto the live posBotState AND clears
    `rebalancePaused` / `rebalanceFailedMidway` / `rebalanceError` so
@@ -4241,8 +4263,8 @@ user knows exactly what they need to fund. No state change.
 For a closed position **Rebalance is disabled** (a drained NFT has no
 liquidity to remove), and **Manage is enabled** and routes through the
 flow above. See `src/client/web/js/dashboard-data.js`
-`_updateRebalanceButtons` and `src/client/web/js/dashboard-manage-badge.js` for
-the button-state logic.
+`_updateRebalanceButtons` and `src/client/web/js/dashboard-manage-ui.js`
+(`computeManageUI`) for the button-state logic.
 
 ## Error Log & Reload Current Position
 
@@ -4329,9 +4351,9 @@ it can fire again on a fresh failure.
 ### `POST /api/position/reload`
 
 **Owner:** `src/bot/reload-position.js` &mdash;
-`createReloadPositionHandler(deps)`. Wired into
-`server-routes.js` and registered as
-`"POST /api/position/reload"` in `src/server.js`.
+`createReloadPosition(deps)`, which returns a result for the bot's
+`reloadPosition` operation (src/bot/bot-interface.js). The route,
+`"POST /api/position/reload"`, is in `src/server/position-routes.js`.
 
 **Body:** `{ positionKey }`. CSRF-gated like every other write route.
 

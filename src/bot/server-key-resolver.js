@@ -2,10 +2,10 @@
  * @file src/bot/server-key-resolver.js
  * @module server-key-resolver
  * @description
- * Pure helpers for resolving a possibly-stale composite key (captured
- * by an async request handler at entry time) to the live key currently
- * in use by `positionMgr`, after one or more key migrations may have
- * occurred during the handler's awaits.
+ * Pure helpers for resolving a possibly-stale composite key (taken from
+ * a request when it arrived) to the live key currently in use by
+ * `positionMgr`, after one or more key migrations may have occurred
+ * during the operation's awaits.
  *
  * **Adds zero state.**  Reads existing structures only:
  *   - `positionMgr.get` / `positionMgr.getAll` (already exists).
@@ -14,12 +14,14 @@
  *     `updatePositionState` re-keys the state object under the new
  *     key without copying the events).
  *
- * Callers: every request handler that captures a composite key from
- * the request body and writes to disk after a long await — see
- * `handleRemove`, `_handleApiConfig`, `_handlePositionLifetime`,
- * `_handlePositionScanCancel`.  `handleManage` does NOT use this
- * because it has its own `keyRef.current` already in scope (the
- * single-callback pattern wired at startBotLoop).
+ * Callers: every bot operation that takes a composite key from the
+ * request and writes to disk after a long await — the settings save
+ * (src/bot/settings-save.js), the lifetime view
+ * (src/bot/position-views.js), the scan cancel (src/bot/wallet-scan.js),
+ * and Reload and Re-scan Prices (src/bot/reload-position.js).  Manage
+ * (src/bot/position-lifecycle.js) does NOT use this, because it has its
+ * own `keyRef.current` already in scope (the single-callback pattern
+ * wired at startBotLoop).
  */
 
 "use strict";

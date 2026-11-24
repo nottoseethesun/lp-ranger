@@ -153,8 +153,8 @@ Each managed position runs its own independent `startBotLoop()` instance.
 Every poll cycle (default 300 seconds), the bot reads the pool's current state
 from the blockchain, computes P&L, and writes the results to an in-memory
 state map via an `updateBotState` callback. When the dashboard polls
-`GET /api/status`, the server reads this map and returns the full state for
-all positions.
+`GET /api/status`, the server asks the bot for its report, which the bot
+builds from this map, and returns the full state for all positions.
 
 The dashboard flattens the response, matches it to the currently-viewed
 position by composite key (`blockchain-wallet-contract-tokenId`), and updates
@@ -165,8 +165,9 @@ refresh picks up exactly where it left off.
 
 User actions flow in the opposite direction as HTTP POST/DELETE requests.
 When the user clicks "Manage" on a position, the dashboard sends
-`POST /api/position/manage { tokenId }`. The server starts a new bot loop
-for that position and responds with success. When the user saves a slippage
+`POST /api/position/manage { tokenId }`. The server asks the bot to manage
+it; the bot starts a new bot loop for that position, and the server
+responds with success. When the user saves a slippage
 setting, the dashboard sends `POST /api/config { slippagePctToken0,
 positionKey }` (or `slippagePctToken1`), and the server updates the
 per-position config on disk.
@@ -564,10 +565,10 @@ nobody reads. The idle-driven pause stops the cascade in those windows
 while keeping it instantly available for any move.
 
 All gating happens at the public API of `src/bot/price-fetcher.js`, before the
-source cascade. The same module is required by both the bot tier
-(rebalance / compound hot path) and the server tier (view-only endpoints
-for unmanaged-position detail and closed-position history) — it is the
-single chokepoint. Adding or removing a price source later requires zero
+source cascade. Every price the app fetches goes through it: the
+rebalance / compound hot path, and the view-only answers for
+unmanaged-position detail and closed-position history, which the server
+asks the bot for through its interface — it is the single chokepoint. Adding or removing a price source later requires zero
 changes here.
 
 These set the pause flag, or bypass it:

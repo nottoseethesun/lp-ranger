@@ -19,7 +19,7 @@
   "copyFeedbackMs": 1200,
   "_heapLogIntervalMs_comment": "How often, in milliseconds, the dashboard logs its JavaScript heap size to the browser console (600000 = ten minutes). It is meant to stay open for days, so a figure rising for hours points at a leak. Chrome only. Read by src/client/web/js/dashboard-init.js.",
   "heapLogIntervalMs": 600000,
-  "_dashboardPollIntervalMs_comment": "How often, in milliseconds, the dashboard asks GET /api/status for fresh figures; Reload Current Position checks on its scan at the same pace. The server judges from it when the dashboard has had time to poll (src/lib/config.js), so the two agree. Read by src/client/web/js/dashboard-data-poll.js and src/client/web/js/dashboard-reload-flow.js.",
+  "_dashboardPollIntervalMs_comment": "How often, in milliseconds, the dashboard asks GET /api/status for fresh figures; Reload Current Position checks on its scan at the same pace. The bot judges from it when the dashboard has had time to poll (src/bot/dashboard-has-polled.js), so the two agree. Read by src/client/web/js/dashboard-data-poll.js and src/client/web/js/dashboard-reload-flow.js.",
   "dashboardPollIntervalMs": 3000,
   "_staleDataCheckIntervalMs_comment": "How often, in milliseconds, the dashboard checks whether the figures it shows are still another position's: from a switch to another position until the server answers about it, every figure shows a plain dash and every button is disabled, except in the disclaimer and the wallet unlock. Read by src/client/web/js/dashboard-stale-data.js.",
   "staleDataCheckIntervalMs": 50,

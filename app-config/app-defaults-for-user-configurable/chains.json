@@ -2,7 +2,7 @@
   "pulsechain": {
     "chainId": 369,
     "displayName": "PulseChain",
-    "_description_comment": "How the app names and describes this chain. homepage and logo (a file under src/client/web/) make the chain link in the dashboard header. blockTimeSec, the chain's average seconds per block, turns spans of time into block counts. nativeCurrencySymbol names the native token in messages and logs. cacheTag names the chain in cache file names and cache keys: lower-case letters and digits, and distinct from every other chain's, since two chains with one tag would share their caches. PulseChain's is pulse, the tag its existing caches carry, so changing it orphans them and forces a full re-scan. None of these has a fallback: an entry that leaves one out stops the app at startup, naming it.",
+    "_description_comment": "How the app names and describes this chain. homepage and logo (a file under src/client/web/images/) make the chain link in the dashboard header. blockTimeSec, the chain's average seconds per block, turns spans of time into block counts. nativeCurrencySymbol names the native token in messages and logs. cacheTag names the chain in cache file names and cache keys: lower-case letters and digits, and distinct from every other chain's, since two chains with one tag would share their caches. PulseChain's is pulse, the tag its existing caches carry, so changing it orphans them and forces a full re-scan. None of these has a fallback: an entry that leaves one out stops the app at startup, naming it.",
     "homepage": "https://pulsechain.com/",
     "logo": "pulsechain-logo-transparent.png",
     "tokenList": {

@@ -4,9 +4,10 @@
  * @description
  * The bot's interface: the one module of the bot that the server loads,
  * and the one way both programs build the bot. `createBot` builds it —
- * its rpc providers, its position manager and rebalance lock, the key it
- * signs with — and returns what a caller may ask of it: start and stop
- * positions, make a move, read a position from the chain, scan the
+ * its rpc providers, its position manager and rebalance lock — and
+ * returns what a caller may ask of it: take the key it signs with
+ * (`setPrivateKey`; the shared signer is built from it on first ask),
+ * start and stop positions, make a move, read a position from the chain, scan the
  * wallet, save settings, report its state, and pause its price lookups.
  * Everything behind it is the bot's own, and the server reaches none of
  * it but through here. The headless bot (src/bot.js) builds its bot here
@@ -62,8 +63,7 @@ const { underWay, scansEnded } = require("./under-way");
  * rebalances against it).
  *
  * `createBot` is its one caller in the app, so the server and the
- * headless bot build the parts the same way; the headless bot once built
- * them itself and left the count unseeded (Bug #19).
+ * headless bot build the parts one way, the count included.
  *
  * @returns {{ positionMgr: object }}  The parts `botOperations` works over.
  */
@@ -114,7 +114,10 @@ function createBot(opts) {
  * @param {{current: (string|null)}} [parts.privateKeyRef]  Where the key
  *   the bot signs with is kept; a new one, empty, unless given.
  * @param {Function} [parts.getAllPositionBotStates]  The per-position bot
- *   states; the bot's own unless given.
+ *   states the moves, the wallet scan, the views, Reload, Re-scan Prices,
+ *   the settings save, the stop's check and the start-up read; the bot's
+ *   own unless given. Manage, Stop Managing, the managed list and the
+ *   status report always read the bot's own (src/bot/position-states.js).
  * @param {Function} [parts.createPerPositionBotState]  The start-up's
  *   state helpers; the bot's own unless given.
  * @param {Function} [parts.attachMultiPosDeps]

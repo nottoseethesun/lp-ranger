@@ -2,8 +2,9 @@
  * @file src/server/bot-result.js
  * @description How the server answers with what the bot returned. A bot
  * operation (src/bot/bot-interface.js) knows nothing of HTTP: it returns
- * `ok: true` with the answer's fields, or `ok: false` with one of four
- * reasons beside them. This module is the one place a reason becomes an
+ * `ok: true` with the answer's fields, or `ok: false` with one of five
+ * reasons beside them (`invalid`, `missing`, `refused`, `unavailable`,
+ * `failed`). This module is the one place a reason becomes an
  * HTTP status; the reason itself is the server's to read and is left out
  * of the answer, which keeps the fields the bot gave it.
  *

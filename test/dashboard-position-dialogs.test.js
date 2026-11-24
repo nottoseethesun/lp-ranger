@@ -3,8 +3,9 @@
 /**
  * @file test/dashboard-position-dialogs.test.js
  * @description When another position comes on screen, every dialog that
- *   belonged to the one before closes (src/client/web/dashboard-position-
- *   dialogs.js), as the user decided on 2026-10-18. A dialog's Save acts
+ *   belonged to the one before closes
+ *   (src/client/web/js/dashboard-position-dialogs.js), as the user
+ *   decided on 2026-10-18. A dialog's Save acts
  *   on the position on screen when it is clicked, so a dialog left open
  *   across a switch, by the browser's Back button say, would save the
  *   first position's prices or decimals under the second.
