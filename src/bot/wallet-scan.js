@@ -538,7 +538,7 @@ function createWalletScan(deps) {
       }
     }
     log.info(
-      "[server] scan-cancel pool=%s/%s fee=%s aborted=%s flagReset=%s",
+      "[bot] scan-cancel pool=%s/%s fee=%s aborted=%s flagReset=%s",
       token0.slice(0, 8),
       token1.slice(0, 8),
       fee,

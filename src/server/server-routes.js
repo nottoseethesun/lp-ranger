@@ -106,7 +106,7 @@ function createRouteHandlers(deps) {
       bot.setPrivateKey(
         (await walletManager.revealWallet(body.password)).privateKey,
       );
-      log.info("[bot] Loading key from imported wallet");
+      log.info("[server] Loading key from imported wallet");
       _decryptApiKeys(body.password).catch(() => {});
       await bot.startManagedPositions();
     } catch (err) {

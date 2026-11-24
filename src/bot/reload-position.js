@@ -265,7 +265,7 @@ function _performReset(diskConfig, liveKey, state, position, wallet) {
    *  the scan: on-chain Transfer events are immutable, so a partial
    *  overlap only affects the LP performance cache, never correctness. */
   clearPoolCache(position, wallet).catch((err) => {
-    log.warn("[server] clearPoolCache failed (non-fatal): %s", err.message);
+    log.warn("[bot] clearPoolCache failed (non-fatal): %s", err.message);
   });
   /*- Starts the scan synchronously (before the first `await` in the
    *  trigger's body), engaging the rebalance/compound gates immediately
@@ -274,7 +274,7 @@ function _performReset(diskConfig, liveKey, state, position, wallet) {
    *  the HTTP response must not block on it. */
   if (state && typeof state._triggerScan === "function") {
     state._triggerScan().catch((err) => {
-      log.warn("[server] Reload scan trigger failed: %s", err.message);
+      log.warn("[bot] Reload scan trigger failed: %s", err.message);
     });
   }
 }
@@ -306,7 +306,7 @@ function createReloadPosition(deps) {
     const guard = _checkInProgress(r.state);
     if (guard) return guard;
     log.info(
-      "[server] [reload] %s: reset + trigger requested",
+      "[bot] [reload] %s: reset + trigger requested",
       logCtx({
         chain: config.CHAIN_NAME,
         wallet,

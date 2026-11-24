@@ -111,7 +111,7 @@ function createAutoStartManagedPositions(deps) {
       });
     } catch (err) {
       log.warn(
-        "[server] Shared signer init failed: %s —" +
+        "[bot] Shared signer init failed: %s —" +
           " positions will start without injected signer",
         err.message,
       );
@@ -128,7 +128,7 @@ function createAutoStartManagedPositions(deps) {
   function _dropFromList(key, why) {
     const nft = _nftOf(key);
     log.warn(
-      "[server] auto-start: %s cannot be managed: %s; taken off the managed positions",
+      "[bot] auto-start: %s cannot be managed: %s; taken off the managed positions",
       nft,
       why,
     );
@@ -156,7 +156,7 @@ function createAutoStartManagedPositions(deps) {
       else {
         const nft = _nftOf(key);
         log.warn(
-          "[server] auto-start: could not read who owns %s: %s; not started, it stays on the list for the next launch",
+          "[bot] auto-start: could not read who owns %s: %s; not started, it stays on the list for the next launch",
           nft,
           err.message,
         );
@@ -206,7 +206,7 @@ function createAutoStartManagedPositions(deps) {
     } catch (err) {
       const nft = _nftOf(key);
       log.warn(
-        "[server] auto-start: %s failed to start: %s; it stays on the list for the next launch",
+        "[bot] auto-start: %s failed to start: %s; it stays on the list for the next launch",
         nft,
         err.message,
       );
@@ -245,7 +245,7 @@ function createAutoStartManagedPositions(deps) {
       if (pool === null) {
         const nft = _nftOf(key);
         log.warn(
-          "[server] auto-start: %s not started, since its pool could not be read; it stays on the list for the next launch",
+          "[bot] auto-start: %s not started, since its pool could not be read; it stays on the list for the next launch",
           nft,
         );
         continue;
@@ -292,7 +292,7 @@ function createAutoStartManagedPositions(deps) {
     const pc = getPositionConfig(diskConfig, key);
     if (pc === null || pc.status !== "running") {
       const nft = _nftOf(key);
-      log.info("[server] auto-start: %s is no longer saved as managed", nft);
+      log.info("[bot] auto-start: %s is no longer saved as managed", nft);
       return;
     }
     await _startOne(key, pc, ctx.shared);
@@ -333,7 +333,7 @@ function createAutoStartManagedPositions(deps) {
     const keys = _keysForThisLaunch(wAddr);
     if (!beginStartUp(keys.length)) {
       log.info(
-        "[server] Not starting the managed positions: a start-up is under way, or LP Ranger is stopping",
+        "[bot] Not starting the managed positions: a start-up is under way, or LP Ranger is stopping",
       );
       return;
     }
@@ -359,7 +359,7 @@ function createAutoStartManagedPositions(deps) {
         cnt > 1 ? Math.floor((config.CHECK_INTERVAL_SEC * 1000) / cnt) : 0;
       for (let i = 0; i < cnt; i++) {
         if (i > 0 && stMs > 0) {
-          log.info("[server] Stagger: %dms before %d/%d", stMs, i + 1, cnt);
+          log.info("[bot] Stagger: %dms before %d/%d", stMs, i + 1, cnt);
           await new Promise((r) => setTimeout(r, stMs));
         }
         if (isStopping()) break;
@@ -367,7 +367,7 @@ function createAutoStartManagedPositions(deps) {
         noteStartUpProgress(++done);
       }
       log.info(
-        "[server] Auto-started %d of %d positions",
+        "[bot] Auto-started %d of %d positions",
         positionMgr.runningCount(),
         keys.length,
       );

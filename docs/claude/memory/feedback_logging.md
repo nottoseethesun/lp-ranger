@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-24T05:24:12.652Z
+  modified: 2026-11-24T06:47:28.016Z
 ---
 
 # Logging
@@ -67,3 +67,18 @@ Required fields in every such log line:
 Always add meaningful logs to new features. User said "add good logs dude" when the fresh deposit detection had no visibility into what was happening.
 **Why:** Without logs, debugging requires guesswork. The user monitors the server console to verify correctness.
 **How to apply:** Log key decision points: what was found, what was filtered, what was counted, final totals. Include identifying info (TX hashes, block numbers, amounts, USD values). Use `[prefix]` tags consistently (e.g., `[hodl]`, `[deposit]`).
+
+## the prefix names the part of the app
+
+A bot module's log lines open `[bot]` (or a bot subsystem tag), never
+`[server]`; a server module's open `[server]`, never `[bot]`; a src/lib/
+module, which both programs load, uses its own subsystem tag and neither.
+**Why:** the user, 2026-11-24, after the separation refactor moved code
+between the parts: "Did you check all the logging to make sure that the
+correct `[...] ` log line prefix classifier is used, now that a lot of code
+has been moved from one of the four major sections (bot, server, client,
+lib) to another?" I had not; 23 bot lines still read `[server]`, the
+start-up's among them, printing `[server]` in the headless bot.
+**How to apply:** when code moves between src/bot/, src/server/ and
+src/lib/, change its log prefixes in the same change.
+test/log-prefix-by-part.test.js fails on a wrong one.

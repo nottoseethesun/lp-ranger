@@ -185,7 +185,7 @@ function createRescanPrices(deps) {
         ? readBotConfigDefaults().rescanPricesRecentWindowDays
         : 0;
     log.info(
-      "[server] [rescan-prices] %s: re-valuing every stored figure at fresh prices%s",
+      "[bot] [rescan-prices] %s: re-valuing every stored figure at fresh prices%s",
       cx,
       includeEpochs
         ? windowDays > 0
@@ -208,7 +208,7 @@ function createRescanPrices(deps) {
     if (typeof r.state._triggerScan === "function") {
       r.state._triggerScan().catch((err) => {
         log.warn(
-          "[server] [rescan-prices] scan trigger failed: %s",
+          "[bot] [rescan-prices] scan trigger failed: %s",
           err.message ?? err,
         );
       });

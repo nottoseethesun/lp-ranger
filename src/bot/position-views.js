@@ -77,7 +77,7 @@ function createPositionViews(deps) {
         error: "Missing tokenId, token0, token1, or fee",
       };
     log.info(
-      "[server] Position selected: NFT #%s %s",
+      "[bot] Position selected: NFT #%s %s",
       body.tokenId,
       emojiId(String(body.tokenId)),
     );
@@ -92,7 +92,7 @@ function createPositionViews(deps) {
         getPrivateKey(),
       );
     } catch (err) {
-      log.error("[server] Position details error:", err.message);
+      log.error("[bot] Position details error:", err.message);
       return { ok: false, reason: "failed", error: err.message };
     }
   }
@@ -131,7 +131,7 @@ function createPositionViews(deps) {
      *  active position is managed. */
     const _sn = s.pnlSnapshot;
     log.info(
-      "[server] _syncLifetimeState %s: curFees=%s gas=%s comp=%s residual=%s entry=%s bl=%s",
+      "[bot] _syncLifetimeState %s: curFees=%s gas=%s comp=%s residual=%s entry=%s bl=%s",
       pk.split("-").pop(),
       _sn?.currentFeesUsd,
       _sn?.totalGas,
@@ -195,7 +195,7 @@ function createPositionViews(deps) {
       _syncLifetimeState(livePk, result);
       return result;
     } catch (err) {
-      log.error("[server] Lifetime details error:", err.message);
+      log.error("[bot] Lifetime details error:", err.message);
       return { ok: false, reason: "failed", error: err.message };
     }
   }

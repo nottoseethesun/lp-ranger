@@ -76,11 +76,7 @@ function createManualMoves(deps) {
      *  (`rebalanceRangeWidthPct` POSITION_KEY) read by the bot loop via
      *  `deps._getConfig` in src/bot/bot-cycle-opts.js.  Client sets it via
      *  the Range Width row in Bot Settings → POST /api/config. */
-    log.info(
-      "[server] Manual rebalance for %s %s",
-      positionKey,
-      emojiId(tokenId),
-    );
+    log.info("[bot] Manual rebalance for %s %s", positionKey, emojiId(tokenId));
     // Asked for: no scan starts until it is made (src/bot/scan-state.js).
     state.forceRebalance = true;
     state.rebalanceInProgress = true;
@@ -120,11 +116,7 @@ function createManualMoves(deps) {
     if (isAscanRunningOnThisPosition(state))
       return _scanRunningRefusal("compound", "Compound Now", positionKey);
     const tokenId = positionKey.split("-").pop();
-    log.info(
-      "[server] Manual compound for %s %s",
-      positionKey,
-      emojiId(tokenId),
-    );
+    log.info("[bot] Manual compound for %s %s", positionKey, emojiId(tokenId));
     // Asked for: no scan starts until it is made (src/bot/scan-state.js).
     state.forceCompound = true;
     /*- Same reasoning as Rebalance Now — kick the poll so the manual

@@ -207,10 +207,9 @@ function _applyRpcUrls(saved) {
       chainUrls: config.RPC_URLS_BASE,
     });
     config.setRpcUrls(urls);
-    if (sendTx.setRpcUrls(urls))
-      log.info("[server] RPC now in use: %s", urls[0]);
+    if (sendTx.setRpcUrls(urls)) log.info("[bot] RPC now in use: %s", urls[0]);
   } catch (err) {
-    log.warn("[server] Could not apply the new RPC list: %s", err.message);
+    log.warn("[bot] Could not apply the new RPC list: %s", err.message);
   }
 }
 
