@@ -244,6 +244,11 @@ describe("a short windowed read is never merged", () => {
           asked.push([...ids]);
           return ids.slice(0, readsThatSucceed).map(() => epoch(1));
         },
+        /*- The window is cut against NOW, the date these events are
+         *  counted back from. Cut against the real clock, it slid past
+         *  them: from 2026-11-13 the event five days before NOW fell
+         *  outside it, and both cases failed. */
+        _nowMs: NOW,
       },
     };
   }

@@ -28,7 +28,7 @@ jobs:
           ref: ${{ steps.latest.outputs.tag }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       # The audit is spelled out here instead of calling the release's own
       # `npm run audit:deps`, and the duplication is the point: a release
       # must not define the test it is judged by. These are two rules that

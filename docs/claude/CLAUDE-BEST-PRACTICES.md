@@ -73,7 +73,7 @@ Ten-plus explicit `!== undefined && !== null` guards already exist across the co
 
 ## Coverage
 
-- **Maintain coverage at least 1% above the minimum** — Node 22 and Node 24 report slightly different coverage numbers due to instrumentation differences. If local coverage is at 80.01% (minimum 80%), it may report 79.97% on CI. Always ensure coverage is at least 81% locally to avoid CI flakes from rounding variance.
+- **Maintain coverage at least 1% above the minimum** — CI's two Node versions, 24 and 26, can report slightly different coverage numbers due to instrumentation differences. If local coverage is at 80.01% (minimum 80%), it may report 79.97% on CI. Always ensure coverage is at least 81% locally to avoid CI flakes from rounding variance.
 
 ## RPC & Network
 

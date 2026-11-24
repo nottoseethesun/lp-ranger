@@ -3,7 +3,7 @@ name: Always follow full CI protocol
 description: Never skip the local merge-to-main check before pushing a branch
 type: feedback
 originSessionId: 6410b15f-f74f-4f19-a2ae-51cdd70744eb
-modified: 2026-10-22T01:24:07.962Z
+modified: 2026-11-24T02:19:12.477Z
 ---
 Always follow ALL 8 steps of the CI protocol in `docs/claude/CLAUDE-CI.md` before pushing. Most critically: after checks pass on the feature branch, merge to main LOCALLY and run `npm run check` again to catch integration issues, then `git reset --hard origin/main` to undo the local merge before pushing the branch.
 
@@ -21,4 +21,4 @@ ALWAYS read docs/CLAUDE-CI.md before starting ANY merge workflow. Every single t
 
 ## "Full c.i."
 
-The user's "Do full c.i. to `main`" (2026-10-21) is the whole protocol: all eight steps of docs/claude/CLAUDE-CI.md, step 3's local merge check and step 6's PR merge included, each check on Node 24 and Node 22. Run that way for PR #232: branch check, commit, local merge check, push, PR checks watched, `gh pr merge --merge` with the branch kept, `main` pulled, and `main`'s CI, Security Audit and Pages runs watched to green. Step 4 used `git reset --keep origin/main` ([[reset-keep-not-hard]]).
+The user's "Do full c.i. to `main`" (2026-10-21) is the whole protocol: all eight steps of docs/claude/CLAUDE-CI.md, step 3's local merge check and step 6's PR merge included, each check on both of CI's Node versions (24 and 26 since 2026-11-23, 24 and 22 before). The user's "do standard c.i. and merge to `main`" (2026-11-23) asks for the same. Run that way for PR #232: branch check, commit, local merge check, push, PR checks watched, `gh pr merge --merge` with the branch kept, `main` pulled, and `main`'s CI, Security Audit and Pages runs watched to green. Step 4 used `git reset --keep origin/main` ([[reset-keep-not-hard]]).

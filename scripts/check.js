@@ -81,6 +81,29 @@ const RAW_DIR = path.join(REPORT_DIR, "raw-data");
 const TXT_DIR = path.join(REPORT_DIR, "text-reports");
 
 /*-
+ *  Node 25 and later put their own `localStorage` and `sessionStorage`
+ *  on the global object. Without a storage file, `localStorage` reads as
+ *  `undefined`. `global-jsdom` adds to the global only what is not there
+ *  yet, so the dashboard tests got Node's storage, not jsdom's, and a
+ *  hundred of them failed on Node 26. This flag switches Node's off, so
+ *  every version runs them on jsdom's, as a browser has it. Node 24
+ *  takes the flag and changes nothing. The npm `test` scripts pass it too.
+ */
+const NO_NODE_WEB_STORAGE = "--no-experimental-webstorage";
+
+/*-
+ *  Node's test runner gives a test no time limit of its own, so a test
+ *  or hook that never settles would hold the run open until something
+ *  killed it. With this limit it fails after a minute, by name, and the
+ *  rest of its file runs. The limit is per test, not per suite or file:
+ *  about six times the slowest test today, which takes nine seconds. A
+ *  test file that leaves a timer running, and so never exits, is past
+ *  its reach; in CI the check job's 20-minute cap ends that. The npm
+ *  `test` scripts pass the same limit.
+ */
+const TEST_TIMEOUT = "--test-timeout=60000";
+
+/*-
  *  The catastrophic-failure log, at the path src/lib/error-log.js owns, and
  *  the name a test run's entries are kept under beside it. Resolved
  *  after the chdir above, since the log's path is relative to the
@@ -481,6 +504,8 @@ async function runTestStages() {
      */
     const configRun = await runAsync("node", [
       "--test",
+      NO_NODE_WEB_STORAGE,
+      TEST_TIMEOUT,
       "--test-reporter=tap",
       "--test-reporter-destination=stdout",
       ...configValueTests(),
@@ -493,6 +518,8 @@ async function runTestStages() {
     if (interrupted !== null) throw new Error(`interrupted by ${interrupted}`);
     const testsRun = await runAsync("node", [
       "--test",
+      NO_NODE_WEB_STORAGE,
+      TEST_TIMEOUT,
       "--experimental-test-coverage",
       /*-
        *  Browser-side files (src/client/web/dashboard-*.js) are covered by their

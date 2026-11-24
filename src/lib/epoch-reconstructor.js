@@ -441,6 +441,9 @@ async function _fetchEpochsFromChain(
  *   already held, and `windowDays` 0 means the whole chain.
  * @param {Function} [o._fetch]  Stands in for `_fetchEpochsFromChain`
  *   in tests, so the short-read fallback can run without a chain.
+ * @param {number} [o._nowMs]  Stands in for the clock in tests, so the
+ *   window's cutoff stays where the test's dates put it; left out, the
+ *   cutoff is taken from the real clock.
  * @returns {Promise<object[]>} Closed epochs, unsorted.
  */
 async function _rebuildClosedEpochs(o) {
@@ -466,6 +469,7 @@ async function _rebuildClosedEpochs(o) {
     o.closedIds,
     o.cachedEpochs ?? [],
     o.windowDays,
+    o._nowMs,
   );
   const rebuilt = await read(ids);
   if (keep.length === 0) return rebuilt;
