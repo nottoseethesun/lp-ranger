@@ -34,24 +34,35 @@ const path = require("node:path");
 
 const SRC = path.join(__dirname, "..", "src", "lib");
 
-/*- The folders whose modules can scan: the ones the programs share, in
- *  src/lib/, and the server's and the bot's own. */
+/*-
+ *  The folders whose modules can scan, with their subfolders: the ones
+ *  the programs share, in src/lib/, and the server's and the bot's own.
+ */
 const SCAN_DIRS = [
   SRC,
   ...["server", "bot"].map((d) => path.join(__dirname, "..", "src", d)),
 ];
 
-/** Every module directly in those folders, by file name, with its source. */
+/**
+ * Every module in those folders and their subfolders, with its source,
+ * named by its path within its folder: a file name for one at the top.
+ * @returns {{name: string, src: string}[]}
+ */
 function _modules() {
-  return SCAN_DIRS.flatMap((dir) =>
-    fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith(".js"))
-      .map((f) => ({
-        name: f,
-        src: fs.readFileSync(path.join(dir, f), "utf8"),
-      })),
-  );
+  const modules = [];
+  const walk = (root, dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(root, p);
+      else if (e.name.endsWith(".js"))
+        modules.push({
+          name: path.relative(root, p).split(path.sep).join("/"),
+          src: fs.readFileSync(p, "utf8"),
+        });
+    }
+  };
+  for (const dir of SCAN_DIRS) walk(dir, dir);
+  return modules;
 }
 
 /*-

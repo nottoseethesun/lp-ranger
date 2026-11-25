@@ -344,11 +344,19 @@ function attachPoolKeys(positions, positionMgr, cfg) {
   }
 }
 
-/*- buildStatusPositions + _UNMANAGED_SETTINGS_KEYS live in their own
- *  module so this file stays under the 500-line cap.  This wrapper
- *  injects the in-memory `_positionBotStates` map and the local
- *  `attachPoolKeys` so the helper itself stays pure (no module-level
- *  state of its own). */
+/**
+ * The status report's positions map. The helper behind it, with
+ * `_UNMANAGED_SETTINGS_KEYS`, lives in its own module
+ * (src/bot/build-status-positions.js) so this file stays under the
+ * 500-line cap; this wrapper hands it the in-memory `_positionBotStates`
+ * map and the local `attachPoolKeys`, so the helper keeps no state of its
+ * own.
+ * @param {object} diskConfig   Parsed bot-config (has `.positions` map).
+ * @param {object} posDefaults  Base defaults applied to every entry.
+ * @param {object} positionMgr  Position manager (exposes poolKey()).
+ * @param {object} cfg          Config object with CHAIN_NAME + POSITION_MANAGER.
+ * @returns {Record<string, object>}
+ */
 function buildStatusPositions(diskConfig, posDefaults, positionMgr, cfg) {
   return _buildStatusPositionsHelper(
     diskConfig,

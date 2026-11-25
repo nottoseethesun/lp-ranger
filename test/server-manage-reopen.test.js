@@ -160,14 +160,15 @@ describe("Manage's re-open flag propagation", () => {
   });
 
   it("stamps forceRebalance + clears paused state on already-running position (retry path)", async () => {
-    /*- User clicks Manage on a closed-but-running position to retry
-     *  after the previous re-open's swap aborted on slippage.
-     *  Manage's "already running — skipping" short-circuit must
-     *  route through `_stampReopenFlagsOnLive` so the flag is wired
-     *  through to the live posBotState AND the paused/midway state
-     *  cleared, otherwise the bot would keep returning early at the
-     *  rebalancePaused gate in `_checkRebalanceGates` and the retry
-     *  would never fire. */
+    /*-
+     *  The user clicks Manage on a closed but running position to retry
+     *  after the previous re-open's swap aborted on slippage. Manage's
+     *  "already running — skipping" short-circuit must go through
+     *  `_stampReopenFlagsOnLive`, so the flag reaches the live
+     *  posBotState AND the paused and midway state is cleared; otherwise
+     *  the bot would keep returning early at the rebalancePaused gate in
+     *  `_checkRebalanceGates`, and the retry would never fire.
+     */
     const dc = _makeDiskConfig();
     const liveKey = compositeKey(
       "pulsechain",
@@ -175,17 +176,15 @@ describe("Manage's re-open flag propagation", () => {
       config.POSITION_MANAGER,
       "99999",
     );
-    /*- Pre-populate _positionBotStates with a paused live state,
-     *  including `_retireImmediately: true` (set by bot-loop.js's
-     *  re-open-failure path).  All these flags must be cleared by
-     *  `_stampReopenFlagsOnLive` so the retry can actually run on
-     *  the next poll instead of being preempted by drain.js's
-     *  immediate-retire branch. */
+    /*-
+     *  A paused live state, as the failed re-open left it. Every flag
+     *  must be cleared by `_stampReopenFlagsOnLive`, so the retry runs on
+     *  the next poll.
+     */
     const liveState = {
       rebalancePaused: true,
       rebalanceFailedMidway: true,
       rebalanceError: "Swap aborted: price impact 2.4% exceeds slippage 0.75%",
-      _retireImmediately: true,
     };
     getAllPositionBotStates().set(liveKey, liveState);
     let startPositionCalled = false;
@@ -194,10 +193,11 @@ describe("Manage's re-open flag propagation", () => {
       readJsonBody: async () => ({
         tokenId: "99999",
         forceRebalance: true,
-        /*- Stale legacy field: must not leak onto state.  Range width
-         *  comes from the persistent `rebalanceRangeWidthPct`
-         *  POSITION_KEY, read by `bot-cycle-opts.js` via
-         *  `deps._getConfig`. */
+        /*-
+         *  A field Manage does not take, which must not reach the state:
+         *  the range width is the saved `rebalanceRangeWidthPct`, read
+         *  by `bot-cycle-opts.js` through `deps._getConfig`.
+         */
         customRangeWidthPct: 12,
       }),
       positionMgr: _makePositionMgr({
@@ -235,12 +235,6 @@ describe("Manage's re-open flag propagation", () => {
     assert.strictEqual(liveState.rebalancePaused, false);
     assert.strictEqual(liveState.rebalanceFailedMidway, false);
     assert.strictEqual(liveState.rebalanceError, null);
-    /*- Regression: _retireImmediately must be cleared too.  If the
-     *  prior re-open failure set it (bot-loop.js's `_handleError`),
-     *  drain.js would fire retire on the next poll BEFORE the
-     *  forceRebalance can take effect, silently losing the user's
-     *  retry click. */
-    assert.strictEqual(liveState._retireImmediately, false);
     getAllPositionBotStates().delete(liveKey);
   });
 

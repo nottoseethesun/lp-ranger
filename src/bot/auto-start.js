@@ -14,7 +14,7 @@
  * one active position per pool, so a pool's open position keeps it, and
  * any other saved position in that pool comes off the list. While the
  * start-up runs, src/bot/app-phase.js records its progress, which the
- * dashboard shows as Syncing and the server reads to refuse a request
+ * dashboard shows as Syncing and the bot reads to refuse a request
  * that would start positions. The server and the headless bot (bot.js)
  * both start their saved positions this way, through the bot's
  * interface (src/bot/bot-interface.js).

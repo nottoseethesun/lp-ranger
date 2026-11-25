@@ -92,7 +92,7 @@ const {
  *   re-reads every NFT in the chain.
  * @param {number} [windowDays]  Reach back only this many days when
  *   rebuilding that table; 0 means the whole chain. Ignored without
- *   `includeEpochs`, because nothing else this route does is
+ *   `includeEpochs`, because nothing else Re-scan Prices does is
  *   date-scoped — the rest are chain-wide totals that need every NFT.
  */
 function requestPriceRevalue(state, includeEpochs = false, windowDays = 0) {
@@ -156,9 +156,11 @@ function createRescanPrices(deps) {
           "Re-scan Prices only applies to a managed position. Click Manage first, then try again.",
       };
     }
-    /*- Feature-correct copy: the shared helper defaults to Reload's
-     *  wording ("Reload Current Position", "up to four hours"), which
-     *  is the wrong feature and the wrong duration for this route. */
+    /*-
+     *  Re-scan Prices' own words: the shared helper defaults to Reload's
+     *  ("Reload Current Position", "up to four hours"), the wrong
+     *  feature and the wrong duration here.
+     */
     const guard = _checkInProgress(r.state, {
       action: "Re-scan Prices",
       scanExtra: "",

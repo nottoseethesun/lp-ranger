@@ -9,9 +9,12 @@
  * nothing: during the start-up, since a saved position it has yet to
  * reach may be in the same pool; during a wallet import, since the wallet
  * and its key are being swapped; and once the app is stopping
- * (src/bot/app-phase.js). Refused here, the request starts no bot loop and
- * creates no slot. The reasons are the bot's; the server turns each into
- * its HTTP status (src/server/bot-result.js).
+ * (src/bot/app-phase.js). The key is asked for first, so in the second of
+ * an import between the old key's removal and the new key's arrival, a
+ * Manage is `invalid` for want of a key rather than `refused`. Refused
+ * here, the request starts no bot loop and creates no slot. The reasons
+ * are the bot's; the server turns each into its HTTP status
+ * (src/server/bot-result.js).
  *
  * The bot's Manage (`manage`, src/bot/position-lifecycle.js) asks it
  * first; grouping the checks into one predicate costs that operation one

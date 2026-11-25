@@ -18,7 +18,7 @@
 const { log } = require("../lib/log");
 const ethers = require("ethers");
 const config = require("../lib/config");
-const { startBotLoop } = require("./bot-loop");
+const botLoop = require("./bot-loop");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
@@ -56,39 +56,44 @@ const { createCanReopenCheck } = require("./can-reopen");
  *  window between is long enough to fit a second click. */
 const _starting = new Map();
 
-/*- Closed-position re-open path: when the dashboard calls Manage on a
- *  drained (liquidity=0) position, it sends `forceRebalance: true`.
- *  Stamp the flag on the freshly-built posBotState BEFORE startPosition
- *  so the bot loop's first poll sees the flag set; `bot-cycle-drain.js`'s
- *  `if (drained && !state.forceRebalance && !midwayFail)` guard then
- *  returns null and the rebalance pipeline runs on the drained NFT,
- *  minting fresh liquidity and bringing the position back to life in
- *  one user-driven cycle.  No-op for healthy positions (body.flag
- *  unset).
+/**
+ * The re-open of a closed position: when the dashboard calls Manage on a
+ * drained (liquidity=0) position, it sends `forceRebalance: true`. The
+ * flag is stamped on the freshly built posBotState BEFORE startPosition,
+ * so the bot loop's first poll sees it; `bot-cycle-drain.js`'s
+ * `if (drained && !state.forceRebalance && !midwayFail)` guard then
+ * returns null, and the rebalance runs on the drained NFT, minting fresh
+ * liquidity and bringing the position back in one user-driven cycle. A
+ * healthy position's request carries no flag, and nothing changes.
  *
- *  Range width for the re-open: read from persistent config
- *  (`rebalanceRangeWidthPct` POSITION_KEY) by the bot loop via
- *  `deps._getConfig` in src/bot/bot-cycle-opts.js.  Falls back to
- *  `rangeMath.preserveRange()` when not set.  No longer read from the
- *  request body — the range-width modal has been migrated into Bot
- *  Settings. */
+ * The re-open's range width is the position's saved setting
+ * (`rebalanceRangeWidthPct`), which the bot loop reads through
+ * `deps._getConfig` in src/bot/bot-cycle-opts.js, falling back to
+ * `rangeMath.preserveRange()` when none is saved; the request carries
+ * none.
+ * @param {object} posBotState  The position's bot state.
+ * @param {object} body  The Manage request's body.
+ */
 function _stampReopenFlags(posBotState, body) {
   if (body.forceRebalance !== true) return;
   posBotState.forceRebalance = true;
 }
 
-/*- Already-running re-open path: when the user comes back to Manage
- *  after a swap-abort aborted the first re-open attempt, the
- *  `existing.status === "running"` guard in `manage` would
- *  silently no-op the request.  This helper grabs the live posBotState
- *  from the per-position map and stamps `forceRebalance` (via
- *  `_stampReopenFlags`) AND clears the aborted/midway flags
- *  (`rebalancePaused`, `rebalanceFailedMidway`, `rebalanceError`) so
- *  the next poll runs a fresh rebalance.  Range width comes from
- *  persistent config (`rebalanceRangeWidthPct` POSITION_KEY) — not
- *  from the request body.
- *  Returns true if the live state was found and stamped, false
- *  otherwise (the caller logs accordingly). */
+/**
+ * The re-open of a position already running: when the user comes back to
+ * Manage after a swap abort stopped the first re-open, the
+ * `existing.status === "running"` guard in `manage` would otherwise
+ * ignore the request. This takes the live posBotState from the
+ * per-position map, stamps `forceRebalance` (`_stampReopenFlags`), and
+ * clears the aborted and midway flags (`rebalancePaused`,
+ * `rebalanceFailedMidway`, `rebalanceError`), so the next poll runs a
+ * fresh rebalance. The range width is the saved setting, as for any
+ * re-open.
+ * @param {string} key  The position's composite key.
+ * @param {object} body  The Manage request's body.
+ * @returns {boolean}  Whether the live state was found and stamped; the
+ *   caller logs either way.
+ */
 function _stampReopenFlagsOnLive(key, body) {
   if (body.forceRebalance !== true) return false;
   const live = getAllPositionBotStates().get(key);
@@ -97,15 +102,6 @@ function _stampReopenFlagsOnLive(key, body) {
   live.rebalancePaused = false;
   live.rebalanceFailedMidway = false;
   live.rebalanceError = null;
-  /*- Critical: also clear `_retireImmediately`.  bot-loop.js's
-   *  `_handleError` sets it after a re-open failure to trigger an
-   *  immediate retire on the next bot poll.  If the user clicks
-   *  Manage to retry within the ~60 s window before that poll fires,
-   *  this code path (manage's already-running short-circuit)
-   *  must clear the flag — otherwise drain.js's `_retireImmediately`
-   *  branch fires retire BEFORE the forceRebalance can take effect,
-   *  and the user's retry click is silently lost. */
-  live._retireImmediately = false;
   return true;
 }
 
@@ -178,6 +174,8 @@ function _startFailure(err, key, tokenId) {
  *   through.
  * @param {Function} [deps.loadScanCache]  The wallet scan's cache reader,
  *   for the re-open check; the real one unless a test passes its own.
+ * @param {Function} [deps.startBotLoop]  The loop a Manage starts
+ *   (src/bot/bot-loop.js); the real one unless a test passes its own.
  * @returns {{manage: Function, stopManaging: Function,
  *   canReopen: Function, managedList: Function}}
  */
@@ -196,6 +194,7 @@ function createPositionLifecycle(deps) {
     ethersLib = ethers,
     readProvider = () => sendTx.getManagedReadProvider(),
     loadScanCache,
+    startBotLoop = botLoop.startBotLoop,
   } = deps;
 
   /**
@@ -217,7 +216,7 @@ function createPositionLifecycle(deps) {
       now ??
       (getPrivateKey() === pk
         ? null
-        : "A wallet was imported while this Manage was under way. Try again.");
+        : "The wallet's key changed while this Manage was under way. Try again.");
     if (error === null) return null;
     log.warn(
       "[pos-route] Manage refused after its wait (key=%s): %s",
@@ -383,11 +382,11 @@ function createPositionLifecycle(deps) {
     _stampReopenFlags(posBotState, body);
     getAllPositionBotStates().set(key, posBotState);
 
-    /*-
-     *  Roll back the in-memory state above, so a retry starts cleanly and
-     *  the status report shows no phantom managed entry. A slot that held
-     *  settings before keeps them, with its prior status (e.g. `stopped`):
-     *  never promoted to running.
+    /**
+     * Roll back the in-memory state above, so a retry starts cleanly and
+     * the status report shows no phantom managed entry. A slot that held
+     * settings before keeps them, with its prior status (e.g. `stopped`):
+     * never promoted to running.
      */
     const undo = () => {
       getAllPositionBotStates().delete(key);
@@ -446,21 +445,19 @@ function createPositionLifecycle(deps) {
     } finally {
       _starting.delete(key);
     }
-    /*- Bot loop is up; only NOW persist `status=running`.
-     *
-     *  Reads `keyRef.current`, NOT the captured local `key`.  When the
-     *  bot's first poll runs a force-rebalance (re-open flow), the mint
-     *  of a new NFT triggers `updatePositionState` to call
-     *  `migrateConfigKey` + `positionMgr.migrateKey` + mutate
-     *  `keyRef.current = newKey`.  By the time control returns here,
-     *  the disk slot lives under the NEW key.  Calling
-     *  `addManagedPosition(diskConfig, key)` with the STALE local
-     *  would lazy-create an empty `{ status: "running" }`-only stub
-     *  under the dead old key — the phantom that made the dashboard
-     *  stuck on "Syncing…" for the closed view of the old NFT.
-     *
-     *  This is symmetric with `_onRetire` (which reads `keyRef.current`)
-     *  and the rest of the closures threaded into `startPosition`. */
+    /*-
+     *  The bot loop is up; only now is `status: "running"` saved. It
+     *  reads `keyRef.current`, NOT the captured local `key`: when the
+     *  bot's first poll runs a forced rebalance (a re-open), the mint of
+     *  a new NFT makes `updatePositionState` call `migrateConfigKey` and
+     *  `positionMgr.migrateKey` and set `keyRef.current = newKey`, so by
+     *  the time control returns here the slot lives under the NEW key.
+     *  `addManagedPosition(diskConfig, key)` with the stale local would
+     *  create a slot holding only `{ status: "running" }` under the dead
+     *  old key, which the dashboard reads as a managed position stuck on
+     *  "Syncing…". This matches `_onRetire`, which reads `keyRef.current`,
+     *  and the other closures handed to `startPosition`.
+     */
     addManagedPosition(diskConfig, keyRef.current);
     saveConfig(diskConfig);
     log.info(

@@ -171,13 +171,18 @@ const _rebSeen = new Map();
 const _compoundSeen = new Map();
 let _trackersPrimed = false;
 
-/*- Normalize a `lastRebalanceAt` / `lastCompoundAt` value into ms since
- *  epoch.  The bot writes the former as numeric ms (`src/bot/bot-recorder.js`
- *  line 398 + `src/bot/bot-cycle-residual.js` line 232, both via
- *  `Date.now()`), and the latter as an ISO string (`src/bot/bot-cycle-compound.js`
- *  line 99 reads `result.timestamp` which `src/bot/compounder.js` builds
- *  via `new Date().toISOString()`).  Returns `null` for unparseable
- *  input so the staleness gate fails open. */
+/**
+ * Normalize a `lastRebalanceAt` or `lastCompoundAt` value into ms since
+ * epoch. The bot writes the former as numeric ms, from `Date.now()`
+ * (`_notifyRebalance` in src/bot/bot-recorder.js, `_updateCleanupState`
+ * in src/bot/bot-cycle-residual.js), and the latter as an ISO string
+ * (`recordCompound` in src/bot/bot-cycle-compound.js stores
+ * `result.timestamp`, which src/bot/compounder.js builds with
+ * `new Date().toISOString()`). Null for input it cannot read, so the
+ * staleness gate fails open.
+ * @param {number|string|null|undefined} v
+ * @returns {number|null}
+ */
 export function _toMs(v) {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {

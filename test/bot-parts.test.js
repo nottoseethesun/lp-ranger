@@ -42,12 +42,11 @@ const keyOf = (pool) =>
 const TODAY = { [keyOf(A)]: 2, [keyOf(B)]: 1 };
 
 /**
- * Fix the clock at noon on the log's day, for the case `t`.
- *
- * TEST-ONLY global swap: the parts count today's rebalances by the
- * clock, read from `Date`, which takes no stand-in, and a fixed day keeps
- * a run from crossing midnight between writing the log and reading it.
- * The test runner puts `Date` back pristine as the case ends.
+ * TEST-ONLY global swap: the parts count today's rebalances by the clock,
+ * read from `Date`, which takes no stand-in. The log below is dated
+ * 2026-11-22 and 2026-11-23, so the case `t` runs at noon on the 23rd:
+ * one entry is yesterday's, three are today's. The test runner puts
+ * `Date` back pristine as the case ends.
  * @param {object} t  The test case's context.
  */
 const atNoonOnTheLogsDay = (t) =>

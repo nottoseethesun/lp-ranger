@@ -228,15 +228,16 @@ describe("Manage's stale-key sequence (direct simulation)", () => {
 
 describe("Stop Managing's stale-key races", () => {
   it("uses migrated entry.key for cleanup when stop() spans a migration", async () => {
-    /*- During `await positionMgr.removePosition(body.key)`, the bot's
-     *  stop() awaits the in-flight poll, which can complete a
-     *  rebalance.  That rebalance fires updatePositionState →
-     *  positionMgr.migrateKey, mutating entry.key in place.  By the
-     *  time control returns to Stop Managing, the entry.key reflects
-     *  the post-migration key.  Stop Managing captures the entry
-     *  reference BEFORE the await and reads entry.key AFTER, so
-     *  downstream removeManagedPosition + _positionBotStates.delete
-     *  target the right (migrated) key. */
+    /*-
+     *  During `await positionMgr.removePosition(body.key)`, the bot's
+     *  stop() awaits the poll under way, which can complete a rebalance.
+     *  That rebalance fires updatePositionState → positionMgr.migrateKey,
+     *  changing entry.key in place, so by the time control returns to
+     *  Stop Managing, entry.key is the migrated key. Stop Managing takes
+     *  the entry BEFORE the await and reads entry.key AFTER it, so
+     *  removeManagedPosition and _positionBotStates.delete then name the
+     *  right (migrated) key.
+     */
     const OLD_KEY = key("100");
     const NEW_KEY = key("200");
     const dc = makeDiskConfig({
@@ -291,10 +292,11 @@ describe("Stop Managing's stale-key races", () => {
   });
 
   it("falls back to body.key when positionMgr returns no entry", async () => {
-    /*- Edge case: the position was already gone from positionMgr (e.g.
-     *  a prior remove or never-started).  Stop Managing falls back to
-     *  body.key for cleanup, which is correct because no migration
-     *  could have happened without an active bot loop. */
+    /*-
+     *  The position is already gone from positionMgr (a prior remove, or
+     *  it never started). Stop Managing falls back to body.key, which is
+     *  right, since no migration can happen without a running bot loop.
+     */
     const KEY = key("400");
     const dc = makeDiskConfig({ positions: { [KEY]: { status: "running" } } });
     const states = getAllPositionBotStates();

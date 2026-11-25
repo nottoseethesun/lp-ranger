@@ -141,6 +141,8 @@ function createBot(opts) {
  *   the real ones unless given.
  * @param {Function} [parts.readProvider]
  * @param {Function} [parts.loadScanCache]
+ * @param {Function} [parts.startBotLoop]  The loop Manage starts for a
+ *   position (src/bot/bot-loop.js); the real one unless given.
  * @returns {object}  The bot's operations, listed below.
  */
 function botOperations(parts) {
@@ -166,6 +168,7 @@ function botOperations(parts) {
     ethersLib: parts.ethersLib,
     readProvider: parts.readProvider,
     loadScanCache: parts.loadScanCache,
+    startBotLoop: parts.startBotLoop,
   });
   const moves = createManualMoves(shared);
   const walletScan = createWalletScan({

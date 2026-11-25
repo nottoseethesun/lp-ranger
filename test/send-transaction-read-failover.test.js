@@ -59,10 +59,12 @@ describe("send-transaction: init idempotency", () => {
       m.restore();
     }
     assert.equal(sendTx.getCurrentRPC()._url, FALL);
-    /*- Re-init must NOT wipe the sticky failover state, otherwise a
-        second boot path (bot-loop.js running after the bot's parts,
-        src/bot/bot-interface.js) would
-        silently revert us to a known-broken primary. */
+    /*-
+     *  Init again must NOT wipe the sticky failover state; otherwise a
+     *  second boot path (bot-loop.js, running after the bot's parts,
+     *  src/bot/bot-interface.js) would silently go back to a known-broken
+     *  primary.
+     */
     sendTx.init({ urls: [PRI, FALL] }, lib);
     assert.equal(sendTx.getCurrentRPC()._url, FALL);
   });

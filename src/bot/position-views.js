@@ -108,10 +108,10 @@ function createPositionViews(deps) {
     const isManaged = diskConfig.positions[pk]?.status === "running";
     if (!isManaged) s.rebalanceScanComplete = true;
     /*-
-     *  The snapshot belongs to the bot on a managed position, and this
-     *  route can still be asked about one: the dashboard suppresses its
-     *  fetch only once a poll has landed, so a page load fires it before
-     *  the first poll. What this route builds covers what an UNMANAGED
+     *  The snapshot belongs to the bot's loop on a managed position, and
+     *  these details can still be asked for one: the dashboard suppresses
+     *  its fetch only once a poll has landed, so a page load fires it
+     *  before the first poll. What is built here covers what an UNMANAGED
      *  position shows — the Current panel's two figures — and writing it
      *  over the bot's would drop the Lifetime panel's figures until the
      *  next poll rebuilt them, which is one `CHECK_INTERVAL_SEC` away.

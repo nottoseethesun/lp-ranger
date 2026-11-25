@@ -267,9 +267,11 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   });
   _updateCurIL(d, deposit);
   _updatePosDuration(d);
-  /*- Compounded fees are added, not subtracted: they are real earnings
-   *  and `totalIL` no longer carries them (see _computeIL in
-   *  src/bot/bot-pnl-updater.js).  Same shape as the Lifetime figure. */
+  /*-
+   *  Compounded fees are added, not subtracted: they are real earnings,
+   *  and `totalIL` does not carry them (see `_computeIL` in
+   *  src/bot/bot-pnl-il.js). Same shape as the Lifetime figure.
+   */
   _setProfitKpi(
     "curProfit",
     curFees + curCompounded + curLeft,

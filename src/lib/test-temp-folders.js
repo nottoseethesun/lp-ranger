@@ -114,4 +114,26 @@ function removeLeftoverTestTempFolders(dir = os.tmpdir()) {
   return removed;
 }
 
-module.exports = { makeTestTempFolder, removeLeftoverTestTempFolders };
+/**
+ * Every test folder, with the process its name gives it to and whether
+ * that process is still running. A failed copy of the shipped settings
+ * prints it (test/helpers/shipped-defaults-copy.js), to show whether a
+ * folder went while its process ran.
+ * @param {string} [dir]  Where the folders are; the system's temp
+ *   directory unless a test points elsewhere.
+ * @returns {{name: string, pid: number, running: boolean}[]}
+ */
+function describeTestTempFolders(dir = os.tmpdir()) {
+  const folders = [];
+  for (const name of fs.readdirSync(dir)) {
+    const pid = _ownerOf(name);
+    if (pid !== null) folders.push({ name, pid, running: _running(pid) });
+  }
+  return folders;
+}
+
+module.exports = {
+  makeTestTempFolder,
+  removeLeftoverTestTempFolders,
+  describeTestTempFolders,
+};

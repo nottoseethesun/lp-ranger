@@ -48,18 +48,19 @@ const TOKEN0 = "0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b";
 const TOKEN1 = "0xAEbcD0F8f69ECF9587e292bdfc4d731c1abedB68";
 const WALLET = "0x4e44847675763D5540B32Bee8a713CfDcb4bE61A";
 
-/*- The balance read takes its endpoint from the app's failover, so the
+/*-
+ *  The balance read takes its endpoint from the app's failover, so the
  *  rpc layer has to be stood up here as the bot's parts stand it up at
- *  boot (`buildBotParts`, src/bot/bot-interface.js).  The provider
- *  itself is never exercised.
+ *  boot (`buildBotParts`, src/bot/bot-interface.js). The provider itself
+ *  is never exercised.
  *
- *  Per test, not once for the file.  Each case that exhausts its retry
- *  budget reports failures, which walks selection along the endpoint
- *  list and leaves it there for whatever runs next — and a case starting
- *  from the END of the list cannot observe a further move at all, so it
- *  would pass whether or not the thing it asserts is true.  The decider
- *  is reset with it, since a crossed failure rate carries over the same
- *  way. */
+ *  Per test, not once for the file. Each case that exhausts its retry
+ *  budget reports failures, which walks selection along the endpoint list
+ *  and leaves it there for whatever runs next — and a case starting from
+ *  the END of the list cannot observe a further move at all, so it would
+ *  pass whether or not the thing it asserts is true. The decider is reset
+ *  with it, since a crossed failure rate carries over the same way.
+ */
 beforeEach(() => {
   sendTx._resetForTests();
   require("../src/bot/rpc-out-of-service")._resetForTests();
@@ -401,12 +402,14 @@ describe("the re-open check", () => {
 });
 
 describe("the re-open check, through the bot's interface", () => {
-  /*-
-   *  The route the server builds asks the interface's `canReopen`
-   *  (src/bot/bot-interface.js), which the cases above stand in for.
-   *  These two answer before any chain or price read, so they need no
-   *  stand-in for either, and fail if the binding is dropped or bound to
-   *  another operation.
+  /**
+   * The route the server builds asks the interface's `canReopen`
+   * (src/bot/bot-interface.js), which the cases above stand in for.
+   * These two answer before any chain or price read, so they need no
+   * stand-in for either, and fail if the binding is dropped or bound to
+   * another operation.
+   * @param {object} overrides  Parts the case changes.
+   * @returns {object}  The position routes over the bot's interface.
    */
   const routeThroughInterface = (overrides) =>
     createPositionRoutesOverBot({

@@ -49,9 +49,10 @@ const GLOBAL_KEYS = [
   "gasFeePct",
   /*-
    *  Price-source cache TTL in milliseconds for `src/bot/price-fetcher.js`
-   *  (the in-memory cache that backs `fetchTokenPriceUsd`).  Read once
-   *  per process at module-load time (no live reload — restart to
-   *  apply).  Default `120000` (2 min).  See the idle-driven price-
+   *  (the in-memory cache that backs `fetchTokenPriceUsd`). Read once
+   *  per process, when `readPriceCacheSettings`
+   *  (src/bot/price-fetcher-gate.js) is called as the bot's parts are
+   *  built (no live reload — restart to apply). Default `120000` (2 min).  See the idle-driven price-
    *  lookup pause section in docs/architecture.md for context.
    */
   "priceCacheTtlMs",
@@ -385,8 +386,9 @@ const POSITION_KEYS = [
    *  When set, `ltStartDate()` in `dashboard-date-utils.js` uses it
    *  ahead of every auto-detected candidate (firstEpochDateUtc,
    *  hodlBaseline.mintDate, poolFirstMintDate).  Cleared by POSTing
-   *  `null` — the null-sweep in server-routes.js POST /api/config
-   *  handler deletes the key from disk so bot-config.json stays clean.
+   *  `null` — the null-sweep in the bot's settings save
+   *  (src/bot/settings-save.js, behind POST /api/config) deletes the key
+   *  from disk so bot-config.json stays clean.
    *  The dashboard input accepts a number of days; the save handler
    *  computes `today - days` and stores the result as this string.
    */

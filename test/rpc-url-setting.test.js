@@ -264,12 +264,15 @@ describe("an added RPC takes effect without a restart", () => {
 });
 
 describe("config.setRpcUrls keeps the live list truthful", () => {
-  /*- `GET /api/rpc-endpoints`, `rebalancer-pools` and
-   *  `can-reopen` all read `config.RPC_URLS` directly, so the
-   *  live list has to change in place.  A rebind would leave all three
+  /*-
+   *  The server's endpoint list and status answer, and the bot as it
+   *  puts the endpoints into service, read `config.RPC_URLS` directly
+   *  (the readers are listed at `setRpcUrls`, src/lib/config.js), so the
+   *  live list has to change in place. A rebind would leave them all
    *  walking the endpoints the process started with — which is exactly
    *  the "saved but not in use" failure this whole feature exists to
-   *  remove. */
+   *  remove.
+   */
   const config = require("../src/lib/config");
   const { readRpcEndpoints } = require("../src/server/rpc-endpoints");
 

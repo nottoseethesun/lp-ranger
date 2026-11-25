@@ -37,7 +37,7 @@ const _origRequire = Module.prototype.require;
 /*-
  *  The lifetime scan, and the two modules it delegates to: its chain
  *  read, which requires `./bot-recorder-scan-helpers`, and its decimals
- *  heal, which requires `./rebalancer-pools` and `./error-log`. Evicting
+ *  heal, which requires `./rebalancer-pools` and `../lib/error-log`. Evicting
  *  only the scan would leave the other two bound to whatever they loaded
  *  with first, and the stubs below would not reach them.
  */

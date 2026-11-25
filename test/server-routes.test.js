@@ -212,7 +212,7 @@ describe("server-routes createRouteHandlers", () => {
         );
       }
 
-      it("from its first step until it has finished", async () => {
+      it("from its first step, and not once it has ended", async () => {
         const seen = [];
         const h = importing(() => {
           seen.push(appPhase.walletImportUnderWay());

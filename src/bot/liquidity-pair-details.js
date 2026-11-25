@@ -307,7 +307,8 @@ async function ensureInitialResidualData(args) {
     fee,
   });
 
-  /*- Stored once and reused ever after, because the leftover and the day
+  /*-
+   *  Stored once and reused ever after, because the leftover and the day
    *  it was left on never change. The price it was valued at can still be
    *  wrong — or missing, which is stored as zero — and the subtraction
    *  that keeps this leftover out of lifetime profit is built on it, so
@@ -315,10 +316,11 @@ async function ensureInitialResidualData(args) {
    *
    *  `refresh` is that way: it reads again and overwrites below. It is
    *  deliberately not a delete. A figure cleared to force a rebuild is
-   *  absent while the rebuild runs, and this file's sibling route
+   *  absent while the rebuild runs, and Re-scan Prices
    *  (`rescan-prices.js`) explains what that costs — a figure read
    *  as settled mid-gap. Overwriting leaves the old value standing until
-   *  its replacement exists, so a failed re-read costs nothing. */
+   *  its replacement exists, so a failed re-read costs nothing.
+   */
   const cached = refresh === true ? null : loadInitialResidualData(scopeKey);
   if (cached) {
     log.info(

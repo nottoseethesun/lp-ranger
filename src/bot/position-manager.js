@@ -73,11 +73,14 @@ function createPositionManager(opts) {
     if (_sharedPromise) return _sharedPromise;
     _sharedPromise = (async () => {
       const { privateKey, ethersLib, dryRun } = signerOpts || {};
-      /*- Initialise the send-transaction module's primary + fallback
-          providers from chain config.  init() is idempotent: any
-          other call with the same URLs (the bot's parts, built in
-          bot-interface.js, or bot-loop) is a no-op.  ensureReachable() probes the primary and
-          engages failoverToNextRPC() if it's down at boot. */
+      /*-
+       *  Put the send-transaction module's primary and fallback providers
+       *  into service from chain config. init() is idempotent: any other
+       *  call with the same URLs (the bot's parts, built in
+       *  bot-interface.js, or bot-loop) does nothing. ensureReachable()
+       *  probes the primary and calls failoverToNextRPC() if it's down at
+       *  boot.
+       */
       sendTx.init({ urls: config.RPC_URLS }, ethersLib);
       await sendTx.ensureReachable();
       const provider = sendTx.getManagedReadProvider();

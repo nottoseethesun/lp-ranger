@@ -10,11 +10,13 @@
 "use strict";
 
 const { log } = require("../lib/log");
-// Loading any bot module signals the bot subsystem is active — bot-banner
-// prints on first require (cached, so exactly once per process). The bot's
-// interface (bot-interface.js), the one bot module the server loads, pulls
-// in bot-recorder unconditionally, so this is where the bot announces
-// itself in server mode.
+/*-
+ *  Loading any bot module signals the bot subsystem is active —
+ *  bot-banner prints on first require (cached, so exactly once per
+ *  process). The bot's interface (bot-interface.js), the one bot module
+ *  the server loads, pulls in bot-recorder unconditionally, so this is
+ *  where the bot announces itself in server mode.
+ */
 require("./bot-banner");
 
 const fs = require("fs");

@@ -206,9 +206,11 @@ function _ilSectionVals(inputs, lpValue, price0, price1, residualValueUsd) {
   const hasData = a0 > 0 || a1 > 0;
   const hodlValue = hasData ? a0 * price0 + a1 * price1 : 0;
   const rUsd = Number(residualValueUsd) || 0;
-  /*- Compounded fees are taken out of the LP side: they are earnings,
-   *  not divergence, and Profit counts them separately.  See
-   *  `_computeIL` in src/bot/bot-pnl-updater.js. */
+  /*-
+   *  Compounded fees are taken out of the LP side: they are earnings,
+   *  not divergence, and Profit counts them separately. See `_computeIL`
+   *  in src/bot/bot-pnl-il.js.
+   */
   const comp = Number(inputs?.compoundedRemoved) || 0;
   return {
     a0,

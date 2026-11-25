@@ -8,39 +8,22 @@
  *   ended and each scan still running has finished. Every request after
  *   the first changes nothing and answers what the stop still waits for.
  *
- *   The position manager, the alert and the exit are stood in for; the
- *   bot states are plain objects, a running scan's pass a promise the
- *   test settles. What is under way, and the wait for the scans, come
- *   from the bot's own interface over those states.
+ *   Each case goes through the server's own route,
+ *   `_handleStopWhenAllClear` (src/server/server-routes.js), over the
+ *   bot's interface, so what is under way and the wait for the scans
+ *   come from the bot over the test's bot states. Those are plain
+ *   objects, and a running scan's pass is a promise the test settles. The
+ *   position manager and the alert are stood in for. The server's close
+ *   is the exit: the stand-in records it and never calls back, and the
+ *   stop's exit timeout runs on mock time, so the process stays.
  */
 
-const { describe, it } = require("node:test");
+const { describe, it, beforeEach, afterEach, mock } = require("node:test");
 const assert = require("node:assert/strict");
-const {
-  createStopWhenAllClear: heldStopOver,
-} = require("../src/server/stop-when-all-clear");
-const { botOperations } = require("../src/bot/bot-interface");
+const { createRouteHandlers } = require("./_bot-route-adapters");
+const { makeDeps, makeRes } = require("./helpers/route-handler-deps");
+const appPhase = require("../src/bot/app-phase");
 const { underWay } = require("../src/bot/under-way");
-
-/**
- * The server's held stop, wired as the server wires it, over the bot's
- * own account of what is under way: the interface's `underWay` and
- * `scansEnded` (src/bot/bot-interface.js), built over the test's bot
- * states.
- */
-const createStopWhenAllClear = (deps) => {
-  const bot = botOperations({
-    diskConfig: { global: {}, positions: {} },
-    walletManager: { getAddress: () => null },
-    positionMgr: {},
-    getAllPositionBotStates: deps.getStates,
-  });
-  return heldStopOver({
-    ...deps,
-    underWay: (movesOver) => bot.underWay(movesOver),
-    scansEnded: () => bot.scansEnded(),
-  });
-};
 
 /** A promise with its resolver. */
 function deferred() {
@@ -59,23 +42,48 @@ const POSITION = {
   activePosition: { tokenId: "7", token0Symbol: "A", token1Symbol: "B" },
 };
 
-/** A held stop over `states`, with each step it takes recorded. */
+/**
+ * The server's held stop over `states`, as gentle-stop reaches it, with
+ * each step it takes recorded: the app marked stopping (as the alert
+ * goes), the alert, the positions' stop, and the exit.
+ */
 function heldStop(states, stopAll = async () => {}) {
   const steps = [];
-  const stop = createStopWhenAllClear({
-    markStopping: () => steps.push("markStopping"),
-    notifyShutdown: () => steps.push("notifyShutdown"),
-    stopAll: async () => {
-      steps.push("stopAll");
-      await stopAll();
+  const base = makeDeps();
+  const h = createRouteHandlers(
+    makeDeps({
+      getAllPositionBotStates: () => states,
+      notifyShutdown: () => {
+        if (appPhase.isStopping()) steps.push("markStopping");
+        steps.push("notifyShutdown");
+      },
+      positionMgr: {
+        ...base.positionMgr,
+        stopAll: async () => {
+          steps.push("stopAll");
+          await stopAll();
+        },
+      },
+    }),
+  );
+  const srv = { close: () => steps.push("exit") };
+  const stop = {
+    request: () => {
+      const res = makeRes();
+      h._handleStopWhenAllClear({}, res, srv);
+      return { waitingFor: res._body.waitingFor };
     },
-    getStates: () => states,
-    exit: () => steps.push("exit"),
-  });
+  };
   return { stop, steps };
 }
 
 describe("the held stop", () => {
+  beforeEach(() => mock.timers.enable({ apis: ["setTimeout"] }));
+  afterEach(() => {
+    mock.timers.reset();
+    appPhase._resetAppPhaseForTests();
+  });
+
   it("starts at once and exits once nothing is under way", async () => {
     const { stop, steps } = heldStop(new Map([[KEY, { ...POSITION }]]));
     assert.deepEqual(stop.request(), { waitingFor: [] });

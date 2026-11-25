@@ -217,20 +217,22 @@ function _updateSyncBadge(d) {
   badge.title = tip || "";
   badge.style.background = "";
   badge.classList.toggle("done", c);
-  /*- LP Browser stays enabled even during sync: it only opens a modal
+  /*-
+   *  LP Browser stays enabled even during sync: it only opens a modal
    *  over posStore.entries (localStorage-backed, zero on-chain calls),
-   *  and "Select" flows through _activateCore which is the canonical
-   *  safe switch path.  Critically, this lets the user open the browser
-   *  and Remove a position that is stuck retrying a force-rebalance the
-   *  gas guard keeps deferring — the only graceful halt path for that
-   *  scenario short of a server restart.
+   *  and "Select" flows through _activateCore, the safe way to switch.
+   *  This lets the user open the browser and Remove a position that is
+   *  stuck retrying a forced rebalance the gas guard keeps deferring —
+   *  the only graceful halt for that short of a server restart.
    *
-   *  Manage button's sync gate moved to dashboard-manage-ui.js's
-   *  computeManageUI() — paintManageUI() runs every poll and reads
-   *  syncBadge.done as one of its inputs, so this loop no longer needs
-   *  to write #manageToggleBtn directly.  Rebalance button (custom
-   *  range) is still handled here because its decision tree is
-   *  simpler and lives nowhere else. */
+   *  The Manage button's sync gate is computeManageUI()'s
+   *  (dashboard-manage-ui.js), which paintManageUI() runs every poll.
+   *  The Rebalance button is disabled below while syncing, but
+   *  `_updateRebalanceButtons`, run after this in the same poll, sets it
+   *  again from its own decision tree, which does not ask about Syncing:
+   *  Rebalance Now stays enabled during Syncing, and the server refuses
+   *  one it cannot make.
+   */
   const t = !c ? 'Wait until Syncing badge reads "Synced".' : "";
   const rb = g("rebalanceWithRangeBtn");
   if (rb) {
@@ -466,12 +468,16 @@ function updateDashboardFromStatus(data) {
   _lastStatus = data;
   // Read for the position on screen, it replaces any other position's.
   noteStatusAnswerFor(posStore.getActive());
-  /*- Single Manage-UI paint per poll.  Runs BEFORE any branch that
-   *  may early-return (e.g. cross-wallet skip below), so the button
-   *  always reflects current server state every 3 s regardless of
-   *  whether the rest of the dashboard updates this cycle.  Reads
-   *  state via injected getLastStatus + posStore from
-   *  dashboard-manage-ui.js — no need to thread `data` through. */
+  /*-
+   *  One Manage-UI paint per poll. It runs BEFORE any branch that may
+   *  return early (the cross-wallet skip below, say), so the button
+   *  follows the server every poll, even when the rest of the dashboard
+   *  skips this one. Its sync input, `isSyncComplete()`, is set by
+   *  `_updateSyncBadge` further down, so that input is one poll behind
+   *  the badge. It reads the state through the injected getLastStatus
+   *  and posStore (dashboard-manage-ui.js), so `data` need not be
+   *  threaded through.
+   */
   paintManageUI();
   /*- Reload Current Position: reflect the active position's live
    *  rebalance/compound-in-progress flags so the button in Settings

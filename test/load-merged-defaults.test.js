@@ -2,6 +2,15 @@
  * @file test/load-merged-defaults.test.js
  * @description Tests for src/lib/load-merged-defaults.js — the two-layer
  * shipped-defaults + user-override merge helper.
+ *
+ * The fixtures are written in folders of this process's own: a copy of
+ * the shipped settings folder and an empty overrides folder, which the
+ * loader reads in place of the tracked ones (`LP_RANGER_DEFAULTS_DIR`,
+ * `LP_RANGER_USER_CONFIG_DIR`, set before it is required). A fixture
+ * written in the tracked folder would appear and vanish under every
+ * other test process reading it, and fail a copy of the folder made at
+ * that moment (docs/engineering.md, "A Test File That Fails as It
+ * Loads").
  */
 
 "use strict";
@@ -10,6 +19,11 @@ const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const { useShippedDefaultsCopy } = require("./helpers/shipped-defaults-copy");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+
+useShippedDefaultsCopy();
+process.env.LP_RANGER_USER_CONFIG_DIR = makeTestTempFolder("user-config");
 
 const {
   loadMergedDefaults,
@@ -27,9 +41,7 @@ function _writeJson(p, obj) {
 }
 
 function _safeUnlink(p) {
-  /*- TOCTOU-safe: parallel test files (24-way concurrency per
-   *  package.json) could unlink between exists and unlink.  Treat
-   *  ENOENT as success since the post-condition (file absent) holds. */
+  // A case may never have written the file, or already removed it.
   try {
     fs.unlinkSync(p);
   } catch (err) {

@@ -14,7 +14,7 @@
  * looking like two.
  *
  * **Deliberately dependency-free**, and that is a constraint, not an
- * accident. Both tiers need this rule: the server decides whether to
+ * accident. Both tiers need this rule: the bot decides whether to
  * accept a Manage request, and the dashboard decides whether to offer
  * the button. The dashboard bundle is built by esbuild from
  * `src/client/web/js/dashboard-init.js`, so it can only reach a module that pulls

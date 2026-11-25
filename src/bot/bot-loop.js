@@ -142,10 +142,12 @@ function isRecoveryResult(result, botState) {
 function _needsLifetimeRescan(botState) {
   const reasons = [];
   if (botState._needsFullRescan === true) reasons.push("needsFullRescan=true");
-  /*- Re-scan Prices asked for the stored dollar figures to be rebuilt.
-   *  The route triggers a scan itself, so this covers the case where
-   *  that trigger never ran or threw: the request would otherwise sit
-   *  unanswered, since a scan is the only thing that reads it. */
+  /*-
+   *  Re-scan Prices asked for the stored dollar figures to be rebuilt.
+   *  It starts a scan itself, so this covers the case where that start
+   *  never ran or threw: the request would otherwise sit unanswered,
+   *  since a scan is the only thing that reads it.
+   */
   if (botState._needsPriceRevalue === true)
     reasons.push("needsPriceRevalue=true");
   /*- A compound or rebalance fee credit had no established total to add
@@ -235,16 +237,17 @@ async function startBotLoop(opts) {
     log.info(
       "\n  ┌──────────────────────────────────────────────┐\n  │  DRY RUN MODE — no transactions will be sent │\n  └──────────────────────────────────────────────┘\n",
     );
-  /*- Shared {provider, signer, address} wins when the caller passes one
-   *  in.  Production callers (Manage in position-lifecycle.js, the
-   *  start-up in auto-start.js, and bot.js's single-position mode
-   *  through the interface's `sharedSigner`) fetch the
-   *  singleton from positionMgr.getSharedSigner so every managed
-   *  position signs through the SAME NonceManager.  One NonceManager per
-   *  position means each keeps its own counter for one wallet, and they
-   *  drift apart into "nonce too low" rejections as soon as two
-   *  positions send.  Tests that don't need shared-signer semantics fall
-   *  through to the inline branch below. */
+  /*-
+   *  The shared {provider, signer, address} wins when the caller passes
+   *  one in. Production callers (Manage in position-lifecycle.js, the
+   *  start-up in auto-start.js, and bot.js's single-position mode through
+   *  the interface's `sharedSigner`) take the singleton from
+   *  positionMgr.getSharedSigner, so every managed position signs through
+   *  the SAME NonceManager. One NonceManager per position would keep its
+   *  own counter for one wallet, and the counters drift apart into "nonce
+   *  too low" rejections as soon as two positions send. Tests that don't
+   *  need shared-signer semantics fall through to the inline branch below.
+   */
   let provider, signer, address;
   if (opts.provider && opts.signer) {
     provider = opts.provider;
@@ -363,19 +366,18 @@ async function startBotLoop(opts) {
         ? `, mid-rebalance retry ${midwayRetryCount}/${config.MIDWAY_RETRY_LIMIT}`
         : "",
     );
-    /*- Re-open-attempt path: when the rebalance started with a drained
-     *  NFT (user clicked Manage on an auto-retired closed position,
-     *  bot-cycle.js's `_executeAndRecord` sets the
-     *  `_rebalanceStartedDrained` flag), any failure means we should
-     *  IMMEDIATELY put the position back where it was — closed +
-     *  auto-retired + not managed — rather than leave it stuck in a
-     *  30-min drain-timer limbo while the user wonders why nothing
-     *  is happening.  Signal an immediate retire on the next poll;
-     *  drain.js consumes `_retireImmediately` and fires the existing
-     *  retire path (onRetire → status=stopped → bot loop stops →
-     *  state deleted → dashboard reflects closed/not-managed).  No
-     *  midwayFail / paused — those states would block the retire
-     *  path or stay sticky in the UI. */
+    /*-
+     *  A failed re-open: when the rebalance started with a drained NFT
+     *  (the user clicked Manage on an auto-retired closed position, and
+     *  bot-cycle.js's `_executeAndRecord` set `_rebalanceStartedDrained`),
+     *  any failure puts the position back where it was — closed,
+     *  auto-retired, not managed — rather than leave it in a 30-minute
+     *  drain-timer limbo while the user wonders why nothing is happening.
+     *  The retire runs on the timer below, through the usual retire path
+     *  (onRetire → status=stopped → the bot loop stops → its state is
+     *  deleted → the dashboard shows it closed and not managed). No
+     *  midway failure is set: it would block the retire or stay on screen.
+     */
     if (botState._rebalanceStartedDrained) {
       log.info(
         "[bot] Re-open attempt for #%s failed — retiring in %ds (dashboard-poll window for alert)",
@@ -403,12 +405,11 @@ async function startBotLoop(opts) {
        *  delay the bot's startup-scan-triggered retire can fire
        *  within 2 s of the failure, narrower than one poll cycle, and
        *  the alert is missed on the second / N-th attempt where the
-       *  scan cache is warm and the bot starts faster.  Direct call
-       *  to `_handleRetire` rather than waiting for drain.js's
-       *  `_retireImmediately` poll path so retire fires exactly when
-       *  the delay elapses, regardless of bot-poll interval.  Bails
-       *  if the user took action during the wait (slippage change
-       *  clears rebalancePaused; Manage click sets forceRebalance).
+       *  scan cache is warm and the bot starts faster. It calls
+       *  `_handleRetire` directly, so the retire fires exactly when the
+       *  delay elapses, whatever the poll interval. It bails if the user
+       *  took action during the wait (a Slippage change clears
+       *  rebalancePaused; a Manage click sets forceRebalance).
        */
       setTimeout(() => {
         if (_stopped) {

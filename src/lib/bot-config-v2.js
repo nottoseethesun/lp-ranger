@@ -128,8 +128,10 @@ function _empty() {
  *
  * A load also copies each of the two files beside itself, as
  * bot-config.backup.json and position-records.backup.json. The server and
- * the bot load once as they start, so the copies hold the files as they
- * were before that run saved anything: a way back from a save that went
+ * the bot load twice as they start, their own load and the price
+ * library's (`readPriceCacheSettings`, src/bot/price-fetcher-gate.js),
+ * with nothing saved between, so the copies hold the files as they were
+ * before that run saved anything: a way back from a save that went
  * wrong. A caller that only reads a setting passes `skipBackups`, and
  * leaves the copies as the last start made them: a tool under util/ that
  * reads the price library's settings does

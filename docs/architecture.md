@@ -121,7 +121,7 @@ The endpoints fall into these groups, which are the reference's tags:
   `dashboardPollIntervalMs` (three seconds as shipped), returns the full
   state of all managed positions: pool prices, P&L snapshots, throttle
   state and scan progress. `GET /api/csrf-token` hands out the token every
-  request but a GET carries.
+  request but a GET carries (a browser's preflight, OPTIONS, needs none).
 - **Config** — `POST /api/config` saves per-position settings (slippage,
   threshold, timeout, auto-compound) and global ones (rpc list, gas fee
   limit, approval multiple).
@@ -570,15 +570,19 @@ nobody reads. The idle-driven pause stops the cascade in those windows
 while keeping it instantly available for any move.
 
 All gating happens at the public API of `src/bot/price-fetcher.js`, before the
-source cascade. Every price lookup goes through it: the rebalance /
-compound hot path, and the view-only answers for unmanaged-position
-detail and closed-position history, which the server asks the bot for
-through its interface. Adding or removing a price source later requires
-zero changes here. The one other request of a price service is the
-server's check of the stored Moralis key (`pingMoralis`,
+source cascade, and covers current prices. Every current price the bot
+looks up goes through `fetchTokenPriceUsd` or `fetchDustUnitPriceUsd`:
+the rebalance / compound hot path, and the view-only answers for
+unmanaged-position detail and closed-position history, which the server
+asks the bot for through its interface. Adding or removing a price
+source later requires zero changes here. Two kinds of request go to a
+price service without the gate. Historical prices are one: GeckoTerminal's
+price history (`fetchHistoricalPriceGecko`) and the lookups in
+`src/bot/historical-token-price.js` ask whether or not the pause is on.
+The server's check of the stored Moralis key is the other (`pingMoralis`,
 `src/lib/moralis-key.js`): it asks Moralis one price to prove the key,
 on a key save, the key dialog's status check and the check after the
-wallet unlock, and the pause does not gate it.
+wallet unlock.
 
 These set the pause flag, or bypass it:
 

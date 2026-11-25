@@ -193,7 +193,7 @@ describe("a Manage request and a wallet import", () => {
     });
     const res = await manage(t.routes);
     assert.equal(res.status, 409);
-    assert.match(res.body.error, /wallet was imported while this Manage/);
+    assert.match(res.body.error, /wallet's key changed while this Manage/);
     assert.equal(t.calls.signers, 0);
     assert.deepEqual(t.calls.started, []);
   });

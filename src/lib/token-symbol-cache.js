@@ -3,10 +3,11 @@
  * @module token-symbol-cache
  * @description
  * Disk-backed cache mapping ERC-20 token addresses to their human-readable
- * symbols.  Extracted from `wallet-scan.js` so dependency-light modules
- * (e.g. `price-fetcher.js`) can resolve symbols for log lines without
- * pulling in wallet-scan's heavy transitive deps (pool-scanner, rebalancer,
- * etc.) and risking a circular import.
+ * symbols. It is kept apart from `src/bot/wallet-scan.js`, which fills it,
+ * so dependency-light modules (e.g. `price-fetcher.js`) can resolve
+ * symbols for log lines without pulling in the wallet scan's heavy
+ * dependencies (pool-scanner, rebalancer, etc.) and risking a circular
+ * import.
  *
  * The cache is populated by `wallet-scan.resolveSymbolMap()` during LP
  * position scans; readers fall back to `null` when the address has not

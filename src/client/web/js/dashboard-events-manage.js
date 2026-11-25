@@ -294,10 +294,12 @@ export function _handleManageFailure(verb, payload, active, tell = alert) {
    *  restore.  All other writes go through paintManageUI() instead of
    *  touching the DOM directly, so the single-owner invariant holds. */
   try {
-    /*- Normalize the payload: accept legacy bare strings (network
-     *  errors, HTTP-status-only fallbacks) and the new structured body
-     *  the server sends from the bot's Manage (`manage` in
-     *  src/bot/position-lifecycle.js) (`{ error, message, tokenId }`). */
+    /*-
+     *  Normalize the payload: accept a bare string (a network error, an
+     *  HTTP-status-only fallback) and the structured body the server
+     *  sends from the bot's Manage (`manage` in
+     *  src/bot/position-lifecycle.js), `{ error, message, tokenId }`.
+     */
     const isObj = payload && typeof payload === "object";
     const code = isObj ? payload.error : payload;
     const message = isObj ? payload.message : payload;
@@ -530,16 +532,17 @@ export async function _toggleManagePosition() {
   if (!active?.tokenId || active.positionType !== "nft") return;
   const isManaged = isPositionManaged(active.tokenId);
   const key = manageKey(active);
-  /*- Closed-position re-open path: any drained NFT (liquidity=0)
-   *  routes through `_runClosedPositionFlow` regardless of whether
-   *  the SERVER currently has it in the managed set (it may, if a
-   *  prior re-open started the bot loop but the rebalance aborted).
-   *  The re-open flow always sends `forceRebalance: true`, and
-   *  the bot's Manage honors that on already-running positions via
-   *  `_stampReopenFlagsOnLive`, so this is the correct path for
-   *  both "fresh auto-retired" and "running-but-aborted" closed
-   *  positions.  Without this branch the user would fall through
-   *  to `_sendManage`, which silently no-ops on already-running. */
+  /*-
+   *  The re-open of a closed position: any drained NFT (liquidity=0)
+   *  goes through `_runClosedPositionFlow`, whether or not the server
+   *  has it in the managed set (it may, if a prior re-open started the
+   *  bot loop but the rebalance aborted). The re-open flow always sends
+   *  `forceRebalance: true`, and the bot's Manage honors that on a
+   *  running position (`_stampReopenFlagsOnLive`), so this path serves
+   *  both an auto-retired closed position and a running one whose
+   *  re-open aborted. Without it, the request would go to `_sendManage`,
+   *  which does nothing for a running position.
+   */
   if (isPositionClosed(active)) {
     await _runClosedPositionFlow(active);
     return;

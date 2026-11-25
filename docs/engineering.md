@@ -73,6 +73,8 @@ sequence.
 - [The app-config Directory](#the-app-config-directory)
 - [Bot Config Defaults](#bot-config-defaults)
 - [Security](#security) → [`docs/security.md`](security.md)
+- [Test](#test)
+  - [A Test File That Fails as It Loads](#a-test-file-that-fails-as-it-loads)
 - [Check Report Artifacts](#check-report-artifacts)
 - [API Documentation](#api-documentation)
 - [`src/server.js`](#srcserverjs)
@@ -3108,8 +3110,9 @@ One home for each kind of data:
   `src/lib/settings-file-rules.js`), `src/lib/config.js` as it loads
   (through `src/lib/bot-config-defaults.js`, `src/lib/runtime-flags.js`
   and `src/lib/timer-bounds.js`), the dashboard settings' reader
-  (`src/lib/ui-defaults.js`), and the bot's own checks of a value it
-  uses. The dashboard bundles it for the figures its
+  (`src/lib/ui-defaults.js`), the help figures' reader
+  (`src/server/resolved-settings.js`), and the bot's own checks of a
+  value it uses. The dashboard bundles it for the figures its
   help quotes and for its token-decimals check. **Not overridable:** a
   range an override could widen would bound nothing.
 - **`app-defaults-for-user-configurable/api-keys.example.json`** —
@@ -3138,12 +3141,12 @@ One home for each kind of data:
 - **`user-configurable/bot-config.backup.json`** — Runtime, gitignored.
   Automatic snapshot that bot-config-v2's `loadConfig` makes on each
   successful call, unless the caller passes `skipBackups`. The server
-  and the bot call it once as they start, so the snapshot holds the file
-  as it was before that run saved anything. The price library's three
-  cache lifetimes are read through it too (`readPriceCacheSettings`,
-  `src/bot/price-fetcher-gate.js`), when the bot's parts are built
-  (`buildBotParts`, `src/bot/bot-interface.js`) as each program starts,
-  never as the library loads; that read makes the copies. A tool under
+  and the bot call it twice as they start: their own load, then the
+  price library's read of its three cache lifetimes
+  (`readPriceCacheSettings`, `src/bot/price-fetcher-gate.js`), when the
+  bot's parts are built (`buildBotParts`, `src/bot/bot-interface.js`),
+  never as the library loads. Nothing is saved between the two, so the
+  snapshot holds the file as it was before that run saved anything. A tool under
   `util/` that needs the
   lifetimes passes `skipBackups`, so its read leaves the snapshot alone
   while LP Ranger runs.
@@ -3404,6 +3407,72 @@ Entry points worth knowing:
 
 ---
 
+## Test
+
+`npm run check` runs every test file in a process of its own, many at
+once. How to write and run tests is in
+[`docs/claude/CLAUDE-TESTING.md`](claude/CLAUDE-TESTING.md); this
+section covers a failure that says nothing about the code under test.
+
+### A Test File That Fails as It Loads
+
+Four test files copy the shipped settings folder,
+`app-config/app-defaults-for-user-configurable/`, into a temp folder of
+their own as they load, so they can change a setting without touching
+the tracked file (`useShippedDefaultsCopy`,
+`test/helpers/shipped-defaults-copy.js`):
+`test/lp-providers.test.js`, `test/setting-labels.test.js`,
+`test/boot-log-file.test.js`, and the help tests through
+`test/helpers/help-settings-moved.js`. The copy reads each file the
+folder lists, one at a time. A file listed but gone before it is read
+fails the copy, and with it the whole test file, before any of its
+tests runs.
+
+**What it looks like.** The gate's summary names one of those files
+under Failures, with no failing test of its own: the file failed at
+load. The test total is short by that file's tests. The error is ENOENT,
+"no such file or directory", raised in `useShippedDefaultsCopy`. Run the
+gate again: if it passes, the failure was this one, and the code under
+test was never reached.
+
+**What causes it.** Every test process reads the shipped folder, many
+at the same time. A test that writes or removes a file there, even for
+a moment, can fail another test's copy. Tests change a copy of their own
+instead, and two things hold them to it.
+`test/tests-leave-shipped-files-alone.test.js` fails any test whose
+source writes into the folder, by a path built from the repo or from
+the loader's own `DEFAULTS_DIR`. The loader takes `LP_RANGER_DEFAULTS_DIR`
+and `LP_RANGER_USER_CONFIG_DIR`, so a test can point it at folders of
+its own before requiring it (`src/lib/load-merged-defaults.js`).
+
+**If it fails again.** The helper prints a report before it throws, in
+the gate's output and in `test/report-artifacts/tests.tap`. It begins
+`[shipped-defaults-copy] The copy of the shipped settings failed`. Read
+it like this:
+
+- **The error** names the file that failed, with both of its paths. A
+  name `git ls-files app-config/app-defaults-for-user-configurable`
+  does not list means something wrote that file into the folder while
+  the tests ran. Search the tests for the name.
+- **The copy's folder**: `GONE` means the copy's own temp folder was
+  removed, not a shipped file. The folder is named for its process,
+  so look for code that removes a test folder without asking, as
+  `removeLeftoverTestTempFolders` (`src/lib/test-temp-folders.js`)
+  does, whether its process still runs.
+- **The shipped folder** lists what it held as the copy failed. A
+  stranger in it is the writer's file, caught in the act.
+- **Test folders** lists each LP Ranger test folder in the temp
+  directory, with its process and whether that process still ran. A
+  folder missing while its process ran was removed by someone else.
+
+To catch a writer the report misses, watch the folder through one gate
+run: a few lines of Node's `fs.watch` on the folder, logging each name
+it reports with the time, show every file created or removed there. A
+copy that retries on failure would hide the writer, and the writer can
+fail other tests too, so find and fix the writer instead.
+
+---
+
 ## Check Report Artifacts
 
 `npm run check` (via `scripts/check.js`) runs lint + tests + coverage +
@@ -3629,11 +3698,14 @@ Typical workflow when you add, rename, or change an API route:
    — this keeps the spec and the implementation from drifting in
    reviewable diffs.
 
-Routes matched by URL pattern rather than by a `"METHOD /path"` handler
-entry — today only `GET /api/position/{tokenId}/history` — are invisible
-to the checker's scan, so they are allowlisted by name in
-`DYNAMIC_ROUTES` at the top of `scripts/check-openapi-sync.js`. A second
-dynamic route has to be added there deliberately.
+Two routes are matched on the URL rather than by a `"METHOD /path"`
+handler entry, so the checker's scan cannot see them: a closed
+position's history (`GET /api/position/{tokenId}/history`), and the
+csrf token (`GET /api/csrf-token`), which the csrf check answers before
+the route table. They are listed by name in `DYNAMIC_ROUTES` at the top
+of `scripts/check-openapi-sync.js`, and the check requires each to be in
+the spec, as it does every other route. A third has to be added there
+deliberately.
 
 ### Reference
 
@@ -3755,7 +3827,8 @@ What happens when the process starts, in order:
 1. cors, then csrf (`src/server/server-cors.js`,
    `src/server/server-csrf.js`). The csrf check answers
    `GET /api/csrf-token` itself and refuses every request but a GET
-   without a valid token. Each request under `/api/` then resets the
+   without a valid token; a browser's preflight (OPTIONS), which the
+   cors check answers first, needs none. Each request under `/api/` then resets the
    server's idle countdown (`markActivity`, `src/server/server-pause.js`).
 2. The route table, which maps method+path to a handler. Three small
    routes are answered in `src/server.js` itself: `GET /health`,
@@ -3776,10 +3849,15 @@ What happens when the process starts, in order:
 
 A route that needs the bot asks it through its interface, and a bot
 operation's refusal becomes a status in
-[`src/server/bot-result.js`](../src/server/bot-result.js). The one
-refusal a route sets itself is the wallet import's: while the app may
-start nothing (a stop, a start-up or another import under way), the
-import answers 409. The full route surface, the csrf token included, is
+[`src/server/bot-result.js`](../src/server/bot-result.js). A route
+answers some refusals itself. A malformed request gets 400: the
+unlock's missing password, a malformed key asked of
+`GET /api/is-position-managed`, an api-key save missing a field. The
+unlock answers a wrong password 401. The wallet's own steps answer 409:
+the import while the app may start nothing (a stop, a start-up or
+another import under way), and the unlock while an import is under way.
+An error a route throws becomes 400, or 403 for a wrong password, in
+`handleRequest`. The full route surface, the csrf token included, is
 covered by the OpenAPI spec (see [API Documentation](#api-documentation)
 above).
 

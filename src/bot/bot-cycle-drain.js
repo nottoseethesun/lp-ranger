@@ -63,13 +63,14 @@ function checkZeroLiquidity(deps) {
   const { position } = deps;
   const state = deps._botState || {};
   const drained = isThisPositionDrained(position);
-  /*- Re-open-failure retire is handled DIRECTLY by bot-loop.js's
-   *  `_handleError` via `setTimeout(_handleRetire, dashboardHasPolledMs)`
-   *  (src/bot/dashboard-has-polled.js).
-   *  No drain.js branch for `_retireImmediately` — an earlier defense-in-
-   *  depth flag was fired by drain.js BEFORE the setTimeout could elapse
-   *  (drain.js runs from the scan-completion pollCycle, within ~2 s of
-   *  the failure), preempting the dashboard-poll window.  Removed.  */
+  /*-
+   *  A failed re-open's retire is bot-loop.js's alone: `_handleError`
+   *  sets it on a timer, `setTimeout(_handleRetire, dashboardHasPolledMs)`
+   *  (src/bot/dashboard-has-polled.js), so the dashboard sees the failure
+   *  first. This file has no branch for it: it runs from the poll that
+   *  follows a scan, within about 2 s of the failure, so a retire from
+   *  here would come before the dashboard could see it.
+   */
   /*-
    *  `rebalanceFailedMidway` flags a "needs mint retry from wallet"
    *  state.  When the bot is also `rebalancePaused` (slippage abort —

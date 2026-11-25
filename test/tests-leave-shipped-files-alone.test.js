@@ -12,10 +12,12 @@
  *   (test/helpers/shipped-defaults-copy.js).
  *
  *   Read from each test file's source: a path built from the repo
- *   (`__dirname` or `process.cwd()`) to the folder, as a constant or in
- *   place, handed to a call that writes or removes a file. A path built
- *   inside a temp folder, as a test's own copy of an install is, is not
- *   the tracked folder.
+ *   (`__dirname` or `process.cwd()`) to the folder, or from the loader's
+ *   own `DEFAULTS_DIR` (src/lib/load-merged-defaults.js) when the test
+ *   has not pointed the loader at a copy before requiring it, as a
+ *   constant or in place, handed to a call that writes or removes a file.
+ *   A path built inside a temp folder, as a test's own copy of an install
+ *   is, is not the tracked folder.
  */
 
 const { describe, it } = require("node:test");
@@ -77,16 +79,35 @@ const _isRepoPathToFolder = (expr) =>
   expr.includes(FOLDER);
 
 /**
- * The names a source binds to a repo path to the folder.
+ * Whether a source's `DEFAULTS_DIR`, the loader's, is the tracked folder:
+ * the loader reads `LP_RANGER_DEFAULTS_DIR` as it loads, so it is unless
+ * the test pointed it at a copy (`useShippedDefaultsCopy`) before
+ * requiring it.
+ * @param {string} src
+ * @returns {boolean}
+ */
+function _loaderNamesTheFolder(src) {
+  const loader = src.search(/require\([^)]*load-merged-defaults["']\)/);
+  if (loader === -1 || !/\bDEFAULTS_DIR\b/.test(src)) return false;
+  const copy = src.search(
+    /useShippedDefaultsCopy\(|process\.env\.LP_RANGER_DEFAULTS_DIR\s*=/,
+  );
+  return copy === -1 || copy > loader;
+}
+
+/**
+ * The names a source binds to a path to the folder: built from the repo,
+ * or from a name already bound to it, the loader's `DEFAULTS_DIR` among
+ * them when it is the tracked folder.
  * @param {string} src
  * @returns {Set<string>}
  */
 function _folderPathNames(src) {
-  const names = new Set();
+  const names = new Set(_loaderNamesTheFolder(src) ? ["DEFAULTS_DIR"] : []);
   for (const m of src.matchAll(/(?:const|let)\s+(\w+)\s*=\s*path\.join\(/g)) {
-    const open = m.index + m[0].length - 1;
-    const expr = `path.join(${_args(src, open).join(", ")})`;
-    if (_isRepoPathToFolder(expr)) names.add(m[1]);
+    const args = _args(src, m.index + m[0].length - 1);
+    const expr = `path.join(${args.join(", ")})`;
+    if (_isRepoPathToFolder(expr) || names.has(args[0])) names.add(m[1]);
   }
   return names;
 }
@@ -141,6 +162,12 @@ describe("tests and the shipped settings folder", () => {
       `const D = path.join(__dirname, "..", "app-config", "${FOLDER}");
        fs.copyFileSync("/tmp/a.json", path.join(D, "x.json"));`,
       `fs.writeFileSync(path.join(__dirname, "../app-config/${FOLDER}/x.json"), "");`,
+      `const { DEFAULTS_DIR } = require("../src/lib/load-merged-defaults");
+       const F = path.join(DEFAULTS_DIR, "x.json");
+       fs.writeFileSync(F, "{}");`,
+      `const { DEFAULTS_DIR } = require("../src/lib/load-merged-defaults");
+       useShippedDefaultsCopy();
+       fs.unlinkSync(path.join(DEFAULTS_DIR, "x.json"));`,
     ];
     for (const src of bad) assert.equal(shippedFileWrites(src).length, 1, src);
   });
@@ -153,6 +180,10 @@ describe("tests and the shipped settings folder", () => {
        fs.writeFileSync(F, "SHIPPED");`,
       `const F = path.join(__dirname, "..", "app-config", "${FOLDER}", "x.json");
        fs.readFileSync(F, "utf8");`,
+      `useShippedDefaultsCopy();
+       const { DEFAULTS_DIR } = require("../src/lib/load-merged-defaults");
+       const F = path.join(DEFAULTS_DIR, "x.json");
+       fs.writeFileSync(F, "{}");`,
     ];
     for (const src of fine) assert.deepEqual(shippedFileWrites(src), [], src);
   });

@@ -38,6 +38,7 @@ const {
 const {
   makeTestTempFolder,
   removeLeftoverTestTempFolders,
+  describeTestTempFolders,
 } = require("../src/lib/test-temp-folders");
 
 const LIVE = path.join(
@@ -184,6 +185,25 @@ describe("a test process's temp folders", () => {
       assert.equal(fs.existsSync(dir), false, `${dir} was left behind`);
     assert.equal(/^ADDED=(\d+)$/m.exec(stdout)[1], "0", "no hook per folder");
     assert.doesNotMatch(stderr, /MaxListenersExceededWarning/);
+  });
+});
+
+describe("the test folders, as a failed copy of the shipped settings reports them", () => {
+  it("name each folder's process and whether it still runs", () => {
+    const parent = makeTestTempFolder("describe");
+    const ended = spawnSync(process.execPath, ["-e", ""]).pid;
+    const stopped = `lp-ranger-test-config-${ended}-abc123`;
+    const running = `lp-ranger-test-shipped-${process.pid}-def456`;
+    for (const name of [stopped, running, "check-backup-jkl012"])
+      fs.mkdirSync(path.join(parent, name));
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    assert.deepEqual(
+      describeTestTempFolders(parent).sort(byName),
+      [
+        { name: stopped, pid: ended, running: false },
+        { name: running, pid: process.pid, running: true },
+      ].sort(byName),
+    );
   });
 });
 

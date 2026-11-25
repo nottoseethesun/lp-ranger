@@ -212,20 +212,25 @@ function _wireDialog(overlay, getStatus, getSynced) {
   go.addEventListener("click", () => _submit(overlay, go, getStatus));
 }
 
-/*- Poll cadence and cap both come from values the server already
- *  publishes on /api/status — no literals here.
+/**
+ * How often to ask, and for how long: both from values the server already
+ * publishes on /api/status, no literals here.
  *
- *  `guaranteedDashboardHasPolledMs` is the dashboard's poll interval
- *  times app-runtime.json → dashboard.pollsBeforeAssumedSeen
- *  (src/bot/dashboard-has-polled.js), i.e. "long enough that the
- *  dashboard has certainly re-polled". Using
- *  it as the interval means the very first check already reads a fresh
- *  snapshot, so a stale one carrying the PREVIOUS scan's
- *  `lifetimeScanComplete: true` can never be mistaken for this scan
- *  finishing. Polling faster would only re-read the same snapshot.
+ * `guaranteedDashboardHasPolledMs` is the dashboard's poll interval times
+ * app-runtime.json → dashboard.pollsBeforeAssumedSeen
+ * (src/bot/dashboard-has-polled.js), i.e. "long enough that the dashboard
+ * has certainly re-polled". Using it as the interval means the very first
+ * check already reads a fresh snapshot, so a stale one carrying the
+ * PREVIOUS scan's `lifetimeScanComplete: true` can never be mistaken for
+ * this scan finishing. Polling faster would only re-read the same
+ * snapshot.
  *
- *  `rescanPricesTimeoutMs` caps the wait: past it, hand the button back rather
- *  than spin forever. */
+ * `rescanPricesTimeoutMs` caps the wait: past it, hand the button back
+ * rather than spin forever.
+ * @param {object} status  The last status answer.
+ * @returns {{every: number, cap: (number|null)}|null}  Null when the
+ *   answer carries no usable interval.
+ */
 function _cadence(status) {
   const every = Number(status?.guaranteedDashboardHasPolledMs);
   const cap = Number(status?.rescanPricesTimeoutMs);

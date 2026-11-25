@@ -9,9 +9,9 @@
  *   itself when bot code loads. Neither program should have to call a
  *   "start bot" function: the server loads the bot's modules anyway, when
  *   it loads the bot's interface (bot-recorder.js requires this file), and
- *   the headless bot requires it right after its settings check, ahead of
- *   every bot module but its help text, so the banner falls out of that
- *   naturally.
+ *   the headless bot requires it just after its settings check, its read
+ *   of the dashboard settings and its logger, ahead of every bot module
+ *   but its help text, so the banner falls out of that naturally.
  *
  *   Style: light gray on very dark gray, rocket emoji before/after "Started."
  *   ANSI: 38;2;211;211;211 = lt-gray fg, 48;2;25;25;25 = very dark gray bg.
