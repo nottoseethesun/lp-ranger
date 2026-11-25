@@ -12,6 +12,7 @@ Testing: [docs/claude/CLAUDE-TESTING.md](docs/claude/CLAUDE-TESTING.md)
 Every npm command, its flags and an example: [docs/npm-project-commands.md](docs/npm-project-commands.md)
 The bookkeeping tools in `util/bookkeeping/`, with their own user manual, commands and engineering reference: [docs/util/bookkeeping-for-coins-in-transactions/](docs/util/bookkeeping-for-coins-in-transactions/engineering.md)
 Disclosure editing: [docs/claude/CLAUDE-DISCLOSURES.md](docs/claude/CLAUDE-DISCLOSURES.md)
+Auditing the English of docs, help and JSDoc, the user's hand-off: [docs/claude/CLAUDE-ENGLISH-AUDIT.md](docs/claude/CLAUDE-ENGLISH-AUDIT.md)
 Accumulated context — decisions, user preferences, open items: [docs/claude/memory/MEMORY.md](docs/claude/memory/MEMORY.md)
 
 > **Counts in this file drift.** Every tally below — test totals, file counts — is point-in-time and goes stale with the next commit. Read them as scale, not fact, and re-derive before citing one: `npm run check` prints the live test total, and file tallies are whatever `ls` reports today. Numbers that are *not* drift, and that you should treat as authoritative: lint thresholds (complexity ≤ 17, max-lines ≤ 500), config defaults in the key-config table, and hard limits like the 300-position store cap.

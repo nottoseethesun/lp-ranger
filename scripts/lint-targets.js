@@ -106,6 +106,7 @@ const MARKDOWN_TARGETS = [
   "docs/claude/CLAUDE-BEST-PRACTICES.md",
   "docs/claude/CLAUDE-TESTING.md",
   "docs/claude/CLAUDE-DISCLOSURES.md",
+  "docs/claude/CLAUDE-ENGLISH-AUDIT.md",
   "docs/architecture.md",
   "docs/util/bookkeeping-for-coins-in-transactions/*.md",
   "docs/configuration.md",
