@@ -34,8 +34,10 @@
 
 "use strict";
 
+const path = require("path");
 const runtimeFlags = require("./runtime-flags");
 const walletManager = require("./wallet-manager");
+const { makeTestTempFolder } = require("./test-temp-folders");
 const {
   loadMergedDefaults,
   loadShippedDefaults,
@@ -349,8 +351,21 @@ const IMPERMANENT_LOSS_GUARD_PCT = parseBoundedSetting(
   "impermanentLossGuardPct",
 );
 
-/** File path for the JSON rebalance event log. */
-const LOG_FILE = readEnv("LOG_FILE") ?? APP_CONFIG.log.file;
+/**
+ * Where the rebalance log is when LOG_FILE names none: the shipped path
+ * (`log.file` in app-runtime.json); under `node --test`, a file in a temp
+ * folder of the test process's own, so no test can append a rebalance it
+ * makes to the operator's log. A test that needs a log of its own sets
+ * `config.LOG_FILE`.
+ * @returns {string}
+ */
+function _rebalanceLogDefault() {
+  if (process.env.NODE_TEST_CONTEXT === undefined) return APP_CONFIG.log.file;
+  return path.join(makeTestTempFolder("rebalance-log"), "rebalance_log.json");
+}
+
+/** File path for the JSON rebalance event log (`_rebalanceLogDefault`). */
+const LOG_FILE = readEnv("LOG_FILE") ?? _rebalanceLogDefault();
 
 /**
  * Read how long after a drain a re-deposit on the same NFT still counts as

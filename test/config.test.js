@@ -16,6 +16,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
+const os = require("os");
 const path = require("path");
 const util = require("util");
 const { spawnSync } = require("child_process");
@@ -72,6 +73,37 @@ describe("config default values", () => {
       Number.isInteger(config.MAX_REBALANCES_PER_DAY) &&
         config.MAX_REBALANCES_PER_DAY > 0,
     );
+  });
+
+  it("puts the rebalance log in a temp folder of the test process's own under node --test", () => {
+    /*-
+     *  So no test can append a rebalance it makes to the operator's log,
+     *  however it reaches `appendLog`.
+     */
+    const dir = path.dirname(config.LOG_FILE);
+    assert.strictEqual(path.dirname(dir), os.tmpdir());
+    assert.ok(
+      path
+        .basename(dir)
+        .startsWith(`lp-ranger-test-rebalance-log-${process.pid}-`),
+      config.LOG_FILE,
+    );
+  });
+
+  it("uses the shipped rebalance log path outside tests", () => {
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    delete env.LOG_FILE;
+    const lib = JSON.stringify(
+      path.join(__dirname, "..", "src", "lib", "config"),
+    );
+    const res = spawnSync(
+      process.execPath,
+      ["-e", `process.stdout.write("\\nLOG=" + require(${lib}).LOG_FILE)`],
+      { cwd: makeTestTempFolder("log-file-cwd"), env, encoding: "utf8" },
+    );
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /\nLOG=\.\/app-data\/rebalance_log\.json$/);
   });
 
   it("LOG_FILE is a non-empty string", () => {

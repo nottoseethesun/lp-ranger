@@ -7,35 +7,11 @@
 
 "use strict";
 
-const {
-  describe,
-  it,
-  before,
-  after,
-  beforeEach,
-  afterEach,
-} = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
-const path = require("path");
 const { _overridePnlWithRealValues } = require("../src/bot/bot-loop");
 const { _poll } = require("./_bot-loop-helpers");
 const { _resetForTest } = require("../src/bot/gecko-rate-limit");
-const config = require("../src/lib/config");
-const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
-
-/*-
- *  A poll that rebalances appends to the rebalance log (`appendLog`,
- *  src/bot/bot-recorder.js), which the bot reads to count each pool's
- *  rebalances today. Pointed at a file of this process's own for the
- *  file's run, so no run of these tests adds to the operator's log.
- */
-const savedLogFile = config.LOG_FILE;
-before(() => {
-  config.LOG_FILE = path.join(makeTestTempFolder("rebalance-log"), "log.json");
-});
-after(() => {
-  config.LOG_FILE = savedLogFile;
-});
 
 let _originalFetch;
 /*-

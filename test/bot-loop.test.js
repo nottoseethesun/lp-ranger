@@ -9,40 +9,16 @@
 
 "use strict";
 
-const {
-  describe,
-  it,
-  before,
-  after,
-  beforeEach,
-  afterEach,
-} = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
-const path = require("path");
 const util = require("util");
 const { _setSinkForTests } = require("../src/lib/log");
-const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
 const { resolvePrivateKey } = require("../src/bot/bot-private-key");
 const { wireBotStateGetConfig } = require("../src/bot/bot-state-init");
-const config = require("../src/lib/config");
-const { CHAIN } = config;
+const { CHAIN } = require("../src/lib/config");
 const { ADDR, _poll } = require("./_bot-loop-helpers");
-
-/*-
- *  A poll that rebalances appends to the rebalance log (`appendLog`,
- *  src/bot/bot-recorder.js), which the bot reads to count each pool's
- *  rebalances today. Pointed at a file of this process's own for the
- *  file's run, so no run of these tests adds to the operator's log.
- */
-const savedLogFile = config.LOG_FILE;
-before(() => {
-  config.LOG_FILE = path.join(makeTestTempFolder("rebalance-log"), "log.json");
-});
-after(() => {
-  config.LOG_FILE = savedLogFile;
-});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

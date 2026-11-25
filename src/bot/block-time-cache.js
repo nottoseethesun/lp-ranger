@@ -19,11 +19,15 @@ const { log } = require("../lib/log");
 const fs = require("fs");
 const path = require("path");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { readEnv } = require("../lib/env-settings");
 
-// Cache path can be overridden via env var so tests cannot ever clobber the
-// production file, regardless of how the test is invoked.
+/*-
+ *  `BLOCK_TIME_CACHE_PATH` moves the file, read through `readEnv`, so a
+ *  blank value names none. Under `node --test` the cache folder is the
+ *  test process's own anyway (`scanCachePath`).
+ */
 const _CACHE_PATH =
-  process.env.BLOCK_TIME_CACHE_PATH || scanCachePath("block-time-cache.json");
+  readEnv("BLOCK_TIME_CACHE_PATH") ?? scanCachePath("block-time-cache.json");
 
 /** @type {Record<string, number> | null} */
 let _cache = null;

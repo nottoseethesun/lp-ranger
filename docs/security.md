@@ -1262,10 +1262,10 @@ clobbers live user state: one that believed it had written to
 `app-config/user-configurable/wallet.json` was writing where the live file
 had been wiped, and the original comes back afterwards. Outside the gate,
 under `node --test`, the wallet, the api keys, bot-config.json, the
-records and the scan caches are each the test process's own files, and
-no `.env` is read. Two things are not redirected: the rebalance log,
-which a test that rebalances points at a test folder itself, and the
-folder of the operator's copies of the settings files. The gate fails a
+records, the rebalance log and the scan caches are each the test
+process's own files, and no `.env` is read. One thing is not
+redirected: the folder of the operator's copies of the settings files.
+The gate fails a
 run whose tests changed `app-config/user-configurable/`, `app-data/` or
 the shipped settings. Tests that need explicit paths instead use the
 `WALLET_FILE_PATH` / `API_KEYS_FILE_PATH` environment variables or pass

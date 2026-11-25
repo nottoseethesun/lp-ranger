@@ -47,12 +47,16 @@ const { loadMergedDefaults } = require("../lib/load-merged-defaults");
 const { SETTING_BOUNDS } = require("../lib/setting-bounds");
 const { withinBound, boundText } = require("../lib/range-check");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { readEnv } = require("../lib/env-settings");
 const { readJsonObject, replaceJsonFile } = require("./shared-json-file");
 
-// Path can be overridden via env var so tests cannot ever clobber the
-// production file, regardless of how the test is invoked.
+/*-
+ *  `GECKO_POOL_CACHE_PATH` moves the file, read through `readEnv`, so a
+ *  blank value names none. Under `node --test` the cache folder is the
+ *  test process's own anyway (`scanCachePath`).
+ */
 const _CACHE_PATH =
-  process.env.GECKO_POOL_CACHE_PATH || scanCachePath("gecko-pool-cache.json");
+  readEnv("GECKO_POOL_CACHE_PATH") ?? scanCachePath("gecko-pool-cache.json");
 
 /** @type {Record<string, 'normal'|'flipped'> | null} */
 let _cache = null;

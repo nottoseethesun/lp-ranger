@@ -8,33 +8,16 @@
  * was unified with send-transaction.js).
  */
 
-const { describe, it, before, after } = require("node:test");
+const { describe, it } = require("node:test");
 const assert = require("assert");
-const path = require("path");
 const util = require("util");
 const { _setSinkForTests } = require("../src/lib/log");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
-const config = require("../src/lib/config");
-const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { pollCycle } = require("../src/bot/bot-loop");
 const { ADDR, buildPollDeps } = require("./_bot-loop-helpers");
 const showHelp = require("../src/bot/bot-cli-help");
 const showServerHelp = require("../src/server/server-cli-help");
-
-/*-
- *  A poll that rebalances appends to the rebalance log (`appendLog`,
- *  src/bot/bot-recorder.js), which the bot reads to count each pool's
- *  rebalances today. Pointed at a file of this process's own for the
- *  file's run, so no run of these tests adds to the operator's log.
- */
-const savedLogFile = config.LOG_FILE;
-before(() => {
-  config.LOG_FILE = path.join(makeTestTempFolder("rebalance-log"), "log.json");
-});
-after(() => {
-  config.LOG_FILE = savedLogFile;
-});
 
 // ── pollCycle — OOR detection ────────────────────────────────────────────────
 

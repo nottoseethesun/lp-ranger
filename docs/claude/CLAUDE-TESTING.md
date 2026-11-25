@@ -143,7 +143,7 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 2. Tests run. None may create, change or delete a file in those folders: the gate reads them before and after the tests and fails the run on any change, a file written and put back included (its "Folders kept" row).
 3. After tests (try/finally in `check.js`): `restoreProdFiles()` deletes any test-created files and copies the backed-up originals back into place
 
-The backup is the safety net, not the way a test keeps clear of those files. Under `node --test` most of them are a test process's own already (see "Temp folders" below); a test that needs another points it at a `makeTestTempFolder` folder itself, as the tests that rebalance do with the rebalance log (`config.LOG_FILE`). A test never snapshots and restores an operator file.
+The backup is the safety net, not the way a test keeps clear of those files. Under `node --test` most of them are a test process's own already (see "Temp folders" below); a test that needs a file of its choosing points it at a `makeTestTempFolder` folder itself (`config.LOG_FILE` for a rebalance log of its own, say). A test never snapshots and restores an operator file.
 
 ### `logs/`
 
@@ -199,7 +199,7 @@ Default/vanilla config values come from `.env.example` and the shipped JSON file
 
 ### Temp folders
 
-A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so are the records file's folder (`src/lib/util/position-records.js`), the scan-cache folder, the api-key store's folder (`src/lib/api-key-store.js`, when `API_KEYS_FILE_PATH` names no file) and the wallet's (`src/lib/wallet-manager.js`, when `WALLET_FILE_PATH` names none). A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
+A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so are the records file's folder (`src/lib/util/position-records.js`), the rebalance log's (`src/lib/config.js`, when `LOG_FILE` names none), the scan-cache folder, the api-key store's folder (`src/lib/api-key-store.js`, when `API_KEYS_FILE_PATH` names no file) and the wallet's (`src/lib/wallet-manager.js`, when `WALLET_FILE_PATH` names none). A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
 
 A process stopped outright (Ctrl+C, kill -9) cannot remove its folders, so `npm run check` removes them before its tests start: each `lp-ranger-test-` folder whose process, named in the folder's name, is no longer running. A running process's folder is left alone, so a test run under way elsewhere keeps its files.
 

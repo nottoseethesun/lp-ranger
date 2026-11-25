@@ -3193,8 +3193,10 @@ One home for each kind of data:
   exit/entry USD values, token balances. Appended to by
   `src/bot/bot-recorder.js`. Read by `src/bot/position-history.js` for
   closed-position P&L display. Configurable via the `LOG_FILE`
-  environment variable. Lives outside `app-config/` because it's
-  per-install runtime DATA, not config.
+  environment variable. Under `node --test` it is a file in the test
+  process's own temp folder, unless `LOG_FILE` names another. Lives
+  outside `app-config/` because it's per-install runtime DATA, not
+  config.
 
 ### The Dashboard's Three Settings Files
 
@@ -3304,9 +3306,9 @@ ever clobbering live user state. The shipped-defaults directory
 tracked `api-keys.example.json` format template alongside the tunable
 JSON defaults) is not touched at all — it's tracked repo content.
 
-Under `node --test`, bot-config.json, the records file, the scan caches,
-api-keys.json and wallet.json each resolve to a temp folder of the test
-process's own, and no `.env` is read (`envFilePath`,
+Under `node --test`, bot-config.json, the records file, the rebalance
+log, the scan caches, api-keys.json and wallet.json each resolve to a
+temp folder of the test process's own, and no `.env` is read (`envFilePath`,
 `src/lib/env-settings.js`). A test that needs files of its choosing
 passes an explicit `dir` to `loadConfig(dir)` / `saveConfig(cfg, dir)`
 (`bot-config-v2`), or names one in `WALLET_FILE_PATH` or

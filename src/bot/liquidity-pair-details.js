@@ -35,11 +35,15 @@ const path = require("path");
 const { liquidityPairScopeKey } = require("../lib/cache-store");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { readEnv } = require("../lib/env-settings");
 
-// Path can be overridden via env var so tests cannot ever clobber the
-// production file, regardless of how the test is invoked.
+/*-
+ *  `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` moves the file, read through
+ *  `readEnv`, so a blank value names none. Under `node --test` the cache
+ *  folder is the test process's own anyway (`scanCachePath`).
+ */
 const _CACHE_PATH =
-  process.env.LIQUIDITY_PAIR_DETAILS_CACHE_PATH ||
+  readEnv("LIQUIDITY_PAIR_DETAILS_CACHE_PATH") ??
   scanCachePath("liquidity-pair-details-cache.json");
 
 /** Minimal ERC-20 ABI fragment — only what we need for historical balances. */

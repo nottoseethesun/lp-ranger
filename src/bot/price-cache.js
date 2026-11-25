@@ -29,12 +29,16 @@
 
 const { log } = require("../lib/log");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { readEnv } = require("../lib/env-settings");
 const { readJsonObject, replaceJsonFile } = require("./shared-json-file");
 
-// Cache path can be overridden via env var so tests cannot ever clobber the
-// production file, regardless of how the test is invoked.
+/*-
+ *  `PRICE_CACHE_PATH` moves the file, read through `readEnv`, so a blank
+ *  value names none. Under `node --test` the cache folder is the test
+ *  process's own anyway (`scanCachePath`).
+ */
 const _CACHE_PATH =
-  process.env.PRICE_CACHE_PATH || scanCachePath("historical-price-cache.json");
+  readEnv("PRICE_CACHE_PATH") ?? scanCachePath("historical-price-cache.json");
 
 /** @type {Record<string, { priceUsd: number, cachedAt: string }> | null} */
 let _cache = null;
