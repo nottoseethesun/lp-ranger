@@ -401,11 +401,9 @@ async function startBotLoop(opts) {
       /*-
        *  Delay the actual retire by `dashboardHasPolledMs` so the
        *  dashboard (3 s poll) reliably catches the paused state and
-       *  fires the alert modal across multiple polls.  Without this
-       *  delay the bot's startup-scan-triggered retire can fire
-       *  within 2 s of the failure, narrower than one poll cycle, and
-       *  the alert is missed on the second / N-th attempt where the
-       *  scan cache is warm and the bot starts faster. It calls
+       *  fires the alert modal across multiple polls. A retire at once
+       *  would take the position off within one poll cycle of the
+       *  failure, and the alert would be missed. It calls
        *  `_handleRetire` directly, so the retire fires exactly when the
        *  delay elapses, whatever the poll interval. It bails if the user
        *  took action during the wait (a Slippage change clears

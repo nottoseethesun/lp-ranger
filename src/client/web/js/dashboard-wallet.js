@@ -574,6 +574,18 @@ export function isWalletUnlocked() {
   return _walletUnlocked;
 }
 
+/**
+ * Show the unlock dialog, with no error left from an earlier try: an
+ * error shown when the dialog was dismissed would otherwise greet the
+ * next unlock.
+ */
+export function showUnlockDialog() {
+  const m = g("walletUnlockModal");
+  if (m) m.classList.remove("hidden");
+  const errEl = g("unlockError");
+  if (errEl) errEl.classList.add("hidden");
+}
+
 /** Check if the wallet is locked and show unlock modal. */
 export async function checkWalletLocked() {
   unlockLog.logInfo("checkWalletLocked: fetching status");
@@ -584,7 +596,7 @@ export async function checkWalletLocked() {
       const m = g("walletUnlockModal");
       const pw = g("unlockPassword");
       unlockLog.logLockedBranch(m, pw);
-      if (m) m.classList.remove("hidden");
+      showUnlockDialog();
       if (pw) pw.focus();
       const ub = g("unlockWalletBtn");
       if (ub) {

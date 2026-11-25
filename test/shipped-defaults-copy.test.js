@@ -15,7 +15,10 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { failedCopyReport } = require("./helpers/shipped-defaults-copy");
+const {
+  failedCopyReport,
+  useShippedDefaultsCopy,
+} = require("./helpers/shipped-defaults-copy");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 describe("the report of a failed copy of the shipped settings", () => {
@@ -42,5 +45,19 @@ describe("the report of a failed copy of the shipped settings", () => {
     fs.rmdirSync(dir);
     const report = failedCopyReport(dir, new Error("x"));
     assert.ok(report.includes(`The copy's folder, ${dir}: GONE`), report);
+  });
+
+  it("is printed by a copy that fails, which then throws", () => {
+    const shipped = path.join(makeTestTempFolder("copied"), "missing");
+    const printed = [];
+    const before = process.env.LP_RANGER_DEFAULTS_DIR;
+    assert.throws(
+      () => useShippedDefaultsCopy(shipped, (text) => printed.push(text)),
+      /ENOENT/,
+    );
+    assert.equal(printed.length, 1);
+    assert.ok(printed[0].includes("The copy of the shipped settings failed"));
+    assert.ok(printed[0].includes(`The shipped folder, ${shipped}: GONE`));
+    assert.equal(process.env.LP_RANGER_DEFAULTS_DIR, before, "loader left");
   });
 });

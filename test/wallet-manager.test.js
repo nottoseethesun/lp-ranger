@@ -2,15 +2,24 @@
 
 /**
  * @file test/wallet-manager.test.js
- * @description Tests for the server-side wallet manager (src/lib/wallet-manager.js).
+ * @description Tests for the server-side wallet manager
+ * (src/lib/wallet-manager.js): the import, the reveal and the clear, the
+ * all-or-nothing save through wallet.json.tmp, and the wallet recovered
+ * from that temp file when wallet.json is missing, empty or damaged.
+ *
+ * The wallet file is in a temp folder of this process's own, named
+ * before the manager is required, so no test touches the operator's
+ * wallet.json.
  */
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-// Point wallet-manager at a temp file so tests never touch the real wallet.json
-const WALLET_FILE = path.join(process.cwd(), "tmp", ".wallet-test.json");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+
+const WALLET_FILE = path.join(makeTestTempFolder("wallet"), "wallet.json");
+const TMP_FILE = `${WALLET_FILE}.tmp`;
 process.env.WALLET_FILE_PATH = WALLET_FILE;
 
 const {
@@ -20,6 +29,7 @@ const {
   clearWallet,
   getAddress,
   hasWallet,
+  _reloadFromDiskForTests,
 } = require("../src/lib/wallet-manager");
 
 const SAMPLE = {
@@ -34,11 +44,8 @@ const SAMPLE = {
 describe("wallet-manager", () => {
   beforeEach(() => clearWallet());
   afterEach(() => {
-    try {
-      fs.unlinkSync(WALLET_FILE);
-    } catch {
-      /* ok */
-    }
+    for (const file of [WALLET_FILE, TMP_FILE])
+      fs.rmSync(file, { recursive: true, force: true });
   });
 
   it("starts with no wallet loaded", () => {
@@ -162,30 +169,118 @@ describe("wallet-manager", () => {
     assert.doesNotThrow(() => clearWallet());
   });
 
-  it("an import whose write fails leaves the loaded wallet as it was", async () => {
+  it("an import whose save fails leaves the wallet file and the loaded wallet as they were", async () => {
     /*-
      *  The bot keeps signing with the loaded wallet's key when an import
-     *  fails, so the loaded wallet must stay the one that key belongs to.
-     *  A folder where wallet.json belongs makes the write fail, as a
-     *  full disk or a read-only folder would.
+     *  fails, so the loaded wallet must stay the one that key belongs to,
+     *  and so must the file the next start reads. A folder where the temp
+     *  file goes makes the save's first write fail, as a full disk would.
      */
     await importWallet(SAMPLE);
+    const before = fs.readFileSync(WALLET_FILE, "utf8");
+    fs.mkdirSync(TMP_FILE);
+    await assert.rejects(
+      importWallet({
+        ...SAMPLE,
+        address: "0x1111111111111111111111111111111111111111",
+        privateKey: "0x" + "cd".repeat(32),
+        password: "new-pw",
+      }),
+      /EISDIR/,
+    );
+    assert.strictEqual(fs.readFileSync(WALLET_FILE, "utf8"), before);
+    assert.strictEqual(getAddress(), SAMPLE.address);
+    const secrets = await revealWallet(SAMPLE.password);
+    assert.strictEqual(secrets.privateKey, SAMPLE.privateKey);
+  });
+
+  it("a save goes through the temp file, which does not stay", async () => {
+    await importWallet(SAMPLE);
+    assert.strictEqual(fs.existsSync(TMP_FILE), false);
+    assert.strictEqual(
+      JSON.parse(fs.readFileSync(WALLET_FILE, "utf8")).address,
+      SAMPLE.address,
+    );
+  });
+
+  it("clearWallet removes the temp file too", async () => {
+    await importWallet(SAMPLE);
+    fs.copyFileSync(WALLET_FILE, TMP_FILE);
+    clearWallet();
+    assert.strictEqual(fs.existsSync(WALLET_FILE), false);
+    assert.strictEqual(fs.existsSync(TMP_FILE), false);
+  });
+});
+
+describe("wallet-manager, a fresh start", () => {
+  /*-
+   *  What the next start reads, after a crash or a faulty file system
+   *  left the files as each case sets them: the manager forgets its
+   *  wallet and reads the folder again, as it does when it loads.
+   */
+  beforeEach(() => clearWallet());
+  afterEach(() => {
+    for (const file of [WALLET_FILE, TMP_FILE])
+      fs.rmSync(file, { recursive: true, force: true });
+  });
+
+  /** Import SAMPLE, and copy its saved file to where a save writes first. */
+  async function savedWithCopy() {
+    await importWallet(SAMPLE);
+    fs.copyFileSync(WALLET_FILE, TMP_FILE);
+  }
+
+  /** The loaded wallet is SAMPLE, back in wallet.json, and no temp file stays. */
+  async function assertSampleLoaded() {
+    assert.strictEqual(getAddress(), SAMPLE.address);
+    const secrets = await revealWallet(SAMPLE.password);
+    assert.strictEqual(secrets.privateKey, SAMPLE.privateKey);
+    assert.strictEqual(
+      JSON.parse(fs.readFileSync(WALLET_FILE, "utf8")).address,
+      SAMPLE.address,
+    );
+    assert.strictEqual(fs.existsSync(TMP_FILE), false);
+  }
+
+  it("recovers the wallet from the temp file when wallet.json is empty", async () => {
+    await savedWithCopy();
+    fs.writeFileSync(WALLET_FILE, "");
+    _reloadFromDiskForTests();
+    await assertSampleLoaded();
+  });
+
+  it("recovers the wallet from the temp file when wallet.json is missing", async () => {
+    await savedWithCopy();
     fs.unlinkSync(WALLET_FILE);
-    fs.mkdirSync(WALLET_FILE);
-    try {
-      await assert.rejects(
-        importWallet({
-          ...SAMPLE,
-          address: "0x1111111111111111111111111111111111111111",
-          privateKey: "0x" + "cd".repeat(32),
-          password: "new-pw",
-        }),
-      );
-      assert.strictEqual(getAddress(), SAMPLE.address);
-      const secrets = await revealWallet(SAMPLE.password);
-      assert.strictEqual(secrets.privateKey, SAMPLE.privateKey);
-    } finally {
-      fs.rmdirSync(WALLET_FILE);
-    }
+    _reloadFromDiskForTests();
+    await assertSampleLoaded();
+  });
+
+  it("recovers the wallet from the temp file when wallet.json is damaged", async () => {
+    await savedWithCopy();
+    fs.writeFileSync(WALLET_FILE, '{ "address": "0xAbC');
+    _reloadFromDiskForTests();
+    await assertSampleLoaded();
+  });
+
+  it("keeps a good wallet.json, and removes a temp file a save cut short left", async () => {
+    await importWallet(SAMPLE);
+    fs.writeFileSync(
+      TMP_FILE,
+      JSON.stringify({
+        address: "0x1111111111111111111111111111111111111111",
+        encrypted: { saltHex: "00" },
+      }),
+    );
+    _reloadFromDiskForTests();
+    await assertSampleLoaded();
+  });
+
+  it("starts with no wallet when neither file holds one", async () => {
+    fs.writeFileSync(WALLET_FILE, "");
+    fs.writeFileSync(TMP_FILE, "{ not a wallet");
+    _reloadFromDiskForTests();
+    assert.strictEqual(hasWallet(), false);
+    assert.strictEqual(fs.existsSync(TMP_FILE), false);
   });
 });

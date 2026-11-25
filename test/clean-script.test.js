@@ -111,6 +111,19 @@ test("wallet removal is left to reset-wallet, not duplicated", () => {
   assert.match(readRoot("scripts/clean.js"), /reset-wallet/);
 });
 
+test("reset-wallet removes the copy a save writes first", () => {
+  /*-
+   *  The app recovers the wallet from wallet.json.tmp when wallet.json is
+   *  gone (src/lib/wallet-manager.js), so a reset that left it would
+   *  bring the wallet back at the next start. Read from the source, since
+   *  running the script would delete the operator's wallet.
+   */
+  assert.match(
+    readRoot("scripts/reset-wallet.js"),
+    /fs\.rmSync\(`\$\{WALLET_FILE\}\.tmp`/,
+  );
+});
+
 test("build artifacts are cleared, and the prestart guard covers it", () => {
   /*- A fresh clone has none of them, so a full reset should not either.
    *  Safe because scripts/check-build-artifacts.js fails `npm start`

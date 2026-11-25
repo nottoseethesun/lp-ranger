@@ -576,8 +576,8 @@ the rebalance / compound hot path, and the view-only answers for
 unmanaged-position detail and closed-position history, which the server
 asks the bot for through its interface. Adding or removing a price
 source later requires zero changes here. Two kinds of request go to a
-price service without the gate. Historical prices are one: GeckoTerminal's
-price history (`fetchHistoricalPriceGecko`) and the lookups in
+price service without the gate. Historical prices are one:
+`fetchHistoricalPriceGecko` and the lookups in
 `src/bot/historical-token-price.js` ask whether or not the pause is on.
 The server's check of the stored Moralis key is the other (`pingMoralis`,
 `src/lib/moralis-key.js`): it asks Moralis one price to prove the key,

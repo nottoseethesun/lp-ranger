@@ -12,8 +12,8 @@
  * a terminal or reaches the network.
  *
  * The store is a file of the test process's own, named in
- * `API_KEYS_FILE_PATH` before the store is loaded, as the app's own tests
- * do, and emptied before each case. The real store's place is checked
+ * `API_KEYS_FILE_PATH`, which the store reads on every read and write,
+ * and emptied before each case. The real store's place is checked
  * against git's own rules, so it never reaches the remote.
  */
 
@@ -25,8 +25,8 @@ const { spawnSync } = require("child_process");
 const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
 
 /*-
- *  The store reads where its file is as it loads, so the test's own file
- *  is named before the store is required.
+ *  The test's own file. The store asks for its path on every read and
+ *  write, so the name holds for the whole run.
  */
 const STORE = path.join(makeTestTempFolder("moralis-key"), "api-keys.json");
 process.env.API_KEYS_FILE_PATH = STORE;

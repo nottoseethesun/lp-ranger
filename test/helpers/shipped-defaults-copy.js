@@ -17,8 +17,8 @@
  *   The copy reads every file the folder lists, one at a time, so a file
  *   listed but gone before it is read fails the copy, and the error names
  *   it. A failed copy prints what the folders held at that moment, then
- *   throws as before: docs/engineering.md, "A Test File That Fails as It
- *   Loads", says how to read it.
+ *   throws: docs/engineering.md, "A Test File That Fails as It Loads",
+ *   says how to read it.
  */
 
 "use strict";
@@ -80,21 +80,29 @@ function failedCopyReport(dir, err, from = _SHIPPED) {
 
 /**
  * Copy the shipped settings folder into a temp folder of this process's,
- * and point the loader at the copy.
+ * and point the loader at the copy. A copy that fails prints its report
+ * (`failedCopyReport`) and throws.
  *
+ * @param {string} [shipped]  The folder copied; the shipped folder
+ *   unless a test of the failure passes another.
+ * @param {(text: string) => void} [print]  Where the report goes; stderr
+ *   unless a test of the failure passes its own.
  * @returns {string} The copy's path.
  */
-function useShippedDefaultsCopy() {
+function useShippedDefaultsCopy(
+  shipped = _SHIPPED,
+  print = (text) => process.stderr.write(text),
+) {
   const dir = makeTestTempFolder("shipped");
   try {
-    for (const e of fs.readdirSync(_SHIPPED, { withFileTypes: true })) {
-      const from = path.join(_SHIPPED, e.name);
+    for (const e of fs.readdirSync(shipped, { withFileTypes: true })) {
+      const from = path.join(shipped, e.name);
       const to = path.join(dir, e.name);
       if (e.isDirectory()) fs.cpSync(from, to, { recursive: true });
       else fs.copyFileSync(from, to);
     }
   } catch (err) {
-    process.stderr.write(`${failedCopyReport(dir, err)}\n`);
+    print(`${failedCopyReport(dir, err, shipped)}\n`);
     throw err;
   }
   process.env.LP_RANGER_DEFAULTS_DIR = dir;

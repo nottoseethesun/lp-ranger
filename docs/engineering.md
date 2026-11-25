@@ -381,7 +381,10 @@ badge reads Syncing, and the server refuses a Manage or a second import
 (`beginWalletImport`, `src/bot/app-phase.js`). It refuses an unlock too,
 and asks again once the unlock's decrypt is done, since an import can
 begin during it; the launch's key step stands aside the same way
-(`refusalToTakeKey`). No start-up begins but the import's own
+(`refusalToTakeKey`). The key step does not come back afterwards: an
+import that fails before it takes its own key (its wallet file not
+written, about half a second in) leaves the launch with no key, and the
+operator unlocks from the dashboard. No start-up begins but the import's own
 (`forImport`): an unlock's, begun during the import, would start the old
 wallet's saved positions with the old wallet's key once the new wallet
 was in. A Manage already past its
@@ -3164,14 +3167,23 @@ One home for each kind of data:
   wallet state (AES-256-GCM with PBKDF2-SHA512 key derivation from the
   user's password). Holds address, source (generated/seed/key),
   encrypted private key and mnemonic. Plaintext secrets are NEVER
-  written to disk. Read/written by `src/lib/wallet-manager.js`. Tests
-  override the path via the `WALLET_FILE_PATH` environment variable.
+  written to disk. Read/written by `src/lib/wallet-manager.js`. A save
+  is all or nothing: the whole file goes to `wallet.json.tmp`, flushed
+  to disk, then is renamed over `wallet.json`, so a save that fails or
+  is cut short leaves the file as it was. When `wallet.json` is found
+  missing, empty or damaged at a start, as a crash or a faulty file
+  system can leave it, and `wallet.json.tmp` holds a whole wallet, the
+  wallet is recovered from it, with a warning in the log; a temp file
+  beside a good `wallet.json` is removed. `npm run reset-wallet` removes
+  both. Tests override the path via the `WALLET_FILE_PATH` environment
+  variable.
 - **`user-configurable/api-keys.json`** — Runtime, gitignored.
   Encrypted storage for third-party API keys (Moralis, Telegram bot
   token + chat ID), using the same wallet password and encryption
   scheme as `wallet.json`. Read/written by `src/lib/api-key-store.js`.
-  Tests override the path via the `API_KEYS_FILE_PATH` environment
-  variable.
+  Under `node --test` it is a file in the test process's own temp
+  folder, unless the `API_KEYS_FILE_PATH` environment variable names
+  another.
 - **`app-data/rebalance_log.json`** — Runtime, gitignored. JSON array
   of every rebalance event ever: timestamps, fees collected, gas cost,
   exit/entry USD values, token balances. Appended to by
@@ -3288,10 +3300,15 @@ ever clobbering live user state. The shipped-defaults directory
 tracked `api-keys.example.json` format template alongside the tunable
 JSON defaults) is not touched at all — it's tracked repo content.
 
-Tests that need to write config without touching the live files either
-pass an explicit `dir` argument to `loadConfig(dir)` / `saveConfig(cfg, dir)`
-(`bot-config-v2`), or set the `WALLET_FILE_PATH` / `API_KEYS_FILE_PATH`
-environment variables to a temp path before require-ing the module.
+Under `node --test`, bot-config.json, the scan caches and api-keys.json
+each resolve to a temp folder of the test process's own. A test that
+needs other files without touching the live ones passes an explicit
+`dir` to `loadConfig(dir)` / `saveConfig(cfg, dir)` (`bot-config-v2`),
+or sets `WALLET_FILE_PATH` to a temp path before requiring the wallet
+manager, which reads it as it loads. After the tests, the gate checks
+that `app-config/user-configurable/`, `app-data/` and the shipped
+settings folder hold exactly what they held before them, and fails the
+run otherwise (the "Folders kept" row; `scripts/_folder-snapshot.js`).
 
 ---
 
@@ -3416,16 +3433,14 @@ section covers a failure that says nothing about the code under test.
 
 ### A Test File That Fails as It Loads
 
-Four test files copy the shipped settings folder,
+Several test files copy the shipped settings folder,
 `app-config/app-defaults-for-user-configurable/`, into a temp folder of
 their own as they load, so they can change a setting without touching
 the tracked file (`useShippedDefaultsCopy`,
-`test/helpers/shipped-defaults-copy.js`):
-`test/lp-providers.test.js`, `test/setting-labels.test.js`,
-`test/boot-log-file.test.js`, and the help tests through
-`test/helpers/help-settings-moved.js`. The copy reads each file the
-folder lists, one at a time. A file listed but gone before it is read
-fails the copy, and with it the whole test file, before any of its
+`test/helpers/shipped-defaults-copy.js`; `git grep -l
+useShippedDefaultsCopy -- test` lists them). The copy reads each file
+the folder lists, one at a time. A file listed but gone before it is
+read fails the copy, and with it the whole test file, before any of its
 tests runs.
 
 **What it looks like.** The gate's summary names one of those files
@@ -3438,17 +3453,22 @@ test was never reached.
 **What causes it.** Every test process reads the shipped folder, many
 at the same time. A test that writes or removes a file there, even for
 a moment, can fail another test's copy. Tests change a copy of their own
-instead, and two things hold them to it.
+instead, and three things hold them to it.
 `test/tests-leave-shipped-files-alone.test.js` fails any test whose
 source writes into the folder, by a path built from the repo or from
-the loader's own `DEFAULTS_DIR`. The loader takes `LP_RANGER_DEFAULTS_DIR`
-and `LP_RANGER_USER_CONFIG_DIR`, so a test can point it at folders of
-its own before requiring it (`src/lib/load-merged-defaults.js`).
+the loader's own `DEFAULTS_DIR`. The gate itself checks, after the
+tests, that the folder holds exactly what it held before them, and
+fails the run naming each file created, removed or written, however
+the test reached it (the "Folders kept" row; `scripts/_folder-snapshot.js`).
+And the loader takes `LP_RANGER_DEFAULTS_DIR` and
+`LP_RANGER_USER_CONFIG_DIR`, so a test can point it at folders of its
+own before requiring it (`src/lib/load-merged-defaults.js`).
 
-**If it fails again.** The helper prints a report before it throws, in
-the gate's output and in `test/report-artifacts/tests.tap`. It begins
-`[shipped-defaults-copy] The copy of the shipped settings failed`. Read
-it like this:
+**If it fails again.** The helper prints a report before it throws. Under
+`npm run check` it goes to `test/report-artifacts/tests.tap`, with the
+failing file's other output; the gate's summary names only the file. It
+begins `[shipped-defaults-copy] The copy of the shipped settings failed`.
+Read it like this:
 
 - **The error** names the file that failed, with both of its paths. A
   name `git ls-files app-config/app-defaults-for-user-configurable`
@@ -3456,9 +3476,10 @@ it like this:
   the tests ran. Search the tests for the name.
 - **The copy's folder**: `GONE` means the copy's own temp folder was
   removed, not a shipped file. The folder is named for its process,
-  so look for code that removes a test folder without asking, as
+  so look for code that removes a test folder without first asking
+  whether its process still runs, the question
   `removeLeftoverTestTempFolders` (`src/lib/test-temp-folders.js`)
-  does, whether its process still runs.
+  asks.
 - **The shipped folder** lists what it held as the copy failed. A
   stranger in it is the writer's file, caught in the act.
 - **Test folders** lists each LP Ranger test folder in the temp
@@ -3698,7 +3719,7 @@ Typical workflow when you add, rename, or change an API route:
    — this keeps the spec and the implementation from drifting in
    reviewable diffs.
 
-Two routes are matched on the URL rather than by a `"METHOD /path"`
+Two routes are matched on the url rather than by a `"METHOD /path"`
 handler entry, so the checker's scan cannot see them: a closed
 position's history (`GET /api/position/{tokenId}/history`), and the
 csrf token (`GET /api/csrf-token`), which the csrf check answers before
@@ -3852,12 +3873,19 @@ operation's refusal becomes a status in
 [`src/server/bot-result.js`](../src/server/bot-result.js). A route
 answers some refusals itself. A malformed request gets 400: the
 unlock's missing password, a malformed key asked of
-`GET /api/is-position-managed`, an api-key save missing a field. The
-unlock answers a wrong password 401. The wallet's own steps answer 409:
-the import while the app may start nothing (a stop, a start-up or
-another import under way), and the unlock while an import is under way.
-An error a route throws becomes 400, or 403 for a wrong password, in
-`handleRequest`. The full route surface, the csrf token included, is
+`GET /api/is-position-managed`, an api-key save missing a field, and a
+Telegram save whose event choices are not valid, or whose bot token or
+chat id comes with no password. A Telegram test before a bot token and
+chat id are saved gets 400 too. The unlock answers a wrong password
+401. The wallet's own steps answer 409: the import while the app may
+start nothing (a stop, a start-up or another import under way), and the
+unlock while an import is under way. An error a route in the route
+table throws becomes 400, or 403 for a wrong password, in
+`handleRequest`. The closed position's history
+(`GET /api/position/:tokenId/history`), matched by its path's pattern
+after the table, is outside that catch: an error it throws reaches the
+server's error guard (`src/server/server-error-guard.js`). The full
+route surface, the csrf token included, is
 covered by the OpenAPI spec (see [API Documentation](#api-documentation)
 above).
 

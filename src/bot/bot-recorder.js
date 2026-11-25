@@ -550,11 +550,12 @@ function _activePosSummary(p) {
 }
 
 function _notifyRebalance(deps, throttle, position, events) {
-  /*- `lastRebalanceAt` is a ms-since-epoch number (matches what
-   *  `bot-cycle-residual._updateCleanupState` writes and what callers
-   *  compare against `Date.now()`).  Previously this wrote an ISO
-   *  string via `Object.assign` which stomped the numeric value and
-   *  produced NaN arithmetic in the residual-cleanup cooldown gate. */
+  /*-
+   *  `lastRebalanceAt` is a ms-since-epoch number, as
+   *  `updateCleanupState` (src/bot/bot-cycle-residual.js) writes it and as
+   *  its readers compare it against `Date.now()`: an ISO string here
+   *  would make the residual-cleanup cooldown's arithmetic NaN.
+   */
   deps.updateBotState({
     rebalanceCount: (deps._rebalanceCount || 0) + 1,
     lastRebalanceAt: Date.now(),

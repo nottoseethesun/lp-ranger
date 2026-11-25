@@ -103,6 +103,29 @@ function _knipDetail(knip) {
 }
 
 /**
+ * The Folders kept row: whether the tests left the install's folders as
+ * they found them, and the first change when they did not, from what
+ * scripts/check.js wrote. Its own function, as `_unusedSrcModulesResult`
+ * is, to keep `loadResults` under the complexity ceiling.
+ * @param {object} exitCodes  The stages' exit codes.
+ * @returns {{ok: boolean, detail: string}}
+ */
+function _keptFoldersCheck(exitCodes) {
+  if (exitCodes.keptFolders === 0)
+    return {
+      ok: true,
+      detail: "shipped settings, user-configurable/ and app-data/ untouched",
+    };
+  const { changes } = _readJson("kept-folders.json") || {
+    changes: ["report missing"],
+  };
+  return {
+    ok: false,
+    detail: `${changes.length} change(s), first: ${changes[0]}`,
+  };
+}
+
+/**
  * The unused-module check's result (scripts/check-unused-src-modules.js),
  * or a result saying it did not run when its file is missing or not
  * JSON. Its own function, as `_knipDetail` is, to keep `loadResults`
@@ -298,6 +321,7 @@ function loadResults() {
         `${tests.pass}/${tests.tests} passed, ${tests.suites} suites, ` +
         `${(tests.duration / 1000).toFixed(1)}s`,
     },
+    keptFolders: _keptFoldersCheck(exitCodes),
     coverage: {
       ok: coverageOk,
       detail:
@@ -341,6 +365,7 @@ function loadResults() {
     { name: "openapi-sync", ...checks.openapiSync },
     { name: "Config values", ...checks.configValues },
     { name: "Tests", ...checks.tests },
+    { name: "Folders kept", ...checks.keptFolders },
     { name: "Coverage", ...checks.coverage },
     { name: "npm audit", ...checks.npmAudit },
     { name: "security-lint", ...checks.securityLint },

@@ -275,19 +275,29 @@ function _formatPositionSpec(active) {
  * A refusal under the one-position-per-pool rule gets no retry hint,
  * since a second click would be refused the same way: its words say
  * which position holds the pool and what to do
- * (src/client/web/js/dashboard-manage-refusal.js).
+ * (src/client/web/js/dashboard-manage-refusal.js). Nor does any other
+ * refusal (409): its words, the bot's, already say when to try again,
+ * or that nothing starts while LP Ranger stops.
  *
  * Exported so a test can drive it with an answer of its own.
  *
  * @param {string} verb    Human verb for the message ("manage"/"unmanage").
  * @param {object|string} payload  Server error body `{ error, message }`
- *   (preferred) OR a bare reason string (legacy callers / network
- *   errors that never reached the JSON parse).
+ *   (preferred) OR a bare reason string (an http status the body did
+ *   not explain, or a network error that never reached the JSON parse).
  * @param {object} [active] Active position (for the spec line).
- * @param {Function} [tell]  Shows the message; the browser's `alert`
- *   unless a test passes its own.
+ * @param {object} [opts]
+ * @param {number} [opts.status]  The answer's http status; none for a
+ *   network error.
+ * @param {Function} [opts.tell]  Shows the message; the browser's
+ *   `alert` unless a test passes its own.
  */
-export function _handleManageFailure(verb, payload, active, tell = alert) {
+export function _handleManageFailure(
+  verb,
+  payload,
+  active,
+  { status, tell = alert } = {},
+) {
   /*- Wrap the whole body in try/finally so the in-flight clear + paint
    *  ALWAYS fire \u2014 audit found that a misbehaving modal helper could
    *  leave the button stuck disabled if it threw before reaching the
@@ -296,7 +306,7 @@ export function _handleManageFailure(verb, payload, active, tell = alert) {
   try {
     /*-
      *  Normalize the payload: accept a bare string (a network error, an
-     *  HTTP-status-only fallback) and the structured body the server
+     *  http-status-only fallback) and the structured body the server
      *  sends from the bot's Manage (`manage` in
      *  src/bot/position-lifecycle.js), `{ error, message, tokenId }`.
      */
@@ -329,9 +339,10 @@ export function _handleManageFailure(verb, payload, active, tell = alert) {
     const looksLikeRpcFailure = /No V3 NFT position found|RPC failure/i.test(
       code || "",
     );
-    const retryHint = looksLikeRpcFailure
-      ? `\n\nClick "${buttonLabel}" again to retry \u2014 the bot has already failed over to the backup RPC.`
-      : `\n\nClick "${buttonLabel}" again to retry.`;
+    let retryHint = `\n\nClick "${buttonLabel}" again to retry.`;
+    if (status === 409) retryHint = "";
+    else if (looksLikeRpcFailure)
+      retryHint = `\n\nClick "${buttonLabel}" again to retry \u2014 the bot has already failed over to the backup RPC.`;
     /*- alert() is intentional here — the manage flow is a deliberate
      *  user action and silent failure is what got us into the stuck-UI
      *  state this branch is fixing. */
@@ -394,6 +405,7 @@ async function _sendUnmanage(active) {
       "unmanage",
       body.error ? body : `HTTP ${res.status}`,
       active,
+      { status: res.status },
     );
     return false;
   }
@@ -464,6 +476,7 @@ async function _sendManage(active) {
       "manage",
       body.error ? body : `HTTP ${res.status}`,
       active,
+      { status: res.status },
     );
     return false;
   }
@@ -540,8 +553,10 @@ export async function _toggleManagePosition() {
    *  `forceRebalance: true`, and the bot's Manage honors that on a
    *  running position (`_stampReopenFlagsOnLive`), so this path serves
    *  both an auto-retired closed position and a running one whose
-   *  re-open aborted. Without it, the request would go to `_sendManage`,
-   *  which does nothing for a running position.
+   *  re-open aborted. Without it, a running one would get Stop Managing
+   *  (`_sendUnmanage`), and an auto-retired one a plain Manage
+   *  (`_sendManage`), which sends no `forceRebalance` and so starts a
+   *  loop with no re-open rebalance.
    */
   if (isPositionClosed(active)) {
     await _runClosedPositionFlow(active);

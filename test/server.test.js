@@ -3,7 +3,7 @@
  * @description Integration tests for src/server.js.
  *
  * Starts the server on a fixed high port of its own (`TEST_PORT`, below),
- * exercises each route, then shuts down cleanly. No external HTTP
+ * exercises each route, then shuts down cleanly. No external http
  * library needed — uses Node's built-in `http` module.
  *
  * Run with: npm test

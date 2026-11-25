@@ -8,7 +8,9 @@
  *                              stylelint, html-validate, npm audit,
  *                              security-lint, secretlint, plus
  *                              exit-codes.json with every tool's exit
- *                              code)
+ *                              code, and kept-folders.json with what
+ *                              the tests changed in the install's
+ *                              folders)
  *   raw-data/lcov.info         lcov coverage report of the test run
  *   text-reports/summary.txt          Human-readable overview (cli-table3)
  *   text-reports/tests-summary.txt    Parsed test rollup
@@ -44,6 +46,7 @@ const {
 } = require("../src/lib/test-temp-folders");
 const { checkErrorLogPath } = require("./_check-error-log");
 const { runAsync } = require("./_run-async");
+const { folderSnapshot, snapshotChanges } = require("./_folder-snapshot");
 const {
   JS_TARGETS,
   SECURITY_TARGETS,
@@ -68,6 +71,18 @@ const _APP_DATA_DIR = "app-data";
 // The scan caches (src/lib/scan-cache-dir.js), a folder inside app-data/.
 const _SCAN_CACHE_DIR = path.join("app-data", "scan-cache");
 const _OPERATOR_STATE_DIRS = [_USER_CFG_DIR, _APP_DATA_DIR, _SCAN_CACHE_DIR];
+
+/*-
+ *  The folders no test may write, held to what they held before the
+ *  tests (scripts/_folder-snapshot.js): the shipped settings, which every
+ *  test process reads at once, and the operator's own, which a test run
+ *  outside this script would change.
+ */
+const _KEPT_FOLDERS = [
+  path.join("app-config", "app-defaults-for-user-configurable"),
+  _USER_CFG_DIR,
+  _APP_DATA_DIR,
+];
 
 /*- The file-name predicate used by the backup/wipe/restore helpers.
  *  Hoisted up here so the top-level script body (restoreProdFiles is
@@ -487,14 +502,17 @@ wipeRuntimeFiles();
  * Run the config-value tests, then the rest of the suite, and put the
  * operator's files back whatever happens, an interrupt included.
  * Forces --test-reporter=tap so the output is deterministic TAP v14
- * regardless of Node version or TTY state.
+ * regardless of Node version or TTY state. What the install's folders
+ * hold is read before the tests and after them, and every change named.
  * @returns {Promise<{configValuesExit: number|undefined,
- *   testsExit: number}>}
+ *   testsExit: number, folderChanges: string[]}>}
  */
 async function runTestStages() {
   let configValuesExit;
   let testsExit;
+  let folderChanges = [];
   try {
+    const foldersBefore = _KEPT_FOLDERS.map((dir) => folderSnapshot(dir));
     /*-
      *  The shipped config files are checked before any other test. A
      *  value of the wrong type, or outside its range, breaks whatever
@@ -554,6 +572,9 @@ async function runTestStages() {
       path.join(REPORT_DIR, "tests.tap"),
       testsRun.stdout + testsRun.stderr,
     );
+    folderChanges = _KEPT_FOLDERS.flatMap((dir, i) =>
+      snapshotChanges(dir, foldersBefore[i], folderSnapshot(dir)),
+    );
   } catch (err) {
     testsExit = 1;
     log.error("[check] Test runner failed:", err.message);
@@ -563,16 +584,17 @@ async function runTestStages() {
     keepTestErrorLog();
     for (const signal of INTERRUPTS) process.off(signal, onInterrupt);
   }
-  return { configValuesExit, testsExit };
+  return { configValuesExit, testsExit, folderChanges };
 }
 
 /**
  * Report the run: every stage's exit code to the aggregator, which
  * prints the summary and writes the PDF, and exit with its verdict. An
  * interrupted run reports nothing and exits 1.
- * @param {{configValuesExit: number|undefined, testsExit: number}} tests
+ * @param {{configValuesExit: number|undefined, testsExit: number,
+ *   folderChanges: string[]}} tests
  */
-function reportRun({ configValuesExit, testsExit }) {
+function reportRun({ configValuesExit, testsExit, folderChanges }) {
   if (interrupted !== null) {
     log.error(
       "[check] Stopped by %s; the operator's files are restored.",
@@ -600,12 +622,22 @@ function reportRun({ configValuesExit, testsExit }) {
     secretlint: secretlintRun.status,
     configValues: configValuesExit,
     tests: testsExit,
+    keptFolders: folderChanges.length === 0 ? 0 : 1,
     htmlFileCount,
   };
   fs.writeFileSync(
     path.join(RAW_DIR, "exit-codes.json"),
     JSON.stringify(exitCodes, null, 2) + "\n",
   );
+  fs.writeFileSync(
+    path.join(RAW_DIR, "kept-folders.json"),
+    JSON.stringify({ changes: folderChanges }, null, 2) + "\n",
+  );
+  if (folderChanges.length > 0)
+    log.error(
+      "[check] The tests changed the install's folders:\n  %s",
+      folderChanges.join("\n  "),
+    );
 
   // ── Aggregate + print summary + write PDF ───────────────────────────────
   const aggregator = run("node", ["scripts/check-report.js"], {

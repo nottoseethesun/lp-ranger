@@ -46,10 +46,11 @@ let _testFile = null;
 /**
  * Where api-keys.json is: the file `API_KEYS_FILE_PATH` names, else, under
  * `node --test`, one in a temp folder of the test process's own, else
- * `app-config/user-configurable/api-keys.json`.
+ * `app-config/user-configurable/api-keys.json`. Asked on every read and
+ * write.
  * @returns {string}
  */
-function _keysFile() {
+function apiKeysPath() {
   if (process.env.API_KEYS_FILE_PATH) return process.env.API_KEYS_FILE_PATH;
   if (process.env.NODE_TEST_CONTEXT === undefined)
     return path.join(
@@ -66,7 +67,7 @@ function _keysFile() {
 /** Read the full api-keys.json from disk. */
 function _readStore() {
   try {
-    return JSON.parse(fs.readFileSync(_keysFile(), "utf8"));
+    return JSON.parse(fs.readFileSync(apiKeysPath(), "utf8"));
   } catch {
     return {};
   }
@@ -74,7 +75,7 @@ function _readStore() {
 
 /** Write the full store to disk (atomic). */
 function _writeStore(data) {
-  const file = _keysFile();
+  const file = apiKeysPath();
   // Ensure parent dir exists (e.g. app-config/user-configurable/ on first run).
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = file + ".tmp";
@@ -134,4 +135,9 @@ function hasEncryptedKey(service) {
   return !!store[service + "Encrypted"];
 }
 
-module.exports = { saveEncryptedKey, loadEncryptedKey, hasEncryptedKey };
+module.exports = {
+  saveEncryptedKey,
+  loadEncryptedKey,
+  hasEncryptedKey,
+  apiKeysPath,
+};

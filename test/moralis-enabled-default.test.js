@@ -15,9 +15,11 @@
  *   The operator's copy here says false, so a server that ignored it
  *   would answer true. It is set, and the working directory moved to a
  *   scratch one, before anything under src/lib/ loads: the loader reads the
- *   override directory's path at load, and the saves and key files these
- *   cases reach are under the working directory, so the install's own
- *   are never touched.
+ *   override directory's path at load, and a file a module finds from the
+ *   working directory is looked for in the scratch one. The saves these
+ *   cases reach go to bot-config-v2's test folder, and the key file they
+ *   read is the api-key store's (both under `node --test`), so the
+ *   install's own are never touched.
  */
 
 const { describe, it, beforeEach, after } = require("node:test");

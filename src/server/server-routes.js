@@ -12,6 +12,7 @@
 
 const { log } = require("../lib/log");
 const config = require("../lib/config");
+const { readEnv } = require("../lib/env-settings");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
@@ -43,7 +44,8 @@ const { sendBotResult } = require("./bot-result");
  * @param {Function|null} [deps.askPassword]  Prompts on the terminal for
  *   the wallet password (`--headless`), else null.
  * @param {() => (string|undefined)} [deps.envWalletPassword]  Reads
- *   WALLET_PASSWORD from the environment; a test passes its own.
+ *   WALLET_PASSWORD from the environment, through `readEnv`, which takes
+ *   a blank value as none; a test passes its own.
  * @param {Function} deps.notifyShutdown  Sends the shutdown alert
  *   (src/server/telegram-notifications/server-shutdown.js).
  * @returns {object} Handler function map.
@@ -57,7 +59,7 @@ function createRouteHandlers(deps) {
     readJsonBody,
     askPassword,
     notifyShutdown,
-    envWalletPassword = () => process.env.WALLET_PASSWORD,
+    envWalletPassword = () => readEnv("WALLET_PASSWORD"),
   } = deps;
 
   /** Cached wallet password for API key encryption (set on unlock). */
@@ -188,9 +190,9 @@ function createRouteHandlers(deps) {
    * Why the launch's key step stands aside now, for the log, or null when
    * it may go on. A wallet import under way takes its own wallet's key
    * and starts that wallet's positions. A key the bot holds already came
-   * from the dashboard, while the prompt waited: its unlock has started
-   * the saved positions, and an import has loaded its own wallet, which
-   * the password typed may not open.
+   * from the dashboard while the launch waited on the prompt or the
+   * decrypt: an unlock has started the saved positions, and an import has
+   * loaded its own wallet, which the password given may not open.
    * @returns {string|null}
    */
   function _whyKeyStepStandsAside() {

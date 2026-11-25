@@ -418,7 +418,8 @@ env var, else by the terminal prompt under `--headless`, else by the
 dashboard's Unlock Wallet dialog
 ([`src/server/server-unlock.js`](../src/server/server-unlock.js)).
 The launch takes no key once the bot holds one, as when the dialog was
-answered while the terminal prompt waited, and none while a wallet
+answered while the launch waited on the prompt or the decrypt, and none
+while a wallet
 import is under way, which takes its own wallet's key; nor does an
 unlock during an import. The headless bot (`npm run bot`) has no
 dashboard. It picks its key
@@ -454,7 +455,9 @@ dashboard-only mode — there is no browser to fall back to.
 **How `reset-wallet` works:** `scripts/reset-wallet.js` (invoked via
 `npm run reset-wallet`) performs two idempotent actions:
 
-1. Delete `app-config/user-configurable/wallet.json`.
+1. Delete `app-config/user-configurable/wallet.json`, and
+   `wallet.json.tmp` beside it, the copy a save writes first, from which
+   the app would otherwise recover the wallet at its next start.
 2. Remove every line matching `^WALLET_PASSWORD=` from `.env` by
    reading the file, filtering out the matching lines, writing to a
    `.tmp` sibling, and atomically renaming. File permissions are
@@ -759,7 +762,10 @@ Every `fs.readFileSync` / `fs.writeFileSync` call in `src/lib/` resolves
 its path via `path.join(process.cwd(), CONSTANT)` — no user-controlled
 path component ever reaches the filesystem layer. Atomic writes
 (`.tmp` + `rename`) prevent partial-file corruption from an interrupted
-shutdown. The static-file serving guard (described in **Path Traversal
+shutdown; `wallet.json` also flushes its temp file to disk before the
+rename, and a start that finds `wallet.json` missing, empty or damaged
+recovers the wallet from a whole `wallet.json.tmp`
+(`src/lib/wallet-manager.js`). The static-file serving guard (described in **Path Traversal
 in Static Serving** above) provides the equivalent protection on the
 inbound side.
 

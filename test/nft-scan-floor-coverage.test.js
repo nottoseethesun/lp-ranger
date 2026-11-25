@@ -109,17 +109,22 @@ function scanSites() {
     .map((m) => m.name);
 }
 
+/*-
+ *  A load of the shared helper, src/bot/nft-mint-blocks.js. Only a bot
+ *  module may load it: one at the top of src/bot/ names it
+ *  `./nft-mint-blocks`, one in a subfolder `../nft-mint-blocks`, with a
+ *  `../` more for each level deeper.
+ */
+const LOADS_HELPER = /require\(["'](?:\.\/|(?:\.\.\/)+)nft-mint-blocks["']\)/;
+
 /**
- * Whether a module routes its floor through the shared helper,
- * src/bot/nft-mint-blocks.js. Only a bot module may load it, and every
- * module this test reads beside it (the top of src/bot/) names it
- * `./nft-mint-blocks`.
- * @param {string} file  The module's file name.
+ * Whether a module routes its floor through the shared helper.
+ * @param {string} file  The module's name, as `_modules` gives it.
  * @returns {boolean}
  */
 function isBounded(file) {
   const { src } = _modules().find((m) => m.name === file);
-  return /require\(["']\.\/nft-mint-blocks["']\)/.test(src);
+  return LOADS_HELPER.test(src);
 }
 
 describe("per-NFT scan floors", () => {
@@ -130,6 +135,19 @@ describe("per-NFT scan floors", () => {
       scanSites().length >= 4,
       `expected several NFT scan sites, found ${scanSites().join(", ")}`,
     );
+  });
+
+  it("reads the modules in subfolders, and takes their load of the helper", () => {
+    /*- A scan site in a subfolder of src/bot/ is read like any other, and
+     *  its `../nft-mint-blocks` counts as the floor. */
+    const names = _modules().map((m) => m.name);
+    assert.ok(
+      names.includes("telegram-notifications/balanced-notifier.js"),
+      "the walk does not reach src/bot/telegram-notifications/",
+    );
+    assert.ok(LOADS_HELPER.test('require("./nft-mint-blocks")'));
+    assert.ok(LOADS_HELPER.test("require('../nft-mint-blocks')"));
+    assert.ok(LOADS_HELPER.test('require("../../nft-mint-blocks")'));
   });
 
   it("finds sites by label as well as by call name", () => {

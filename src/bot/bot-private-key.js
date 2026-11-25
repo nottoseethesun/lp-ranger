@@ -16,6 +16,7 @@
 
 const { log } = require("../lib/log");
 const config = require("../lib/config");
+const { readEnv } = require("../lib/env-settings");
 const walletManager = require("../lib/wallet-manager");
 
 /**
@@ -30,8 +31,9 @@ async function resolvePrivateKey(opts = {}) {
   if (config.PRIVATE_KEY && /^(0x)?[0-9a-f]{64}$/i.test(config.PRIVATE_KEY))
     return config.PRIVATE_KEY;
   if (walletManager.hasWallet()) {
+    // Through `readEnv`, which takes a blank value as none.
     const password =
-      process.env.WALLET_PASSWORD ||
+      readEnv("WALLET_PASSWORD") ||
       (askPassword && (await askPassword("[bot] Enter wallet password: ")));
     if (!password) return null;
     log.info("[bot] Loading private key from imported wallet");

@@ -195,8 +195,8 @@ describe("Manage's re-open flag propagation", () => {
         forceRebalance: true,
         /*-
          *  A field Manage does not take, which must not reach the state:
-         *  the range width is the saved `rebalanceRangeWidthPct`, read
-         *  by `bot-cycle-opts.js` through `deps._getConfig`.
+         *  the range follows the position's Range settings
+         *  (`buildRebalanceOpts`, src/bot/bot-cycle-opts.js).
          */
         customRangeWidthPct: 12,
       }),

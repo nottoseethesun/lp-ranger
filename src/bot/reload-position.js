@@ -165,8 +165,9 @@ function _validateKey(body) {
  * identity (token0/token1/fee) is read from `state.activePosition`, the
  * summary `bot-recorder._activePosSummary` publishes to the state map
  * (`emit({activePosition: ...})`) every poll cycle. It is deliberately
- * not read from `positionMgr.get(liveKey)`: that entry carries only
- * `{key, tokenId, status}`, and would produce a false `missing`.
+ * not read from `positionMgr.get(liveKey)`: that entry carries only the
+ * loop's own fields (`key`, `tokenId`, `status`, `handle`, `starting`),
+ * no pool identity, and would produce a false `missing`.
  * @param {string} rawKey  The position's composite key, as asked.
  * @param {Map<string, object>} states  The per-position bot states.
  * @param {object} positionMgr  The position manager, which resolves a

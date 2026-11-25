@@ -49,10 +49,15 @@ let _startUp = null;
 // Set while a wallet import is under way, its closing start-up included.
 let _importing = false;
 
-// Why a request is refused while a wallet import is under way.
+// Why a request that would start positions is refused during an import.
 const _IMPORTING =
   "LP Ranger is importing a wallet. " +
   "Try again once it has started that wallet's positions.";
+
+// Why an unlock is refused during an import, which takes its own key.
+const _IMPORTING_FOR_UNLOCK =
+  "LP Ranger is importing a wallet, and the import unlocks it. " +
+  "There is nothing to unlock now.";
 
 /** Record that the app is stopping for good. */
 function markStopping() {
@@ -162,7 +167,7 @@ function refusalToStart() {
  * @returns {string|null}
  */
 function refusalToTakeKey() {
-  return _importing ? _IMPORTING : null;
+  return _importing ? _IMPORTING_FOR_UNLOCK : null;
 }
 
 /** Back to a process that has neither started up, imported, nor begun stopping. */

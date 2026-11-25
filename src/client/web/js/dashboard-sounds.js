@@ -174,7 +174,7 @@ let _trackersPrimed = false;
 /**
  * Normalize a `lastRebalanceAt` or `lastCompoundAt` value into ms since
  * epoch. The bot writes the former as numeric ms, from `Date.now()`
- * (`_notifyRebalance` in src/bot/bot-recorder.js, `_updateCleanupState`
+ * (`_notifyRebalance` in src/bot/bot-recorder.js, `updateCleanupState`
  * in src/bot/bot-cycle-residual.js), and the latter as an ISO string
  * (`recordCompound` in src/bot/bot-cycle-compound.js stores
  * `result.timestamp`, which src/bot/compounder.js builds with

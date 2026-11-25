@@ -2,19 +2,19 @@
  * @file test/server-routes.test.js
  * @description Unit tests for the server's routes over the bot's
  *   operations, as test/_bot-route-adapters.js builds them
- *   (`createRouteHandlers`): the wallet import and reveal and the
- *   launch's key step (src/server/server-routes.js), the wallet scan,
- *   details and lifetime
+ *   (`createRouteHandlers`): the wallet import and reveal
+ *   (src/server/server-routes.js), the wallet scan, details and lifetime
  *   (src/server/position-routes.js), and the token-symbol lookup; and
  *   that the map holds every handler the server mounts. Settings saves
  *   are tested in test/server-routes-extra.test.js, the held stop in
- *   test/server-routes-stop.test.js, and the start-up in
- *   test/server-auto-start.test.js.
+ *   test/server-routes-stop.test.js, the start-up in
+ *   test/server-auto-start.test.js, and the launch's key step in
+ *   test/server-launch-key-step.test.js.
  */
 
 "use strict";
 
-const { describe, it, beforeEach, afterEach } = require("node:test");
+const { describe, it, afterEach } = require("node:test");
 const assert = require("assert");
 const { createRouteHandlers } = require("./_bot-route-adapters");
 const { compositeKey } = require("../src/lib/bot-config-v2");
@@ -474,120 +474,6 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(res._status, 400);
       assert.strictEqual(res._body.ok, false);
       assert.ok(res._body.error.includes("wallet"));
-    });
-  });
-
-  // ── _tryResolveKey ────────────────────────────────────────────────────────
-
-  describe("_tryResolveKey", () => {
-    /*-
-     *  The launch's key step picks the key from PRIVATE_KEY, then the
-     *  wallet unlocked by WALLET_PASSWORD or the terminal prompt
-     *  (src/server/server-routes.js). These cases set no PRIVATE_KEY and
-     *  hand it a WALLET_PASSWORD of their own. It stands aside, asked
-     *  before the decrypt and after it, while a wallet import is under
-     *  way, which takes its own wallet's key and starts that wallet's
-     *  positions, and once the bot holds a key, which came from the
-     *  dashboard while the terminal prompt waited.
-     */
-    let savedKey;
-    beforeEach(() => {
-      savedKey = config.PRIVATE_KEY;
-      config.PRIVATE_KEY = null;
-    });
-    afterEach(() => {
-      config.PRIVATE_KEY = savedKey;
-      appPhase._resetAppPhaseForTests();
-    });
-
-    /**
-     * The key step over a wallet whose decrypt runs `duringDecrypt` (with
-     * the key the bot holds) and then answers, or refuses the password
-     * when `wrongPassword`; it counts decrypts, and records the key each
-     * start-up asked the shared signer to be built from.
-     */
-    function keyStep({ duringDecrypt = () => {}, wrongPassword = false } = {}) {
-      const seen = { revealed: 0, signers: [] };
-      const privateKeyRef = { current: null };
-      const base = makeDeps();
-      const h = createRouteHandlers(
-        makeDeps({
-          privateKeyRef,
-          envWalletPassword: () => "pw",
-          walletManager: {
-            ...base.walletManager,
-            revealWallet: async () => {
-              seen.revealed++;
-              duringDecrypt(privateKeyRef);
-              if (wrongPassword) throw new Error("Wrong password");
-              return { privateKey: "0xold" };
-            },
-          },
-          positionMgr: {
-            ...base.positionMgr,
-            getSharedSigner: async ({ privateKey }) => {
-              seen.signers.push(privateKey);
-              throw new Error("no chain in this test");
-            },
-          },
-        }),
-      );
-      return { run: () => h._tryResolveKey(), seen, privateKeyRef };
-    }
-
-    it("takes the key and starts the saved positions", async () => {
-      const k = keyStep();
-      await k.run();
-      assert.strictEqual(k.seen.revealed, 1);
-      assert.strictEqual(k.privateKeyRef.current, "0xold");
-      assert.deepStrictEqual(k.seen.signers, ["0xold"], "the start-up began");
-    });
-
-    it("stands aside while a wallet import is under way, decrypting nothing", async () => {
-      const k = keyStep();
-      appPhase.beginWalletImport();
-      await k.run();
-      assert.strictEqual(k.seen.revealed, 0);
-      assert.strictEqual(k.privateKeyRef.current, null);
-      assert.deepStrictEqual(k.seen.signers, []);
-    });
-
-    it("stands aside when a wallet import begins during the decrypt", async () => {
-      const k = keyStep({ duringDecrypt: () => appPhase.beginWalletImport() });
-      await k.run();
-      assert.strictEqual(k.seen.revealed, 1);
-      assert.strictEqual(
-        k.privateKeyRef.current,
-        null,
-        "the old key not taken",
-      );
-      assert.deepStrictEqual(k.seen.signers, []);
-    });
-
-    it("does nothing once the wallet is unlocked, trying no password", async () => {
-      /*-
-       *  A dashboard import while the prompt waited loads a wallet the
-       *  password typed may not open. Tried, its refusal stopped the
-       *  server.
-       */
-      const k = keyStep({ wrongPassword: true });
-      k.privateKeyRef.current = "0xdash";
-      await k.run();
-      assert.strictEqual(k.seen.revealed, 0);
-      assert.strictEqual(k.privateKeyRef.current, "0xdash");
-      assert.deepStrictEqual(k.seen.signers, [], "no second start-up");
-    });
-
-    it("does nothing when the wallet is unlocked during the decrypt", async () => {
-      const k = keyStep({
-        duringDecrypt: (ref) => {
-          ref.current = "0xdash";
-        },
-      });
-      await k.run();
-      assert.strictEqual(k.seen.revealed, 1);
-      assert.strictEqual(k.privateKeyRef.current, "0xdash", "its key kept");
-      assert.deepStrictEqual(k.seen.signers, [], "no second start-up");
     });
   });
 

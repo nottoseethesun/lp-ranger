@@ -18,9 +18,9 @@
  * accept a Manage request, and the dashboard decides whether to offer
  * the button. The dashboard bundle is built by esbuild from
  * `src/client/web/js/dashboard-init.js`, so it can only reach a module that pulls
- * in nothing Node-only — `src/bot/position-manager.js`, which owns the
- * scoped `poolKey` built on this, drags in `async-mutex`, `ethers` and
- * `fs` and cannot cross that line. Keeping this file free of imports is
+ * in nothing Node-only — `src/bot/position-manager.js`, which hands the
+ * bot the scoped `poolKey` this file defines, drags in `async-mutex`,
+ * `ethers` and `fs` and cannot cross that line. Keeping this file free of imports is
  * what lets one definition serve both, instead of a copy per tier that
  * drifts.
  *

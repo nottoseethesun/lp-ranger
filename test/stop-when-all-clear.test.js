@@ -8,7 +8,7 @@
  *   ended and each scan still running has finished. Every request after
  *   the first changes nothing and answers what the stop still waits for.
  *
- *   Each case goes through the server's own route,
+ *   Each case of the held stop goes through the server's own route,
  *   `_handleStopWhenAllClear` (src/server/server-routes.js), over the
  *   bot's interface, so what is under way and the wait for the scans
  *   come from the bot over the test's bot states. Those are plain
@@ -78,6 +78,13 @@ function heldStop(states, stopAll = async () => {}) {
 }
 
 describe("the held stop", () => {
+  /*-
+   *  TEST-ONLY global swap: the route's exit starts a real timer that
+   *  ends the process (`setTimeout(() => process.exit(0), exitTimeoutMs)`,
+   *  src/server/server-routes.js), and the route takes no seam for it:
+   *  the timer is part of what is under test. On mock time it never
+   *  fires. Restored pristine after each case, by `mock.timers.reset()`.
+   */
   beforeEach(() => mock.timers.enable({ apis: ["setTimeout"] }));
   afterEach(() => {
     mock.timers.reset();

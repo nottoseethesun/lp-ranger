@@ -134,6 +134,15 @@ describe("a wallet import", () => {
     phase.endWalletImport();
     assert.equal(phase.refusalToTakeKey(), null);
   });
+
+  it("tells an unlock there is nothing to unlock, not to try again", () => {
+    phase.beginWalletImport();
+    const words = phase.refusalToTakeKey();
+    phase.endWalletImport();
+    assert.match(words, /the import unlocks it/);
+    assert.match(words, /nothing to unlock/);
+    assert.doesNotMatch(words, /Try again/);
+  });
 });
 
 describe("taking a key", () => {

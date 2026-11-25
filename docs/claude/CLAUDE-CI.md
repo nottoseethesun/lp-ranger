@@ -57,6 +57,7 @@ getting code from a feature branch into `main`. The remote must
 | **openapi-sync** | `docs/openapi.json` still matches the code — every registered route documented, every documented route still served, every `POST /api/config` key in its schema, every operation summarised, every tag declared |
 | **Config values** | The tests of the shipped config files themselves, run before every other test, so a wrong value is reported as the cause before what it broke — all must pass |
 | **Tests** | `node --test test/*.test.js` (every other test) — all must pass |
+| **Folders kept** | After the tests, the shipped settings folder, `app-config/user-configurable/` and `app-data/` hold exactly what they held before them; each file created, removed or written is named (`scripts/_folder-snapshot.js`) |
 | **Coverage** | 80% line coverage minimum |
 | **Security: deps** | `npm run audit:deps` — no high-severity CVEs |
 | **Security: lint** | `npm run audit:security` — eslint-plugin-security |

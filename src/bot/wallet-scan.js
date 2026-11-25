@@ -505,8 +505,9 @@ function createWalletScan(deps) {
 
   /**
    * POST /api/position/scan-cancel — abort any in-flight event scan for
-   * the pool of the caller's position and clear its sync flag so the
-   * badge re-syncs on the next restart. An operator's escape hatch from
+   * the pool of the caller's position, and mark the position's scan
+   * unfinished (`rebalanceScanComplete` false) until a pass sets the flag
+   * again as it ends; the pass the cancel ends does, as it fails. An operator's escape hatch from
    * a stuck sync: no dashboard control sends it, since Reload Current
    * Position cancels the pool's scan itself (src/bot/reload-position.js).
    * @param {object} body  `token0`, `token1`, `fee`, and optionally

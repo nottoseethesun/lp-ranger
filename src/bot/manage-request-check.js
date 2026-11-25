@@ -13,7 +13,7 @@
  * an import between the old key's removal and the new key's arrival, a
  * Manage is `invalid` for want of a key rather than `refused`. Refused
  * here, the request starts no bot loop and creates no slot. The reasons
- * are the bot's; the server turns each into its HTTP status
+ * are the bot's; the server turns each into its http status
  * (src/server/bot-result.js).
  *
  * The bot's Manage (`manage`, src/bot/position-lifecycle.js) asks it

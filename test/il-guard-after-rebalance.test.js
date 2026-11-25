@@ -15,13 +15,30 @@
  * the rebalance answered by the stand-in chain the bot-loop tests use.
  */
 
-const { describe, it } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
 const { _poll } = require("./_bot-loop-helpers");
 const { checkIlGuard } = require("../src/bot/il-guard");
 const { ilSnapshot } = require("./helpers/il-snapshot");
+const config = require("../src/lib/config");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+
+/*-
+ *  A poll that rebalances appends to the rebalance log (`appendLog`,
+ *  src/bot/bot-recorder.js), which the bot reads to count each pool's
+ *  rebalances today. Pointed at a file of this process's own for the
+ *  file's run, so no run of these tests adds to the operator's log.
+ */
+const savedLogFile = config.LOG_FILE;
+before(() => {
+  config.LOG_FILE = path.join(makeTestTempFolder("rebalance-log"), "log.json");
+});
+after(() => {
+  config.LOG_FILE = savedLogFile;
+});
 
 /** A Rebalance Now's bot state, with a Guard block standing. */
 function blockedState() {

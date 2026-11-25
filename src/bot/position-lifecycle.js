@@ -66,11 +66,9 @@ const _starting = new Map();
  * liquidity and bringing the position back in one user-driven cycle. A
  * healthy position's request carries no flag, and nothing changes.
  *
- * The re-open's range width is the position's saved setting
- * (`rebalanceRangeWidthPct`), which the bot loop reads through
- * `deps._getConfig` in src/bot/bot-cycle-opts.js, falling back to
- * `rangeMath.preserveRange()` when none is saved; the request carries
- * none.
+ * The re-open's range follows the position's Range settings, No Override
+ * toggle included, as any rebalance's does (`buildRebalanceOpts`,
+ * src/bot/bot-cycle-opts.js). The request carries none.
  * @param {object} posBotState  The position's bot state.
  * @param {object} body  The Manage request's body.
  */
@@ -87,8 +85,8 @@ function _stampReopenFlags(posBotState, body) {
  * per-position map, stamps `forceRebalance` (`_stampReopenFlags`), and
  * clears the aborted and midway flags (`rebalancePaused`,
  * `rebalanceFailedMidway`, `rebalanceError`), so the next poll runs a
- * fresh rebalance. The range width is the saved setting, as for any
- * re-open.
+ * fresh rebalance. Its range follows the position's Range settings, as
+ * any re-open's does.
  * @param {string} key  The position's composite key.
  * @param {object} body  The Manage request's body.
  * @returns {boolean}  Whether the live state was found and stamped; the

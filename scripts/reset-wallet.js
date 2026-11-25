@@ -3,7 +3,9 @@
  * @description Reset the dashboard-imported wallet.
  *
  * Two actions, both idempotent:
- *   1. Delete app-config/user-configurable/wallet.json (encrypted wallet state).
+ *   1. Delete app-config/user-configurable/wallet.json (encrypted wallet
+ *      state), and wallet.json.tmp beside it, the copy a save writes
+ *      first, from which the app would recover the wallet.
  *   2. Scrub any WALLET_PASSWORD=... line from .env so the next restart
  *      re-prompts via the dashboard unlock dialog rather than auto-
  *      unlocking from a stale plaintext password.
@@ -37,6 +39,11 @@ if (fs.existsSync(WALLET_FILE)) {
 } else {
   log.info("• app-config/user-configurable/wallet.json already absent");
 }
+/*-
+ *  And the copy a save writes first, which the app would otherwise
+ *  recover the wallet from at its next start (src/lib/wallet-manager.js).
+ */
+fs.rmSync(`${WALLET_FILE}.tmp`, { force: true });
 
 // ── 2. Scrub WALLET_PASSWORD from .env ────────────────────────────────────
 if (fs.existsSync(ENV_FILE)) {

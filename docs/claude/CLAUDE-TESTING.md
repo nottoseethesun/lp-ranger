@@ -199,7 +199,7 @@ Default/vanilla config values come from `.env.example` and the shipped JSON file
 
 ### Temp folders
 
-A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so is the scan-cache folder. A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
+A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so are the scan-cache folder and the api-key store's folder (`src/lib/api-key-store.js`, when `API_KEYS_FILE_PATH` names no file). A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
 
 A process stopped outright (Ctrl+C, kill -9) cannot remove its folders, so `npm run check` removes them before its tests start: each `lp-ranger-test-` folder whose process, named in the folder's name, is no longer running. A running process's folder is left alone, so a test run under way elsewhere keeps its files.
 
