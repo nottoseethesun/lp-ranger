@@ -7,10 +7,11 @@ blocks in JavaScript files that describe a file, a function or a value
 in a set form (`@param`, `@returns`, `@throws`). It gives the standard
 each text must meet, how to check each text against the code, how to
 write a fix, and the loop of fresh readers that checks an audit before
-its fixes are made. It comes from audits of the owner's projects, whose
-coding standards are those of LP Ranger, his bot that manages his 9mm V3
-liquidity positions; where a rule here is that project's own, it says
-so.
+its fixes are made. It comes from audits of the owner's projects, and
+this copy is fitted to LP Ranger, this repo: a bot and dashboard that
+manage liquidity positions on 9mm V3, on PulseChain. Its examples are LP
+Ranger's own, most of them findings from its audits; where a rule here
+is LP Ranger's own, it says so.
 
 ## Contents
 
@@ -59,14 +60,24 @@ makes sure that what they read is true of the code as it stands, that a
 newcomer can follow it, and that it leaves out no condition that changes
 what the code does. It covers every text a reader meets:
 
-- the Markdown docs: the README, and docs such as `docs/architecture.md`
-  (how the parts work), `docs/engineering.md` (the files, the checks, the
-  tests and CI, the checks run on each push) and a list of every command;
-- the help a command line prints for `--help`;
+- the Markdown docs: the README, `CLAUDE.md` and the guides in
+  `docs/claude/`, `docs/architecture.md` (how the parts work),
+  `docs/engineering.md` (the files, the checks, the tests and CI),
+  `docs/configuration.md` (every setting), `docs/security.md`,
+  `docs/npm-project-commands.md` (every command), the bookkeeping
+  tool's docs in `docs/util/`, and the notes in `docs/roadmap/`;
+- the help a command line prints for `--help`: the server's, the
+  headless bot's, and each util tool's;
 - the JSDoc of each file and function, and the comments in the code;
 - the titles of the tests, which say what each test holds the code to;
-- any other text the project shows its user, such as a help page built
-  from a script's header.
+- any other text LP Ranger shows its user: the User Manual
+  (`src/client/web/help-and-user-manual.html`), the circle-i help
+  dialogs whose words it shares (`src/lib/shared-help-content.json`),
+  the dashboard's own words, and the log lines an operator reads.
+
+The Disclosure is edited by its own rules
+(`docs/claude/CLAUDE-DISCLOSURES.md`). The notes in
+`docs/claude/memory/` are a record, not docs, and keep their history.
 
 ## 2. The Standard Every Text Meets
 
@@ -78,10 +89,13 @@ fixed", "after the change". A reader of the doc needs the rule, not how
 the rule came about; the history belongs in commit messages and pull
 requests.
 
-- Before: "The lock wait is now 20 seconds; it used to be 120, which
-  made cells fail."
-- After: "A call that gets no lock within 20 seconds shows the busy
-  message, so that it ends within the 30 seconds Google gives a call."
+- Before: "The server now puts the wallet's files right after it
+  listens; it used to do it before, which let a second start spoil an
+  import."
+- After: "As soon as it is listening, before it reads a request, the
+  server puts the wallet's files right. A second start, which fails on
+  the port, never gets this far, so it changes neither file under the
+  server already running."
 
 ### Lead Each Topic With Its Context
 
@@ -96,7 +110,8 @@ fails.
 #### What Counts as a Tool
 
 A tool is anything a reader runs or a program uses: an `npm run`
-command, a program in `bin/`, a script, a package, an outside service.
+command, a script in `scripts/`, a tool in `util/`, a package, an
+outside service such as a price service or an rpc endpoint.
 Treat a technical term the same way: an http status, a hash function
 such as PBKDF2, an address format such as EIP-55, a "UTC day". A name a
 reader has not met is a gap in the text, however familiar it is to the
@@ -110,16 +125,17 @@ writer.
    an outside party.
 4. What it does, in precise words.
 
-For example: "crypto-price-filler, this repo's program run from a
-terminal, prices every row of a CSV file at the row's own time, such as
-each payout in a year of a miner's payouts, and writes the rows again
-with each one's price."
+For example: "`npm run gentle-stop`, this repo's command for stopping
+a running server without cutting off a rebalance, asks the server to
+stop once no rebalance, compound or scan is under way, and asks again
+every two seconds, printing what the stop still waits for whenever
+that changes."
 
 #### Where an Introduction Must Appear
 
 - At the first mention in each doc: a reader may open any doc first.
 - At the first mention in each part a reader can see alone, such as each
-  section of a help page that shows sections one at a time.
+  circle-i help dialog, which shows one entry by itself.
 - Before the text uses the name, not after: a rule that names a source
   above the paragraph that introduces it fails, even if the
   introduction is a few lines below.
@@ -131,9 +147,9 @@ the fact it hides. Words to look for: robust, seamless, powerful,
 efficient, simple, simply, just, easily, properly, correctly, gracefully,
 "reads right", "works as expected", "best".
 
-- Before: "The tool reads dates correctly across daylight saving."
-- After: "Each row's time is read with the offset its time zone had at
-  that time, daylight saving included."
+- Before: "The dashboard updates in real time."
+- After: "The dashboard asks the server for its status every
+  `dashboardPollIntervalMs`, 3 seconds as shipped."
 
 Give each number its unit, and the one the code uses: seconds or
 milliseconds, days or hours, decimal places.
@@ -165,19 +181,22 @@ appears in the docs, the help and the JSDoc.
 ### Say What Can Change a Figure
 
 When a settings file can change a number or a choice the doc states,
-say so where the doc states it: "as the script is written", then name
-the file and the setting (`QUOTE_CURRENCY` in
-`fetch-from-any-exchange/config.json`). Do the same for a default that a
-command-line option replaces. Advice that rests on a setting, such as
-how long to wait before freezing a value that is cached for 6 hours,
+say so where the doc states it: "as shipped", then name the file and the
+setting (`checkIntervalSec`, 300 seconds in
+`app-config/app-defaults-for-user-configurable/bot-config-defaults.json`,
+which an operator's copy in `app-config/user-configurable/` and
+`CHECK_INTERVAL_SEC` in `.env` can replace). Do the same for a default
+that a command-line option replaces. Advice that rests on a setting,
+such as how long the bot waits for the dashboard to show a change (its
+poll interval times `pollsBeforeAssumedSeen` in `app-runtime.json`),
 says which setting it rests on.
 
 ### Name the Clock and the Calendar
 
 A day, a week or a month in the text is in a time zone, and a week
-starts on a day. Say both wherever a reader acts on them: "the UTC day
-that holds the time", "the week, which the exchange counts from Monday
-00:00 UTC". A reader in another time zone counts a local day; a reader
+starts on a day. Say both wherever a reader acts on them: "each pool's
+daily cap, which resets at 00:00 UTC". A reader in another time zone
+counts a local day; a reader
 in the United States counts weeks from Sunday. Either can act too early
 on text that leaves the zone or the first day out.
 
@@ -185,9 +204,11 @@ on text that leaves the zone or the first day out.
 
 A message, a column header or a file name the code writes is quoted as
 the code writes it, in a code span, with the same capitals, spaces and
-punctuation: `Rate limit busy - retry later`, `$usd price`. Where the
-message holds a value, quote the fixed part and mark the rest:
-`Too recent for a final price: ask again after …`.
+punctuation: `LP Ranger is currently submitting transactions to the
+blockchain to rebalance this LP Position.`, Rebalance Now's title while
+it sends. Where the message holds a value, quote the fixed part and mark
+the rest: `not compared: …`, the gate's Folders kept row when the
+folders could not be compared.
 
 ### Structure and Navigation
 
@@ -210,16 +231,19 @@ each turning point, with each name introduced.
 
 ### File Headers
 
-The owner's projects open each file with a header in three parts:
+LP Ranger opens each file with a JSDoc header (`@file`, then
+`@description`) that reads as one flowing argument in three parts:
 
 - What: what the file does, and the situation it serves.
 - How: how it does it, step by step, at the level a reader needs before
   reading the code.
 - Fit: which other files use it, and why it is a file of its own.
 
-A header names the codebase a shared module comes from, such as
-`crypto-price-fetchers/dex-prices/geckoterminal`, and says where the
-rest of the story is told.
+A header in `src/lib/` names the parts that use it (the bot, the server,
+the web client, a util tool), since `src/lib/` holds only what two or
+more of them share (CLAUDE.md, "Separation of concerns"). A header says
+where the rest of the story is told, such as a section of
+`docs/engineering.md`.
 
 ### Function Docstrings
 
@@ -227,23 +251,23 @@ rest of the story is told.
   terms of its caller.
 - Each `@param` gives the type, the unit, the values it takes, and what
   `null` or a missing value means.
-- `@returns` names every case: "the price, or null when the period is
-  not over, or no candle holds the time".
+- `@returns` names every case: "the change to report, or null until a
+  wallet has replaced another" (`walletJustChanged`,
+  `src/server/wallet-change.js`).
 - `@throws` says when.
-- The docstring matches the order of the code. A docstring that says a
-  function "reads the clock once, before it asks for the candles" is
-  wrong if the code reads it after the request returns, and the
-  difference can decide whether a value from an unfinished period is
-  taken.
+- The docstring matches the order of the code. A comment that says the
+  server puts the wallet's files right "before it listens" is wrong once
+  the code does it after `start()` holds the port, and the difference
+  decides whether a second start can spoil a running server's import.
 - A docstring says why a step is there when the code alone does not
   show it, and does not restate the code line by line.
 
 ### Inline Comments
 
 - A comment says why, not what; it tells no history.
-- It follows the project's own form. LP Ranger's rules, for example,
-  write a multi-line comment as a `/*-` … `*/` block with each marker on
-  a line of its own, and mark a test's swap of a global with
+- It follows LP Ranger's form: a multi-line comment is a `/*-` … `*/`
+  block with each marker on a line of its own, never stacked `//` lines,
+  and a test's swap of a global opens its comment with
   `TEST-ONLY global swap:`.
 - A comment beside code that the audit changes is read again: a comment
   that described the old behavior is now a wrong fact.
@@ -252,8 +276,9 @@ rest of the story is told.
 
 A test's title is a claim about the code. When a fix changes what a
 test expects, the title of the test and of its group are read again: a
-group titled "the day asked of the service is the UTC day" is wrong once
-its test expects the next UTC day.
+case titled "the server puts the files right before it starts
+listening" is wrong once its test checks that the server does so once
+it holds its port.
 
 ## 4. Checking Every Claim Against the Code
 
@@ -287,20 +312,26 @@ Check each of these against the code, not against another doc:
 
 ### Where Docs Most Often Go Wrong
 
-- Letter case: a column found by `h.includes("date")` misses a header
-  `Date (UTC)`, while the doc says "a column whose name holds date".
-- Retries: a doc that says "fails every try" when only one status, such
-  as 429, is tried again.
+- Letter case: two addresses compared as typed take one wallet, written
+  once in EIP-55 capitals and once in lower case, for two; the doc says
+  which the code does.
+- Retries: a doc that says the bot moves to the next rpc endpoint on any
+  failure, when an http 429 is waited out on the same endpoint
+  (`rpcRetryOn429DelaysMs`).
 - Caches: what is kept, for how long, and what is never kept, such as a
-  busy message.
+  current price, kept for `priceCacheTtlMs`, two minutes as shipped.
 - Defaults: a default described as a setting of a file that does not
-  hold it.
-- Edge cases of time: a period that ends while a request is in flight;
-  a week that ends after its month or its year.
-- Fallbacks: the case in which the fallback itself is not reached, such
-  as a flag that stops the run before it.
-- Outputs: a doc that says a tool "charts one point" when one point
-  draws no chart.
+  hold it, or as fixed when an operator's copy can replace it, such as
+  the rebalance log's path, `log.file` in `app-runtime.json`.
+- Edge cases of time: a day that ends while a rebalance is under way; a
+  timer longer than a timer can hold, which fires at once
+  (`src/lib/timer-bounds.js`).
+- Fallbacks: the case in which the fallback is not taken, such as the
+  swap's fallback from the aggregator to the V3 router, declined while
+  the aggregator's nonce is unsettled (`nonceUnsettled`).
+- Outputs: a doc that says a reloaded tab "shows the new wallet" when
+  every page load first shows the Disclosure, and nothing starts until
+  it is accepted.
 
 ### Keeping Every Text Saying the Same Thing
 
@@ -358,7 +389,8 @@ confirmed yet.
 
 ### The Files of the Loop
 
-Keep them in one folder beside the report, such as `tmp/<audit>/`:
+Keep them in one folder beside the report, such as `tmp/<audit>/`; git
+ignores `tmp/` in LP Ranger, so nothing of the loop is committed:
 
 - `report.md`: the live report, edited after each pass.
 - `report-pass-N.md`: a copy of the report exactly as reader N checked
@@ -459,38 +491,50 @@ in place of the report, and the code they describe.
 
 ## 8. Findings From Past Audits, Before and After
 
-Each pair below is a finding fresh readers raised in the owner's
-projects, and the text that fixed it.
+Each pair below is a finding raised in LP Ranger's audits, and the text
+that fixed it.
 
 | Before | Why it failed | After |
 | --- | --- | --- |
-| "freeze such a cell only once the week is over" | Did not say which week; a reader counting Sunday to Saturday froze early. | "the week, which MEXC counts from Monday 00:00, … each in UTC" |
-| "a coin that traded nothing in the day that holds the time" | The code's day is the UTC day; a reader checked the local day. | "in the UTC day that holds the time" |
-| "a key opened at 600,000 rounds of PBKDF2" | PBKDF2 never introduced. | "600,000 rounds of PBKDF2, a function that makes a key from a password" |
-| "With no Moralis key saved, the run reads GeckoTerminal." | Wrong with `--source moralis`, which stops the run. | The source rules list the flag's case, and the stops get a section. |
-| "charts one point: the ratio of the two prices now" | One point draws no chart. | "gives one point … which draws no chart; it prints the ratio" |
-| "The menu's Refresh & freeze keeps the price each cell kept" | Named the menu item before saying what it does. | "runs a tab's cells again and puts each number in place of its formula, so it keeps …" |
-| "the larger window MEXC is asked for" | "window" here, "period" everywhere else. | "the larger period MEXC is asked for" |
-| "the first column whose name holds date and UTC" | The code's first test is case-sensitive. | The exact rule, with the case each word must have, and an example. |
-| "GeckoTerminal refused or failed every try" | Only a 429 is tried again. | "refuses after the last wait, answers with another error, or a request runs out of time" |
-| "The script reads the clock" (in a docstring) | The code read it after the request, so a period that ended meanwhile counted as over. | The code reads the clock first, and the docstring says so. |
+| "The Rebalance button is set every poll by `_updateRebalanceButtons`" | A tab left on a wallet another tab replaced returns from each poll before that call. | "set by `_updateRebalanceButtons` on each poll that names this tab's wallet" |
+| "settles on the first that answers" (the endpoint probe's JSDoc) | The probe moves only when a later endpoint answers; when the first does, a sticky window already engaged stays. | "stops at the first that answers. When that is a later endpoint, it engages the sticky window on it … When the first endpoint answers, selection is left as it is" |
+| "the shipped path (`log.file` in app-runtime.json)" | An operator's copy of app-runtime.json can set `log.file`. | "`log.file` in app-runtime.json (an operator's copy applied)" |
+| "restoreProdFiles is called from the `finally` and the interrupt handlers" | The interrupt handler only notes the signal. | "restoreProdFiles from runTestStages's `finally`" |
+| "Every `.env` variable is read through `readEnv`" | Three are read as their modules load. | "Every `.env` variable but three is read through `readEnv`" |
+| "when no unlock this session holds one" | An import and the launch's key step leave the wallet password held too. | "when the server holds no wallet password this session: none came with an unlock, the launch's key step or an import" |
+| "not compared: the test stage failed first" | A test run never throws; the comparison stops only when a read of the folders or a write of a test report throws. | "not compared: …", naming the error |
+| "the server first reads the shutdown timings and empties the previous run's error log, then: `start()` …" | It left out the step that puts the wallet's files right, which runs once `start()` holds the port. | "As soon as it is listening, before it reads a request, it deletes the previous run's error log and puts the wallet's files right" |
 
 ## 9. Automated Checks Worth Having
 
-- markdownlint, a program that checks the form of Markdown files: with
-  `MD024` set to `siblings_only`, a heading may repeat only under
-  different parents, and `MD041` makes each file open with a heading.
-- A link and anchor check: every link points at a file the repo keeps,
-  or at a heading that exists. The owner's projects run one from a
-  shared module (`crypto-price-fetchers/lib/repo-checks`), which also
-  checks each path in a code span that starts with `.` or `..`.
-- A help check: each command line answers `--help` and `-h`, and every
-  option its examples use is listed in its help.
+LP Ranger runs some of these in `npm run lint` and `npm run check`; each
+item says which.
+
+- markdownlint, a program that checks the form of Markdown files. LP
+  Ranger runs it over the files `scripts/lint-targets.js` lists, with
+  `.markdownlint-cli2.jsonc`: `MD024` set to `siblings_only`, so a
+  heading may repeat only under different parents; `MD041`, so each file
+  opens with a heading; `MD033`, so no file holds inline HTML; and,
+  among its defaults, `MD051`, so each link to a heading of the same
+  file finds it.
+- A link and anchor check across files: every link points at a file the
+  repo keeps, or at a heading that exists in it, and each path in a code
+  span that starts with `.` or `..` exists. LP Ranger has none yet;
+  markdownlint checks only links within a file, and
+  `test/help-manual-links.test.js` checks the User Manual's own anchors.
+- A help check: each command line answers `--help`, and every option its
+  examples use is listed in its help. LP Ranger's tests print the
+  server's and the headless bot's help (`test/config.test.js`),
+  `build-and-start`'s (`test/build-and-start-help.test.js`),
+  `npm run clean`'s (`test/clean-script.test.js`) and the util tools'
+  (`util/test/`); none yet checks the options its examples use.
 - A check that the docs name every test file and helper that exists, and
-  that each `npm run` target the command list names is defined.
-- Prettier, a program that formats code, for the code and its comments;
-  ESLint, which checks JavaScript against rules, with its length rule
-  set to pass comments, as these projects set it.
+  that each `npm run` target `docs/npm-project-commands.md` names is
+  defined. LP Ranger has neither yet.
+- Prettier, a program that formats code, which LP Ranger runs on its
+  JavaScript, json and yaml, never on Markdown or HTML; and ESLint,
+  which checks JavaScript against rules, with its length rule
+  (`max-lines`, 500) set to skip comments.
 
 These checks catch form; only a reader catches a wrong fact.
 
