@@ -432,7 +432,10 @@ server; the encrypted files, the decryption and the in-memory handling
 are the same. In `--headless` mode, if the wallet can't be unlocked (no password
 provided, no `WALLET_PASSWORD` in env, no wallet imported), the
 server **exits with an error** rather than falling through to
-dashboard-only mode — there is no browser to fall back to.
+dashboard-only mode — there is no browser to fall back to. With no
+terminal to type into, as when a service manager starts it, the prompt
+closes at once and says so (`src/lib/ask-password.js`), and the server
+exits with that error; the headless bot (`npm run bot`) does the same.
 
 **Operator responsibilities when using `WALLET_PASSWORD`:**
 

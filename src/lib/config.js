@@ -364,7 +364,7 @@ function _rebalanceLogDefault() {
   return path.join(makeTestTempFolder("rebalance-log"), "rebalance_log.json");
 }
 
-/** File path for the JSON rebalance event log (`_rebalanceLogDefault`). */
+/** File path for the json rebalance event log (`_rebalanceLogDefault`). */
 const LOG_FILE = readEnv("LOG_FILE") ?? _rebalanceLogDefault();
 
 /**

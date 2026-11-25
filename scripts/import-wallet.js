@@ -47,12 +47,19 @@ function flag(name) {
 const passwordFromFlag = flag("--password");
 
 /**
- * Ask for a secret, showing nothing of what is typed.
+ * Ask for a secret, showing nothing of what is typed. When the prompt
+ * closes with nothing typed (Ctrl+D), it has said so, and the import
+ * stops.
  * @param {string} prompt
  * @returns {Promise<string>}  The answer, trimmed.
  */
 async function ask(prompt) {
-  return (await askPassword(prompt)).trim();
+  const answer = await askPassword(prompt);
+  if (answer === null) {
+    log.error("Nothing was imported.");
+    process.exit(1);
+  }
+  return answer.trim();
 }
 
 /** Read all of stdin as a single string (for piped input). */

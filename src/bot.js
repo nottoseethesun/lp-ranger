@@ -107,8 +107,13 @@ async function main() {
   });
   if (!privateKey && !dryRun) {
     log.error(
-      "[bot] No private key available. Set PRIVATE_KEY in .env, or import" +
-        " a wallet via `node scripts/import-wallet.js` (or the dashboard).",
+      walletManager.hasWallet()
+        ? "[bot] The wallet is locked: no password was given. Set" +
+            " WALLET_PASSWORD in .env, or start the bot from a terminal" +
+            " to type it."
+        : "[bot] No private key available. Set PRIVATE_KEY in .env, or" +
+            " import a wallet via `node scripts/import-wallet.js` (or the" +
+            " dashboard).",
     );
     process.exit(1);
   }

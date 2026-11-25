@@ -265,9 +265,9 @@ function createRouteHandlers(deps) {
           // --headless: CLI is the only path — don't suggest the dashboard.
           if (walletManager.hasWallet())
             log.error(
-              "[server] Wallet locked — password not" +
-                " provided. Set WALLET_PASSWORD in .env" +
-                " or re-run with --headless to be prompted.",
+              "[server] The wallet is locked: no password was given. Set" +
+                " WALLET_PASSWORD in .env, or start the server with" +
+                " --headless from a terminal to type it.",
             );
           else
             log.error(

@@ -183,10 +183,12 @@ const { createBot } = require("./bot/bot-interface");
 logVersionBanner("[server]");
 
 // ── app-config migration ─────────────────────────────
-// One-time move of legacy root-level config files into app-config/.
-// Idempotent: a no-op after the first successful run. See
-// src/lib/migrate-app-config.js and "The app-config Directory" in
-// docs/engineering.md.
+/*-
+ *  One-time move of legacy root-level config files into app-config/.
+ *  Idempotent: a no-op after the first successful run. See
+ *  src/lib/migrate-app-config.js and "The app-config Directory" in
+ *  docs/engineering.md.
+ */
 migrateAppConfig();
 
 // ── MIME type map ────────────────────────────────────

@@ -21,6 +21,7 @@
 
 const readline = require("readline");
 const { Writable } = require("stream");
+const { log } = require("./log");
 
 /**
  * A stream that takes whatever is written to it and shows none of it.
@@ -34,14 +35,27 @@ function _showsNothing() {
   });
 }
 
+// What the prompt says when its input ends before anything is typed.
+const _CLOSED =
+  "[password] The prompt closed before anything was typed: Ctrl+D was " +
+  "pressed, or there is no terminal to type into (started by a service " +
+  "manager or a script, or with its input cut off).";
+
 /**
  * Ask for a secret on the terminal, showing nothing of what is typed.
+ *
+ * The input can end before an answer: Ctrl+D, or no terminal at all, as
+ * when a service manager starts LP Ranger with its input on /dev/null.
+ * Readline then never answers, so the prompt says why (`_CLOSED`, a
+ * warning) and answers null, and the caller stops with its own error,
+ * saying what to do, rather than waiting for ever.
  * @param {string} prompt  Text written before the answer is typed.
  * @param {{input?: import("stream").Readable,
  *   output?: import("stream").Writable}} [streams]  Where the answer is
  *   typed and where the prompt goes: stdin and stderr, unless a test
  *   passes its own.
- * @returns {Promise<string>}  What was typed, without the line end.
+ * @returns {Promise<string|null>}  What was typed, without the line end;
+ *   null when the input ended first.
  */
 function askPassword(prompt, streams = {}) {
   const input = streams.input === undefined ? process.stdin : streams.input;
@@ -52,11 +66,19 @@ function askPassword(prompt, streams = {}) {
       output: _showsNothing(),
       terminal: true,
     });
+    let answered = false;
     output.write(prompt);
     rl.question("", (answer) => {
+      answered = true;
       rl.close();
       output.write("\n");
       resolve(answer);
+    });
+    rl.on("close", () => {
+      if (answered) return;
+      output.write("\n");
+      log.warn(_CLOSED);
+      resolve(null);
     });
   });
 }

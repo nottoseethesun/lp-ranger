@@ -190,6 +190,26 @@ test("a new key whose quota is used up is saved, and the run says CoinGecko answ
   );
 });
 
+test("a prompt closed with nothing typed stops the run, saving and asking nothing", async () => {
+  /*-
+   *  The prompt answers null when its input ends first, as with no
+   *  terminal to type into (src/lib/ask-password.js).
+   */
+  const newKey = stage([null]);
+  await assert.rejects(
+    unlockMoralisKey(newKey.deps),
+    refusedWith("Nothing was typed: the prompt closed first."),
+  );
+  assert.equal(hasEncryptedKey("moralis"), false);
+  await saveEncryptedKey("moralis", KEY, PASSWORD);
+  const savedKey = stage([null]);
+  await assert.rejects(
+    unlockMoralisKey(savedKey.deps),
+    refusedWith("Nothing was typed: the prompt closed first."),
+  );
+  assert.equal(savedKey.pings[0], 0);
+});
+
 test("a wrong wallet password stops the run, asking Moralis nothing", async () => {
   await saveEncryptedKey("moralis", KEY, PASSWORD);
   const { deps, pings } = stage(["wrong"]);

@@ -87,6 +87,21 @@ function refused(message) {
 }
 
 /**
+ * Ask with `ask`, refusing when the prompt closed with nothing typed: the
+ * prompt answers null then, having said why (src/lib/ask-password.js).
+ * @param {Function} ask  Prompts and answers what is typed.
+ * @param {string} prompt
+ * @returns {Promise<string>}  What was typed.
+ * @throws {Error}  With `keyRefused` set, when nothing was typed.
+ */
+async function _typed(ask, prompt) {
+  const answer = await ask(prompt);
+  if (answer === null)
+    throw refused("Nothing was typed: the prompt closed first.");
+  return answer;
+}
+
+/**
  * Ask Moralis whether it takes the key in memory.
  * @param {Function} ping  Answers "valid", "quota", "invalid" or another
  *   word, as `pingMoralis` does.
@@ -126,7 +141,7 @@ async function checkKey(ping, say, refusal) {
  *   the key, or the key is no longer saved.
  */
 async function openSavedKey(ask) {
-  const password = await ask(PASSWORD_PROMPT);
+  const password = await _typed(ask, PASSWORD_PROMPT);
   let key;
   try {
     key = await loadEncryptedKey("moralis", password);
@@ -156,11 +171,11 @@ async function openSavedKey(ask) {
  *   passwords differ.
  */
 async function askNewKey(ask) {
-  const key = (await ask("Moralis api key: ")).trim();
+  const key = (await _typed(ask, "Moralis api key: ")).trim();
   if (key.length === 0) throw refused("No Moralis api key was entered.");
-  const password = await ask(PASSWORD_PROMPT);
+  const password = await _typed(ask, PASSWORD_PROMPT);
   if (password.length === 0) throw refused("No password was entered.");
-  const again = await ask("That password again: ");
+  const again = await _typed(ask, "That password again: ");
   // eslint-disable-next-line security/detect-possible-timing-attacks -- Safe: comparing two strings the user typed, to confirm one, not checking a secret
   if (again !== password)
     throw refused("The two passwords differ, so the key was not saved.");

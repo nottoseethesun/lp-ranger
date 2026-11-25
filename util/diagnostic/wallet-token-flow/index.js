@@ -79,7 +79,8 @@
 
 const path = require("path");
 
-process.chdir(path.resolve(__dirname, "..", ".."));
+// The project's folder, three up from util/diagnostic/wallet-token-flow/.
+process.chdir(path.resolve(__dirname, "..", "..", ".."));
 
 const { ethers } = require("ethers");
 const config = require("../../../src/lib/config");

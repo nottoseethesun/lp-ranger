@@ -323,7 +323,9 @@ Three modes, in order of security recommendation:
 2. **`--headless` terminal prompt** — `node src/server.js --headless`
    prompts on stdin. Same security as the dashboard (memory only),
    no browser needed. If no password is provided, the server exits
-   with an error rather than falling through to dashboard mode.
+   with an error rather than falling through to dashboard mode. With
+   no terminal to type into, the prompt closes at once and says so,
+   and the server, or the headless bot, exits with that error.
 3. **`WALLET_PASSWORD` in `.env`** — fully unattended. Password
    lives on disk as plaintext. Least recommended.
 

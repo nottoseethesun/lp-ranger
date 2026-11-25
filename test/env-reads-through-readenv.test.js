@@ -101,13 +101,16 @@ describe("reading a variable ENV_SETTINGS names", () => {
   });
 
   it("keeps the allowed list honest", () => {
-    /*- An allowance for a read that is gone is dead weight. */
+    // An allowance for a read that is gone is dead weight.
     for (const [rel, names] of Object.entries(ALLOWED)) {
       const found = rawReads(
         fs.readFileSync(path.join(SRC, ...rel.split("/")), "utf8"),
       ).map((r) => r.name);
       for (const name of names)
-        assert.ok(found.includes(name), `src/${rel} no longer reads ${name}`);
+        assert.ok(
+          found.includes(name),
+          `src/${rel} does not read ${name}: drop its allowance`,
+        );
     }
   });
 });
