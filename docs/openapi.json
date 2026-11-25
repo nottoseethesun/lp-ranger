@@ -408,7 +408,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Unlock encrypted wallet",
-        "description": "Decrypt the wallet file and the stored api keys with the provided password. The first unlock also starts the positions saved as managed; the request is idempotent, so entering the password again only confirms it.",
+        "description": "Decrypt the wallet file and the stored api keys with the provided password. The first unlock also starts the positions saved as managed; the request is idempotent, so entering the password again only confirms it. Refused while a wallet import is under way, and asked again once the decrypt is done.",
         "requestBody": {
           "required": true,
           "content": {
@@ -434,6 +434,9 @@
           },
           "401": {
             "description": "Invalid password"
+          },
+          "409": {
+            "description": "A wallet import is under way, replacing the wallet this password opens. Nothing changed; `error` says why."
           }
         }
       }
@@ -442,7 +445,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Import wallet",
-        "description": "Import a wallet from its address and private key; the dashboard derives both from a seed phrase, and sends the phrase as well. Encrypts and persists to app-config/user-configurable/wallet.json, then stops every position and starts the new wallet's saved ones. From its first step until that start-up has finished, a Manage is refused and `GET /api/status` reports `importingWallet`.",
+        "description": "Import a wallet from its address and private key; the dashboard derives both from a seed phrase, and sends the phrase as well. Encrypts and persists to app-config/user-configurable/wallet.json, then stops every position and starts the new wallet's saved ones. From its first step until that start-up has finished, a Manage and an unlock are refused and `GET /api/status` reports `importingWallet`.",
         "requestBody": {
           "required": true,
           "content": {

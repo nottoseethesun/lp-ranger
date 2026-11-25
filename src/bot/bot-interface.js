@@ -39,6 +39,7 @@ const {
   markStopping,
   beginWalletImport,
   endWalletImport,
+  refusalToTakeKey,
 } = require("./app-phase");
 const {
   createPerPositionBotState,
@@ -210,6 +211,12 @@ function botOperations(parts) {
     hasPrivateKey: () =>
       privateKeyRef.current !== null && privateKeyRef.current !== undefined,
     /**
+     * Why the bot must not take a key now (src/bot/app-phase.js), or null
+     * when it may: while a wallet import is under way, which takes its
+     * own wallet's key, an unlock and the launch's key step are refused.
+     */
+    refusalToTakeKey: () => refusalToTakeKey(),
+    /**
      * The signer every position signs through, built once from the key
      * the bot holds (a random wallet in a dry run with none): its
      * provider, signer and address. The headless bot asks for it as it
@@ -232,8 +239,12 @@ function botOperations(parts) {
       privateKeyRef.current = null;
       positionMgr.resetSharedSigner();
     },
-    /** Start the positions saved as managed (src/bot/auto-start.js). */
-    startManagedPositions: () => startManagedPositions(),
+    /**
+     * Start the positions saved as managed (src/bot/auto-start.js). The
+     * wallet import's own closing start-up passes `{ forImport: true }`:
+     * it is the one start-up that begins while an import is under way.
+     */
+    startManagedPositions: (opts) => startManagedPositions(opts),
     /**
      * Begin a wallet import (src/bot/app-phase.js): null when it began,
      * else why it is refused (a stop, a start-up or another import under

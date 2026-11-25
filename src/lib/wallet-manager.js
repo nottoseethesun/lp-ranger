@@ -75,13 +75,18 @@ function _deriveKey(password, salt) {
   });
 }
 
-/** Persist current _state to app-config/user-configurable/wallet.json (encrypted — no plaintext secrets). */
-function _saveToDisk() {
+/**
+ * Write a wallet to app-config/user-configurable/wallet.json (encrypted —
+ * no plaintext secrets).
+ * @param {{address: string, source: string, hasMnemonic: boolean,
+ *   encrypted: object}} wallet  What the file holds, as `_state` does.
+ */
+function _saveToDisk(wallet) {
   const data = {
-    address: _state.address,
-    source: _state.source,
-    hasMnemonic: _state.hasMnemonic,
-    encrypted: _state.encrypted,
+    address: wallet.address,
+    source: wallet.source,
+    hasMnemonic: wallet.hasMnemonic,
+    encrypted: wallet.encrypted,
   };
   // Ensure parent dir exists (e.g. app-config/ on first run).
   fs.mkdirSync(path.dirname(_WALLET_FILE), { recursive: true });
@@ -128,7 +133,10 @@ _loadFromDisk();
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * Import a wallet: encrypt its secrets and store in memory.
+ * Import a wallet: encrypt its secrets, write them to wallet.json, then
+ * hold them in memory. A write that fails (a full disk, a read-only
+ * folder) throws with the wallet in memory as it was, so the key the bot
+ * holds still belongs to the wallet loaded.
  * @param {object} opts
  * @param {string} opts.address     Checksummed wallet address.
  * @param {string} opts.privateKey  Hex private key (0x-prefixed).
@@ -167,16 +175,19 @@ async function importWallet({
     cipher.final(),
   ]);
 
-  _state.address = address;
-  _state.source = source || "key";
-  _state.hasMnemonic = !!mnemonic;
-  _state.encrypted = {
-    saltHex: salt.toString("hex"),
-    ivHex: iv.toString("hex"),
-    authTagHex: cipher.getAuthTag().toString("hex"),
-    ciphertextHex: encrypted.toString("hex"),
+  const wallet = {
+    address,
+    source: source || "key",
+    hasMnemonic: !!mnemonic,
+    encrypted: {
+      saltHex: salt.toString("hex"),
+      ivHex: iv.toString("hex"),
+      authTagHex: cipher.getAuthTag().toString("hex"),
+      ciphertextHex: encrypted.toString("hex"),
+    },
   };
-  _saveToDisk();
+  _saveToDisk(wallet);
+  Object.assign(_state, wallet);
 }
 
 /**

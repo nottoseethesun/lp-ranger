@@ -73,10 +73,16 @@ function logUnlockFail(err) {
   );
 }
 
+/** Log the 409 path (a wallet import under way), with the bot's reason. */
+function logUnlockRefused(reason) {
+  log.warn(`${NS} POST /api/wallet/unlock refused — %s`, reason);
+}
+
 module.exports = {
   logUnlockRequest,
   logUnlockMissing,
   logUnlockAttempt,
   logUnlockSuccess,
   logUnlockFail,
+  logUnlockRefused,
 };

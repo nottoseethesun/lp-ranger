@@ -23,6 +23,13 @@
  * the one-position-per-pool check until a restart.
  *
  * A wrong password is answered 401 and changes nothing.
+ *
+ * While a wallet import is under way, an unlock is refused (409) and
+ * changes nothing. It is asked again once the decrypt is done, since an
+ * import can begin during it. The import is replacing the wallet this
+ * password opens: an unlock then would hand the bot the old wallet's
+ * key, and its start-up would start the old wallet's positions once the
+ * new wallet is in.
  */
 
 const { log } = require("../lib/log");
@@ -35,8 +42,9 @@ const unlockLog = require("./server-unlock-log");
  * @param {object} deps.walletManager  Decrypts the wallet
  *   (`revealWallet(password)`), throwing on a wrong password.
  * @param {object} deps.bot  The bot's interface (src/bot/bot-interface.js):
- *   it is handed the decrypted key (`setPrivateKey`, `hasPrivateKey`) and
- *   starts the positions saved as managed (`startManagedPositions`).
+ *   it says whether it may take a key now (`refusalToTakeKey`), is handed
+ *   the decrypted key (`setPrivateKey`, `hasPrivateKey`) and starts the
+ *   positions saved as managed (`startManagedPositions`).
  * @param {(password: string) => Promise<void>} deps.decryptApiKeys
  * @param {Function} deps.jsonResponse
  * @param {Function} deps.readJsonBody
@@ -47,6 +55,20 @@ function createUnlockHandler(deps) {
     deps;
   const warn = (what) => (e) => log.warn("[server] %s: %s", what, e.message);
 
+  /**
+   * Answer 409 when the bot may not take a key now, as during a wallet
+   * import (`refusalToTakeKey`), naming why.
+   * @param {object} res
+   * @returns {boolean} Whether the unlock was refused.
+   */
+  function _refused(res) {
+    const refusal = bot.refusalToTakeKey();
+    if (refusal === null) return false;
+    unlockLog.logUnlockRefused(refusal);
+    jsonResponse(res, 409, { ok: false, error: refusal });
+    return true;
+  }
+
   return async function handleUnlock(req, res) {
     unlockLog.logUnlockRequest(req);
     const body = await readJsonBody(req);
@@ -55,15 +77,18 @@ function createUnlockHandler(deps) {
       return jsonResponse(res, 400, { ok: false, error: "Missing password" });
     }
     unlockLog.logUnlockAttempt(String(body.password).length);
+    if (_refused(res)) return;
     const wasLocked = !bot.hasPrivateKey();
+    let privateKey;
     try {
-      bot.setPrivateKey(
-        (await walletManager.revealWallet(body.password)).privateKey,
-      );
+      ({ privateKey } = await walletManager.revealWallet(body.password));
     } catch (err) {
       unlockLog.logUnlockFail(err);
       return jsonResponse(res, 401, { ok: false, error: "Wrong password" });
     }
+    // Asked again: an import may have begun during the decrypt.
+    if (_refused(res)) return;
+    bot.setPrivateKey(privateKey);
     unlockLog.logUnlockSuccess(req);
     decryptApiKeys(body.password).catch(warn("API key decrypt failed"));
     if (wasLocked) bot.startManagedPositions().catch(warn("Auto-start failed"));

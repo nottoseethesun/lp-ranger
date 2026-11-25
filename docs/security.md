@@ -417,7 +417,11 @@ recommended*) → the encrypted wallet, unlocked by the `WALLET_PASSWORD`
 env var, else by the terminal prompt under `--headless`, else by the
 dashboard's Unlock Wallet dialog
 ([`src/server/server-unlock.js`](../src/server/server-unlock.js)).
-The headless bot (`npm run bot`) has no dashboard. It picks its key
+The launch takes no key once the bot holds one, as when the dialog was
+answered while the terminal prompt waited, and none while a wallet
+import is under way, which takes its own wallet's key; nor does an
+unlock during an import. The headless bot (`npm run bot`) has no
+dashboard. It picks its key
 the same way, with the terminal prompt in place of the dialog
 ([`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js)'s
 `resolvePrivateKey()`).

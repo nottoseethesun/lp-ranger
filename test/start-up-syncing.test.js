@@ -179,7 +179,7 @@ describe("while the server imports a wallet", () => {
 
   it("names the start-up's progress once the import's own start-up begins", async () => {
     appPhase.beginWalletImport();
-    appPhase.beginStartUp(2);
+    appPhase.beginStartUp(2, { forImport: true });
     await polled();
     assert.equal(badge().title, "Starting the managed positions: 0 of 2");
     assert.equal(data.isSyncComplete(), false);

@@ -161,4 +161,31 @@ describe("wallet-manager", () => {
   it("clearWallet does not throw if wallet.json does not exist", () => {
     assert.doesNotThrow(() => clearWallet());
   });
+
+  it("an import whose write fails leaves the loaded wallet as it was", async () => {
+    /*-
+     *  The bot keeps signing with the loaded wallet's key when an import
+     *  fails, so the loaded wallet must stay the one that key belongs to.
+     *  A folder where wallet.json belongs makes the write fail, as a
+     *  full disk or a read-only folder would.
+     */
+    await importWallet(SAMPLE);
+    fs.unlinkSync(WALLET_FILE);
+    fs.mkdirSync(WALLET_FILE);
+    try {
+      await assert.rejects(
+        importWallet({
+          ...SAMPLE,
+          address: "0x1111111111111111111111111111111111111111",
+          privateKey: "0x" + "cd".repeat(32),
+          password: "new-pw",
+        }),
+      );
+      assert.strictEqual(getAddress(), SAMPLE.address);
+      const secrets = await revealWallet(SAMPLE.password);
+      assert.strictEqual(secrets.privateKey, SAMPLE.privateKey);
+    } finally {
+      fs.rmdirSync(WALLET_FILE);
+    }
+  });
 });

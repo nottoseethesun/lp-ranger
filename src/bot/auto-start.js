@@ -81,7 +81,8 @@ function _nftOf(key) {
  * @param {Function} [deps.readProvider]  The provider those reads go
  *   through. A thunk, since the managed read provider is not built until
  *   `sendTx.init()` has run.
- * @returns {Function} Async function that auto-starts all running positions.
+ * @returns {Function} Async function that auto-starts all running
+ *   positions, given `{ forImport }` by the wallet import's own start-up.
  */
 function createAutoStartManagedPositions(deps) {
   const {
@@ -321,19 +322,23 @@ function createAutoStartManagedPositions(deps) {
     });
   }
 
-  /*-
-   *  The start-up: each position saved as managed, started one at a
-   *  time and spread over a poll interval. While it runs, src/bot/app-phase.js
-   *  says so, which refuses a request that would start positions and
-   *  holds the dashboard's badge at Syncing. It ends early once the app
-   *  starts stopping for good, at its next turn.
+  /**
+   * The start-up: each position saved as managed, started one at a time
+   * and spread over a poll interval. While it runs, src/bot/app-phase.js
+   * says so, which refuses a request that would start positions and
+   * holds the dashboard's badge at Syncing. It ends early once the app
+   * starts stopping for good, at its next turn. During a wallet import,
+   * only the import's own start-up begins.
+   * @param {object} [opts]
+   * @param {boolean} [opts.forImport=false]  Whether this is the wallet
+   *   import's own closing start-up.
    */
-  return async function _autoStartManagedPositions() {
+  return async function _autoStartManagedPositions({ forImport = false } = {}) {
     const wAddr = walletManager.getAddress();
     const keys = _keysForThisLaunch(wAddr);
-    if (!beginStartUp(keys.length)) {
+    if (!beginStartUp(keys.length, { forImport })) {
       log.info(
-        "[bot] Not starting the managed positions: a start-up is under way, or LP Ranger is stopping",
+        "[bot] Not starting the managed positions: a start-up or a wallet import is under way, or LP Ranger is stopping",
       );
       return;
     }

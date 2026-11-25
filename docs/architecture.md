@@ -556,8 +556,8 @@ starting the positions saved as managed, one at a time, it reports that
 start-up's progress in `GET /api/status` (`startingManagedPositions`).
 While a wallet is imported, from its first step until the start-up of the
 new wallet's saved positions has finished, it reports `importingWallet`,
-and refuses a Manage. The Syncing state keeps Manage and Stop Managing
-disabled until each ends.
+and refuses a Manage and an unlock. The Syncing state keeps Manage and
+Stop Managing disabled until each ends.
 
 ---
 

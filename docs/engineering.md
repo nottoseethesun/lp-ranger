@@ -376,7 +376,13 @@ the wallet and the key the bot signs with, and ends with a start-up of
 the new wallet's saved positions. From its first step until that
 start-up has finished, `GET /api/status` reports `importingWallet`, the
 badge reads Syncing, and the server refuses a Manage or a second import
-(`beginWalletImport`, `src/bot/app-phase.js`). A Manage already past its
+(`beginWalletImport`, `src/bot/app-phase.js`). It refuses an unlock too,
+and asks again once the unlock's decrypt is done, since an import can
+begin during it; the launch's key step stands aside the same way
+(`refusalToTakeKey`). No start-up begins but the import's own
+(`forImport`): an unlock's, begun during the import, would start the old
+wallet's saved positions with the old wallet's key once the new wallet
+was in. A Manage already past its
 first check when the import begins waits on two things before its loop
 starts: the pool check's chain reads, then the shared signer. After each,
 it is checked again (`_lateRefusal`, `src/bot/position-lifecycle.js`),
@@ -3737,6 +3743,10 @@ What happens when the process starts, in order:
         enters dashboard-only mode until the user unlocks via
         `POST /api/wallet/unlock`.
       - If no wallet exists: logs `No wallet key — dashboard-only mode`.
+      - It stands aside, taking no key and starting nothing, while a
+        wallet import is under way, and once the bot holds a key, as
+        when the dashboard was unlocked while the terminal prompt
+        waited. It asks before the decrypt and again after it.
 9. **If imported as a module (e.g. from a test)**: nothing in step 8
    runs. The caller controls `start()` / `stop()` lifecycle explicitly.
 
