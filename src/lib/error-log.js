@@ -39,6 +39,7 @@ const fs = require("fs");
 const path = require("path");
 const { log } = require("./log");
 const { loadMergedDefaults } = require("./load-merged-defaults");
+const { makeTestTempFolder } = require("./test-temp-folders");
 
 /**
  * Read where the file lives: `errorLogPath` in logging.json, beside the
@@ -63,6 +64,23 @@ function _configuredPath() {
 }
 
 const _DEFAULT_PATH = _configuredPath();
+
+/** The test process's own error log, made the first time it is asked for. */
+let _testErrorLog = null;
+
+/**
+ * Where the error log is written, asked on each use: logging.json's
+ * `errorLogPath`; under `node --test`, a file in a temp folder of the
+ * test process's own, made the first time, so a test that records a
+ * failure never writes the operator's error log.
+ * @returns {string}
+ */
+function _defaultPath() {
+  if (process.env.NODE_TEST_CONTEXT === undefined) return _DEFAULT_PATH;
+  if (_testErrorLog === null)
+    _testErrorLog = path.join(makeTestTempFolder("error-log"), "error.log");
+  return _testErrorLog;
+}
 
 /** Resolve the error log path against cwd if it's relative. */
 function _resolvePath(p) {
@@ -92,7 +110,7 @@ function _resolvePath(p) {
  *   True if the append succeeded, false otherwise.
  */
 function writeErrorLog(err, context, opts) {
-  const filePath = _resolvePath((opts && opts.filePath) || _DEFAULT_PATH);
+  const filePath = _resolvePath((opts && opts.filePath) || _defaultPath());
   const ts = new Date().toISOString();
   const ctxLine = context ? String(context) : "(no context)";
   const stack =
@@ -120,7 +138,7 @@ function writeErrorLog(err, context, opts) {
  *   where to look, and by the reload-position endpoint docs.
  */
 function getErrorLogPath() {
-  return _resolvePath(_DEFAULT_PATH);
+  return _resolvePath(_defaultPath());
 }
 
 /**
@@ -160,7 +178,7 @@ function clearErrorLog(matchSubstring, opts) {
     matchSubstring === ""
   )
     return false;
-  const filePath = _resolvePath((opts && opts.filePath) || _DEFAULT_PATH);
+  const filePath = _resolvePath((opts && opts.filePath) || _defaultPath());
   try {
     if (!fs.existsSync(filePath)) return false;
     const content = fs.readFileSync(filePath, "utf8");
@@ -196,7 +214,7 @@ function clearErrorLog(matchSubstring, opts) {
  * @returns {boolean}  True if a file existed and was deleted.
  */
 function resetErrorLog(opts) {
-  const filePath = _resolvePath((opts && opts.filePath) || _DEFAULT_PATH);
+  const filePath = _resolvePath((opts && opts.filePath) || _defaultPath());
   try {
     if (!fs.existsSync(filePath)) return false;
     fs.rmSync(filePath);

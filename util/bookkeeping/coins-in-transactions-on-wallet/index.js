@@ -127,8 +127,11 @@ const {
 } = require("./chain");
 const { columns, coinsToPrice, rowOf, toCsv } = require("./csv");
 
+/** The folder of the install this tool ships in. */
+const PROJECT_DIR = path.resolve(__dirname, "../../..");
+
 /** The `app-data/` folder of the install this tool ships in. */
-const APP_DATA_DIR = path.resolve(__dirname, "../../../app-data");
+const APP_DATA_DIR = path.join(PROJECT_DIR, "app-data");
 
 /** Seconds in the month a drain search covers when nothing bounds it. */
 const MONTH_SEC = 30 * 24 * 60 * 60;
@@ -575,11 +578,11 @@ function failureText(error, endpoint) {
  *
  * @param {string[]} [argv]  Arguments after the node/script pair.
  * @param {{makeProvider?: Function, appDataDir?: string,
- *   spacingMs?: number, usdPriceOn?: Function, nowMs?: number,
- *   unlockMoralisKey?: Function}} [deps]  Tests pass a provider that
- *   answers without a network, their own `app-data/`, no spacing, a
- *   stand-in for the price oracles, the moment of the run, and a stand-in
- *   for opening the key.
+ *   rebalanceLog?: string, spacingMs?: number, usdPriceOn?: Function,
+ *   nowMs?: number, unlockMoralisKey?: Function}} [deps]  Tests pass a
+ *   provider that answers without a network, their own `app-data/` and
+ *   rebalance log, no spacing, a stand-in for the price oracles, the
+ *   moment of the run, and a stand-in for opening the key.
  * @returns {Promise<void>}
  */
 async function main(argv = process.argv.slice(2), deps = {}) {
@@ -634,6 +637,18 @@ async function main(argv = process.argv.slice(2), deps = {}) {
 }
 
 /**
+ * The rebalance log the report reads: a test's own (`deps.rebalanceLog`),
+ * else where the app keeps it (`rebalanceLogPath`, src/lib/config.js:
+ * LOG_FILE, else app-runtime.json's `log.file`), from the project folder.
+ * @param {{rebalanceLog?: string}} deps  As `main` takes them.
+ * @returns {string}  The log's path.
+ */
+function reportRebalanceLog(deps) {
+  if (deps.rebalanceLog !== undefined) return deps.rebalanceLog;
+  return path.resolve(PROJECT_DIR, config.rebalanceLogPath());
+}
+
+/**
  * Find the transactions, price them, write the csv, and say where it is.
  * The csv is written only once every row is in, so a run stopped by a
  * failure leaves no part of one.
@@ -650,6 +665,7 @@ async function writeReport(opts, endpoint, deps) {
   const spacingMs = deps.spacingMs === undefined ? SPACING_MS : deps.spacingMs;
   const appDataDir =
     deps.appDataDir === undefined ? APP_DATA_DIR : deps.appDataDir;
+  const rebalanceLog = reportRebalanceLog(deps);
   const provider = pacedProvider(make(endpoint, chain.chainId), spacingMs);
   const range = rangeIn(opts.startDate, opts.endDate, opts.timeZone);
   const who = {
@@ -658,7 +674,7 @@ async function writeReport(opts, endpoint, deps) {
     wallet: opts.wallet,
     positionManager: positionManagerOf(opts),
   };
-  const records = recordsNear(appDataDir, who, range);
+  const records = recordsNear(appDataDir, who, range, rebalanceLog);
   console.log(
     `${records.moves.length} rebalances and compounds in app-data/ end ` +
       `near ${opts.startDate} to ${opts.endDate}; reading the chain at ` +
@@ -714,6 +730,7 @@ if (require.main === module) {
 
 module.exports = {
   APP_DATA_DIR,
+  reportRebalanceLog,
   buildProgram,
   missingTimeZone,
   readOptions,

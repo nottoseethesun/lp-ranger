@@ -392,7 +392,10 @@ while LP Ranger runs.
 
 `app-data/rebalance_log.json` is a list with one entry per successful
 rebalance, in the order they happened. LP Ranger writes an entry once
-the new NFT's mint has been mined. A failed attempt gets no entry.
+the new NFT's mint has been mined. A failed attempt gets no entry. The
+report reads the log where LP Ranger keeps it: there, unless LOG_FILE in
+`.env` or `log.file` in `app-runtime.json` moves it (`rebalanceLogPath`,
+`src/lib/config.js`).
 
 | Field                                  | What it holds                                                                                                                        |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |

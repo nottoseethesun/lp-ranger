@@ -8,8 +8,8 @@
 "use strict";
 
 /*-
- *  Refused outside the test runner, before the bot loads. The suites
- *  that load this make rebalances, which the bot appends to the
+ *  Refused outside the test runner, before this helper loads the bot.
+ *  The suites that load this make rebalances, which the bot appends to the
  *  rebalance log: `node --test` gives each process a log of its own
  *  (src/lib/config.js), and run as a plain script they would write into
  *  the operator's.

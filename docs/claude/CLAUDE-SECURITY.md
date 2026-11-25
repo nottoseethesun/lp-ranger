@@ -325,7 +325,9 @@ Three modes, in order of security recommendation:
    no browser needed. If no password is provided, the server exits
    with an error rather than falling through to dashboard mode. With
    no terminal to type into, the prompt closes at once and says so,
-   and the server, or the headless bot, exits with that error.
+   and the server exits with that error. So does the headless bot, but
+   not in a dry run (`DRY_RUN=true`), which goes on with no key and
+   sends nothing.
 3. **`WALLET_PASSWORD` in `.env`** — fully unattended. Password
    lives on disk as plaintext. Least recommended.
 

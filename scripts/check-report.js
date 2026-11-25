@@ -104,26 +104,31 @@ function _knipDetail(knip) {
 
 /**
  * The Folders kept row: whether the tests left the install's folders as
- * they found them, and the first change when they did not, from what
- * scripts/check.js wrote. Folders it could not compare, as when a read of
- * them or of a test report failed, read as not compared, with the error
- * that stopped it, never as untouched. Its own function, as
- * `_unusedSrcModulesResult` is, to keep `loadResults` under the complexity
- * ceiling.
- * @param {object} exitCodes  The stages' exit codes.
- * @param {{changes: (string[]|null), error?: string}|null} report
+ * they found them, and the first change when they did not, from the
+ * report scripts/check.js wrote (scripts/_kept-folders.js). Green only for
+ * folders compared and unchanged. Folders it could not compare, as when a
+ * read of them or a write of a test report failed, read as not compared,
+ * with the error that stopped it, never as untouched. Its own function,
+ * as `_unusedSrcModulesResult` is, to keep `loadResults` under the
+ * complexity ceiling.
+ * @param {{changes: (string[]|null), error: (string|null)}|null} report
  *   kept-folders.json, null when it could not be read.
  * @returns {{ok: boolean, detail: string}}
  */
-function _keptFoldersCheck(exitCodes, report) {
-  if (exitCodes.keptFolders === 0)
+function _keptFoldersCheck(report) {
+  if (report === null) return { ok: false, detail: "report missing" };
+  if (report.changes === null) {
+    const why =
+      report.error === null || report.error === undefined
+        ? "no reason recorded"
+        : report.error;
+    return { ok: false, detail: `not compared: ${why}` };
+  }
+  if (report.changes.length === 0)
     return {
       ok: true,
       detail: "shipped settings, user-configurable/ and app-data/ untouched",
     };
-  if (report === null) return { ok: false, detail: "report missing" };
-  if (report.changes === null)
-    return { ok: false, detail: `not compared: ${report.error}` };
   return {
     ok: false,
     detail: `${report.changes.length} change(s), first: ${report.changes[0]}`,
@@ -332,7 +337,7 @@ function loadResults() {
         `${tests.pass}/${tests.tests} passed, ${tests.suites} suites, ` +
         `${(tests.duration / 1000).toFixed(1)}s`,
     },
-    keptFolders: _keptFoldersCheck(exitCodes, keptFoldersReport),
+    keptFolders: _keptFoldersCheck(keptFoldersReport),
     coverage: {
       ok: coverageOk,
       detail:

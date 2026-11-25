@@ -70,11 +70,14 @@ const { underWay, scansEnded } = require("./under-way");
  * `createBot` is its one caller in the app, so the server and the
  * headless bot build the parts one way, the count included.
  *
+ * @param {{skipBackups?: boolean}} [opts]  `skipBackups` for a caller
+ *   that makes the settings' safety copies itself, later (the server, once
+ *   it holds its port): the price library's load then makes none.
  * @returns {{ positionMgr: object }}  The parts `botOperations` works over.
  */
-function buildBotParts() {
+function buildBotParts(opts = {}) {
   sendTx.init({ urls: config.RPC_URLS });
-  readPriceCacheSettings();
+  readPriceCacheSettings(opts.skipBackups === true);
   const positionMgr = createPositionManager({
     rebalanceLock: createRebalanceLock(),
   });
@@ -99,11 +102,13 @@ function buildBotParts() {
  *   (src/lib/wallet-manager.js): the wallet the bot manages positions of.
  *   The headless bot passes one that answers `getAddress` alone, with
  *   its signer's wallet, which is all the start-up asks of it.
+ * @param {boolean} [opts.skipBackups]  True when the caller makes the
+ *   settings' safety copies itself (`buildBotParts`).
  * @returns {object}  The bot's operations (`botOperations`).
  */
 function createBot(opts) {
   const { diskConfig, walletManager } = opts;
-  const { positionMgr } = buildBotParts();
+  const { positionMgr } = buildBotParts({ skipBackups: opts.skipBackups });
   return botOperations({ diskConfig, walletManager, positionMgr });
 }
 

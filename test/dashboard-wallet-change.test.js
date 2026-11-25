@@ -17,7 +17,14 @@
 
 require("global-jsdom/register");
 
-const { describe, it, before, beforeEach, afterEach } = require("node:test");
+const {
+  describe,
+  it,
+  before,
+  beforeEach,
+  afterEach,
+  after,
+} = require("node:test");
 const assert = require("node:assert/strict");
 const { learnActiveChain } = require("./helpers/active-chain");
 const { learnUiSettings } = require("./helpers/ui-settings");
@@ -63,19 +70,32 @@ function statusAnswer() {
   };
 }
 
-let change, poll, walletMod;
+let change, poll, walletMod, idle;
 let navigated, restoreNavigate;
+// The wallet the page's address names, lower case, and drops of it.
+let pendingWallet = null;
+let dropped = 0;
+// What the swaps below replace, put back in `after`.
+let savedFetch, savedAlert, savedOffsetParent;
 
 before(async () => {
   /*-
-   *  TEST-ONLY global swaps, for this file's own process. The dashboard
-   *  asks the server through the browser's fetch; it finds the active
-   *  password field by whether it is laid out (`offsetParent`), which
-   *  jsdom never reports, so every element counts as laid out here; and
-   *  it alerts on a refused import.
+   *  TEST-ONLY global swap: three, for this file's own process, each put
+   *  back in `after`. The dashboard asks the server through the browser's
+   *  fetch; it finds the active password field by whether it is laid out
+   *  (`offsetParent`), which jsdom never reports, so every element counts
+   *  as laid out here; and it alerts on a refused import.
    */
+  savedFetch = globalThis.fetch;
+  savedAlert = globalThis.alert;
+  savedOffsetParent = Object.getOwnPropertyDescriptor(
+    window.HTMLElement.prototype,
+    "offsetParent",
+  );
   globalThis.fetch = async (url) => {
     if (url === "/api/status") return answer(statusAnswer());
+    if (url === "/api/wallet/status")
+      return answer({ loaded: true, locked: false, address: server.wallet });
     if (url === "/api/wallet") {
       if (server.duringImport !== null) await server.duringImport();
       return answer({ ok: true, address: NEW });
@@ -98,6 +118,15 @@ before(async () => {
   await import("../src/client/web/js/dashboard-data.js");
   poll = await import("../src/client/web/js/dashboard-data-poll.js");
   walletMod = await import("../src/client/web/js/dashboard-wallet.js");
+  idle = await import("../src/client/web/js/dashboard-idle.js");
+  // The router's part, as a page loading at an address hands it over.
+  walletMod.injectWalletDeps({
+    getPendingRouteWallet: () => pendingWallet,
+    dropPendingRoute: () => {
+      dropped++;
+      pendingWallet = null;
+    },
+  });
 });
 
 beforeEach(() => {
@@ -111,6 +140,16 @@ beforeEach(() => {
 
 afterEach(() => {
   restoreNavigate();
+});
+
+after(() => {
+  globalThis.fetch = savedFetch;
+  globalThis.alert = savedAlert;
+  Object.defineProperty(
+    window.HTMLElement.prototype,
+    "offsetParent",
+    savedOffsetParent,
+  );
 });
 
 /** Let every request under way be answered and shown. */
@@ -181,6 +220,60 @@ describe("a tab polling the server", () => {
     walletMod.wallet.address = null;
     await polled();
     assert.deepEqual(navigated, []);
+  });
+});
+
+describe("a page loading anew", () => {
+  /**
+   * Load the page's wallet from the server, the page loaded as `how`
+   * says, its address naming `named` (null for the start address).
+   */
+  async function loadsAt(named, how) {
+    pendingWallet = named === null ? null : named.toLowerCase();
+    dropped = 0;
+    walletMod.wallet.address = null;
+    walletMod.closeWalletModal();
+    const restore = idle._setPageLoadForTests(() => how);
+    try {
+      await walletMod.checkServerWalletStatus();
+    } finally {
+      restore();
+    }
+  }
+  const opened = { discarded: false, type: "navigate" };
+  const dialogOpen = () =>
+    !document.getElementById("walletModal").classList.contains("hidden");
+
+  it("at the start address takes the server's wallet, and never reloads for it", async () => {
+    // What a reloaded tab loads: the claim that no tab reloads twice.
+    await loadsAt(null, opened);
+    assert.equal(walletMod.wallet.address, NEW);
+    await polled();
+    assert.deepEqual(navigated, []);
+  });
+
+  it("opened at an address naming another wallet asks for it, and stays", async () => {
+    // The address the operator opens takes priority.
+    await loadsAt(OLD, opened);
+    assert.equal(walletMod.wallet.address, null);
+    assert.equal(dialogOpen(), true);
+    assert.equal(dropped, 0);
+    await polled();
+    assert.deepEqual(navigated, []);
+  });
+
+  it("reloaded by the browser after unloading the tab, follows the server's wallet", async () => {
+    // As if it had stayed open: a tab that stays open reloads to it.
+    await loadsAt(OLD, { discarded: true, type: "navigate" });
+    assert.equal(dropped, 1);
+    assert.equal(walletMod.wallet.address, NEW);
+    assert.equal(dialogOpen(), false);
+  });
+
+  it("brought back by Back or Forward, follows the server's wallet", async () => {
+    await loadsAt(OLD, { discarded: false, type: "back_forward" });
+    assert.equal(dropped, 1);
+    assert.equal(walletMod.wallet.address, NEW);
   });
 });
 

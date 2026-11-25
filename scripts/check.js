@@ -17,11 +17,9 @@
  *   tests.tap                  Raw TAP v14 from `node --test`
  *   report.pdf                 Unified PDF of all results (pdfmake)
  *
- * And one outside it: logs/error-npm-run-check.log, whatever the tests
- * wrote to logs/error.log. The run deletes logs/error.log and the
- * previous run's copy before it starts, and renames the file once the
- * tests are done, so the operator's error log never holds a test's
- * entries.
+ * The operator's error log is not touched: under `node --test` a test
+ * that records a failure writes a file of its own process's
+ * (src/lib/error-log.js).
  *
  * After capturing raw outputs this script delegates to
  * scripts/check-report.js to parse, print the terminal summary, and
@@ -36,12 +34,11 @@
 "use strict";
 
 const { log } = require("../src/lib/log");
-const { getErrorLogPath } = require("../src/lib/error-log");
 const {
   removeLeftoverTestTempFolders,
 } = require("../src/lib/test-temp-folders");
-const { checkErrorLogPath } = require("./_check-error-log");
 const { runAsync } = require("./_run-async");
+const { keptFoldersOutcome } = require("./_kept-folders");
 const { folderSnapshot, snapshotChanges } = require("./_folder-snapshot");
 const {
   JS_TARGETS,
@@ -117,15 +114,6 @@ const NO_NODE_WEB_STORAGE = "--no-experimental-webstorage";
  */
 const TEST_TIMEOUT = "--test-timeout=60000";
 
-/*-
- *  The catastrophic-failure log, at the path src/lib/error-log.js owns, and
- *  the name a test run's entries are kept under beside it. Resolved
- *  after the chdir above, since the log's path is relative to the
- *  working directory.
- */
-const ERROR_LOG = getErrorLogPath();
-const CHECK_ERROR_LOG = checkErrorLogPath(ERROR_LOG);
-
 /** Resolve a binary in node_modules/.bin. */
 function bin(name) {
   return path.join(ROOT, "node_modules", ".bin", name);
@@ -163,15 +151,6 @@ function ensureOrWrite(filePath, fallback) {
 fs.rmSync(REPORT_DIR, { recursive: true, force: true });
 fs.mkdirSync(RAW_DIR, { recursive: true });
 fs.mkdirSync(TXT_DIR, { recursive: true });
-/*-
- *  Some tests drive code that records a failure in logs/error.log, and
- *  that is the operator's own file. So the run starts with neither it
- *  nor the previous run's copy, and once the tests are done whatever
- *  they wrote is renamed (`keepTestErrorLog`). Nothing older is lost
- *  that a server start would keep: startup deletes logs/error.log.
- */
-fs.rmSync(ERROR_LOG, { force: true });
-fs.rmSync(CHECK_ERROR_LOG, { force: true });
 
 // ── Lint (JS) ──────────────────────────────────────────────────────────────
 // TIMING=1 writes the slowest-rules table to stdout AFTER the JSON blob
@@ -506,7 +485,9 @@ wipeRuntimeFiles();
  * A test run never throws (`runAsync` resolves with its exit status);
  * when a read of the folders or a write of a test report does, the
  * folders are not compared (`folderChanges` null), the error saying why
- * (`folderError`), and a test run that finished keeps its own status.
+ * (`folderError`). A stage's status is kept only once its report is
+ * written, so a run whose report could not be saved reads as failed, and
+ * one whose report was saved keeps its own status.
  * @returns {Promise<{configValuesExit: number|undefined,
  *   testsExit: number, folderChanges: (string[]|null),
  *   folderError: (string|null)}>}
@@ -534,11 +515,11 @@ async function runTestStages() {
       "--test-reporter-destination=stdout",
       ...configValueTests(),
     ]);
-    configValuesExit = configRun.status;
     fs.writeFileSync(
       path.join(REPORT_DIR, "config-values.tap"),
       configRun.stdout + configRun.stderr,
     );
+    configValuesExit = configRun.status;
     if (interrupted !== null) throw new Error(`interrupted by ${interrupted}`);
     const testsRun = await runAsync("node", [
       "--test",
@@ -572,22 +553,24 @@ async function runTestStages() {
       // Every other test: the config values ran above.
       ...listTestFiles().filter((f) => !configValueTests().includes(f)),
     ]);
-    testsExit = testsRun.status;
     fs.writeFileSync(
       path.join(REPORT_DIR, "tests.tap"),
       testsRun.stdout + testsRun.stderr,
     );
+    testsExit = testsRun.status;
     folderChanges = _KEPT_FOLDERS.flatMap((dir, i) =>
       snapshotChanges(dir, foldersBefore[i], folderSnapshot(dir)),
     );
   } catch (err) {
     if (testsExit === undefined) testsExit = 1;
     folderError = err.message;
-    log.error("[check] The test stage stopped: %s", err.message);
+    log.error(
+      "[check] Stopped before the install's folders were compared: %s",
+      err.message,
+    );
   } finally {
     restoreProdFiles(backupDir);
     fs.rmSync(backupDir, { recursive: true, force: true });
-    keepTestErrorLog();
     for (const signal of INTERRUPTS) process.off(signal, onInterrupt);
   }
   return { configValuesExit, testsExit, folderChanges, folderError };
@@ -615,6 +598,7 @@ function reportRun({
   }
 
   // ── Write exit codes + file counts for the aggregator ───────────────────
+  const kept = keptFoldersOutcome(folderChanges, folderError);
   const exitCodes = {
     eslint: eslintRun.status,
     stylelint: stylelintRun.status,
@@ -633,7 +617,7 @@ function reportRun({
     secretlint: secretlintRun.status,
     configValues: configValuesExit,
     tests: testsExit,
-    keptFolders: folderChanges !== null && folderChanges.length === 0 ? 0 : 1,
+    keptFolders: kept.exit,
     htmlFileCount,
   };
   fs.writeFileSync(
@@ -642,8 +626,7 @@ function reportRun({
   );
   fs.writeFileSync(
     path.join(RAW_DIR, "kept-folders.json"),
-    JSON.stringify({ changes: folderChanges, error: folderError }, null, 2) +
-      "\n",
+    JSON.stringify(kept.report, null, 2) + "\n",
   );
   if (folderChanges === null)
     log.error(
@@ -789,15 +772,6 @@ function _restoreDir(srcDir, dstDir, accept) {
       path.join(dstDir, entry.name),
     );
   }
-}
-
-/**
- * Rename what the tests wrote to the error log (logs/error.log as
- * shipped) to error-npm-run-check.log beside it. No file means no test
- * wrote one.
- */
-function keepTestErrorLog() {
-  if (fs.existsSync(ERROR_LOG)) fs.renameSync(ERROR_LOG, CHECK_ERROR_LOG);
 }
 
 /** Restore operator-state directories (app-config/user-configurable/,

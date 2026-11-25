@@ -69,11 +69,13 @@ describe("_recordScanFailure — catastrophic surface", () => {
     assert.strictEqual(state.lifetimeScanComplete, false);
   });
 
-  it("writes the failure to logs/error.log", () => {
-    /*- Point writeErrorLog at a tmp file for THIS test only by using
-     *  the exported optional third arg — verified separately in
-     *  test/error-log.test.js.  Here we just verify the default path
-     *  resolves via getErrorLogPath (no exception, absolute path). */
+  it("writes the failure to the error log", () => {
+    /*-
+     *  Under `node --test` the error log is a file of this test
+     *  process's own (src/lib/error-log.js, test/error-log.test.js), so
+     *  the failure recorded here never reaches the operator's. Here we
+     *  just verify the path resolves (no exception, absolute path).
+     */
     const p = errorLog.getErrorLogPath();
     assert.ok(path.isAbsolute(p));
   });

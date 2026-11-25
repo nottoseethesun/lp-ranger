@@ -92,7 +92,7 @@ describe("config default values", () => {
     );
   });
 
-  it("makes that folder when the log is first asked for, not as it loads", () => {
+  it("makes that folder when the log is first asked for, not as it loads, and once", () => {
     /*-
      *  A child keeps the runner's marker, so it is under `node --test`
      *  too; it counts its own log folders before and after the first ask.
@@ -106,17 +106,19 @@ describe("config default values", () => {
       "require('fs').readdirSync(require('os').tmpdir()).filter((n) =>" +
       " n.startsWith('lp-ranger-test-rebalance-log-' + process.pid + '-'))" +
       ".length";
+    // Asked twice: one folder, and the same file both times.
     const script =
       `const config = require(${lib}); const before = ${mine};` +
-      ` config.rebalanceLogPath();` +
-      ` process.stdout.write("\\nFOLDERS=" + before + "," + ${mine});`;
+      ` const a = config.rebalanceLogPath(); const b = config.rebalanceLogPath();` +
+      ` process.stdout.write("\\nFOLDERS=" + before + "," + ${mine} +` +
+      ` " SAME=" + (a === b));`;
     const res = spawnSync(process.execPath, ["-e", script], {
       cwd: makeTestTempFolder("log-file-cwd"),
       env,
       encoding: "utf8",
     });
     assert.strictEqual(res.status, 0, res.stderr);
-    assert.match(res.stdout, /\nFOLDERS=0,1$/);
+    assert.match(res.stdout, /\nFOLDERS=0,1 SAME=true$/);
   });
 
   it("uses the shipped rebalance log path outside tests", () => {

@@ -403,8 +403,13 @@ it, so it reloads. Once a wallet has replaced another, every
 `GET /api/status` answer carries `walletJustChanged`, naming the new
 wallet, until the next change (`src/server/wallet-change.js`, worked out
 from the wallet each answer reports). The server remembers the wallet a
-clear removed, so a clear followed by an import counts as a change. A tab
-reloads when it holds a wallet other than the new one
+clear removed, so a clear followed by an import of another wallet counts
+as a change. It keeps all this in memory, so a restart forgets the
+change, and a wallet replaced while the server was stopped is no change
+to it: a tab still open on the old wallet then stays on it until it is
+reloaded by hand. An import made by generating a wallet counts the same
+as one made from a key or a seed phrase. A tab reloads when it holds a
+wallet other than the new one
 (`src/client/web/js/dashboard-wallet-change.js`):
 
 - only once `importingWallet` is false, so it never meets the new wallet
@@ -420,7 +425,21 @@ reloads when it holds a wallet other than the new one
 The answer keeps the change, rather than sending it once, because a
 browser slows the polls of a tab in the background, and such a tab would
 miss a single answer. Kept, it reloads no tab twice: a reloaded tab takes
-the server's wallet, and a tab opened since holds it already.
+the server's wallet, and a tab opened since holds it already or, opened
+at an address naming another wallet, holds none.
+
+A reloaded tab is a page load like any other: it shows the Disclosure
+first, and starts once it is accepted.
+
+A tab the browser unloaded to save memory, and loads again as the
+operator returns to it, runs no code at the change. It goes on as if it
+had stayed open instead: a page the browser loaded on its own, after
+unloading the tab or by Back or Forward (`pageReloadedByBrowser`,
+src/client/web/js/dashboard-idle.js), forgets the wallet its address
+names and takes the server's. An address the operator opens, from the
+address bar, a bookmark or a link, takes priority: the wallet dialog asks
+for its wallet, and once that is imported the server holds it and the
+other tabs follow.
 
 Each position then runs the same sequence as a fresh one, with two
 differences that account for the speed:
@@ -3201,13 +3220,14 @@ One home for each kind of data:
   a whole `wallet.json.tmp`. Then the wallet is read from that copy, and
   the programs that own the wallet (the server, once it holds its port,
   the headless bot and `scripts/import-wallet.js`) put the copy back as
-  `wallet.json` as they start, with a warning in the log. This entry is
+  `wallet.json` as they start, with a warning in the log. They also
+  remove a copy that holds no wallet, or one left beside a good
+  `wallet.json`. A util tool only reads. `DELETE /api/wallet` and
+  `npm run reset-wallet` remove both files. Under `node --test` the
+  wallet file is in the test process's own temp folder, unless the
+  `WALLET_FILE_PATH` environment variable names another. This entry is
   the one home of how the wallet file is saved and put back; the other
-  docs point here. They also remove a copy left beside
-  a good `wallet.json`. A util tool only reads. `DELETE /api/wallet` and
-  `npm run reset-wallet` remove both files. Under `node --test` the wallet file is in the test
-  process's own temp folder, unless the `WALLET_FILE_PATH` environment
-  variable names another.
+  docs point here.
 - **`user-configurable/api-keys.json`** — Runtime, gitignored.
   Encrypted storage for third-party API keys (Moralis, Telegram bot
   token + chat ID), using the same wallet password and encryption
@@ -3333,10 +3353,10 @@ ever clobbering live user state. The shipped-defaults directory
 tracked `api-keys.example.json` format template alongside the tunable
 JSON defaults) is not touched at all — it's tracked repo content.
 
-Under `node --test`, the operator's files a test could write are files
-of the test process's own, and no `.env` is read. Which files, the two
-that are not redirected, and how a test names files of its choosing are
-in docs/claude/CLAUDE-TESTING.md § "Temp folders". After the tests, the gate checks
+Under `node --test`, most of the operator's files a test could write are
+files of the test process's own, and no `.env` is read. Which files,
+those that are not redirected, and how a test names files of its
+choosing are in docs/claude/CLAUDE-TESTING.md § "Temp folders". After the tests, the gate checks
 that `app-config/user-configurable/`, `app-data/` and the shipped
 settings folder hold exactly what they held before them, and fails the
 run otherwise (the "Folders kept" row; `scripts/_folder-snapshot.js`).
@@ -3549,9 +3569,9 @@ test/report-artifacts/
 │   ├── tests-summary.txt         Test rollup: slowest, failures, coverage
 │   ├── eslint-timing.txt         ESLint TIMING=1 slowest-rules capture
 │   ├── markdownlint.txt          markdownlint-cli2 stylish text output
-│   ├── prettier-js.txt           prettier --check output for the JS files
-│   ├── prettier-json.txt         prettier --check output for the JSON files
-│   ├── prettier-yaml.txt         prettier --check output for the YAML files
+│   ├── prettier-js.txt           prettier --check output for the js files
+│   ├── prettier-json.txt         prettier --check output for the json files
+│   ├── prettier-yaml.txt         prettier --check output for the yaml files
 │   └── actionlint.txt            github-actionlint output for the workflows
 └── raw-data/                 Machine-readable tool outputs
     ├── eslint.json               eslint --format json-with-metadata
@@ -3595,9 +3615,12 @@ runs either way.
 
 ### Workflow
 
-1. `npm run check` runs each tool, writes its raw output into `raw-data/`
-   (and the two text-only captures directly into `text-reports/`), then
-   runs `scripts/check-report.js` which parses everything, prints the
+1. `npm run check` runs each tool and writes its raw output into
+   `raw-data/`, the text-only captures (`eslint-timing.txt`,
+   `markdownlint.txt`, the three `prettier-*.txt` files and
+   `actionlint.txt`) into `text-reports/`, and the two TAP files at the
+   top of `test/report-artifacts/`. Then it runs
+   `scripts/check-report.js`, which parses everything, prints the
    terminal summary, and writes `text-reports/summary.txt`,
    `text-reports/summary.md`, `text-reports/tests-summary.txt`, and
    `report.pdf`.
@@ -3848,15 +3871,19 @@ What happens when the process starts, in order:
    nothing for a long-running scan and only weakens a slow-client
    guard.
 8. **If run directly (`require.main === module`)**, the server first
-   reads the shutdown timings, then:
+   installs its error guard (`src/server/server-error-guard.js`: an
+   uncaught rpc timeout, network or server error is logged, and any
+   other ends the server) and reads the shutdown timings, then:
    1. `start()` calls `server.listen(PORT, HOST)` and logs the
       blockchain name, NFT factory, wallet address (or `(not loaded)`),
       dashboard URL, `/api/status` URL, port, and `/health` URL.
    2. As soon as it is listening, before it reads a request, it deletes
-      the previous run's error log and puts the wallet's files right
-      (`settleWalletFile`, src/lib/wallet-manager.js). A second start,
-      which fails on the port, never gets this far, so it changes
-      neither file under the server already running. Then it writes `tmp/lp-ranger.pid` (removed
+      the previous run's error log, puts the wallet's files right
+      (`settleWalletFile`, src/lib/wallet-manager.js), and makes the
+      safety copies of bot-config.json and the records file
+      (`backUpSettings`, src/lib/bot-config-v2.js; it loaded both without
+      them). A second start, which fails on the port, never gets this far, so it changes
+      none of these files under the server already running. Then it writes `tmp/lp-ranger.pid` (removed
       by an `exit` hook however the process ends) and installs the
       `SIGINT` and `SIGTERM` handler. Both come before the wallet key is
       resolved, which can wait on a prompt, so a signal during a slow
@@ -4147,9 +4174,9 @@ arrive.
 | --- | --- |
 | The first endpoint answers | `[bot] RPC:    <url>` |
 | A later one answers | the failover banner naming the move, then `[bot] RPC:    <url> (fallback)` |
-| An endpoint does not answer | `[bot] RPC unreachable at startup (n of N): <url> — <error>` |
+| An endpoint does not answer | `[bot] RPC unreachable (n of N): <url> — <error>` |
 | Another one remains to try | `[bot] Falling back to <next url>` |
-| None answered | `[bot] STARTUP: no RPC endpoint answered — tried all N, last was <url>. The bot cannot start until one is reachable. Check this machine's internet connection, then the endpoint list in Bot Settings → Network.` |
+| None answered | `[bot] No RPC endpoint answered — tried all N, last was <url>. Check this machine's internet connection, then the endpoint list in Bot Settings → Network.` |
 
 The summary line earns its place from what follows it. `ensureReachable`
 throws the last endpoint's error, and the caller logs that error with a

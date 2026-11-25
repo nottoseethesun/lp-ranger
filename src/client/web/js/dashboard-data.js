@@ -229,7 +229,7 @@ function _updateSyncBadge(d) {
    *  The Manage button's sync gate is computeManageUI()'s
    *  (dashboard-manage-ui.js), which paintManageUI() runs every poll. The
    *  Rebalance button is set by `_updateRebalanceButtons` on each poll
-   *  that names this tab's wallet, and its decision tree does not ask
+   *  that names this tab's wallet, or no wallet, and its decision tree does not ask
    *  about Syncing: Rebalance Now stays enabled during Syncing, and the
    *  server refuses one it cannot make. A submit disables it until the
    *  next such poll (`_disableRebalanceButtonForInFlight`,

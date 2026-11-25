@@ -12,8 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const Module = require("module");
 
-const TMP = path.join(process.cwd(), "tmp");
-const LOG_PATH = path.join(TMP, "test-rebalance-log.json");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 /**
  * Offline ethers stub used by the whole describe block. position-history.js
@@ -57,13 +56,16 @@ const _ethersStub = {
   ZeroAddress: "0x0000000000000000000000000000000000000000",
 };
 
-/*- Install BEFORE loading position-history so module-load-time `require` and
-    `new ethers.Interface(PM_ABI)` see the stub. Restored in after(). */
+/*-
+ *  TEST-ONLY global swap: position-history.js takes ethers and its read
+ *  provider by `require` as it loads, and builds `new ethers.Interface(PM_ABI)`
+ *  then, with no parameter to pass a stand-in through. Installed before
+ *  the module loads, put back in `after`. The read provider is
+ *  `sendTx.getManagedReadProvider()`; a stub of it spares the test a
+ *  whole send-transaction init.
+ */
 Module.prototype.require = function (id) {
   if (id === "ethers") return _ethersStub;
-  /*- position-history now sources its read provider via
-   *  sendTx.getManagedReadProvider(); return a stub so the test
-   *  doesn't need a full send-transaction init. */
   if (id === "./send-transaction") {
     return {
       getManagedReadProvider: () => new _ethersStub.JsonRpcProvider(),
@@ -105,11 +107,21 @@ function _installOfflineFetchStub() {
 describe("getPositionHistory", () => {
   let restoreLog = null;
   let origFetch = null;
+  // The rebalance log, in a folder of the test process's own.
+  const logPath = path.join(
+    makeTestTempFolder("closed-history"),
+    "rebalance-log.json",
+  );
 
   before(() => {
-    fs.mkdirSync(TMP, { recursive: true });
-    restoreLog = useRebalanceLog("tmp/test-rebalance-log.json");
+    restoreLog = useRebalanceLog(logPath);
     origFetch = globalThis.fetch;
+    /*-
+     *  TEST-ONLY global swap: the GeckoTerminal price lookups behind
+     *  getPositionHistory call the global `fetch`, and no parameter
+     *  passes a stand-in through to them. The stub answers offline;
+     *  the real one is put back in `after`.
+     */
     globalThis.fetch = _installOfflineFetchStub();
 
     const testEntries = [
@@ -136,15 +148,10 @@ describe("getPositionHistory", () => {
         gasCostWei: "600000",
       },
     ];
-    fs.writeFileSync(LOG_PATH, JSON.stringify(testEntries), "utf8");
+    fs.writeFileSync(logPath, JSON.stringify(testEntries), "utf8");
   });
 
   after(() => {
-    try {
-      fs.unlinkSync(LOG_PATH);
-    } catch {
-      /* */
-    }
     if (restoreLog !== null) restoreLog();
     if (origFetch) globalThis.fetch = origFetch;
     Module.prototype.require = _origRequire;
@@ -186,7 +193,7 @@ describe("getPositionHistory", () => {
 
   it("supplements timestamps and txHash from rebalanceEvents", async () => {
     fs.writeFileSync(
-      LOG_PATH,
+      logPath,
       JSON.stringify([{ oldTokenId: "400", newTokenId: "500" }]),
       "utf8",
     );
@@ -218,7 +225,7 @@ describe("getPositionHistory", () => {
 
   it("returns dates from events even with no rebalance log file", async () => {
     try {
-      fs.unlinkSync(LOG_PATH);
+      fs.unlinkSync(logPath);
     } catch {
       /* already gone */
     }
@@ -239,25 +246,25 @@ describe("getPositionHistory", () => {
     assert.strictEqual(body.mintTxHash, "0xdef456");
     assert.strictEqual(body.entryValueUsd, null);
 
-    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+    fs.writeFileSync(logPath, "[]", "utf8");
   });
 
   it("handles missing log file gracefully", async () => {
     try {
-      fs.unlinkSync(LOG_PATH);
+      fs.unlinkSync(logPath);
     } catch {
       /* already gone */
     }
     const body = await getPositionHistory("200", {});
     assert.strictEqual(body.closeDate, null);
     assert.strictEqual(body.entryValueUsd, null);
-    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+    fs.writeFileSync(logPath, "[]", "utf8");
   });
 
   it("fills today's prices for an open and a close that are today", async () => {
     const now = new Date().toISOString();
     fs.writeFileSync(
-      LOG_PATH,
+      logPath,
       JSON.stringify([
         { newTokenId: "888", loggedAt: now },
         { oldTokenId: "888", loggedAt: now },
@@ -272,7 +279,7 @@ describe("getPositionHistory", () => {
     assert.strictEqual(body.token1UsdPriceAtOpen, 0.8);
     assert.strictEqual(body.token0UsdPriceAtClose, 1.5);
     assert.strictEqual(body.token1UsdPriceAtClose, 0.8);
-    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+    fs.writeFileSync(logPath, "[]", "utf8");
   });
 
   it("leaves an earlier day's prices unread rather than filling today's", async () => {
@@ -282,7 +289,7 @@ describe("getPositionHistory", () => {
      *  is marked as missing a price and the Per-Day table shows a dash.
      */
     fs.writeFileSync(
-      LOG_PATH,
+      logPath,
       JSON.stringify([
         { newTokenId: "889", loggedAt: "2026-09-01T12:00:00.000Z" },
         { oldTokenId: "889", loggedAt: "2026-09-03T12:00:00.000Z" },
@@ -296,12 +303,12 @@ describe("getPositionHistory", () => {
     assert.strictEqual(body.token1UsdPriceAtOpen, null);
     assert.strictEqual(body.token0UsdPriceAtClose, null);
     assert.strictEqual(body.token1UsdPriceAtClose, null);
-    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+    fs.writeFileSync(logPath, "[]", "utf8");
   });
 
   it("does not guess a price for a day it does not know", async () => {
     // No date at all cannot be today, so nothing is filled.
-    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+    fs.writeFileSync(logPath, "[]", "utf8");
     const body = await getPositionHistory("890", {
       fallbackPrices: { price0: 1.5, price1: 0.8 },
     });
@@ -310,7 +317,7 @@ describe("getPositionHistory", () => {
   });
 
   it("returns complete result shape", async () => {
-    fs.writeFileSync(LOG_PATH, "[]", "utf8");
+    fs.writeFileSync(logPath, "[]", "utf8");
     const body = await getPositionHistory("999", {});
     assert.strictEqual(body.tokenId, "999");
     assert.ok("mintDate" in body);

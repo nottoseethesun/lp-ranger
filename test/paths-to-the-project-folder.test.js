@@ -53,10 +53,10 @@ const ROOT_CONST = new RegExp(
  * own folder.
  * @param {string} file
  * @param {RegExp} pattern
+ * @param {string} [src]  The file's text; read from the file when not given.
  * @returns {{line: number, target: string}[]}
  */
-function landings(file, pattern) {
-  const src = fs.readFileSync(file, "utf8");
+function landings(file, pattern, src = fs.readFileSync(file, "utf8")) {
   return [...src.matchAll(pattern)].map((m) => {
     const literals = m[m.length - 1];
     const args = [...literals.matchAll(/"([^"]*)"|'([^']*)'/g)].map(
@@ -69,6 +69,9 @@ function landings(file, pattern) {
   });
 }
 
+/** Whether a landing misses the project's folder, inside it or out. */
+const isStray = (target) => target !== PROJECT;
+
 /** Each landing of `pattern` under `dirs` that is not the project's folder. */
 function strays(dirs, pattern) {
   const out = [];
@@ -77,7 +80,7 @@ function strays(dirs, pattern) {
     for (const file of jsFiles(path.join(PROJECT, dir)))
       for (const l of landings(file, pattern)) {
         seen++;
-        if (l.target !== PROJECT)
+        if (isStray(l.target))
           out.push(
             `${path.relative(PROJECT, file)}:${l.line} lands on ` +
               `${path.relative(PROJECT, l.target) || "."}`,
@@ -101,17 +104,16 @@ describe("finding the project's folder from a file's own", () => {
 
   it("works a target out from its own file, and finds one a level short", () => {
     /*-
-     *  Guards the guard: the old line of a tool one folder deep, which
-     *  landed on util/.
+     *  Guards the guard: a tool one folder deep with one `..` too few
+     *  lands on util/, inside the project, and the check must find it.
      */
     const file = path.join(PROJECT, "util", "diagnostic", "x", "index.js");
-    const m = [
-      ...'process.chdir(path.resolve(__dirname, "..", ".."));'.matchAll(CHDIR),
-    ][0];
-    const args = [...m[1].matchAll(/"([^"]*)"/g)].map((a) => a[1]);
-    assert.equal(
-      path.resolve(path.dirname(file), ...args),
-      path.join(PROJECT, "util"),
+    const [landing] = landings(
+      file,
+      CHDIR,
+      'process.chdir(path.resolve(__dirname, "..", ".."));',
     );
+    assert.equal(landing.target, path.join(PROJECT, "util"));
+    assert.equal(isStray(landing.target), true);
   });
 });

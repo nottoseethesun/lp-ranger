@@ -38,6 +38,7 @@ const path = require("path");
 const runtimeFlags = require("./runtime-flags");
 const walletManager = require("./wallet-manager");
 const { makeTestTempFolder } = require("./test-temp-folders");
+const { rebalanceLogSetting } = require("./rebalance-log-setting");
 const {
   loadMergedDefaults,
   loadShippedDefaults,
@@ -357,16 +358,19 @@ let _testRebalanceLog = null;
 /**
  * Where the rebalance log is, asked each time it is read or written:
  * LOG_FILE in `.env`, else `log.file` in app-runtime.json (an operator's
- * copy applied); under `node --test`, a file in a temp folder of the test
- * process's own, made the first time, so no test appends a rebalance it
- * makes to the operator's log. A test that needs a log of its own sets
- * LOG_FILE.
+ * copy applied), the rule `rebalanceLogSetting` holds
+ * (src/lib/rebalance-log-setting.js); under `node --test` with no
+ * LOG_FILE, a file in a temp folder of the test process's own, made the
+ * first time, so no test appends a rebalance it makes to the operator's
+ * log. A test that needs a log of its own sets LOG_FILE.
  * @returns {string}
  */
 function rebalanceLogPath() {
-  const named = readEnv("LOG_FILE");
-  if (named !== undefined) return named;
-  if (process.env.NODE_TEST_CONTEXT === undefined) return APP_CONFIG.log.file;
+  if (
+    process.env.NODE_TEST_CONTEXT === undefined ||
+    readEnv("LOG_FILE") !== undefined
+  )
+    return rebalanceLogSetting(APP_CONFIG.log.file);
   if (_testRebalanceLog === null)
     _testRebalanceLog = path.join(
       makeTestTempFolder("rebalance-log"),

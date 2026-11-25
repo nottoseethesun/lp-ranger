@@ -27,11 +27,11 @@ const path = require("node:path");
 
 let getPositionHistory;
 let priceCalls;
-let _tmpDir;
 let _restoreLog;
 
 const _origRequire = Module.prototype.require;
 const { useRebalanceLog } = require("./helpers/rebalance-log");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const POSITION = Object.freeze({
   token0: "0x" + "1".repeat(40),
@@ -71,17 +71,23 @@ before(() => {
    *  them there is no moment to price, so the gate asks for nothing
    *  either way and the test could not tell the flag from its absence.
    *
-   *  `_readRebalanceLog` joins the configured path onto `process.cwd()`,
-   *  so the path has to be project-relative. A uniquely named file under
-   *  `tmp/` keeps it clear of the operator's own log, and it is removed
-   *  again in `after`.
+   *  The log is a file in a folder of the test process's own, clear of
+   *  the operator's: `_readRebalanceLog` resolves the configured path,
+   *  so an absolute one is read as it stands.
    */
-  _tmpDir = path.join("tmp", "test-history-refresh-" + process.pid);
-  fs.mkdirSync(_tmpDir, { recursive: true });
-  const logPath = path.join(_tmpDir, "rebalance-log.json");
+  const logPath = path.join(
+    makeTestTempFolder("history-refresh"),
+    "rebalance-log.json",
+  );
   fs.writeFileSync(logPath, JSON.stringify(EVENTS), "utf8");
   _restoreLog = useRebalanceLog(logPath);
 
+  /*-
+   *  TEST-ONLY global swap: position-history.js takes its price fetcher,
+   *  its read provider and ethers by `require` as it loads, and none of
+   *  its functions takes them as a parameter. The swap is in place only
+   *  while this file loads the module, and put back in `after`.
+   */
   Module.prototype.require = function (id) {
     if (id === "./price-fetcher") {
       return {
@@ -125,7 +131,6 @@ after(() => {
   Module.prototype.require = _origRequire;
   delete require.cache[require.resolve("../src/bot/position-history")];
   _restoreLog();
-  fs.rmSync(_tmpDir, { recursive: true, force: true });
 });
 
 beforeEach(() => {

@@ -104,9 +104,18 @@ describe("the programs that own the wallet, as they start", () => {
     const pid = src.indexOf("writePidFile();", up);
     const settle = src.indexOf("walletManager.settleWalletFile();", main);
     const reset = src.indexOf("resetErrorLog();", main);
+    const copies = src.indexOf("backUpSettings();", main);
     assert.ok(main > 0, "the server's main block");
     assert.ok(listen > main && up > listen, "start(), then the step after");
     assert.ok(settle > up && settle < pid, "the start step opens that step");
     assert.ok(reset > up && reset < pid, "and so does the error log's reset");
+    assert.ok(copies > up && copies < pid, "and the settings' safety copies");
+  });
+
+  it("the server loads and builds the bot without the safety copies", () => {
+    // Made only once it holds its port, so a second start makes none.
+    const src = fs.readFileSync(path.join(ROOT, "src", "server.js"), "utf8");
+    assert.match(src, /const _diskConfig = loadConfig\(undefined, true\);/);
+    assert.match(src, /createBot\(\{[^}]*skipBackups: true,[^}]*\}\)/);
   });
 });

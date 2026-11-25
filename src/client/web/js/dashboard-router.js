@@ -253,6 +253,15 @@ export function getPendingRouteWallet() {
 }
 
 /**
+ * Forget the pending route target: the page follows the server's wallet
+ * instead of the address it loaded at (dashboard-wallet.js, for a page
+ * the browser reloaded on its own).
+ */
+export function dropPendingRoute() {
+  _pendingRouteTarget = null;
+}
+
+/**
  * Check and resolve any pending route target after wallet loads.
  * @returns {boolean}  True if a pending route was resolved synchronously.
  */

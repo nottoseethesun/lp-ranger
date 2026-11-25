@@ -108,7 +108,9 @@
                       "type": "object",
                       "properties": {
                         "walletAddress": {
-                          "type": "string"
+                          "type": "string",
+                          "nullable": true,
+                          "description": "The wallet the server holds; null while none is loaded (a fresh install, or after a clear)."
                         },
                         "port": {
                           "type": "integer"
@@ -143,7 +145,7 @@
                         "walletJustChanged": {
                           "type": "object",
                           "nullable": true,
-                          "description": "Null until the server's wallet is replaced by another, a clear followed by an import included; then, in every answer until the next change, the new wallet. A dashboard tab still holding another wallet reloads at the dashboard's start address once importingWallet is false.",
+                          "description": "Null until the server's wallet is replaced by another while it runs, a clear followed by an import included; then, in every answer until the next change or the server's restart, the new wallet. A dashboard tab still holding another wallet reloads at the dashboard's start address once importingWallet is false.",
                           "properties": {
                             "reloadIfOnPriorWallet": {
                               "type": "boolean",
@@ -703,7 +705,11 @@
                 "properties": {
                   "tokenId": {
                     "type": "string",
-                    "description": "NFT token ID to manage"
+                    "description": "NFT token ID to manage: plain digits, sent as a string or as a number."
+                  },
+                  "liquidity": {
+                    "type": "string",
+                    "description": "The position's liquidity, in digits. When the position's settings hold no auto-compound choice yet, \"0\" (a closed position) sets auto-compound off, and any other value, or none, sets it on. The dashboard does not send it."
                   },
                   "contract": {
                     "type": "string",
@@ -711,7 +717,7 @@
                   },
                   "forceRebalance": {
                     "type": "boolean",
-                    "description": "True for the re-open of a closed position: its first poll makes the rebalance that mints fresh liquidity, which the dashboard's re-open dialog asks for."
+                    "description": "True for the re-open of a closed position: its first poll makes the rebalance that mints fresh liquidity, which the dashboard's re-open dialog asks for. Sent for a position already running, as when a re-open is tried again after a swap abort held it, it lifts that hold, and the position's next poll makes a rebalance as a Rebalance Now would, in range or not, every automatic check skipped; it is refused (409) while a scan runs on the position."
                   }
                 }
               }

@@ -54,8 +54,10 @@ export function shouldReloadForWalletChange(data, pageWallet, importingHere) {
 }
 
 /*-
- *  How the tab goes to an address. `replace` keeps the old wallet's
- *  address out of the tab's history, so Back does not return to it.
+ *  How the tab goes to an address. `replace` takes the place of the
+ *  tab's current address in its history, so Back does not return to
+ *  that one. Earlier entries that name the old wallet stay; a page Back
+ *  brings back follows the server's wallet (dashboard-wallet.js).
  */
 let _navigate = (url) => window.location.replace(url);
 

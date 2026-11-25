@@ -80,7 +80,8 @@ function createPositionManager(opts) {
        *  bot-interface.js, or bot-loop) does nothing. ensureReachable(),
        *  run at each build of the shared signer, tries the endpoints in
        *  order and moves to a later one only when it is the first to
-       *  answer; a sticky window already engaged stays.
+       *  answer, starting a sticky window there. When the first endpoint
+       *  answers, a sticky window already engaged stays until it ends.
        */
       sendTx.init({ urls: config.RPC_URLS }, ethersLib);
       await sendTx.ensureReachable();

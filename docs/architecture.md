@@ -558,9 +558,10 @@ While a wallet is imported, from its first step until the start-up of the
 new wallet's saved positions has finished, it reports `importingWallet`,
 and refuses a Manage and an unlock. The Syncing state keeps Manage and
 Stop Managing disabled until each ends. Once the import has replaced a
-wallet, every answer also names the new one (`walletJustChanged`), and
-a tab in another window still holding the old wallet reloads once the
-import has finished (docs/engineering.md, under the wallet import).
+wallet, every status answer also names the new one (`walletJustChanged`),
+and every other tab still holding the old wallet reloads once the import
+has finished ([`docs/engineering.md` § Re-start from Initialized Installation (Has Completed Blockchain Scan)](engineering.md#re-start-from-initialized-installation-has-completed-blockchain-scan),
+after the wallet import).
 
 ---
 

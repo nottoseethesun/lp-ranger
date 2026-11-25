@@ -167,7 +167,11 @@ const { handleCors } = require("./server/server-cors");
 const { handleCsrf } = require("./server/server-csrf");
 const walletManager = require("./lib/wallet-manager");
 const { bigIntReplacer } = require("./lib/bigint-json");
-const { loadConfig, managedKeys } = require("./lib/bot-config-v2");
+const {
+  loadConfig,
+  backUpSettings,
+  managedKeys,
+} = require("./lib/bot-config-v2");
 const { parseCompositeKey } = require("./lib/composite-key");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
 const { userConfigurableRoutes } = require("./server/user-configurable-routes");
@@ -207,8 +211,11 @@ const MIME = {
 
 // ── Bot config persistence (v2) ─────────────────────
 
-/** Bot config loaded from disk. */
-const _diskConfig = loadConfig();
+/*-
+ *  Bot config loaded from disk. Loaded without the safety copies, which
+ *  the server makes once it holds its port (`backUpSettings`, below).
+ */
+const _diskConfig = loadConfig(undefined, true);
 
 // ── The bot ─────────────────────────────────────────
 /*-
@@ -219,7 +226,11 @@ const _diskConfig = loadConfig();
  *  Every route below asks it for what it needs, through the same
  *  interface, and the server holds none of its state.
  */
-const _bot = createBot({ diskConfig: _diskConfig, walletManager });
+const _bot = createBot({
+  diskConfig: _diskConfig,
+  walletManager,
+  skipBackups: true,
+});
 
 const _managedAtStartup = managedKeys(_diskConfig);
 if (_managedAtStartup.length > 0)
@@ -635,9 +646,9 @@ if (require.main === module) {
     .then(() => {
       /*-
        *  The server holds its port and has read no request: none is read
-       *  before this chain first waits, and these two come first. A
+       *  before this chain first waits, and these three come first. A
        *  second start, which fails on the port, gets no further, so it
-       *  changes neither file under the server already running:
+       *  changes none of these files under the server already running:
        *  - the previous run's error log is deleted, so no stale entry
        *    lingers; current problems are logged again by the scans
        *    (src/lib/error-log.js);
@@ -645,10 +656,13 @@ if (require.main === module) {
        *    left is put back as wallet.json, or removed
        *    (src/lib/wallet-manager.js). Only the programs that own the
        *    wallet do this, as they start; a util tool that loads the
-       *    module only reads.
+       *    module only reads;
+       *  - the safety copies of bot-config.json and the records file are
+       *    made, before anything has saved either (src/lib/bot-config-v2.js).
        */
       resetErrorLog();
       walletManager.settleWalletFile();
+      backUpSettings();
       /*-
        *  Server is up: record the PID so `npm stop` (scripts/stop.js) can send
        *  SIGTERM for the same clean shutdown as Ctrl+C. The file is removed

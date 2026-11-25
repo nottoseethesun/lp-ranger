@@ -17,9 +17,11 @@
  *   answer: a browser slows the polls of a tab in the background, and such
  *   a tab would miss one answer. Kept, it reloads no tab twice, since a
  *   tab reloads only while it holds a wallet other than `currentWallet`,
- *   and a reloaded tab takes the server's. A clear reports nothing, and
- *   the wallet it removed stays the one a later import is compared with,
- *   so a clear followed by an import is a change too.
+ *   and a reloaded tab takes the server's. A clear is no change itself:
+ *   answers go on carrying the last change, if any, and the wallet the
+ *   clear removed stays the one a later import is compared with, so a
+ *   clear followed by an import of another wallet is a change too. The
+ *   tracker lives in memory: a restart forgets the change.
  */
 
 const { log } = require("../lib/log");

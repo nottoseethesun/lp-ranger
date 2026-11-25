@@ -22,6 +22,12 @@
  * intentionally orthogonal — it keeps polling whether paused or not,
  * and the server happily serves it from cached / last-known prices
  * without unpausing.
+ *
+ * It also answers whether the browser loaded this page on its own
+ * (`pageReloadedByBrowser`): a tab it unloaded to save memory and loads
+ * again as the operator returns, or a page brought back by Back or
+ * Forward. Such a page goes on as if it had stayed open, which the
+ * wallet restore asks (dashboard-wallet.js).
  */
 
 import { log } from "./dashboard-log.js";
@@ -213,4 +219,49 @@ export function isBrowserPaused() {
  */
 export function isStaleForUiPurposes(eventMs) {
   return eventMs < _uiLastWokeUpAtMS;
+}
+
+/*-
+ *  How this page was loaded, as the browser reports it: whether it
+ *  reloaded a tab it had unloaded to save memory (`document.wasDiscarded`,
+ *  which Chrome sets), and the navigation's type (`back_forward` for Back
+ *  or Forward; `navigate` for an address, a bookmark or a link; `reload`).
+ */
+let _pageLoad = () => {
+  const entries =
+    typeof performance.getEntriesByType === "function"
+      ? performance.getEntriesByType("navigation")
+      : [];
+  return {
+    discarded: document.wasDiscarded === true,
+    type: entries.length > 0 ? entries[0].type : "navigate",
+  };
+};
+
+/**
+ * TEST-ONLY seam: give how the page was loaded, as jsdom reports nothing.
+ * @param {() => {discarded: boolean, type: string}} fn
+ * @returns {() => void}  Puts the browser's report back.
+ */
+export function _setPageLoadForTests(fn) {
+  const prior = _pageLoad;
+  _pageLoad = fn;
+  return () => {
+    _pageLoad = prior;
+  };
+}
+
+/**
+ * Whether the browser loaded this page on its own rather than the
+ * operator opening it: it reloaded a tab it had unloaded to save memory,
+ * as the operator came back to it, or brought the page back from the
+ * tab's history (Back, Forward). Such a page goes on as if it had stayed
+ * open, and a tab that stays open follows the server's wallet
+ * (dashboard-wallet-change.js). An address the operator opens, from the
+ * address bar, a bookmark or a link, takes priority instead.
+ * @returns {boolean}
+ */
+export function pageReloadedByBrowser() {
+  const load = _pageLoad();
+  return load.discarded || load.type === "back_forward";
 }

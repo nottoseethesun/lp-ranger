@@ -25,6 +25,7 @@ import { ethers } from "./ethers-adapter.js";
 import * as unlockLog from "./dashboard-unlock-log.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
 import { withUiSettings } from "./dashboard-ui-settings.js";
+import { pageReloadedByBrowser } from "./dashboard-idle.js";
 import {
   noteWalletImportStarted,
   noteWalletImportEnded,
@@ -43,6 +44,7 @@ let _clearPositionDisplay = null;
 let _resetPollingState = null;
 let _clearHistory = null;
 let _getPendingRouteWallet = null;
+let _dropPendingRoute = null;
 let _flushPendingUnmanagedFetch = null;
 
 /**
@@ -63,6 +65,7 @@ export function injectWalletDeps(deps) {
   if (deps.clearHistory) _clearHistory = deps.clearHistory;
   if (deps.getPendingRouteWallet)
     _getPendingRouteWallet = deps.getPendingRouteWallet;
+  if (deps.dropPendingRoute) _dropPendingRoute = deps.dropPendingRoute;
   if (deps.flushPendingUnmanagedFetch)
     _flushPendingUnmanagedFetch = deps.flushPendingUnmanagedFetch;
 }
@@ -508,20 +511,31 @@ export function copyText(id) {
 // ── Init: check server wallet status on load ──────────────
 
 /**
- * Restore a server-persisted wallet. Checks URL/server
- * wallet mismatch.
+ * Restore a server-persisted wallet, unless the page's address names
+ * another wallet that takes priority.
+ *
+ * An address the operator opened (the address bar, a bookmark, a link)
+ * takes priority: the server's wallet is not loaded, and the wallet
+ * dialog asks for the address's, after whose import the server holds it
+ * and other tabs follow (dashboard-wallet-change.js). A page the browser
+ * loaded on its own, after unloading the tab to save memory or by Back or
+ * Forward (`pageReloadedByBrowser`, dashboard-idle.js), goes on as if it
+ * had stayed open instead: it forgets the address and takes the server's
+ * wallet, as a tab that stayed open does.
+ * @param {{address: string, source: string}} data  The server's wallet.
  */
 function _restoreServerWallet(data) {
-  // If the URL requests a different wallet, don't load
-  // the server's wallet.
   const pendingWallet = _getPendingRouteWallet
     ? _getPendingRouteWallet()
     : null;
   if (pendingWallet && pendingWallet !== data.address.toLowerCase()) {
-    clearAllPositionState();
-    applyWalletUI();
-    openWalletModal();
-    return;
+    if (!pageReloadedByBrowser()) {
+      clearAllPositionState();
+      applyWalletUI();
+      openWalletModal();
+      return;
+    }
+    if (_dropPendingRoute) _dropPendingRoute();
   }
 
   wallet.address = data.address;

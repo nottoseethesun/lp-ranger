@@ -182,7 +182,7 @@ function _showReopenIntroModal(active, formatPositionSpec) {
     (spec
       ? '<p class="9mm-pos-mgr-text-muted">Position: ' + spec + "</p>"
       : "") +
-    '<p class="9mm-pos-mgr-text-muted">Each rebalance incurs gas and slippage that can crystallize impermanent loss over time. If you want a specific range width, set it in <strong>Bot Settings</strong> first; otherwise the bot preserves the current tick spread on re-open.</p>' +
+    '<p class="9mm-pos-mgr-text-muted">Each rebalance incurs gas and slippage that can crystallize impermanent loss over time. The re-open follows this position&rsquo;s Range settings in <strong>Bot Settings</strong>: with No Override on, as every position starts, it keeps the current tick spread, centered on the price. For a width of your own, turn No Override off and set the Price Range Extension first.</p>' +
     '<div class="9mm-pos-mgr-modal-action-row">' +
     '<button type="button" class="modal-btn primary" data-action="reopen-confirm">Re-open Position</button>' +
     "</div>";

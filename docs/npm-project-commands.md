@@ -127,7 +127,7 @@ Command](#before-running-any-lint-or-test-command) first.
 | `audit:deps:all` | — | The same audit over the **whole** tree, development tooling included. Reports rather than gates; `npm run check` writes this full report to `test/report-artifacts/raw-data/npm-audit.json` on every run. | `npm run audit:deps:all` |
 | `audit:secrets` | — | secretlint across the repo. | `npm run audit:secrets` |
 | `audit:security` | — | The custom security lint rules. | `npm run audit:security` |
-| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. Deletes `logs/error.log` and the previous run's `logs/error-npm-run-check.log` first, then renames what the tests wrote to `logs/error.log` to `logs/error-npm-run-check.log`. Before its tests, removes any test folder a stopped run left in the system's temp directory. | `npm run check` |
+| `check` | — | The full gate: every linter, the test suite, coverage and the audits, summarised in one table. What must pass before a commit. Writes reports to `test/report-artifacts/`. Leaves the operator's `logs/error.log` alone: a test that records a failure writes a file of its own process's. Before its tests, removes any test folder a stopped run left in the system's temp directory. | `npm run check` |
 | `format:check` | — | Prettier in check mode; fails rather than rewriting. | `npm run format:check` |
 | `test` | any `node --test` flag | Run the suite with a concurrency of 24. | `npm test -- --test-name-pattern="failover"` |
 | `test:coverage` | — | The suite with V8 coverage collection. | `npm run test:coverage` |

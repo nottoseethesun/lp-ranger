@@ -108,6 +108,7 @@ import {
   resolvePendingRoute,
   syncRouteToState,
   getPendingRouteWallet,
+  dropPendingRoute,
 } from "./dashboard-router.js";
 import {
   enterClosedPosView,
@@ -190,6 +191,7 @@ injectWalletDeps({
   resetPollingState,
   clearHistory,
   getPendingRouteWallet,
+  dropPendingRoute,
   flushPendingUnmanagedFetch,
 });
 injectPositionDeps({

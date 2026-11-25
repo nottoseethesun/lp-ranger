@@ -4,8 +4,10 @@
  * @file test/ask-password.test.js
  * @description
  * Tests for the terminal prompt for a secret (src/lib/ask-password.js): what
- * is typed reaches the caller, and none of it reaches the screen; a prompt
- * whose input ends with nothing typed answers null, and says why. The
+ * is typed reaches the caller, and none of it reaches the screen; text
+ * the input ends on with no Enter after it is the answer; a prompt whose
+ * input ends with nothing typed answers null, and says why; and Ctrl+C is
+ * passed on to the program as the signal it sends anywhere else. The
  * keys are written to a stream standing in for the terminal, and what the
  * prompt shows is gathered from a stream standing in for stderr.
  */
@@ -14,7 +16,10 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const util = require("node:util");
 const { PassThrough, Writable } = require("stream");
-const { askPassword } = require("../src/lib/ask-password");
+const {
+  askPassword,
+  _setInterruptForTests,
+} = require("../src/lib/ask-password");
 const { _setSinkForTests } = require("../src/lib/log");
 
 /**
@@ -81,6 +86,47 @@ test("a typed answer is not followed by the warning", async () => {
   } finally {
     restoreLog();
   }
+  assert.deepEqual(warned, []);
+});
+
+test("text the input ends on, with no Enter after it, is the answer", async () => {
+  // As a password piped in without a final newline: `printf %s "$PW" | …`.
+  const input = new PassThrough();
+  const { output } = screen();
+  const warned = [];
+  const restoreLog = _setSinkForTests({
+    warn: (...args) => warned.push(util.format(...args)),
+  });
+  try {
+    const answer = askPassword("Password: ", { input, output });
+    input.end("hunter2");
+    assert.equal(await answer, "hunter2");
+  } finally {
+    restoreLog();
+  }
+  assert.deepEqual(warned, []);
+});
+
+test("Ctrl+C goes to the program as the signal, with no answer and no warning", async () => {
+  const input = new PassThrough();
+  const { output } = screen();
+  const warned = [];
+  let interrupts = 0;
+  let settled = false;
+  const restoreLog = _setSinkForTests({
+    warn: (...args) => warned.push(util.format(...args)),
+  });
+  const restoreInterrupt = _setInterruptForTests(() => interrupts++);
+  try {
+    askPassword("Password: ", { input, output }).then(() => (settled = true));
+    input.write("hunt\x03");
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    restoreInterrupt();
+    restoreLog();
+  }
+  assert.equal(interrupts, 1);
+  assert.equal(settled, false, "no answer: the program is ending");
   assert.deepEqual(warned, []);
 });
 

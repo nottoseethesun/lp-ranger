@@ -12,7 +12,9 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 const {
   writeErrorLog,
@@ -91,10 +93,58 @@ test("writeErrorLog returns false on write failure without throwing", () => {
   assert.strictEqual(ok, false);
 });
 
-test("getErrorLogPath resolves logging.json's errorLogPath to an absolute path", () => {
+test("under node --test the error log is a file of the test process's own", () => {
+  // So a test that records a failure never writes the operator's error log.
   const p = getErrorLogPath();
-  assert.ok(path.isAbsolute(p));
-  assert.strictEqual(p, path.resolve(process.cwd(), LOGGING.errorLogPath));
+  assert.strictEqual(path.dirname(path.dirname(p)), os.tmpdir());
+  assert.ok(
+    path
+      .basename(path.dirname(p))
+      .startsWith(`lp-ranger-test-error-log-${process.pid}-`),
+    p,
+  );
+});
+
+test("the error log's folder is made when first asked for, not as it loads", () => {
+  // A child keeps the runner's marker, so it is under `node --test` too.
+  const lib = JSON.stringify(
+    path.join(__dirname, "..", "src", "lib", "error-log"),
+  );
+  const mine =
+    "require('fs').readdirSync(require('os').tmpdir()).filter((n) =>" +
+    " n.startsWith('lp-ranger-test-error-log-' + process.pid + '-')).length";
+  const script =
+    `const e = require(${lib}); const before = ${mine}; e.getErrorLogPath();` +
+    ` process.stdout.write("\\nFOLDERS=" + before + "," + ${mine});`;
+  const res = spawnSync(process.execPath, ["-e", script], {
+    cwd: makeTestTempFolder("error-log-cwd"),
+    encoding: "utf8",
+  });
+  assert.strictEqual(res.status, 0, res.stderr);
+  assert.match(res.stdout, /\nFOLDERS=0,1$/);
+});
+
+test("outside tests the error log is logging.json's errorLogPath", () => {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const cwd = makeTestTempFolder("error-log-cwd");
+  const lib = JSON.stringify(
+    path.join(__dirname, "..", "src", "lib", "error-log"),
+  );
+  const res = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `process.stdout.write("\\nLOG=" + require(${lib}).getErrorLogPath())`,
+    ],
+    { cwd, env, encoding: "utf8" },
+  );
+  assert.strictEqual(res.status, 0, res.stderr);
+  // The child's working folder, as it reports it: its real path.
+  assert.strictEqual(
+    res.stdout.split("\nLOG=").pop(),
+    path.resolve(fs.realpathSync(cwd), LOGGING.errorLogPath),
+  );
 });
 
 test("writeErrorLog creates parent directory if missing", () => {

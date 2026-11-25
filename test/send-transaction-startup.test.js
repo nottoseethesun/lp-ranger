@@ -65,7 +65,7 @@ describe("send-transaction: what startup says when nothing answers", () => {
     }
     const summary = m.out.error
       .map((a) => String(a[0] ?? ""))
-      .filter((s) => s.includes("STARTUP: no RPC endpoint answered"));
+      .filter((s) => s.includes("No RPC endpoint answered"));
     assert.equal(summary.length, 1, "exactly one summary line");
     assert.ok(
       summary[0].includes("tried all 2"),
@@ -87,7 +87,7 @@ describe("send-transaction: what startup says when nothing answers", () => {
     }
     const numbered = m.out.warn
       .map((a) => String(a[0] ?? ""))
-      .filter((s) => s.includes("RPC unreachable at startup"));
+      .filter((s) => s.includes("RPC unreachable ("));
     assert.equal(numbered.length, 2, "one numbered line per endpoint");
     assert.ok(numbered[0].includes("(1 of 2)"), numbered[0]);
     assert.ok(numbered[1].includes("(2 of 2)"), numbered[1]);

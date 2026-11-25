@@ -435,7 +435,11 @@ server **exits with an error** rather than falling through to
 dashboard-only mode — there is no browser to fall back to. With no
 terminal to type into, as when a service manager starts it, the prompt
 closes at once and says so (`src/lib/ask-password.js`), and the server
-exits with that error; the headless bot (`npm run bot`) does the same.
+exits with that error. The headless bot (`npm run bot`) exits the same
+way, but not in a dry run (`DRY_RUN=true`): with no key it goes on
+reading the chain and sends nothing. Ctrl+C at the prompt ends the
+program as Ctrl+C does anywhere, and a password piped in with no final
+newline is read as typed.
 
 **Operator responsibilities when using `WALLET_PASSWORD`:**
 
@@ -1263,8 +1267,8 @@ exits. A test that creates a stub config or keyfile therefore never
 clobbers live user state: one that believed it had written to
 `app-config/user-configurable/wallet.json` was writing where the live file
 had been wiped, and the original comes back afterwards. Outside the gate,
-under `node --test`, the operator's files a test could write are the
-test process's own, and no `.env` is read; docs/claude/CLAUDE-TESTING.md
-§ "Temp folders" lists them, the two that are not redirected, and how a
+under `node --test`, most of the operator's files a test could write are
+the test process's own, and no `.env` is read; docs/claude/CLAUDE-TESTING.md
+§ "Temp folders" lists them, those that are not redirected, and how a
 test names paths of its own. The gate fails a run whose tests changed
 `app-config/user-configurable/`, `app-data/` or the shipped settings.

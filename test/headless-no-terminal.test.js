@@ -19,10 +19,27 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const net = require("node:net");
 const { spawnSync } = require("node:child_process");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const ROOT = path.join(__dirname, "..");
+
+/**
+ * A port free on this machine now: the system picks one, and it is let go
+ * at once for the child to take.
+ * @returns {Promise<number>}
+ */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
 
 // A saved wallet file's text; its secrets are not real, and need not be.
 const SAVED = JSON.stringify({
@@ -73,9 +90,9 @@ describe("a headless start with nobody at a terminal", () => {
     assert.match(run.output, /Set WALLET_PASSWORD in \.env/);
   });
 
-  it("stops the server started with --headless, saying why and what to do", () => {
-    // A port of its own, clear of the dashboard's and of other tests'.
-    const port = String(40000 + (process.pid % 20000));
+  it("stops the server started with --headless, saying why and what to do", async () => {
+    // A port the system has just found free, so no other test holds it.
+    const port = String(await freePort());
     const run = startWithNoTerminal(
       [path.join(ROOT, "src", "server.js"), "--headless"],
       { PORT: port, HOST: "127.0.0.1" },

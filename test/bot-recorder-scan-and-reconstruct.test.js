@@ -193,6 +193,14 @@ function load(mode) {
     },
   };
   installMocks();
+  /*-
+   *  TEST-ONLY global swap: bot-recorder.js takes the pool reader, the
+   *  pool scanner, the epoch reconstructor and its other helpers by
+   *  `require` as it loads, and `_scanAndReconstruct` takes none of them
+   *  as a parameter. This swap sits on top of the shared mocks' own
+   *  (`installMocks`), and `restoreMocks` puts the original back after
+   *  each test.
+   */
   const harnessRequire = Module.prototype.require;
   Module.prototype.require = function (id) {
     if (Object.prototype.hasOwnProperty.call(stubs, id)) return stubs[id];
