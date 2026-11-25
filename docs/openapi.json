@@ -435,6 +435,9 @@
           "401": {
             "description": "Invalid password"
           },
+          "404": {
+            "description": "No wallet is saved, so there is nothing to unlock. Nothing changed; `error` says so."
+          },
           "409": {
             "description": "A wallet import is under way. Nothing changed; `error` says why."
           }
@@ -568,6 +571,9 @@
         "responses": {
           "200": {
             "description": "Scan results with position list"
+          },
+          "400": {
+            "description": "No wallet is loaded, or the scan failed partway; `error` says why."
           }
         }
       }
@@ -580,6 +586,9 @@
         "responses": {
           "200": {
             "description": "Refreshed position data"
+          },
+          "400": {
+            "description": "No wallet is loaded, or the refresh failed; `error` says why."
           }
         }
       }
@@ -728,6 +737,9 @@
               }
             }
           },
+          "500": {
+            "description": "The position's loop failed to start; `error` says why, and the body names the position by positionKey."
+          },
           "503": {
             "description": "Nothing was started, since the chain could not be read: `pool-info-unavailable`. Either the position's pool, without which LP Ranger cannot check that no other position is managed in it, or the pool's state, which the bot reads as it starts. `message` says which. Try again in a moment.",
             "content": {
@@ -843,6 +855,9 @@
           },
           "400": {
             "description": "Missing required fields"
+          },
+          "500": {
+            "description": "The details could not be worked out, as when a chain read failed; `error` says why."
           }
         }
       }
@@ -892,6 +907,9 @@
           },
           "400": {
             "description": "Missing required fields"
+          },
+          "500": {
+            "description": "The lifetime figures could not be worked out, as when a chain read failed; `error` says why."
           }
         }
       }
@@ -1797,6 +1815,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "The check itself failed; `error` says why."
           },
           "503": {
             "description": "Wallet balance temporarily unreadable.",

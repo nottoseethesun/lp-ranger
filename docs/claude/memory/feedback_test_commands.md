@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-10-24T04:55:01.208Z
+  modified: 2026-11-25T07:09:41.852Z
 ---
 
 # Running tests
@@ -141,9 +141,9 @@ or inside a wipe.
 
 ## no check in agents
 
-NEVER run `npm run check` (or any command that touches production files via check.sh) inside an Agent subprocess. Always run it directly in the main session.
+NEVER run `npm run check` (or any command that touches production files via scripts/check.js) inside an Agent subprocess. Always run it directly in the main session.
 
-**Why:** The check.sh script backs up production files (.bot-config.json, etc.) before tests and restores them via an EXIT trap. If an agent is killed (timeout, SIGKILL), the trap doesn't fire and production config is destroyed. This happened — the user's managed positions were wiped because an agent ran `npm run check` and the restore didn't complete.
+**Why:** scripts/check.js backs up production files (.bot-config.json, etc.) before tests and restores them via an EXIT trap. If an agent is killed (timeout, SIGKILL), the trap doesn't fire and production config is destroyed. This happened — the user's managed positions were wiped because an agent ran `npm run check` and the restore didn't complete.
 
 **How to apply:** When delegating work to agents, tell them to make code changes only. Run `npm run check` yourself in the main session after the agent returns.
 

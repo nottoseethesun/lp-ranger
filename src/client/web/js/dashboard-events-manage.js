@@ -284,7 +284,7 @@ function _formatPositionSpec(active) {
  * @param {string} verb    Human verb for the message ("manage"/"unmanage").
  * @param {object|string} payload  Server error body `{ error, message }`
  *   (preferred) OR a bare reason string (an http status the body did
- *   not explain, or a network error that never reached the JSON parse).
+ *   not explain, or a network error that never reached the json parse).
  * @param {object} [active] Active position (for the spec line).
  * @param {object} [opts]
  * @param {number} [opts.status]  The answer's http status; none for a

@@ -9,11 +9,12 @@
  *
  * A test that needs a folder of its own takes one from
  * `makeTestTempFolder`. So do `src/lib/bot-config-v2.js`,
- * `src/lib/scan-cache-dir.js` and `src/lib/api-key-store.js`, which under
- * `node --test` resolve the config folder, the scan-cache folder and the
- * api-key file to such folders rather than `app-config/user-configurable/`
- * and `app-data/scan-cache/`, so no test can write the operator's
- * bot-config.json, caches or api keys. Each folder
+ * `src/lib/scan-cache-dir.js`, `src/lib/api-key-store.js` and
+ * `src/lib/wallet-manager.js`, which under `node --test` resolve the
+ * config folder, the scan-cache folder, the api-key file and the wallet
+ * file to such folders rather than `app-config/user-configurable/` and
+ * `app-data/scan-cache/`, so no test can write the operator's
+ * bot-config.json, caches, api keys or wallet. Each folder
  * belongs to one process: the runner runs test files in parallel
  * processes, which would otherwise overwrite one another's files. The
  * folders are in the system's temp directory (`os.tmpdir()`), outside

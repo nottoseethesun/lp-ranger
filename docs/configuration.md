@@ -580,8 +580,8 @@ these as a supported way to lay out an install, which they are not.
 
 | Variable | Default | JSON counterpart | Notes |
 | --- | --- | --- | --- |
-| `WALLET_FILE_PATH` | `app-config/user-configurable/wallet.json` | **none** | Encrypted wallet file, read and written by [`src/lib/wallet-manager.js`](../src/lib/wallet-manager.js). |
-| `API_KEYS_FILE_PATH` | `app-config/user-configurable/api-keys.json` | **none** | Encrypted third-party API keys, read and written by [`src/lib/api-key-store.js`](../src/lib/api-key-store.js). |
+| `WALLET_FILE_PATH` | `app-config/user-configurable/wallet.json` | **none** | Encrypted wallet file, read and written by [`src/lib/wallet-manager.js`](../src/lib/wallet-manager.js). Unset under `node --test`, a file in the test process's own temp folder. |
+| `API_KEYS_FILE_PATH` | `app-config/user-configurable/api-keys.json` | **none** | Encrypted third-party API keys, read and written by [`src/lib/api-key-store.js`](../src/lib/api-key-store.js). Unset under `node --test`, a file in the test process's own temp folder. |
 | `PRICE_CACHE_PATH` | `app-data/scan-cache/historical-price-cache.json` | **none** | Historical USD price cache ([`src/bot/price-cache.js`](../src/bot/price-cache.js)). |
 | `BLOCK_TIME_CACHE_PATH` | `app-data/scan-cache/block-time-cache.json` | **none** | Block-number-to-timestamp cache ([`src/bot/block-time-cache.js`](../src/bot/block-time-cache.js)). |
 | `GECKO_POOL_CACHE_PATH` | `app-data/scan-cache/gecko-pool-cache.json` | **none** | Which way round GeckoTerminal quotes each pool ([`src/bot/gecko-pool-cache.js`](../src/bot/gecko-pool-cache.js)). |

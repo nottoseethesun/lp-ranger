@@ -2,7 +2,7 @@
 /**
  * @file scripts/check-report.js
  * @description
- * Aggregator invoked at the end of scripts/check.sh. Reads all raw tool
+ * Aggregator invoked at the end of scripts/check.js. Reads all raw tool
  * outputs from test/report-artifacts/raw-data/ plus the text captures in
  * test/report-artifacts/text-reports/, parses them via
  * check-report-parse.js, prints a colored terminal summary (cli-table3),
@@ -12,7 +12,7 @@
  * `summary.md` is GitHub-flavored markdown for `$GITHUB_STEP_SUMMARY` —
  * CI appends it so the rollup renders inline on every workflow run page.
  *
- * Exit code is 0 only when every check is green — scripts/check.sh
+ * Exit code is 0 only when every check is green — scripts/check.js
  * propagates this for GitHub CI. Safe to rerun without re-running any
  * tools: reads only the previously-captured files.
  *
@@ -174,7 +174,7 @@ function loadResults() {
   const stylelint = P.parseStylelint(_readJson("stylelint.json"));
   const htmlValidate = P.parseHtmlValidate(_readJson("html-validate.json"));
   // html-validate's JSON reporter omits clean files, so use the count
-  // captured by check.sh from the glob instead of the parsed results[].length.
+  // captured by check.js from the glob instead of the parsed results[].length.
   if (exitCodes.htmlFileCount !== undefined) {
     htmlValidate.files = exitCodes.htmlFileCount;
   }
@@ -222,7 +222,7 @@ function loadResults() {
 
   // Rule counts from --print-config dumps. eslint.json, stylelint.json,
   // and security-lint.json only know about rules that fired; for the true
-  // "rules loaded" count we read the resolved-config dumps that check.sh
+  // "rules loaded" count we read the resolved-config dumps that check.js
   // captures alongside the regular lint output. html-validate and
   // markdownlint don't have an equivalent, so their rule counts stay null
   // → rendered as "—".

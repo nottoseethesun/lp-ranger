@@ -18,16 +18,16 @@
  * src/lib/runtime-flags.js, so a wrong one still stops it there.
  */
 
-const dotenv = require("dotenv");
 const { loadMergedDefaults } = require("./load-merged-defaults");
-const { readEnv } = require("./env-settings");
+const { readEnv, loadEnvFile } = require("./env-settings");
 
 /*-
  *  Load `.env` if present, as src/lib/runtime-flags.js does; the stop scripts
  *  read it through here alone. Loading it twice changes nothing, since
- *  dotenv never replaces a variable already set.
+ *  dotenv never replaces a variable already set. Under `node --test` none
+ *  is read (`loadEnvFile`, src/lib/env-settings.js).
  */
-dotenv.config();
+loadEnvFile();
 
 /**
  * The port the dashboard server listens on.

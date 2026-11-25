@@ -47,14 +47,16 @@ const KEY = "0x" + "11".repeat(32);
 
 /**
  * An unlock route over a wallet whose password is `right`, whose decrypt
- * runs `duringDecrypt` before it answers.
+ * runs `duringDecrypt` before it answers; with `saved` false, over no
+ * wallet at all.
  */
-function route({ key = null, duringDecrypt = () => {} } = {}) {
+function route({ key = null, duringDecrypt = () => {}, saved = true } = {}) {
   const calls = { startUps: 0, decrypted: [], revealed: 0 };
   const privateKeyRef = { current: key };
   let body = {};
   const handle = createUnlockHandler({
     walletManager: {
+      hasWallet: () => saved,
       revealWallet: async (password) => {
         calls.revealed++;
         duringDecrypt();
@@ -127,6 +129,20 @@ describe("entering the wallet password", () => {
     const r = route();
     const res = await r.unlock(undefined);
     assert.equal(res.status, 400);
+    assert.equal(r.calls.startUps, 0);
+  });
+
+  it("says there is no wallet to unlock when none is saved, decrypting nothing", async () => {
+    /*-
+     *  The decrypt refuses for want of a wallet too, and that refusal
+     *  must not read as a password typed wrong.
+     */
+    const r = route({ saved: false });
+    const res = await r.unlock("right");
+    assert.equal(res.status, 404);
+    assert.match(res.answer.error, /no wallet to unlock/);
+    assert.equal(r.calls.revealed, 0);
+    assert.equal(r.privateKeyRef.current, null);
     assert.equal(r.calls.startUps, 0);
   });
 });

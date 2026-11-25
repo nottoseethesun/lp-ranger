@@ -20,21 +20,22 @@
 
 "use strict";
 
-const dotenv = require("dotenv");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const { assertTimerSec } = require("./timer-bounds");
 const { boundAt } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
-const { readEnv } = require("./env-settings");
+const { readEnv, loadEnvFile } = require("./env-settings");
 const { serverPort, serverHost } = require("./server-address");
 
 const CHAINS = loadMergedDefaults("chains.json");
 const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
 
-/*- Load .env if present; dotenv.config() returns `{ error }` (without
-    throwing) when no file exists, so production environments where env
-    vars are injected by the platform fall back to process.env as-is. */
-dotenv.config();
+/*-
+ *  Load .env if present (`loadEnvFile`, src/lib/env-settings.js): with no
+ *  file, environments where the platform injects the variables fall back
+ *  to process.env as it is. Under `node --test` none is read.
+ */
+loadEnvFile();
 
 /**
  * Read a whole number of seconds that becomes a timer delay: the

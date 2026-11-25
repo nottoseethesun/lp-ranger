@@ -3175,8 +3175,9 @@ One home for each kind of data:
   system can leave it, and `wallet.json.tmp` holds a whole wallet, the
   wallet is recovered from it, with a warning in the log; a temp file
   beside a good `wallet.json` is removed. `npm run reset-wallet` removes
-  both. Tests override the path via the `WALLET_FILE_PATH` environment
-  variable.
+  both. Under `node --test` it is a file in the test process's own temp
+  folder, unless the `WALLET_FILE_PATH` environment variable names
+  another.
 - **`user-configurable/api-keys.json`** — Runtime, gitignored.
   Encrypted storage for third-party API keys (Moralis, Telegram bot
   token + chat ID), using the same wallet password and encryption
@@ -3300,12 +3301,13 @@ ever clobbering live user state. The shipped-defaults directory
 tracked `api-keys.example.json` format template alongside the tunable
 JSON defaults) is not touched at all — it's tracked repo content.
 
-Under `node --test`, bot-config.json, the scan caches and api-keys.json
-each resolve to a temp folder of the test process's own. A test that
-needs other files without touching the live ones passes an explicit
-`dir` to `loadConfig(dir)` / `saveConfig(cfg, dir)` (`bot-config-v2`),
-or sets `WALLET_FILE_PATH` to a temp path before requiring the wallet
-manager, which reads it as it loads. After the tests, the gate checks
+Under `node --test`, bot-config.json, the records file, the scan caches,
+api-keys.json and wallet.json each resolve to a temp folder of the test
+process's own, and no `.env` is read (`envFilePath`,
+`src/lib/env-settings.js`). A test that needs files of its choosing
+passes an explicit `dir` to `loadConfig(dir)` / `saveConfig(cfg, dir)`
+(`bot-config-v2`), or names one in `WALLET_FILE_PATH` or
+`API_KEYS_FILE_PATH`, which are asked on every read and write. After the tests, the gate checks
 that `app-config/user-configurable/`, `app-data/` and the shipped
 settings folder hold exactly what they held before them, and fails the
 run otherwise (the "Folders kept" row; `scripts/_folder-snapshot.js`).
@@ -3877,7 +3879,7 @@ unlock's missing password, a malformed key asked of
 Telegram save whose event choices are not valid, or whose bot token or
 chat id comes with no password. A Telegram test before a bot token and
 chat id are saved gets 400 too. The unlock answers a wrong password
-401. The wallet's own steps answer 409: the import while the app may
+401, and 404 when no wallet is saved to unlock. The wallet's own steps answer 409: the import while the app may
 start nothing (a stop, a start-up or another import under way), and the
 unlock while an import is under way. An error a route in the route
 table throws becomes 400, or 403 for a wrong password, in

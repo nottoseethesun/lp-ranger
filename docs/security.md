@@ -1258,6 +1258,10 @@ are caught, so an interrupt still restores the files before the process
 exits. A test that creates a stub config or keyfile therefore never
 clobbers live user state: one that believed it had written to
 `app-config/user-configurable/wallet.json` was writing where the live file
-had been wiped, and the original comes back afterwards. Tests that need explicit paths instead use
-the `WALLET_FILE_PATH` / `API_KEYS_FILE_PATH` environment variables or
-pass a `dir` argument to `loadConfig` / `saveConfig` directly.
+had been wiped, and the original comes back afterwards. Outside the gate
+too, a test reaches none of the live files: under `node --test` the
+wallet, the api keys, bot-config.json, the records and the scan caches
+are each the test process's own files, and no `.env` is read. Tests that
+need explicit paths instead use the `WALLET_FILE_PATH` /
+`API_KEYS_FILE_PATH` environment variables or pass a `dir` argument to
+`loadConfig` / `saveConfig` directly.

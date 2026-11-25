@@ -39,6 +39,8 @@ const { log } = require("./log");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { readEnv } = require("./env-settings");
+const { makeTestTempFolder } = require("./test-temp-folders");
 
 // ── Crypto constants ────────────────────────────────────────────────────────
 
@@ -51,15 +53,32 @@ const _CIPHER = "aes-256-gcm";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 
-// Tests set WALLET_FILE_PATH to a temp file so they don't destroy the real wallet.
-// Production default is app-config/user-configurable/wallet.json — see the
-// app-config/ section of server.js for the full layout.
-const _WALLET_FILE =
-  process.env.WALLET_FILE_PATH ||
-  path.join(process.cwd(), "app-config", "user-configurable", "wallet.json");
+// This test process's wallet file, made on first use under `node --test`.
+let _testFile = null;
 
-// Where a save writes first, renamed over the wallet file once whole.
-const _TMP_FILE = `${_WALLET_FILE}.tmp`;
+/**
+ * Where the wallet is saved: the file `WALLET_FILE_PATH` names, read
+ * through `readEnv`; else, under `node --test`, a file in a temp folder of
+ * the test process's own, so no test reads or writes the operator's
+ * wallet; else app-config/user-configurable/wallet.json in the install
+ * (the app-config/ section of src/server.js gives the layout). Asked on
+ * every read and write. A save writes `<this>.tmp` first.
+ * @returns {string}
+ */
+function walletFilePath() {
+  const named = readEnv("WALLET_FILE_PATH");
+  if (named !== undefined) return named;
+  if (process.env.NODE_TEST_CONTEXT === undefined)
+    return path.join(
+      process.cwd(),
+      "app-config",
+      "user-configurable",
+      "wallet.json",
+    );
+  if (_testFile === null)
+    _testFile = path.join(makeTestTempFolder("wallet"), "wallet.json");
+  return _testFile;
+}
 
 // ── In-memory state ─────────────────────────────────────────────────────────
 
@@ -86,11 +105,11 @@ function _deriveKey(password, salt) {
 }
 
 /**
- * Write a wallet to app-config/user-configurable/wallet.json (encrypted —
- * no plaintext secrets), all or nothing: the whole file goes to
- * wallet.json.tmp, flushed to disk, then is renamed over wallet.json. A
- * write that fails removes what it left of the temp file before it
- * throws, so wallet.json is as it was.
+ * Write a wallet to the wallet file (`walletFilePath`), encrypted, with no
+ * plaintext secrets, all or nothing: the whole file goes to its `.tmp`
+ * copy, flushed to disk, then is renamed over it. A write that fails
+ * removes what it left of the temp file before it throws, so the wallet
+ * file is as it was.
  * @param {{address: string, source: string, hasMnemonic: boolean,
  *   encrypted: object}} wallet  What the file holds, as `_state` does.
  */
@@ -101,50 +120,57 @@ function _saveToDisk(wallet) {
     hasMnemonic: wallet.hasMnemonic,
     encrypted: wallet.encrypted,
   };
+  const file = walletFilePath();
+  const tmp = `${file}.tmp`;
   // Ensure parent dir exists (e.g. app-config/ on first run).
-  fs.mkdirSync(path.dirname(_WALLET_FILE), { recursive: true });
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   try {
-    fs.writeFileSync(_TMP_FILE, JSON.stringify(data, null, 2), {
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), {
       encoding: "utf8",
       flush: true,
     });
-    fs.renameSync(_TMP_FILE, _WALLET_FILE);
+    fs.renameSync(tmp, file);
   } catch (err) {
-    _removeTmpFile();
+    _removeTmpFile(tmp);
     throw err;
   }
   log.info(
     "[wallet] Saved %s (%d bytes, exists=%s)",
-    path.relative(process.cwd(), _WALLET_FILE),
+    path.relative(process.cwd(), file),
     JSON.stringify(data).length,
-    fs.existsSync(_WALLET_FILE),
+    fs.existsSync(file),
   );
 }
 
-/** Remove wallet.json.tmp, if there is one to remove. */
-function _removeTmpFile() {
+/**
+ * Remove a wallet file's temp copy, if there is one to remove.
+ * @param {string} tmp  The temp copy's path.
+ */
+function _removeTmpFile(tmp) {
   try {
-    fs.unlinkSync(_TMP_FILE);
+    fs.unlinkSync(tmp);
   } catch {
     /* nothing to remove */
   }
 }
 
 /**
- * Remove app-config/user-configurable/wallet.json from disk, and the temp
- * file beside it, so a cleared wallet cannot be recovered from it.
+ * Remove the wallet file from disk, and the temp file beside it, so a
+ * cleared wallet cannot be recovered from it.
  */
 function _removeFromDisk() {
+  const file = walletFilePath();
   log.warn(
-    "[wallet] Deleting app-config/user-configurable/wallet.json — stack:",
+    "[wallet] Deleting %s — stack:",
+    path.relative(process.cwd(), file),
     new Error().stack,
   );
   try {
-    fs.unlinkSync(_WALLET_FILE);
+    fs.unlinkSync(file);
   } catch {
     /* file may not exist */
   }
-  _removeTmpFile();
+  _removeTmpFile(`${file}.tmp`);
 }
 
 /**
@@ -167,11 +193,12 @@ function _readWalletFile(file) {
  * holds none; a warning names it. Should the rename fail, the wallet is
  * still loaded from the temp file, and the next save puts the file right.
  * @param {object} wallet  The wallet the temp file holds.
+ * @param {string} file  The wallet file, whose `.tmp` copy holds it.
  * @returns {object} The same wallet.
  */
-function _recoverFromTmpFile(wallet) {
+function _recoverFromTmpFile(wallet, file) {
   try {
-    fs.renameSync(_TMP_FILE, _WALLET_FILE);
+    fs.renameSync(`${file}.tmp`, file);
     log.warn(
       "[wallet] wallet.json was missing, empty or damaged: recovered the wallet from wallet.json.tmp, the whole copy a save writes first",
     );
@@ -191,11 +218,13 @@ function _recoverFromTmpFile(wallet) {
  * a save cut short left, and is removed.
  */
 function _loadFromDisk() {
-  let raw = _readWalletFile(_WALLET_FILE);
-  const fromTmp = raw === null ? _readWalletFile(_TMP_FILE) : null;
-  if (fromTmp !== null) raw = _recoverFromTmpFile(fromTmp);
-  else if (fs.existsSync(_TMP_FILE)) {
-    _removeTmpFile();
+  const file = walletFilePath();
+  const tmp = `${file}.tmp`;
+  let raw = _readWalletFile(file);
+  const fromTmp = raw === null ? _readWalletFile(tmp) : null;
+  if (fromTmp !== null) raw = _recoverFromTmpFile(fromTmp, file);
+  else if (fs.existsSync(tmp)) {
+    _removeTmpFile(tmp);
     log.info("[wallet] Removed wallet.json.tmp, left by a save cut short");
   }
   if (raw === null) return;
@@ -307,7 +336,7 @@ async function revealWallet(password) {
 function getStatus() {
   let fileExists = false;
   try {
-    fileExists = fs.existsSync(_WALLET_FILE);
+    fileExists = fs.existsSync(walletFilePath());
   } catch {
     /* */
   }
@@ -358,5 +387,6 @@ module.exports = {
   clearWallet,
   getAddress,
   hasWallet,
+  walletFilePath,
   _reloadFromDiskForTests,
 };

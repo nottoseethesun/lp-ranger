@@ -15,9 +15,11 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
+const path = require("path");
+const { spawnSync } = require("child_process");
 
 const config = require("../src/lib/config");
-const walletManager = require("../src/lib/wallet-manager");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 // ── Default values ────────────────────────────────────────────────────────────
 
@@ -89,20 +91,66 @@ describe("config default values", () => {
 
 // ── assertLiveModeReady ───────────────────────────────────────────────────────
 
-describe("assertLiveModeReady", () => {
-  it("does not throw when PRIVATE_KEY and RPC_URL are present", () => {
-    // assertLiveModeReady throws iff RPC_URL is missing OR
-    // (PRIVATE_KEY is missing AND no wallet file exists on disk).
-    const hasKey = !!config.PRIVATE_KEY || walletManager.hasWallet();
-    if (hasKey && config.RPC_URL) {
-      assert.doesNotThrow(() => config.assertLiveModeReady());
-    } else {
-      // Expected to throw — that's correct behaviour for missing config
-      assert.throws(
-        () => config.assertLiveModeReady(),
-        /Missing required configuration/i,
-      );
+/**
+ * What `assertLiveModeReady` says in a child process, which reads
+ * PRIVATE_KEY as config.js loads, so each case decides it there: left out
+ * unless `privateKey` names one, with the wallet file in a folder of the
+ * child's own, holding a wallet when `withWallet`. The child keeps the
+ * test runner's marker, so it reads no `.env`.
+ * @param {{privateKey?: string, withWallet?: boolean}} opts
+ * @returns {string}  "ready", or the first line of what it threw.
+ */
+function liveModeReadyInChild({ privateKey, withWallet = false }) {
+  const lib = (name) =>
+    JSON.stringify(path.join(__dirname, "..", "src", "lib", name));
+  const env = {
+    ...process.env,
+    WALLET_FILE_PATH: path.join(makeTestTempFolder("live-mode"), "wallet.json"),
+  };
+  delete env.PRIVATE_KEY;
+  if (privateKey !== undefined) env.PRIVATE_KEY = privateKey;
+  const importWallet = withWallet
+    ? `await require(${lib("wallet-manager")}).importWallet({
+         address: "0xAbCdEf0000000000000000000000000000000001",
+         privateKey: "0x" + "cd".repeat(32),
+         password: "pw",
+       });`
+    : "";
+  const script = `(async () => {
+    ${importWallet}
+    try {
+      require(${lib("config")}).assertLiveModeReady();
+      process.stdout.write("\\nSAYS=ready");
+    } catch (err) {
+      process.stdout.write("\\nSAYS=" + err.message.split("\\n")[0]);
     }
+  })();`;
+  const res = spawnSync(process.execPath, ["-e", script], {
+    env,
+    encoding: "utf8",
+  });
+  assert.strictEqual(res.status, 0, res.stderr);
+  // The answer follows the child's log lines, which share its stdout.
+  return res.stdout.match(/\nSAYS=(.*)$/)[1];
+}
+
+describe("assertLiveModeReady", () => {
+  it("passes with a key in PRIVATE_KEY and no wallet saved", () => {
+    assert.strictEqual(
+      liveModeReadyInChild({ privateKey: "0x" + "ab".repeat(32) }),
+      "ready",
+    );
+  });
+
+  it("passes with a wallet saved and no PRIVATE_KEY", () => {
+    assert.strictEqual(liveModeReadyInChild({ withWallet: true }), "ready");
+  });
+
+  it("refuses with neither, naming what is missing", () => {
+    assert.match(
+      liveModeReadyInChild({}),
+      /Missing required configuration for live-bot mode/,
+    );
   });
 
   it("exported assertLiveModeReady is a function", () => {

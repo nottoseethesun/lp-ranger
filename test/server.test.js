@@ -14,6 +14,18 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const http = require("http");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+
+/*-
+ *  Loading src/server.js runs its settings check, which ends the process
+ *  on a setting it refuses. With an empty folder for the operator's
+ *  copies, named before the server loads, it checks the shipped settings
+ *  alone: under `node --test` no `.env` is read, and bot-config.json and
+ *  the records are files of this process's own. So no choice of the
+ *  operator's can stop this run.
+ */
+process.env.LP_RANGER_USER_CONFIG_DIR = makeTestTempFolder("server-overrides");
+
 const { start, stop } = require("../src/server");
 const {
   isPaused,
@@ -22,7 +34,7 @@ const {
 const { getAllPositionBotStates } = require("../src/bot/position-states");
 const { isItOkayToStartAscan } = require("../src/bot/scan-state");
 
-// Production file protection is handled globally by scripts/check.sh
+// Production file protection is handled globally by scripts/check.js
 // (backup before tests, restore after). No per-test snapshot needed.
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────

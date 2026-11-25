@@ -23,7 +23,7 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
@@ -49,9 +49,14 @@ const LIVE = path.join(
 );
 
 describe("undirected config writes never reach the operator's file", () => {
-  it("is running where the redirect applies", () => {
-    /*- Guards the guard. Without this, every assertion below would pass
-     *  vacuously if Node stopped setting the variable. */
+  /*-
+   *  Asked before any case runs, since a failing hook runs none of them.
+   *  Without the runner's marker (the file run as a plain script, say),
+   *  the saves below would write the operator's bot-config.json, and
+   *  every assertion would pass vacuously if Node stopped setting the
+   *  variable.
+   */
+  before(() => {
     assert.notEqual(
       process.env.NODE_TEST_CONTEXT,
       undefined,

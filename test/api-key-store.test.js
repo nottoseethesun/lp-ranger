@@ -90,4 +90,8 @@ describe("the api-key store outside tests", () => {
     const named = path.join(os.tmpdir(), "somewhere-else", "api-keys.json");
     assert.equal(pathOutsideTests(named), named);
   });
+
+  it("takes a blank API_KEYS_FILE_PATH as naming none, as readEnv does", () => {
+    assert.equal(pathOutsideTests("   "), OPERATOR_FILE);
+  });
 });

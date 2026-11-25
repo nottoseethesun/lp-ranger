@@ -7,15 +7,18 @@
  * all-or-nothing save through wallet.json.tmp, and the wallet recovered
  * from that temp file when wallet.json is missing, empty or damaged.
  *
- * The wallet file is in a temp folder of this process's own, named
- * before the manager is required, so no test touches the operator's
- * wallet.json.
+ * The wallet file is in a temp folder of this process's own, named in
+ * `WALLET_FILE_PATH`, so no test touches the operator's wallet.json; and
+ * where the manager saves the wallet with none named, under `node --test`
+ * and outside it, asked in child processes.
  */
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 const WALLET_FILE = path.join(makeTestTempFolder("wallet"), "wallet.json");
@@ -282,5 +285,63 @@ describe("wallet-manager, a fresh start", () => {
     _reloadFromDiskForTests();
     assert.strictEqual(hasWallet(), false);
     assert.strictEqual(fs.existsSync(TMP_FILE), false);
+  });
+});
+
+/**
+ * Where the wallet manager saves the wallet, asked in a child process run
+ * from an empty folder of its own, so the install's wallet is never read:
+ * with the test runner's marker unless `asInstall`, and `WALLET_FILE_PATH`
+ * set to `named`, or unset.
+ * @param {{asInstall?: boolean, named?: string}} [opts]
+ * @returns {{file: string, cwd: string, pid: string}}
+ */
+function walletFileInChild({ asInstall = false, named } = {}) {
+  const src = JSON.stringify(
+    path.join(__dirname, "..", "src", "lib", "wallet-manager"),
+  );
+  const cwd = makeTestTempFolder("wallet-cwd");
+  const env = { ...process.env };
+  delete env.WALLET_FILE_PATH;
+  if (asInstall) delete env.NODE_TEST_CONTEXT;
+  if (named !== undefined) env.WALLET_FILE_PATH = named;
+  const res = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `process.stdout.write("\\nFILE=" + require(${src}).walletFilePath() + "\\nPID=" + process.pid)`,
+    ],
+    { cwd, env, encoding: "utf8" },
+  );
+  assert.strictEqual(res.status, 0, res.stderr);
+  const [, file, pid] = res.stdout.match(/\nFILE=(.*)\nPID=(\d+)$/);
+  return { file, cwd, pid };
+}
+
+describe("where the wallet is saved", () => {
+  it("is a temp folder of the test process's own under node --test", () => {
+    const { file, pid } = walletFileInChild();
+    const dir = path.dirname(file);
+    assert.strictEqual(path.dirname(dir), os.tmpdir());
+    assert.ok(path.basename(dir).startsWith(`lp-ranger-test-wallet-${pid}-`));
+    assert.strictEqual(path.basename(file), "wallet.json");
+  });
+
+  it("is app-config/user-configurable/wallet.json outside tests", () => {
+    const { file, cwd } = walletFileInChild({ asInstall: true });
+    assert.strictEqual(
+      file,
+      path.join(cwd, "app-config", "user-configurable", "wallet.json"),
+    );
+  });
+
+  it("is the file WALLET_FILE_PATH names, when it names one", () => {
+    const named = path.join(os.tmpdir(), "somewhere-else", "wallet.json");
+    assert.strictEqual(walletFileInChild({ named }).file, named);
+  });
+
+  it("takes a blank WALLET_FILE_PATH as naming none, as readEnv does", () => {
+    const { file, pid } = walletFileInChild({ named: "   " });
+    assert.ok(file.includes(`lp-ranger-test-wallet-${pid}-`), file);
   });
 });

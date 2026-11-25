@@ -160,7 +160,8 @@ function _prune403Buffer(now) {
  */
 function handleCsrf(req, res, jsonResponse) {
   const { method, url } = req;
-  if (method === "GET" && url === "/api/csrf-token") {
+  // Matched on the path alone, as the route table matches its routes.
+  if (method === "GET" && url.split("?")[0] === "/api/csrf-token") {
     jsonResponse(res, 200, createToken());
     return true;
   }

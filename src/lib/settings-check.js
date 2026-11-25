@@ -42,7 +42,7 @@ const {
   settingsFileProblems,
   agreementProblems,
 } = require("./settings-file-rules");
-const { envProblems, envFileProblems } = require("./env-settings");
+const { envProblems, envFileProblems, envFilePath } = require("./env-settings");
 const {
   botConfigProblems,
   positionRecordsProblems,
@@ -136,7 +136,9 @@ function _resolveFiles(shippedDir, userDir, problems) {
  *   unless a test points elsewhere.
  * @param {string} [o.shippedDir]     The shipped settings files.
  * @param {string} [o.userDir]        The operator's copies of them.
- * @param {string} [o.envFile]        The `.env` file.
+ * @param {string|null} [o.envFile]   The `.env` file, the one the app
+ *   reads (`envFilePath`, none under `node --test`) unless a test names
+ *   another; null for none.
  * @param {object} [o.env]            The environment, over `.env`'s values
  *   as it is when the app loads `.env`.
  * @param {string} [o.botConfigFile]  bot-config.json.
@@ -152,7 +154,7 @@ function _resolveFiles(shippedDir, userDir, problems) {
 function resolveSettings({
   shippedDir = DEFAULTS_DIR,
   userDir = USER_DIR,
-  envFile = path.resolve(".env"),
+  envFile = envFilePath(),
   env = process.env,
   botConfigFile = botConfigPath(),
   recordsFile = positionRecordsPath(),
@@ -160,7 +162,7 @@ function resolveSettings({
   const problems = [];
   const { shipped, resolved } = _resolveFiles(shippedDir, userDir, problems);
   problems.push(..._strayFiles(userDir));
-  const envText = _read(envFile);
+  const envText = envFile === null ? undefined : _read(envFile);
   // As the app loads `.env`: what the environment already sets stands.
   const fileEnv = envText === undefined ? {} : dotenv.parse(envText);
   return {

@@ -199,7 +199,7 @@ Default/vanilla config values come from `.env.example` and the shipped JSON file
 
 ### Temp folders
 
-A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so are the scan-cache folder and the api-key store's folder (`src/lib/api-key-store.js`, when `API_KEYS_FILE_PATH` names no file). A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
+A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so are the scan-cache folder, the api-key store's folder (`src/lib/api-key-store.js`, when `API_KEYS_FILE_PATH` names no file) and the wallet's (`src/lib/wallet-manager.js`, when `WALLET_FILE_PATH` names none). A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
 
 A process stopped outright (Ctrl+C, kill -9) cannot remove its folders, so `npm run check` removes them before its tests start: each `lp-ranger-test-` folder whose process, named in the folder's name, is no longer running. A running process's folder is left alone, so a test run under way elsewhere keeps its files.
 
@@ -210,7 +210,7 @@ Why the system's temp directory and not the project's `tmp/`: anything left in t
 A test of a configured value runs on a value other than the shipped one. At the shipped value, code with that figure typed in passes too. There are three ways to move one, each set up before anything under `src/lib/` loads, since the loader reads its folders' paths as it loads:
 
 - **An operator's override.** Write the file into a `makeTestTempFolder` folder and point `LP_RANGER_USER_CONFIG_DIR` at it. Most tests do this.
-- **`.env`.** Set the variable in `process.env`; dotenv leaves a set variable alone.
+- **`.env`.** Set the variable in `process.env`. Under `node --test` no `.env` file is read (`envFilePath`, `src/lib/env-settings.js`), so a test sees only what it sets.
 - **A copy of the shipped folder.** For what reads the shipped files alone, such as the User Manual's build, or a test of how a reader copes with a broken shipped file: `useShippedDefaultsCopy()` (`test/helpers/shipped-defaults-copy.js`) copies the folder and points `LP_RANGER_DEFAULTS_DIR` at the copy, and `changeShippedCopy` changes values in it. `useMovedHelpSettings()` (`test/helpers/help-settings-moved.js`) moves every value the help quotes. A test never writes the tracked file itself; `test/tests-leave-shipped-files-alone.test.js` fails one that does.
 
 A test that checks the shipped values themselves, such as the manual on disk, reads the tracked files and moves nothing.

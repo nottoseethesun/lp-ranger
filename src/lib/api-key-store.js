@@ -39,19 +39,21 @@ const {
   _PBKDF2_ITERATIONS,
 } = require("./key-store");
 const { makeTestTempFolder } = require("./test-temp-folders");
+const { readEnv } = require("./env-settings");
 
 /** This test process's file, made the first time one is asked for. */
 let _testFile = null;
 
 /**
- * Where api-keys.json is: the file `API_KEYS_FILE_PATH` names, else, under
- * `node --test`, one in a temp folder of the test process's own, else
- * `app-config/user-configurable/api-keys.json`. Asked on every read and
- * write.
+ * Where api-keys.json is: the file `API_KEYS_FILE_PATH` names, read
+ * through `readEnv`, else, under `node --test`, one in a temp folder of
+ * the test process's own, else `app-config/user-configurable/api-keys.json`.
+ * Asked on every read and write.
  * @returns {string}
  */
 function apiKeysPath() {
-  if (process.env.API_KEYS_FILE_PATH) return process.env.API_KEYS_FILE_PATH;
+  const named = readEnv("API_KEYS_FILE_PATH");
+  if (named !== undefined) return named;
   if (process.env.NODE_TEST_CONTEXT === undefined)
     return path.join(
       process.cwd(),

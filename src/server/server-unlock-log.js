@@ -78,6 +78,11 @@ function logUnlockRefused(reason) {
   log.warn(`${NS} POST /api/wallet/unlock refused — %s`, reason);
 }
 
+/** Log the 404 path: no wallet is saved, so there is nothing to unlock. */
+function logUnlockNoWallet() {
+  log.warn(`${NS} POST /api/wallet/unlock refused — no wallet is saved`);
+}
+
 module.exports = {
   logUnlockRequest,
   logUnlockMissing,
@@ -85,4 +90,5 @@ module.exports = {
   logUnlockSuccess,
   logUnlockFail,
   logUnlockRefused,
+  logUnlockNoWallet,
 };

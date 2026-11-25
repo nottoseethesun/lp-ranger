@@ -22,7 +22,9 @@
  * "Syncing…", refused its Rebalance Now and Compound Now, and hid it from
  * the one-position-per-pool check until a restart.
  *
- * A wrong password is answered 401 and changes nothing.
+ * A wrong password is answered 401 and changes nothing. With no wallet
+ * saved there is nothing to unlock: the request is answered 404, saying
+ * so, and nothing is decrypted.
  *
  * While a wallet import is under way, an unlock is refused (409) and
  * changes nothing. It is asked again once the decrypt is done, since an
@@ -35,12 +37,16 @@
 const { log } = require("../lib/log");
 const unlockLog = require("./server-unlock-log");
 
+// The answer to an unlock with no wallet saved.
+const _NO_WALLET = "There is no wallet to unlock. Import one first.";
+
 /**
  * Build the unlock route.
  *
  * @param {object} deps
- * @param {object} deps.walletManager  Decrypts the wallet
- *   (`revealWallet(password)`), throwing on a wrong password.
+ * @param {object} deps.walletManager  Says whether a wallet is saved
+ *   (`hasWallet`) and decrypts it (`revealWallet(password)`), throwing on
+ *   a wrong password.
  * @param {object} deps.bot  The bot's interface (src/bot/bot-interface.js):
  *   it says whether it may take a key now (`refusalToTakeKey`), is handed
  *   the decrypted key (`setPrivateKey`, `hasPrivateKey`) and starts the
@@ -78,6 +84,10 @@ function createUnlockHandler(deps) {
     }
     unlockLog.logUnlockAttempt(String(body.password).length);
     if (_refused(res)) return;
+    if (!walletManager.hasWallet()) {
+      unlockLog.logUnlockNoWallet();
+      return jsonResponse(res, 404, { ok: false, error: _NO_WALLET });
+    }
     const wasLocked = !bot.hasPrivateKey();
     let privateKey;
     try {

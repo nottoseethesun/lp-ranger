@@ -22,9 +22,16 @@
  * A variable unset, or set to nothing but spaces, sets no value: the
  * JSON setting it overrides, or the default, stands.
  *
+ * Which `.env` file is read is decided here too (`envFilePath`), and
+ * `loadEnvFile` loads it: the install's, in the working directory, and
+ * none under `node --test`, so no test runs on the operator's choices. A
+ * test that needs a variable sets it in `process.env`.
+ *
  * The private key and the wallet password are never quoted back.
  */
 
+const path = require("path");
+const dotenv = require("dotenv");
 const validator = require("validator");
 const { boundAt } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
@@ -333,4 +340,32 @@ function envFileProblems(text) {
   return problems;
 }
 
-module.exports = { ENV_SETTINGS, readEnv, envProblems, envFileProblems };
+/**
+ * The `.env` file the app reads: the install's, in the working directory,
+ * or none under `node --test` (Node sets `NODE_TEST_CONTEXT` in every test
+ * process), so a test never reads the operator's. Asked each time.
+ * @returns {string|null}  Its path, or null for none.
+ */
+function envFilePath() {
+  if (process.env.NODE_TEST_CONTEXT !== undefined) return null;
+  return path.resolve(".env");
+}
+
+/**
+ * Load the `.env` file the app reads (`envFilePath`) into `process.env`.
+ * As dotenv does, it leaves a variable the environment already sets as it
+ * is, and a missing file loads nothing.
+ */
+function loadEnvFile() {
+  const file = envFilePath();
+  if (file !== null) dotenv.config({ path: file });
+}
+
+module.exports = {
+  ENV_SETTINGS,
+  readEnv,
+  envProblems,
+  envFileProblems,
+  envFilePath,
+  loadEnvFile,
+};
