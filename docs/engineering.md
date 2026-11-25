@@ -397,6 +397,31 @@ waited. So no loop starts signing with the key of a wallet the import has
 swapped out, and no such key is left behind for the new wallet's
 positions.
 
+Other dashboard tabs are told of the change (the user's design,
+2026-11-25). A tab still holding the old wallet can do nothing right for
+it, so it reloads. Once a wallet has replaced another, every
+`GET /api/status` answer carries `walletJustChanged`, naming the new
+wallet, until the next change (`src/server/wallet-change.js`, worked out
+from the wallet each answer reports). The server remembers the wallet a
+clear removed, so a clear followed by an import counts as a change. A tab
+reloads when it holds a wallet other than the new one
+(`src/client/web/js/dashboard-wallet-change.js`):
+
+- only once `importingWallet` is false, so it never meets the new wallet
+  before the server holds its key, which would show the unlock dialog;
+- at the dashboard's start address, since its own address names the old
+  wallet and would open the wallet dialog;
+- never while it holds no wallet, so nothing typed into its dialog is
+  lost;
+- never for its own import. The server takes the new wallet before it
+  answers the import, so a status answer naming it can come first; the
+  tab making the import ignores it until it has taken in the answer.
+
+The answer keeps the change, rather than sending it once, because a
+browser slows the polls of a tab in the background, and such a tab would
+miss a single answer. Kept, it reloads no tab twice: a reloaded tab takes
+the server's wallet, and a tab opened since holds it already.
+
 Each position then runs the same sequence as a fresh one, with two
 differences that account for the speed:
 
@@ -3174,11 +3199,13 @@ One home for each kind of data:
   file as it was, and a mode the operator set stays. A crash or a faulty
   file system can leave `wallet.json` missing, empty or damaged beside
   a whole `wallet.json.tmp`. Then the wallet is read from that copy, and
-  the programs that own the wallet (the server, the headless bot and
-  `scripts/import-wallet.js`) put the copy back as `wallet.json` as they
-  start, with a warning in the log. They also remove a copy left beside
-  a good `wallet.json`. A util tool only reads. `npm run reset-wallet`
-  removes both files. Under `node --test` the wallet file is in the test
+  the programs that own the wallet (the server, once it holds its port,
+  the headless bot and `scripts/import-wallet.js`) put the copy back as
+  `wallet.json` as they start, with a warning in the log. This entry is
+  the one home of how the wallet file is saved and put back; the other
+  docs point here. They also remove a copy left beside
+  a good `wallet.json`. A util tool only reads. `DELETE /api/wallet` and
+  `npm run reset-wallet` remove both files. Under `node --test` the wallet file is in the test
   process's own temp folder, unless the `WALLET_FILE_PATH` environment
   variable names another.
 - **`user-configurable/api-keys.json`** — Runtime, gitignored.
@@ -3300,19 +3327,16 @@ where a file could be lost to an interrupted move.
 under the two operator-state directories — `app-config/user-configurable/`
 and `app-data/` — before running tests, wipes them (preserving each
 dir's tracked `README.md`), runs the full test suite, then restores the
-originals in a `finally`, and on SIGINT, SIGTERM or SIGHUP. This prevents test-created fixtures from
+originals in a `finally`, which an interrupt still reaches: SIGINT, SIGTERM and SIGHUP are caught until then. This prevents test-created fixtures from
 ever clobbering live user state. The shipped-defaults directory
 (`app-config/app-defaults-for-user-configurable/`, which holds the
 tracked `api-keys.example.json` format template alongside the tunable
 JSON defaults) is not touched at all — it's tracked repo content.
 
-Under `node --test`, bot-config.json, the records file, the rebalance
-log, the scan caches, api-keys.json and wallet.json each resolve to a
-temp folder of the test process's own, and no `.env` is read (`envFilePath`,
-`src/lib/env-settings.js`). A test that needs files of its choosing
-passes an explicit `dir` to `loadConfig(dir)` / `saveConfig(cfg, dir)`
-(`bot-config-v2`), or names one in `WALLET_FILE_PATH` or
-`API_KEYS_FILE_PATH`, which are asked on every read and write. After the tests, the gate checks
+Under `node --test`, the operator's files a test could write are files
+of the test process's own, and no `.env` is read. Which files, the two
+that are not redirected, and how a test names files of its choosing are
+in docs/claude/CLAUDE-TESTING.md § "Temp folders". After the tests, the gate checks
 that `app-config/user-configurable/`, `app-data/` and the shipped
 settings folder hold exactly what they held before them, and fails the
 run otherwise (the "Folders kept" row; `scripts/_folder-snapshot.js`).
@@ -3524,15 +3548,28 @@ test/report-artifacts/
 │   │                              (CI appends it to $GITHUB_STEP_SUMMARY)
 │   ├── tests-summary.txt         Test rollup: slowest, failures, coverage
 │   ├── eslint-timing.txt         ESLint TIMING=1 slowest-rules capture
-│   └── markdownlint.txt          markdownlint-cli2 stylish text output
+│   ├── markdownlint.txt          markdownlint-cli2 stylish text output
+│   ├── prettier-js.txt           prettier --check output for the JS files
+│   ├── prettier-json.txt         prettier --check output for the JSON files
+│   ├── prettier-yaml.txt         prettier --check output for the YAML files
+│   └── actionlint.txt            github-actionlint output for the workflows
 └── raw-data/                 Machine-readable tool outputs
     ├── eslint.json               eslint --format json-with-metadata
+    ├── eslint-config.json        eslint --print-config, the rules in force
     ├── stylelint.json            stylelint --formatter json
+    ├── stylelint-config.json     stylelint --print-config, the rules in force
     ├── html-validate.json        html-validate -f json
     ├── npm-audit.json            npm audit --json
     ├── security-lint.json        eslint -c eslint-security.config.js --format json
+    ├── security-lint-config.json The security lint's rules in force (--print-config)
     ├── secretlint.json           secretlint --format json
+    ├── lint-svg.json             scripts/lint-svg.js --json
+    ├── knip.json                 knip's unused files, as json
+    ├── unused-src-modules.json   scripts/check-unused-src-modules.js --json
+    ├── openapi-sync.json         scripts/check-openapi-sync.js --json
     ├── lcov.info                 lcov coverage report of the test run
+    ├── kept-folders.json         What the tests changed in the install's
+    │                              folders, or why they were not compared
     └── exit-codes.json           Per-tool exit codes captured by check.js
 ```
 
@@ -3811,12 +3848,15 @@ What happens when the process starts, in order:
    nothing for a long-running scan and only weakens a slow-client
    guard.
 8. **If run directly (`require.main === module`)**, the server first
-   reads the shutdown timings and empties the previous run's error log,
-   then:
+   reads the shutdown timings, then:
    1. `start()` calls `server.listen(PORT, HOST)` and logs the
       blockchain name, NFT factory, wallet address (or `(not loaded)`),
       dashboard URL, `/api/status` URL, port, and `/health` URL.
-   2. As soon as it is listening, it writes `tmp/lp-ranger.pid` (removed
+   2. As soon as it is listening, before it reads a request, it deletes
+      the previous run's error log and puts the wallet's files right
+      (`settleWalletFile`, src/lib/wallet-manager.js). A second start,
+      which fails on the port, never gets this far, so it changes
+      neither file under the server already running. Then it writes `tmp/lp-ranger.pid` (removed
       by an `exit` hook however the process ends) and installs the
       `SIGINT` and `SIGTERM` handler. Both come before the wallet key is
       resolved, which can wait on a prompt, so a signal during a slow
@@ -3887,16 +3927,17 @@ answers some refusals itself. A malformed request gets 400: the
 unlock's missing password, a malformed key asked of
 `GET /api/is-position-managed`, and an api-key save missing its service
 or key. A save with no password gets 400 too, the api keys' or the
-Telegram bot token's and chat id's, when no unlock this session holds
-one. So does a Telegram save whose event choices are not valid, and a
+Telegram bot token's and chat id's, when the server holds no wallet
+password this session: none came with an unlock, the launch's key step
+or an import. So does a Telegram save whose event choices are not valid, and a
 Telegram test while no bot token and chat id are held this session. The
 unlock answers a wrong password 401, and 404 when no wallet is saved to
 unlock. The wallet's own steps answer 409: the import while the app may
 start nothing (a stop, a start-up or another import under way), and the
 unlock while an import is under way. An error a route in the route
 table throws becomes 400, or 403 for a wrong password, in
-`handleRequest`. The closed position's history, matched after the
-table, is outside that catch: an error it throws reaches the server's
+`handleRequest`. The closed position's history is matched after the
+table, outside that catch. An error it throws reaches the server's
 error guard (`src/server/server-error-guard.js`), which ends the server
 for any error but an rpc timeout, network or server error. The full
 route surface, the csrf token included, is

@@ -72,7 +72,7 @@ Module.prototype.require = function (id) {
   return _origRequire.apply(this, arguments);
 };
 
-const config = require("../src/lib/config");
+const { useRebalanceLog } = require("./helpers/rebalance-log");
 const { getPositionHistory } = require("../src/bot/position-history");
 
 /**
@@ -103,13 +103,12 @@ function _installOfflineFetchStub() {
 }
 
 describe("getPositionHistory", () => {
-  let origLogFile = null;
+  let restoreLog = null;
   let origFetch = null;
 
   before(() => {
     fs.mkdirSync(TMP, { recursive: true });
-    origLogFile = config.LOG_FILE;
-    config.LOG_FILE = "tmp/test-rebalance-log.json";
+    restoreLog = useRebalanceLog("tmp/test-rebalance-log.json");
     origFetch = globalThis.fetch;
     globalThis.fetch = _installOfflineFetchStub();
 
@@ -146,7 +145,7 @@ describe("getPositionHistory", () => {
     } catch {
       /* */
     }
-    if (origLogFile !== null) config.LOG_FILE = origLogFile;
+    if (restoreLog !== null) restoreLog();
     if (origFetch) globalThis.fetch = origFetch;
     Module.prototype.require = _origRequire;
   });

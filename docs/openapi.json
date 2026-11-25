@@ -139,6 +139,21 @@
                         "importingWallet": {
                           "type": "boolean",
                           "description": "Whether a wallet import is under way, from its first step until the start-up of the new wallet's saved positions has finished. A Manage and an unlock are refused meanwhile, and the dashboard's badge reads Syncing."
+                        },
+                        "walletJustChanged": {
+                          "type": "object",
+                          "nullable": true,
+                          "description": "Null until the server's wallet is replaced by another, a clear followed by an import included; then, in every answer until the next change, the new wallet. A dashboard tab still holding another wallet reloads at the dashboard's start address once importingWallet is false.",
+                          "properties": {
+                            "reloadIfOnPriorWallet": {
+                              "type": "boolean",
+                              "description": "Whether a tab holding an earlier wallet reloads."
+                            },
+                            "currentWallet": {
+                              "type": "string",
+                              "description": "The new wallet's address."
+                            }
+                          }
                         }
                       }
                     },
@@ -689,6 +704,14 @@
                   "tokenId": {
                     "type": "string",
                     "description": "NFT token ID to manage"
+                  },
+                  "contract": {
+                    "type": "string",
+                    "description": "The position manager the NFT belongs to: this server's own, in any letter case, which is also the default when none is named. Another is refused (400)."
+                  },
+                  "forceRebalance": {
+                    "type": "boolean",
+                    "description": "True for the re-open of a closed position: its first poll makes the rebalance that mints fresh liquidity, which the dashboard's re-open dialog asks for."
                   }
                 }
               }

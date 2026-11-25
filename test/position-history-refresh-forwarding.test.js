@@ -28,10 +28,10 @@ const path = require("node:path");
 let getPositionHistory;
 let priceCalls;
 let _tmpDir;
-let _origLogFile;
+let _restoreLog;
 
 const _origRequire = Module.prototype.require;
-const config = require("../src/lib/config");
+const { useRebalanceLog } = require("./helpers/rebalance-log");
 
 const POSITION = Object.freeze({
   token0: "0x" + "1".repeat(40),
@@ -80,8 +80,7 @@ before(() => {
   fs.mkdirSync(_tmpDir, { recursive: true });
   const logPath = path.join(_tmpDir, "rebalance-log.json");
   fs.writeFileSync(logPath, JSON.stringify(EVENTS), "utf8");
-  _origLogFile = config.LOG_FILE;
-  config.LOG_FILE = logPath;
+  _restoreLog = useRebalanceLog(logPath);
 
   Module.prototype.require = function (id) {
     if (id === "./price-fetcher") {
@@ -125,7 +124,7 @@ before(() => {
 after(() => {
   Module.prototype.require = _origRequire;
   delete require.cache[require.resolve("../src/bot/position-history")];
-  config.LOG_FILE = _origLogFile;
+  _restoreLog();
   fs.rmSync(_tmpDir, { recursive: true, force: true });
 });
 

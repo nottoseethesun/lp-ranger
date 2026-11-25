@@ -25,6 +25,10 @@ import { ethers } from "./ethers-adapter.js";
 import * as unlockLog from "./dashboard-unlock-log.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
 import { withUiSettings } from "./dashboard-ui-settings.js";
+import {
+  noteWalletImportStarted,
+  noteWalletImportEnded,
+} from "./dashboard-wallet-change.js";
 
 // ── Late-bound deps ───────────────────────────────────────
 
@@ -359,14 +363,28 @@ export async function confirmWallet() {
     return;
   }
 
-  const ok = await sendWalletToServer(p, password);
+  /*-
+   *  The server takes this wallet before it answers, so a status answer
+   *  naming it can come first. It is this tab's own import, not another
+   *  tab's change to reload for (dashboard-wallet-change.js), until the
+   *  answer is in and the tab holds the wallet.
+   */
+  noteWalletImportStarted();
+  let ok;
+  try {
+    ok = await sendWalletToServer(p, password);
+    if (ok) {
+      wallet.address = p.address;
+      wallet.source = p.source;
+    }
+  } finally {
+    noteWalletImportEnded();
+  }
   if (!ok) {
     alert("Failed to sync wallet to server. " + "Check the activity log.");
     return;
   }
 
-  wallet.address = p.address;
-  wallet.source = p.source;
   _walletUnlocked = true;
   delete wallet._pending;
 

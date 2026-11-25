@@ -17,7 +17,7 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const config = require("../src/lib/config");
+const { useRebalanceLog } = require("./helpers/rebalance-log");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { poolKey } = require("../src/lib/pool-key");
 const { buildBotParts, createBot } = require("../src/bot/bot-interface");
@@ -53,7 +53,7 @@ const atNoonOnTheLogsDay = (t) =>
   t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 10, 23, 12) });
 
 describe("the bot's parts", () => {
-  const savedLogFile = config.LOG_FILE;
+  let restoreLog = null;
   before(() => {
     const logFile = path.join(makeTestTempFolder("bot-parts"), "log.json");
     fs.writeFileSync(
@@ -65,10 +65,10 @@ describe("the bot's parts", () => {
         entry(B, "2026-11-23T11:00:00.000Z"),
       ]),
     );
-    config.LOG_FILE = logFile;
+    restoreLog = useRebalanceLog(logFile);
   });
   after(() => {
-    config.LOG_FILE = savedLogFile;
+    restoreLog();
   });
 
   it("count each pool's rebalances today from the rebalance log", (t) => {

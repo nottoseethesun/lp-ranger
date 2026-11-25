@@ -5,15 +5,16 @@
  * @description The programs that own the wallet put its files right as
  *   they start (`settleWalletFile`, src/lib/wallet-manager.js): the copy a
  *   save cut short left becomes wallet.json again, or is removed. A util
- *   tool, which only loads the module, never does (test/wallet-manager.test.js).
+ *   tool that loads the module never does (test/wallet-manager.test.js).
  *
  *   The import script and the headless bot are run as they are started,
  *   each in a child process from a folder of its own, over a wallet file
  *   in a temp folder that is empty beside a whole copy; each stops on its
  *   own soon after its start step. The child keeps the test runner's
- *   marker, so it reads no `.env`. The server keeps running once started,
- *   so its source is checked instead: the start step comes before it
- *   listens.
+ *   marker, so it reads no `.env`, and takes no key from the shell. The
+ *   server keeps running once started, so its source is checked instead:
+ *   the start step comes once it holds its port, before it reads a
+ *   request, so a second start, which fails on the port, never takes it.
  */
 
 const { describe, it } = require("node:test");
@@ -57,6 +58,14 @@ function startOverACopy(entry, env = {}) {
       ...process.env,
       WALLET_FILE_PATH: file,
       LP_RANGER_USER_CONFIG_DIR: makeTestTempFolder("wallet-settle-overrides"),
+      /*-
+       *  No key from the shell, and no transaction even with one: the
+       *  bot takes PRIVATE_KEY before the wallet, and would run live on
+       *  it. A dry run still reads the key, so the bot still stops on
+       *  the wrong password.
+       */
+      PRIVATE_KEY: "",
+      DRY_RUN: "true",
       ...env,
     },
     encoding: "utf8",
@@ -86,13 +95,18 @@ describe("the programs that own the wallet, as they start", () => {
     assert.deepEqual(run.after, [SAVED, null]);
   });
 
-  it("the server puts the files right before it starts listening", () => {
+  it("the server puts the files right once it holds its port", () => {
     const src = fs.readFileSync(path.join(ROOT, "src", "server.js"), "utf8");
     const main = src.indexOf("if (require.main === module) {");
-    const settle = src.indexOf("walletManager.settleWalletFile();", main);
     const listen = src.indexOf("start()", main);
+    // The first step once listening: a plain function, so nothing waits first.
+    const up = src.indexOf(".then(() => {", listen);
+    const pid = src.indexOf("writePidFile();", up);
+    const settle = src.indexOf("walletManager.settleWalletFile();", main);
+    const reset = src.indexOf("resetErrorLog();", main);
     assert.ok(main > 0, "the server's main block");
-    assert.ok(settle > main, "the start step is in the main block");
-    assert.ok(settle < listen, "and comes before start()");
+    assert.ok(listen > main && up > listen, "start(), then the step after");
+    assert.ok(settle > up && settle < pid, "the start step opens that step");
+    assert.ok(reset > up && reset < pid, "and so does the error log's reset");
   });
 });

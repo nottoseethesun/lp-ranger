@@ -51,7 +51,8 @@ const _decimalsCache = new Map();
  */
 function _readRebalanceLog() {
   try {
-    const raw = fs.readFileSync(path.resolve(config.LOG_FILE), "utf8");
+    const logPath = path.resolve(config.rebalanceLogPath());
+    const raw = fs.readFileSync(logPath, "utf8");
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {

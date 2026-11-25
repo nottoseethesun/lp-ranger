@@ -448,8 +448,9 @@ exits with that error; the headless bot (`npm run bot`) does the same.
   rotated.
 - When rotating a password, run `npm run reset-wallet` rather than
   editing `.env` by hand — the script scrubs the `WALLET_PASSWORD=`
-  line and deletes `app-config/user-configurable/wallet.json` in one
-  step, so the next restart forces a fresh import. Have the wallet's
+  line and deletes `app-config/user-configurable/wallet.json`, and the
+  copy a save writes first, in one step, so the next restart forces a
+  fresh import. Have the wallet's
   seed phrase or private key at hand before you run it: the import
   needs one of them. The third-party API keys stay encrypted under the
   old password, which the new one cannot open, so enter them again in
@@ -765,12 +766,10 @@ Every `fs.readFileSync` / `fs.writeFileSync` call in `src/lib/` resolves
 its path via `path.join(process.cwd(), CONSTANT)` — no user-controlled
 path component ever reaches the filesystem layer. Atomic writes
 (`.tmp` + `rename`) prevent partial-file corruption from an interrupted
-shutdown. `wallet.json` also flushes its temp file to disk and gives it
-the old file's mode before the rename, so a `chmod 600` stays. When
-`wallet.json` is missing, empty or damaged, the wallet is read from a
-whole `wallet.json.tmp`, and the server, the headless bot and the
-import script put that copy back as they start; a util tool only reads
-(`src/lib/wallet-manager.js`). The static-file serving guard (described in **Path Traversal
+shutdown. A save of `wallet.json` keeps an operator's `chmod 600`; how
+it is saved, and put back from its save's copy after a crash, is in
+docs/engineering.md, under `wallet.json` in "The app-config
+Directory". The static-file serving guard (described in **Path Traversal
 in Static Serving** above) provides the equivalent protection on the
 inbound side.
 
@@ -1132,8 +1131,8 @@ documenting why the deviation is intentional. Current exceptions:
 | `scripts/cache-bust.js` | 25 | `security/detect-unsafe-regex` | Input is the app's own `src/client/web/*.html` pages, not user-supplied |
 | `scripts/cache-bust.js` | 51 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
 | `scripts/check-report-parse.js` | 283 | `security/detect-unsafe-regex` | Input is deterministic TAP v14 from `node --test` |
-| `scripts/import-wallet.js` | 88 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
-| `util/bookkeeping/moralis-key.js` | 164 | `security/detect-possible-timing-attacks` | Comparing two strings the user typed, to confirm one, not verifying a secret |
+| `scripts/import-wallet.js` | 101 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
+| `util/bookkeeping/moralis-key.js` | 179 | `security/detect-possible-timing-attacks` | Comparing two strings the user typed, to confirm one, not verifying a secret |
 
 Whole files are never excluded from linting. Every exception is a
 single `eslint-disable-next-line` comment. It sits on the exact line
@@ -1264,12 +1263,8 @@ exits. A test that creates a stub config or keyfile therefore never
 clobbers live user state: one that believed it had written to
 `app-config/user-configurable/wallet.json` was writing where the live file
 had been wiped, and the original comes back afterwards. Outside the gate,
-under `node --test`, the wallet, the api keys, bot-config.json, the
-records, the rebalance log and the scan caches are each the test
-process's own files, and no `.env` is read. One thing is not
-redirected: the folder of the operator's copies of the settings files.
-The gate fails a
-run whose tests changed `app-config/user-configurable/`, `app-data/` or
-the shipped settings. Tests that need explicit paths instead use the
-`WALLET_FILE_PATH` / `API_KEYS_FILE_PATH` environment variables or pass
-a `dir` argument to `loadConfig` / `saveConfig` directly.
+under `node --test`, the operator's files a test could write are the
+test process's own, and no `.env` is read; docs/claude/CLAUDE-TESTING.md
+§ "Temp folders" lists them, the two that are not redirected, and how a
+test names paths of its own. The gate fails a run whose tests changed
+`app-config/user-configurable/`, `app-data/` or the shipped settings.

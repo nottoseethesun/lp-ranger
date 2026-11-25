@@ -265,11 +265,15 @@ function noteRpcOutcome(provider, ok) {
 }
 
 /**
- * Boot-time reachability probe. Asks each endpoint in order for its block
- * number and settles on the first that answers: when that is not the
- * first endpoint, it engages the sticky window on it (`_engageFailoverTo`),
- * so subsequent reads (via `getManagedReadProvider`) and writes go to the
- * endpoint the probe settled on. It walks the list itself, never through
+ * Reachability probe, run each time a shared signer is built: at boot, at
+ * the first unlock after a dashboard-only start, and after a wallet
+ * import's reset. Asks each endpoint in order for its block number and
+ * stops at the first that answers. When that is a later endpoint, it
+ * engages the sticky window on it (`_engageFailoverTo`), so reads (via
+ * `getManagedReadProvider`) and writes go there. When the first endpoint
+ * answers, selection is left as it is: a sticky window already engaged
+ * stays in force until it ends, while the log names the first endpoint,
+ * the one that answered. It walks the list itself, never through
  * `failoverToNextRPC`, so it holds nothing for the all-endpoints-down
  * pause.
  *

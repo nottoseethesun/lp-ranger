@@ -5,7 +5,8 @@
  * Factory for the `GET /api/status` route handler.  Extracted from
  * `server.js` to keep that file under the 500-line cap.  Pure module —
  * no module-level state; reads deps via the closure built in
- * `createApiStatusHandler({...})` exactly once at boot.
+ * `createApiStatusHandler({...})` exactly once at boot, which also holds
+ * the tracker of the server's wallet changes (src/server/wallet-change.js).
  *
  * The handler returns `{ global, positions }`. What the bot knows of
  * itself, the `positions` map among it (settings + bot state +
@@ -20,6 +21,7 @@ const path = require("path");
 const { configuredErrorLogPath } = require("../lib/error-log");
 const { readUiDefaults } = require("../lib/ui-defaults");
 const { getActiveLogFilePath } = require("../lib/log-file");
+const { createWalletChangeTracker } = require("./wallet-change");
 
 /**
  * The file the server is logging to, relative to where it runs, or null
@@ -55,6 +57,7 @@ function createApiStatusHandler(deps) {
     moralisEnabledIn,
     jsonResponse,
   } = deps;
+  const walletChange = createWalletChangeTracker();
 
   return async function handleApiStatus(_req, res) {
     const posDefaults = {
@@ -65,9 +68,17 @@ function createApiStatusHandler(deps) {
       impermanentLossGuardPct: config.IMPERMANENT_LOSS_GUARD_PCT,
     };
     const report = await bot.statusReport(posDefaults);
+    const walletAddress = walletManager.getAddress();
+    const walletJustChanged = walletChange.walletJustChanged(walletAddress);
     jsonResponse(res, 200, {
       global: {
-        walletAddress: walletManager.getAddress(),
+        walletAddress,
+        /*-
+         *  Set once a wallet has replaced another, and kept until the
+         *  next change: a tab still on an older wallet reloads, once
+         *  `importingWallet` is false (src/server/wallet-change.js).
+         */
+        walletJustChanged,
         positionScan: report.positionScan,
         port: config.PORT,
         host: config.HOST,

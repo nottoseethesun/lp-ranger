@@ -631,19 +631,24 @@ if (require.main === module) {
   installServerErrorGuard();
   // Read before anything starts, so an unusable value stops startup.
   const { exitTimeoutMs } = readShutdownTimings();
-  /*- Fresh start: delete the previous run's error.log so no stale entry
-   *  lingers (current problems are re-logged by the scans). See src/lib/error-log.js. */
-  resetErrorLog();
-  /*-
-   *  Put the wallet's files right before anything can save the wallet:
-   *  the copy a save cut short left is put back as wallet.json, or
-   *  removed (src/lib/wallet-manager.js). Only the programs that own the
-   *  wallet do this, as they start; a util tool that loads the module
-   *  only reads.
-   */
-  walletManager.settleWalletFile();
   start()
     .then(() => {
+      /*-
+       *  The server holds its port and has read no request: none is read
+       *  before this chain first waits, and these two come first. A
+       *  second start, which fails on the port, gets no further, so it
+       *  changes neither file under the server already running:
+       *  - the previous run's error log is deleted, so no stale entry
+       *    lingers; current problems are logged again by the scans
+       *    (src/lib/error-log.js);
+       *  - the wallet's files are put right: the copy a save cut short
+       *    left is put back as wallet.json, or removed
+       *    (src/lib/wallet-manager.js). Only the programs that own the
+       *    wallet do this, as they start; a util tool that loads the
+       *    module only reads.
+       */
+      resetErrorLog();
+      walletManager.settleWalletFile();
       /*-
        *  Server is up: record the PID so `npm stop` (scripts/stop.js) can send
        *  SIGTERM for the same clean shutdown as Ctrl+C. The file is removed

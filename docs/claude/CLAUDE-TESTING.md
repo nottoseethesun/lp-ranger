@@ -118,10 +118,11 @@ pin a meaningless input as if it were correct:
 
 **Operator runtime state (gitignored, protected by backup pass):**
 
-- `app-config/user-configurable/bot-config.json` — managed position status, HODL baselines, compound history
+- `app-config/user-configurable/bot-config.json` — the managed positions and their settings
 - `app-config/user-configurable/bot-config.backup.json` — automatic snapshot
 - `app-config/user-configurable/wallet.json` — encrypted wallet key
 - `app-config/user-configurable/api-keys.json` — encrypted third-party API keys (Moralis, Telegram, etc.)
+- `app-data/position-records.json` — each position's records: HODL baseline, compound history, gas, deposits, residuals
 - `app-data/rebalance_log.json` — historical rebalance event log
 
 The `app-config/app-defaults-for-user-configurable/` subdir (including the tracked `api-keys.example.json` format template) is shipped repo content and is excluded from backup/delete. Each operator-state directory (`app-config/user-configurable/` and `app-data/`) is tracked via its own `README.md`; the gitignored contents are protected by the backup pass on the same "operator state" footing as `.env`.
@@ -143,7 +144,7 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 2. Tests run. None may create, change or delete a file in those folders: the gate reads them before and after the tests and fails the run on any change, a file written and put back included (its "Folders kept" row).
 3. After tests (try/finally in `check.js`): `restoreProdFiles()` deletes any test-created files and copies the backed-up originals back into place
 
-The backup is the safety net, not the way a test keeps clear of those files. Under `node --test` most of them are a test process's own already (see "Temp folders" below); a test that needs a file of its choosing points it at a `makeTestTempFolder` folder itself (`config.LOG_FILE` for a rebalance log of its own, say). A test never snapshots and restores an operator file.
+The backup is the safety net, not the way a test keeps clear of those files. Under `node --test` most of them are a test process's own already (see "Temp folders" below); a test that needs a file of its choosing points it at a `makeTestTempFolder` folder itself (LOG_FILE for a rebalance log of its own, through `useRebalanceLog` in test/helpers/rebalance-log.js, say). A test never snapshots and restores an operator file.
 
 ### `logs/`
 
@@ -200,6 +201,8 @@ Default/vanilla config values come from `.env.example` and the shipped JSON file
 ### Temp folders
 
 A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so are the records file's folder (`src/lib/util/position-records.js`), the rebalance log's (`src/lib/config.js`, when `LOG_FILE` names none), the scan-cache folder, the api-key store's folder (`src/lib/api-key-store.js`, when `API_KEYS_FILE_PATH` names no file) and the wallet's (`src/lib/wallet-manager.js`, when `WALLET_FILE_PATH` names none). A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
+
+This list is the one home of what keeps a test off the operator's files; the other docs point here. A test that needs a file of its choosing names it in the variable for it (`WALLET_FILE_PATH`, `API_KEYS_FILE_PATH`, `LOG_FILE`, each asked on every read and write; `useRebalanceLog` in `test/helpers/rebalance-log.js` sets the last), or passes a `dir` to `loadConfig` / `saveConfig` (above). Under `node --test` no `.env` is read either (`envFilePath`, `src/lib/env-settings.js`). Two of the operator's files are not redirected: the folder of the operator's copies of the settings files (`LP_RANGER_USER_CONFIG_DIR`), which a test points at a folder of its own when it must not read them, and the error log (see "`logs/`" above). The redirects follow the runner's marker (`NODE_TEST_CONTEXT`), so a test file run as a plain script (`node test/x.test.js`) would reach the operator's files. The files that would write them refuse to run so: `test/_bot-loop-helpers.js`, which the suites that run the poll cycle load, `test/server.test.js` and `test/server-spa-fallback.test.js`; `test/plain-script-refusals.test.js` holds them to it.
 
 A process stopped outright (Ctrl+C, kill -9) cannot remove its folders, so `npm run check` removes them before its tests start: each `lp-ranger-test-` folder whose process, named in the folder's name, is no longer running. A running process's folder is left alone, so a test run under way elsewhere keeps its files.
 

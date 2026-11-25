@@ -11,8 +11,9 @@
  *   of its own (`makeTestTempFolder`, removed when the process exits);
  *   require it before anything under `src/lib/`. It also pins the
  *   variables that would override the settings under test, so a value the
- *   shell exports cannot (under `node --test` no `.env` is read). Each load writes the overrides
- *   and loads afresh the modules that read the settings files.
+ *   shell exports cannot reach them (under `node --test` no `.env` is
+ *   read). Each load writes the overrides and loads afresh the modules
+ *   that read the settings files.
  */
 
 const fs = require("fs");

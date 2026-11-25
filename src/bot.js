@@ -94,9 +94,12 @@ async function main() {
   // Read before anything starts, so an unusable value stops startup.
   const { exitTimeoutMs } = readShutdownTimings();
   /*-
-   *  Put the wallet's files right before the key is read from them: the
-   *  copy a save cut short left is put back as wallet.json, or removed
-   *  (src/lib/wallet-manager.js), as the server does as it starts.
+   *  Put the wallet's files right: the copy a save cut short left is put
+   *  back as wallet.json, or removed (src/lib/wallet-manager.js), as the
+   *  server does as it starts. The wallet itself was read as the module
+   *  loaded, and nothing here changes what the key read takes; this comes
+   *  first so the files are put right even when that read fails and the
+   *  bot exits.
    */
   walletManager.settleWalletFile();
   const dryRun = config.DRY_RUN;

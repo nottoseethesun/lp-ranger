@@ -17,6 +17,7 @@ import {
   updateHistorySyncLabels,
 } from "./dashboard-history.js";
 import { wallet } from "./dashboard-wallet.js";
+import { reloadIfOnPriorWallet } from "./dashboard-wallet-change.js";
 import {
   updateManageBadge,
   reapplyPrivacyBlur,
@@ -227,11 +228,14 @@ function _updateSyncBadge(d) {
    *
    *  The Manage button's sync gate is computeManageUI()'s
    *  (dashboard-manage-ui.js), which paintManageUI() runs every poll. The
-   *  Rebalance button is set every poll by `_updateRebalanceButtons`,
-   *  whose decision tree does not ask about Syncing: Rebalance Now stays
-   *  enabled during Syncing, and the server refuses one it cannot make.
-   *  A submit disables it until the next poll
-   *  (`_disableRebalanceButtonForInFlight`, dashboard-rebalance-confirm.js).
+   *  Rebalance button is set by `_updateRebalanceButtons` on each poll
+   *  that names this tab's wallet, and its decision tree does not ask
+   *  about Syncing: Rebalance Now stays enabled during Syncing, and the
+   *  server refuses one it cannot make. A submit disables it until the
+   *  next such poll (`_disableRebalanceButtonForInFlight`,
+   *  dashboard-rebalance-confirm.js). A tab left on a wallet another tab
+   *  replaced gets no such poll; it reloads once the import has finished
+   *  (dashboard-wallet-change.js).
    */
   if (c && !_scanWasComplete) _onScanFinished(d);
   _scanWasComplete = c;
@@ -552,7 +556,19 @@ import {
 } from "./dashboard-sync-decisions.js";
 import { initDataPoll, pollNow } from "./dashboard-data-poll.js";
 import { announceRefill } from "./dashboard-config-save.js";
-initDataPoll(updateDashboardFromStatus);
+
+/**
+ * Each status answer: a tab left on a wallet the server no longer holds
+ * reloads and does nothing more with it (dashboard-wallet-change.js);
+ * any other tab shows it.
+ * @param {object} data  The status answer, flattened.
+ */
+function _statusAnswered(data) {
+  if (reloadIfOnPriorWallet(data, wallet.address)) return;
+  updateDashboardFromStatus(data);
+}
+
+initDataPoll(_statusAnswered);
 
 /**
  * Ask the server about the position on screen and fill the Bot Settings

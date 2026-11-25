@@ -62,7 +62,8 @@ const { finishPassRebalanceFigures } = require("./bot-rebalance-figures");
  */
 function readLog() {
   try {
-    const raw = fs.readFileSync(path.resolve(config.LOG_FILE), "utf8");
+    const logPath = path.resolve(config.rebalanceLogPath());
+    const raw = fs.readFileSync(logPath, "utf8");
     const entries = JSON.parse(raw);
     return Array.isArray(entries) ? entries : [];
   } catch (_) {
@@ -76,7 +77,7 @@ function readLog() {
  * @param {object} result  The rebalance result object.
  */
 function appendLog(result) {
-  const logPath = path.resolve(config.LOG_FILE);
+  const logPath = path.resolve(config.rebalanceLogPath());
   let entries = [];
   try {
     const raw = fs.readFileSync(logPath, "utf8");

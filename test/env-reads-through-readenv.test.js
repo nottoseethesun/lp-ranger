@@ -5,11 +5,11 @@
  * @description Every variable `ENV_SETTINGS` names is read through
  *   `readEnv` (src/lib/env-settings.js), so a blank value sets nothing and
  *   a wrong one is refused by its rule. No module under src/ reads one
- *   straight from `process.env`, but the three that cannot (CLAUDE.md,
- *   "Every setting is checked before the app starts"): the two settings
- *   folders, which src/lib/load-merged-defaults.js reads before the rules
- *   exist, since env-settings is built on that loader; and CHAIN_NAME,
- *   which src/lib/runtime-flags.js reads by its own rule
+ *   straight from `process.env`, but for three variables that cannot be
+ *   (CLAUDE.md, "Every setting is checked before the app starts"): the two
+ *   settings folders, which src/lib/load-merged-defaults.js reads before
+ *   the rules exist, since env-settings is built on that loader; and
+ *   CHAIN_NAME, which src/lib/runtime-flags.js reads by its own rule
  *   (`resolveChainName`).
  *
  *   Comment lines are skipped, so a comment may name a variable as it
@@ -24,7 +24,7 @@ const { ENV_SETTINGS } = require("../src/lib/env-settings");
 
 const SRC = path.join(__dirname, "..", "src");
 
-// The reads allowed, by file under src/, and why each cannot use readEnv.
+// The reads allowed, by file under src/; the header says why each cannot use readEnv.
 const ALLOWED = {
   "lib/load-merged-defaults.js": [
     "LP_RANGER_DEFAULTS_DIR",
@@ -100,7 +100,7 @@ describe("reading a variable ENV_SETTINGS names", () => {
     ]);
   });
 
-  it("keeps the allowed list honest", () => {
+  it("names no allowance for a read that is gone", () => {
     // An allowance for a read that is gone is dead weight.
     for (const [rel, names] of Object.entries(ALLOWED)) {
       const found = rawReads(

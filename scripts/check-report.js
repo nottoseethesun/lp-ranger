@@ -105,23 +105,25 @@ function _knipDetail(knip) {
 /**
  * The Folders kept row: whether the tests left the install's folders as
  * they found them, and the first change when they did not, from what
- * scripts/check.js wrote. Folders it could not compare, as when the test
- * stage failed before reading them again, read as not compared, never as
- * untouched. Its own function, as `_unusedSrcModulesResult` is, to keep
- * `loadResults` under the complexity ceiling.
+ * scripts/check.js wrote. Folders it could not compare, as when a read of
+ * them or of a test report failed, read as not compared, with the error
+ * that stopped it, never as untouched. Its own function, as
+ * `_unusedSrcModulesResult` is, to keep `loadResults` under the complexity
+ * ceiling.
  * @param {object} exitCodes  The stages' exit codes.
+ * @param {{changes: (string[]|null), error?: string}|null} report
+ *   kept-folders.json, null when it could not be read.
  * @returns {{ok: boolean, detail: string}}
  */
-function _keptFoldersCheck(exitCodes) {
+function _keptFoldersCheck(exitCodes, report) {
   if (exitCodes.keptFolders === 0)
     return {
       ok: true,
       detail: "shipped settings, user-configurable/ and app-data/ untouched",
     };
-  const report = _readJson("kept-folders.json");
   if (report === null) return { ok: false, detail: "report missing" };
   if (report.changes === null)
-    return { ok: false, detail: "not compared: the test stage failed first" };
+    return { ok: false, detail: `not compared: ${report.error}` };
   return {
     ok: false,
     detail: `${report.changes.length} change(s), first: ${report.changes[0]}`,
@@ -170,6 +172,7 @@ function _unusedSrcModulesDetail(result) {
  */
 function loadResults() {
   const exitCodes = _readJson("exit-codes.json") || {};
+  const keptFoldersReport = _readJson("kept-folders.json");
   const eslint = P.parseEslint(_readJson("eslint.json"));
   const eslintTiming = P.parseEslintTiming(
     _readTextReport("eslint-timing.txt"),
@@ -329,7 +332,7 @@ function loadResults() {
         `${tests.pass}/${tests.tests} passed, ${tests.suites} suites, ` +
         `${(tests.duration / 1000).toFixed(1)}s`,
     },
-    keptFolders: _keptFoldersCheck(exitCodes),
+    keptFolders: _keptFoldersCheck(exitCodes, keptFoldersReport),
     coverage: {
       ok: coverageOk,
       detail:
@@ -578,4 +581,5 @@ module.exports = {
   writeSummaryTxt,
   writeTestsSummaryTxt,
   writeSummaryMd,
+  _keptFoldersCheck, // exported for tests
 };

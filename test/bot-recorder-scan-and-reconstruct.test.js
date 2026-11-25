@@ -27,7 +27,7 @@ const Module = require("node:module");
 const os = require("node:os");
 const path = require("node:path");
 const { format } = require("node:util");
-const config = require("../src/lib/config");
+const { useRebalanceLog } = require("./helpers/rebalance-log");
 const { _setSinkForTests } = require("../src/lib/log");
 const { emptyEvents } = require("../src/bot/nft-events-batch");
 const { collectTokenIds } = require("../src/bot/bot-recorder-scan-helpers");
@@ -350,18 +350,19 @@ describe("one scan pass, one chain read", () => {
 });
 
 describe("a rebalance waiting for its Activity Log figures", () => {
-  let savedLogFile;
+  let restoreLog;
   beforeEach(() => {
     /*-
      *  The figures look up this install's records of its rebalances in
      *  the rebalance log. A file that does not exist holds none, and
      *  the operator's own log is never read.
      */
-    savedLogFile = config.LOG_FILE;
-    config.LOG_FILE = path.join(os.tmpdir(), `no-rebalance-log-${process.pid}`);
+    restoreLog = useRebalanceLog(
+      path.join(os.tmpdir(), `no-rebalance-log-${process.pid}`),
+    );
   });
   afterEach(() => {
-    config.LOG_FILE = savedLogFile;
+    restoreLog();
   });
 
   /** A restart's state: every Lifetime figure saved, nothing to compute. */

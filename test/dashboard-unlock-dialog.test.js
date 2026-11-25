@@ -18,8 +18,6 @@ require("global-jsdom/register");
 
 const { describe, it, before, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { learnActiveChain } = require("./helpers/active-chain");
-const { learnUiSettings } = require("./helpers/ui-settings");
 const { indexHtmlDocument } = require("./helpers/index-html");
 
 let walletModule;
@@ -36,19 +34,6 @@ function showAnError() {
 }
 
 before(async () => {
-  /*-
-   *  TEST-ONLY global swap: the dashboard asks the server through the
-   *  browser's fetch and takes no stand-in for it. This answers for the
-   *  server for the whole file, so it stays in place: the file runs in a
-   *  process of its own, which no other file shares.
-   */
-  globalThis.fetch = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => ({}),
-  });
-  await learnActiveChain();
-  await learnUiSettings();
   walletModule = await import("../src/client/web/js/dashboard-wallet.js");
   eventsModule = await import("../src/client/web/js/dashboard-events.js");
 });
@@ -86,8 +71,8 @@ describe("the unlock dialog", () => {
     walletModule.dismissToViewOnly();
     /*-
      *  TEST-ONLY global swap: the check asks the server for the wallet's
-     *  status through `fetch`, and takes no seam for it. Put back to the
-     *  file's stand-in in the `finally` below, immediately after the call.
+     *  status through `fetch`, and takes no seam for it. Put back in the
+     *  `finally` below, immediately after the call.
      */
     const saved = globalThis.fetch;
     globalThis.fetch = async () => ({

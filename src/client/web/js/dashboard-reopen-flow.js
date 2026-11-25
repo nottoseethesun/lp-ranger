@@ -156,23 +156,24 @@ function _injectBalanceRow(overlay, slot, bal) {
   li.textContent = `${bal.symbol}: ${amountStr} ($${usdStr})${bal.isDust ? "  — below threshold" : ""}`;
 }
 
-/*- Render the "re-open requires a rebalance" intro modal.  The
- *  standard modal template's footer ships an "OK" close button (used
- *  here as the dismiss action — user clicks OK to back out, edit
- *  settings, then re-click Manage).  We append a "Re-open Position"
- *  button in an action row inside the body for the proceed action.
+/*-
+ *  Render the "re-open requires a rebalance" intro modal. The standard
+ *  modal template's footer ships an "OK" close button, used here as the
+ *  dismiss action: the user clicks OK to back out, edits settings, then
+ *  clicks Manage again. A "Re-open Position" button is appended in an
+ *  action row inside the body for the proceed action.
  *
- *  Range width for the re-open is read by the bot loop from the
- *  persistent `rebalanceRangeWidthPct` POSITION_KEY (set via the
- *  Range Width row in Bot Settings) — no width in the request body,
- *  no modal step in between.  Users who want a custom width configure
- *  it in Bot Settings first, then click Manage.  Otherwise the bot
- *  falls back to `rangeMath.preserveRange()` (existing default).
+ *  The re-open's range follows the position's Range settings, the No
+ *  Override toggle included, as any rebalance's does: the request carries
+ *  no width, and the modal asks for none (see the click handler below).
+ *  A user who wants other Range settings sets them in Bot Settings first,
+ *  then clicks Manage.
  *
- *  IMPORTANT: scope every querySelector to the freshly-created
- *  overlay (by id) — a bare document-level lookup would bind to a
- *  stale duplicate if any prior modal with the same id is still in
- *  the DOM, leaving the new button inert. */
+ *  IMPORTANT: scope every querySelector to the freshly-created overlay
+ *  (by id). A bare document-level lookup would bind to a stale duplicate
+ *  if any prior modal with the same id is still in the DOM, leaving the
+ *  new button inert.
+ */
 const REOPEN_INTRO_MODAL_ID = "9mm-pos-mgr-reopen-intro-modal";
 function _showReopenIntroModal(active, formatPositionSpec) {
   const spec = formatPositionSpec(active);

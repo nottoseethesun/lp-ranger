@@ -24,6 +24,7 @@ const { spawnSync } = require("child_process");
 const config = require("../src/lib/config");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { _setSinkForTests } = require("../src/lib/log");
+const { useRebalanceLog } = require("./helpers/rebalance-log");
 
 // ── Default values ────────────────────────────────────────────────────────────
 
@@ -80,14 +81,42 @@ describe("config default values", () => {
      *  So no test can append a rebalance it makes to the operator's log,
      *  however it reaches `appendLog`.
      */
-    const dir = path.dirname(config.LOG_FILE);
+    const file = config.rebalanceLogPath();
+    const dir = path.dirname(file);
     assert.strictEqual(path.dirname(dir), os.tmpdir());
     assert.ok(
       path
         .basename(dir)
         .startsWith(`lp-ranger-test-rebalance-log-${process.pid}-`),
-      config.LOG_FILE,
+      file,
     );
+  });
+
+  it("makes that folder when the log is first asked for, not as it loads", () => {
+    /*-
+     *  A child keeps the runner's marker, so it is under `node --test`
+     *  too; it counts its own log folders before and after the first ask.
+     */
+    const env = { ...process.env };
+    delete env.LOG_FILE;
+    const lib = JSON.stringify(
+      path.join(__dirname, "..", "src", "lib", "config"),
+    );
+    const mine =
+      "require('fs').readdirSync(require('os').tmpdir()).filter((n) =>" +
+      " n.startsWith('lp-ranger-test-rebalance-log-' + process.pid + '-'))" +
+      ".length";
+    const script =
+      `const config = require(${lib}); const before = ${mine};` +
+      ` config.rebalanceLogPath();` +
+      ` process.stdout.write("\\nFOLDERS=" + before + "," + ${mine});`;
+    const res = spawnSync(process.execPath, ["-e", script], {
+      cwd: makeTestTempFolder("log-file-cwd"),
+      env,
+      encoding: "utf8",
+    });
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /\nFOLDERS=0,1$/);
   });
 
   it("uses the shipped rebalance log path outside tests", () => {
@@ -99,17 +128,23 @@ describe("config default values", () => {
     );
     const res = spawnSync(
       process.execPath,
-      ["-e", `process.stdout.write("\\nLOG=" + require(${lib}).LOG_FILE)`],
+      [
+        "-e",
+        `process.stdout.write("\\nLOG=" + require(${lib}).rebalanceLogPath())`,
+      ],
       { cwd: makeTestTempFolder("log-file-cwd"), env, encoding: "utf8" },
     );
     assert.strictEqual(res.status, 0, res.stderr);
     assert.match(res.stdout, /\nLOG=\.\/app-data\/rebalance_log\.json$/);
   });
 
-  it("LOG_FILE is a non-empty string", () => {
-    assert.ok(
-      typeof config.LOG_FILE === "string" && config.LOG_FILE.length > 0,
-    );
+  it("names the log in LOG_FILE when it is set", () => {
+    const restoreLog = useRebalanceLog("/somewhere/else/log.json");
+    try {
+      assert.strictEqual(config.rebalanceLogPath(), "/somewhere/else/log.json");
+    } finally {
+      restoreLog();
+    }
   });
 
   it("POSITION_MANAGER is a non-empty string", () => {
@@ -271,7 +306,7 @@ describe("config module shape", () => {
     "CHECK_INTERVAL_SEC",
     "MIN_REBALANCE_INTERVAL_MIN",
     "MAX_REBALANCES_PER_DAY",
-    "LOG_FILE",
+    "rebalanceLogPath",
     "POSITION_MANAGER",
     "FACTORY",
     "SWAP_ROUTER",

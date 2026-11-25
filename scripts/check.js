@@ -3,19 +3,15 @@
  * @description Run lint + tests + coverage + security audits and emit a
  * full report of the results.
  *
- * Outputs (all under test/report-artifacts/, gitignored):
- *   raw-data/*.json            Machine-readable tool outputs (eslint,
- *                              stylelint, html-validate, npm audit,
- *                              security-lint, secretlint, plus
+ * Outputs (all under test/report-artifacts/, gitignored; each file is
+ * listed in docs/engineering.md § "Check Report Artifacts"):
+ *   raw-data/                  Machine-readable tool outputs, among them
  *                              exit-codes.json with every tool's exit
- *                              code, and kept-folders.json with what
- *                              the tests changed in the install's
- *                              folders)
- *   raw-data/lcov.info         lcov coverage report of the test run
- *   text-reports/summary.txt          Human-readable overview (cli-table3)
- *   text-reports/tests-summary.txt    Parsed test rollup
- *   text-reports/eslint-timing.txt    ESLint TIMING=1 slowest-rule capture
- *   text-reports/markdownlint.txt     markdownlint-cli2 text output
+ *                              code, kept-folders.json with what the
+ *                              tests changed in the install's folders,
+ *                              and lcov.info, the test run's coverage
+ *   text-reports/              Human-readable outputs: the summary, the
+ *                              test rollup, and the text-only tools'
  *   config-values.tap          Raw TAP v14 from the shipped-config tests,
  *                              which run before the rest of the suite
  *   tests.tap                  Raw TAP v14 from `node --test`
@@ -86,10 +82,10 @@ const _KEPT_FOLDERS = [
 
 /*-
  *  The file-name predicate used by the backup/wipe/restore helpers.
- *  Hoisted up here so the top-level script body (restoreProdFiles is
- *  called from the `finally` and the interrupt handlers, which can run
- *  anywhere below) can reference it without hitting the
- *  temporal-dead-zone.
+ *  Hoisted up here because the script body calls those helpers before
+ *  the helpers section is reached (restoreProdFiles from runTestStages's
+ *  `finally`), and a later declaration would still be in its
+ *  temporal-dead-zone then.
  */
 const _IS_README = (n) => n === "README.md";
 process.chdir(ROOT);
@@ -506,15 +502,20 @@ wipeRuntimeFiles();
  * operator's files back whatever happens, an interrupt included.
  * Forces --test-reporter=tap so the output is deterministic TAP v14
  * regardless of Node version or TTY state. What the install's folders
- * hold is read before the tests and after them, and every change named;
- * null when they were not read again, the test stage having failed first.
+ * hold is read before the tests and after them, and every change named.
+ * A test run never throws (`runAsync` resolves with its exit status);
+ * when a read of the folders or a write of a test report does, the
+ * folders are not compared (`folderChanges` null), the error saying why
+ * (`folderError`), and a test run that finished keeps its own status.
  * @returns {Promise<{configValuesExit: number|undefined,
- *   testsExit: number, folderChanges: (string[]|null)}>}
+ *   testsExit: number, folderChanges: (string[]|null),
+ *   folderError: (string|null)}>}
  */
 async function runTestStages() {
   let configValuesExit;
   let testsExit;
   let folderChanges = null;
+  let folderError = null;
   try {
     const foldersBefore = _KEPT_FOLDERS.map((dir) => folderSnapshot(dir));
     /*-
@@ -580,15 +581,16 @@ async function runTestStages() {
       snapshotChanges(dir, foldersBefore[i], folderSnapshot(dir)),
     );
   } catch (err) {
-    testsExit = 1;
-    log.error("[check] Test runner failed:", err.message);
+    if (testsExit === undefined) testsExit = 1;
+    folderError = err.message;
+    log.error("[check] The test stage stopped: %s", err.message);
   } finally {
     restoreProdFiles(backupDir);
     fs.rmSync(backupDir, { recursive: true, force: true });
     keepTestErrorLog();
     for (const signal of INTERRUPTS) process.off(signal, onInterrupt);
   }
-  return { configValuesExit, testsExit, folderChanges };
+  return { configValuesExit, testsExit, folderChanges, folderError };
 }
 
 /**
@@ -596,9 +598,14 @@ async function runTestStages() {
  * prints the summary and writes the PDF, and exit with its verdict. An
  * interrupted run reports nothing and exits 1.
  * @param {{configValuesExit: number|undefined, testsExit: number,
- *   folderChanges: (string[]|null)}} tests
+ *   folderChanges: (string[]|null), folderError: (string|null)}} tests
  */
-function reportRun({ configValuesExit, testsExit, folderChanges }) {
+function reportRun({
+  configValuesExit,
+  testsExit,
+  folderChanges,
+  folderError,
+}) {
   if (interrupted !== null) {
     log.error(
       "[check] Stopped by %s; the operator's files are restored.",
@@ -635,11 +642,13 @@ function reportRun({ configValuesExit, testsExit, folderChanges }) {
   );
   fs.writeFileSync(
     path.join(RAW_DIR, "kept-folders.json"),
-    JSON.stringify({ changes: folderChanges }, null, 2) + "\n",
+    JSON.stringify({ changes: folderChanges, error: folderError }, null, 2) +
+      "\n",
   );
   if (folderChanges === null)
     log.error(
-      "[check] The install's folders were not compared: the test stage failed first.",
+      "[check] The install's folders were not compared: %s",
+      folderError,
     );
   else if (folderChanges.length > 0)
     log.error(

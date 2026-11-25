@@ -376,7 +376,7 @@ describe("wallet-manager, the file mode", () => {
 
 describe("a program that only loads the wallet module", () => {
   /*-
-   *  As every util tool does through src/lib/config.js. It reads the
+   *  As a util tool that loads src/lib/config.js does. It reads the
    *  wallet, from the copy when wallet.json is broken, and touches
    *  neither file: only a program that owns the wallet puts the files
    *  right, as it starts. Run in a child process, from a folder of its

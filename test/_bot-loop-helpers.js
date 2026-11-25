@@ -1,10 +1,23 @@
 /**
  * @file test/_bot-loop-helpers.js
- * @description Shared mock helpers for bot-loop test suites.
- * Used by bot-loop.test.js and bot-loop-pnl.test.js.
+ * @description Shared mock helpers for the suites that run the bot's poll
+ *   cycle (bot-loop, bot, compound-cycle and five more; each loads this).
+ *   Loading it outside the test runner is refused.
  */
 
 "use strict";
+
+/*-
+ *  Refused outside the test runner, before the bot loads. The suites
+ *  that load this make rebalances, which the bot appends to the
+ *  rebalance log: `node --test` gives each process a log of its own
+ *  (src/lib/config.js), and run as a plain script they would write into
+ *  the operator's.
+ */
+if (process.env.NODE_TEST_CONTEXT === undefined)
+  throw new Error(
+    "Run the bot-loop test files with node --test: they would write the operator's rebalance log",
+  );
 
 const { pollCycle } = require("../src/bot/bot-loop");
 const config = require("../src/lib/config");

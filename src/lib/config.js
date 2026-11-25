@@ -351,21 +351,29 @@ const IMPERMANENT_LOSS_GUARD_PCT = parseBoundedSetting(
   "impermanentLossGuardPct",
 );
 
+/** The test process's own rebalance log, made the first time it is asked for. */
+let _testRebalanceLog = null;
+
 /**
- * Where the rebalance log is when LOG_FILE names none: the shipped path
- * (`log.file` in app-runtime.json); under `node --test`, a file in a temp
- * folder of the test process's own, so no test can append a rebalance it
+ * Where the rebalance log is, asked each time it is read or written:
+ * LOG_FILE in `.env`, else `log.file` in app-runtime.json (an operator's
+ * copy applied); under `node --test`, a file in a temp folder of the test
+ * process's own, made the first time, so no test appends a rebalance it
  * makes to the operator's log. A test that needs a log of its own sets
- * `config.LOG_FILE`.
+ * LOG_FILE.
  * @returns {string}
  */
-function _rebalanceLogDefault() {
+function rebalanceLogPath() {
+  const named = readEnv("LOG_FILE");
+  if (named !== undefined) return named;
   if (process.env.NODE_TEST_CONTEXT === undefined) return APP_CONFIG.log.file;
-  return path.join(makeTestTempFolder("rebalance-log"), "rebalance_log.json");
+  if (_testRebalanceLog === null)
+    _testRebalanceLog = path.join(
+      makeTestTempFolder("rebalance-log"),
+      "rebalance_log.json",
+    );
+  return _testRebalanceLog;
 }
-
-/** File path for the json rebalance event log (`_rebalanceLogDefault`). */
-const LOG_FILE = readEnv("LOG_FILE") ?? _rebalanceLogDefault();
 
 /**
  * Read how long after a drain a re-deposit on the same NFT still counts as
@@ -780,7 +788,7 @@ module.exports = {
   POLL_AFTER_ACTION_MS,
   LIFETIME_RESCAN_CHECK_MS,
   DRAINED_RETIRE_MS,
-  LOG_FILE,
+  rebalanceLogPath,
 
   // Contracts
   POSITION_MANAGER,

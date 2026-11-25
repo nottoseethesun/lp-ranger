@@ -260,9 +260,9 @@ async function startBotLoop(opts) {
      *  FailoverNonceManager consults sendTx.getCurrentRPC() lazily on
      *  every call, so the inner ethers.NonceManager rebinds when the
      *  active endpoint changes. ensureReachable() tries the endpoints in
-     *  order at boot and moves to the first that answers, so the
-     *  read-side managed provider and the transaction side both follow
-     *  the same endpoint.
+     *  order and, when a later one is the first to answer, moves there,
+     *  so the read-side managed provider and the transaction side both
+     *  follow the same endpoint; a sticky window already engaged stays.
      */
     sendTx.init({ urls: config.RPC_URLS }, ethersLib);
     await sendTx.ensureReachable();
