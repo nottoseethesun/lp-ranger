@@ -83,13 +83,14 @@ let _stickyUntilMs = 0;
  * Register the chain's RPC providers.  Idempotent: safe to call from
  * multiple boot paths (the bot's interface, bot-loop.js,
  * position-manager.js).  A
- * second call with the SAME URLs is a no-op; a second call with DIFFERENT
- * URLs throws — the process can only have one active RPC pair at a time.
+ * second call with the SAME urls is a no-op; a second call with DIFFERENT
+ * urls throws — the process has one ordered endpoint list at a time.
  *
- * Both providers are constructed eagerly via `bot-provider.buildProvider`
- * (which applies the feeData patch) regardless of boot-time reachability —
- * the whole point of mid-session failover is that the fallback must be
- * usable at the moment the primary fails, possibly hours after boot.
+ * One provider per endpoint is constructed eagerly via
+ * `bot-provider.buildProvider` (which applies the feeData patch),
+ * regardless of boot-time reachability: the point of mid-session failover
+ * is that the next endpoint is usable the moment the current one fails,
+ * possibly hours after boot.
  *
  * @param {{urls: string[]}} rpcConfig
  *   Ordered RPC URLs, most-preferred first.  Callers pass the
@@ -264,19 +265,16 @@ function noteRpcOutcome(provider, ok) {
 }
 
 /**
- * Boot-time reachability probe for the primary RPC.  Calls
- * `primary.getBlockNumber()`; if it throws, engages `failoverToNextRPC()`
- * and verifies that `fallback.getBlockNumber()` succeeds.  The result
- * is reported through the shared `getCurrentRPC` state, so subsequent
- * reads (via `getManagedReadProvider`) and writes go to the same RPC as
- * the probe settled on.
+ * Boot-time reachability probe. Asks each endpoint in order for its block
+ * number and settles on the first that answers: when that is not the
+ * first endpoint, it engages the sticky window on it (`_engageFailoverTo`),
+ * so subsequent reads (via `getManagedReadProvider`) and writes go to the
+ * endpoint the probe settled on. It walks the list itself, never through
+ * `failoverToNextRPC`, so it holds nothing for the all-endpoints-down
+ * pause.
  *
- * Idempotent: a second call when the sticky-failover window is active
- * simply re-probes the primary and lets `failoverToNextRPC()` extend
- * the window if the primary is still down.
- *
- * Throws if `init()` hasn't run yet, or if BOTH primary AND fallback
- * are unreachable.
+ * Throws if `init()` hasn't run yet, or if every endpoint is unreachable,
+ * with the last endpoint's error.
  *
  * @returns {Promise<void>}
  */

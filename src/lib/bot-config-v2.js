@@ -22,8 +22,8 @@
  * (gitignored) holds the settings and each position's status; the bot's
  * records for each position (`RECORD_POSITION_KEYS`) are in
  * `app-data/position-records.json` (src/lib/util/position-records.js). In memory a
- * position's slot holds both. See the `app-config/` section of server.js
- * for the full layout. Tests pass a `dir` override to `loadConfig(dir)` /
+ * position's slot holds both. See "The app-config Directory" in
+ * docs/engineering.md for the full layout. Tests pass a `dir` override to `loadConfig(dir)` /
  * `saveConfig(cfg, dir)` and write directly to `${dir}/bot-config.json`
  * and `${dir}/position-records.json`, bypassing those folders.
  */

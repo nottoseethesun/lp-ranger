@@ -17,12 +17,23 @@ const http = require("http");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 
 /*-
+ *  Refused outside the test runner, before the server loads. Loading
+ *  src/server.js rewrites the backups of bot-config.json and the records,
+ *  and the cases below save settings: in the operator's own files, unless
+ *  `node --test` gives this process files of its own.
+ */
+if (process.env.NODE_TEST_CONTEXT === undefined)
+  throw new Error(
+    "Run test/server.test.js with node --test: it would write the operator's settings",
+  );
+
+/*-
  *  Loading src/server.js runs its settings check, which ends the process
  *  on a setting it refuses. With an empty folder for the operator's
- *  copies, named before the server loads, it checks the shipped settings
- *  alone: under `node --test` no `.env` is read, and bot-config.json and
- *  the records are files of this process's own. So no choice of the
- *  operator's can stop this run.
+ *  copies, named before the server loads, it checks the shipped settings:
+ *  under `node --test` no `.env` is read, and bot-config.json and the
+ *  records are files of this process's own. A variable the shell exports
+ *  still reaches it.
  */
 process.env.LP_RANGER_USER_CONFIG_DIR = makeTestTempFolder("server-overrides");
 
@@ -34,8 +45,12 @@ const {
 const { getAllPositionBotStates } = require("../src/bot/position-states");
 const { isItOkayToStartAscan } = require("../src/bot/scan-state");
 
-// Production file protection is handled globally by scripts/check.js
-// (backup before tests, restore after). No per-test snapshot needed.
+/*-
+ *  No per-test snapshot of the operator's files: under `node --test`
+ *  this process's settings are files of its own, and scripts/check.js
+ *  backs up the operator's around the tests and fails a run that changes
+ *  them.
+ */
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 

@@ -18,8 +18,10 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const util = require("util");
 const { spawnSync } = require("child_process");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+const { _setSinkForTests } = require("../src/lib/log");
 
 const WALLET_FILE = path.join(makeTestTempFolder("wallet"), "wallet.json");
 const TMP_FILE = `${WALLET_FILE}.tmp`;
@@ -32,6 +34,7 @@ const {
   clearWallet,
   getAddress,
   hasWallet,
+  settleWalletFile,
   _reloadFromDiskForTests,
 } = require("../src/lib/wallet-manager");
 
@@ -197,7 +200,7 @@ describe("wallet-manager", () => {
     assert.strictEqual(secrets.privateKey, SAMPLE.privateKey);
   });
 
-  it("a save goes through the temp file, which does not stay", async () => {
+  it("leaves no temp file behind after a save", async () => {
     await importWallet(SAMPLE);
     assert.strictEqual(fs.existsSync(TMP_FILE), false);
     assert.strictEqual(
@@ -217,9 +220,12 @@ describe("wallet-manager", () => {
 
 describe("wallet-manager, a fresh start", () => {
   /*-
-   *  What the next start reads, after a crash or a faulty file system
-   *  left the files as each case sets them: the manager forgets its
-   *  wallet and reads the folder again, as it does when it loads.
+   *  What the next start finds, after a crash or a faulty file system
+   *  left the files as each case sets them. Loading reads only: the
+   *  manager forgets its wallet and reads the folder again, as it does
+   *  when it loads, and the files stay as they are. The start step of a
+   *  program that owns the wallet (`settleWalletFile`) then puts them
+   *  right.
    */
   beforeEach(() => clearWallet());
   afterEach(() => {
@@ -231,6 +237,19 @@ describe("wallet-manager, a fresh start", () => {
   async function savedWithCopy() {
     await importWallet(SAMPLE);
     fs.copyFileSync(WALLET_FILE, TMP_FILE);
+  }
+
+  /** Both files as they stand: each one's text, or null when it is absent. */
+  const filesNow = () =>
+    [WALLET_FILE, TMP_FILE].map((f) =>
+      fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null,
+    );
+
+  /** Load as this module does, and assert the files are as they were. */
+  function loadReadingOnly() {
+    const before = filesNow();
+    _reloadFromDiskForTests();
+    assert.deepStrictEqual(filesNow(), before, "loading wrote nothing");
   }
 
   /** The loaded wallet is SAMPLE, back in wallet.json, and no temp file stays. */
@@ -245,28 +264,34 @@ describe("wallet-manager, a fresh start", () => {
     assert.strictEqual(fs.existsSync(TMP_FILE), false);
   }
 
-  it("recovers the wallet from the temp file when wallet.json is empty", async () => {
+  it("reads the wallet from the copy when wallet.json is empty, and the start puts it back", async () => {
     await savedWithCopy();
     fs.writeFileSync(WALLET_FILE, "");
-    _reloadFromDiskForTests();
+    loadReadingOnly();
+    assert.strictEqual(getAddress(), SAMPLE.address);
+    settleWalletFile();
     await assertSampleLoaded();
   });
 
-  it("recovers the wallet from the temp file when wallet.json is missing", async () => {
+  it("reads the wallet from the copy when wallet.json is missing, and the start puts it back", async () => {
     await savedWithCopy();
     fs.unlinkSync(WALLET_FILE);
-    _reloadFromDiskForTests();
+    loadReadingOnly();
+    assert.strictEqual(getAddress(), SAMPLE.address);
+    settleWalletFile();
     await assertSampleLoaded();
   });
 
-  it("recovers the wallet from the temp file when wallet.json is damaged", async () => {
+  it("reads the wallet from the copy when wallet.json is damaged, and the start puts it back", async () => {
     await savedWithCopy();
     fs.writeFileSync(WALLET_FILE, '{ "address": "0xAbC');
-    _reloadFromDiskForTests();
+    loadReadingOnly();
+    assert.strictEqual(getAddress(), SAMPLE.address);
+    settleWalletFile();
     await assertSampleLoaded();
   });
 
-  it("keeps a good wallet.json, and removes a temp file a save cut short left", async () => {
+  it("keeps a good wallet.json, and the start removes a copy a save cut short left", async () => {
     await importWallet(SAMPLE);
     fs.writeFileSync(
       TMP_FILE,
@@ -275,16 +300,143 @@ describe("wallet-manager, a fresh start", () => {
         encrypted: { saltHex: "00" },
       }),
     );
-    _reloadFromDiskForTests();
+    loadReadingOnly();
+    settleWalletFile();
     await assertSampleLoaded();
   });
 
-  it("starts with no wallet when neither file holds one", async () => {
+  it("starts with no wallet when neither file holds one, and the start removes the copy", () => {
     fs.writeFileSync(WALLET_FILE, "");
     fs.writeFileSync(TMP_FILE, "{ not a wallet");
-    _reloadFromDiskForTests();
+    loadReadingOnly();
     assert.strictEqual(hasWallet(), false);
+    settleWalletFile();
     assert.strictEqual(fs.existsSync(TMP_FILE), false);
+  });
+
+  it("leaves the files alone at a start with no copy", async () => {
+    await importWallet(SAMPLE);
+    const before = filesNow();
+    settleWalletFile();
+    assert.deepStrictEqual(filesNow(), before);
+  });
+
+  it("warns at the start when it cannot remove a leftover copy, never claiming it did", async () => {
+    await importWallet(SAMPLE);
+    fs.mkdirSync(TMP_FILE);
+    const said = [];
+    // The log module's seam for its output, put back in the `finally`.
+    const restoreLog = _setSinkForTests({
+      log: (...args) => said.push(util.format(...args)),
+      warn: (...args) => said.push(util.format(...args)),
+    });
+    try {
+      settleWalletFile();
+    } finally {
+      restoreLog();
+    }
+    assert.ok(said.some((s) => s.includes("Could not remove wallet.json.tmp")));
+    assert.ok(!said.some((s) => s.includes("Removed wallet.json.tmp")));
+  });
+});
+
+describe("wallet-manager, the file mode", () => {
+  /*-
+   *  A save replaces wallet.json with its copy, which a rename makes the
+   *  file; the copy is given wallet.json's mode first, so a mode the
+   *  operator set (`chmod 600`, say) stays.
+   */
+  beforeEach(() => clearWallet());
+  afterEach(() => {
+    for (const file of [WALLET_FILE, TMP_FILE])
+      fs.rmSync(file, { recursive: true, force: true });
+  });
+
+  const modeOf = (file) => fs.statSync(file).mode & 0o777;
+
+  it("keeps the mode the operator gave wallet.json across a save", async () => {
+    await importWallet(SAMPLE);
+    fs.chmodSync(WALLET_FILE, 0o600);
+    await importWallet({ ...SAMPLE, password: "another-password" });
+    assert.strictEqual(modeOf(WALLET_FILE).toString(8), "600");
+  });
+
+  it("keeps the broken wallet.json's mode when the start puts the copy back", async () => {
+    await importWallet(SAMPLE);
+    fs.copyFileSync(WALLET_FILE, TMP_FILE);
+    fs.chmodSync(TMP_FILE, 0o644);
+    fs.writeFileSync(WALLET_FILE, "");
+    fs.chmodSync(WALLET_FILE, 0o600);
+    _reloadFromDiskForTests();
+    settleWalletFile();
+    assert.strictEqual(modeOf(WALLET_FILE).toString(8), "600");
+    assert.strictEqual(getAddress(), SAMPLE.address);
+  });
+});
+
+describe("a program that only loads the wallet module", () => {
+  /*-
+   *  As every util tool does through src/lib/config.js. It reads the
+   *  wallet, from the copy when wallet.json is broken, and touches
+   *  neither file: only a program that owns the wallet puts the files
+   *  right, as it starts. Run in a child process, from a folder of its
+   *  own, over files in a temp folder.
+   */
+
+  /**
+   * Load src/lib/config.js in a child process over a wallet file and its
+   * copy holding `wallet` and `copy` (text, or null for no file); answer
+   * whether it found a wallet, and both files' text afterwards.
+   * @param {string|null} wallet
+   * @param {string|null} copy
+   * @returns {{found: boolean, after: (string|null)[]}}
+   */
+  function loadInChild(wallet, copy) {
+    const dir = makeTestTempFolder("wallet-load");
+    const file = path.join(dir, "wallet.json");
+    if (wallet !== null) fs.writeFileSync(file, wallet);
+    if (copy !== null) fs.writeFileSync(`${file}.tmp`, copy);
+    const lib = (name) =>
+      JSON.stringify(path.join(__dirname, "..", "src", "lib", name));
+    const res = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `require(${lib("config")});
+         const found = require(${lib("wallet-manager")}).hasWallet();
+         process.stdout.write("\\nFOUND=" + found);`,
+      ],
+      {
+        cwd: makeTestTempFolder("wallet-load-cwd"),
+        env: { ...process.env, WALLET_FILE_PATH: file },
+        encoding: "utf8",
+      },
+    );
+    assert.strictEqual(res.status, 0, res.stderr);
+    const after = [file, `${file}.tmp`].map((f) =>
+      fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null,
+    );
+    return { found: /\nFOUND=true$/.test(res.stdout), after };
+  }
+
+  /** A saved wallet file's text, made here so the cases need no import. */
+  const SAVED = JSON.stringify({
+    address: SAMPLE.address,
+    source: "key",
+    hasMnemonic: false,
+    encrypted: { saltHex: "00", ivHex: "00", authTagHex: "00" },
+  });
+
+  it("reads the wallet from the copy without putting it back", () => {
+    const { found, after } = loadInChild("", SAVED);
+    assert.strictEqual(found, true);
+    assert.deepStrictEqual(after, ["", SAVED]);
+  });
+
+  it("leaves a copy beside a good wallet.json where it is", () => {
+    const { found, after } = loadInChild(SAVED, SAVED);
+    assert.strictEqual(found, true);
+    assert.deepStrictEqual(after, [SAVED, SAVED]);
   });
 });
 

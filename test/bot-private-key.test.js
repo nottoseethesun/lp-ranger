@@ -10,9 +10,11 @@
  *   Run in a child process, which imports a wallet of its own into a temp
  *   file (`WALLET_FILE_PATH`) and then asks for the key, so the test
  *   process's environment and the operator's wallet are left alone. The
- *   child keeps the test runner's marker, so the rest of what it loads
- *   uses test folders too, and is given an empty PRIVATE_KEY, so an
- *   operator's `.env` cannot answer first.
+ *   child runs from an empty folder of its own, so it never finds the
+ *   install's `.env`, even with this file run as a plain script; it keeps
+ *   the test runner's marker, so the rest of what it loads uses test
+ *   folders too; and it is given an empty PRIVATE_KEY, so a key the shell
+ *   exports cannot answer first.
  */
 
 const { describe, it } = require("node:test");
@@ -53,6 +55,7 @@ function keyInChild(walletPassword) {
     PRIVATE_KEY: "",
   };
   const res = spawnSync(process.execPath, ["-e", script], {
+    cwd: makeTestTempFolder("bot-key-cwd"),
     env,
     encoding: "utf8",
   });

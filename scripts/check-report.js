@@ -16,7 +16,7 @@
  * propagates this for GitHub CI. Safe to rerun without re-running any
  * tools: reads only the previously-captured files.
  *
- * See the "Check report artifacts" section of server.js for the full
+ * See "Check Report Artifacts" in docs/engineering.md for the full
  * layout and regeneration workflow.
  */
 
@@ -105,8 +105,10 @@ function _knipDetail(knip) {
 /**
  * The Folders kept row: whether the tests left the install's folders as
  * they found them, and the first change when they did not, from what
- * scripts/check.js wrote. Its own function, as `_unusedSrcModulesResult`
- * is, to keep `loadResults` under the complexity ceiling.
+ * scripts/check.js wrote. Folders it could not compare, as when the test
+ * stage failed before reading them again, read as not compared, never as
+ * untouched. Its own function, as `_unusedSrcModulesResult` is, to keep
+ * `loadResults` under the complexity ceiling.
  * @param {object} exitCodes  The stages' exit codes.
  * @returns {{ok: boolean, detail: string}}
  */
@@ -116,12 +118,13 @@ function _keptFoldersCheck(exitCodes) {
       ok: true,
       detail: "shipped settings, user-configurable/ and app-data/ untouched",
     };
-  const { changes } = _readJson("kept-folders.json") || {
-    changes: ["report missing"],
-  };
+  const report = _readJson("kept-folders.json");
+  if (report === null) return { ok: false, detail: "report missing" };
+  if (report.changes === null)
+    return { ok: false, detail: "not compared: the test stage failed first" };
   return {
     ok: false,
-    detail: `${changes.length} change(s), first: ${changes[0]}`,
+    detail: `${report.changes.length} change(s), first: ${report.changes[0]}`,
   };
 }
 
@@ -173,8 +176,11 @@ function loadResults() {
   );
   const stylelint = P.parseStylelint(_readJson("stylelint.json"));
   const htmlValidate = P.parseHtmlValidate(_readJson("html-validate.json"));
-  // html-validate's JSON reporter omits clean files, so use the count
-  // captured by check.js from the glob instead of the parsed results[].length.
+  /*-
+   *  html-validate's json reporter omits clean files, so use the count
+   *  captured by check.js from the glob instead of the parsed
+   *  results[].length.
+   */
   if (exitCodes.htmlFileCount !== undefined) {
     htmlValidate.files = exitCodes.htmlFileCount;
   }
@@ -220,12 +226,14 @@ function loadResults() {
   const configTests = P.parseTapTests(_readText("config-values.tap"));
   const tests = P.parseTapTests(_readText("tests.tap"));
 
-  // Rule counts from --print-config dumps. eslint.json, stylelint.json,
-  // and security-lint.json only know about rules that fired; for the true
-  // "rules loaded" count we read the resolved-config dumps that check.js
-  // captures alongside the regular lint output. html-validate and
-  // markdownlint don't have an equivalent, so their rule counts stay null
-  // → rendered as "—".
+  /*-
+   *  Rule counts from --print-config dumps. eslint.json, stylelint.json,
+   *  and security-lint.json only know about rules that fired; for the
+   *  true "rules loaded" count we read the resolved-config dumps that
+   *  check.js captures alongside the regular lint output. html-validate
+   *  and markdownlint don't have an equivalent, so their rule counts stay
+   *  null → rendered as "—".
+   */
   const eslintRules = P.parseConfigRuleCount(_readJson("eslint-config.json"));
   const stylelintRules = P.parseConfigRuleCount(
     _readJson("stylelint-config.json"),

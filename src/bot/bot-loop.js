@@ -254,14 +254,16 @@ async function startBotLoop(opts) {
     signer = opts.signer;
     address = opts.address || (await signer.getAddress());
   } else {
-    /*- Bring up the send-transaction module's primary + fallback
-        providers from chain config before constructing the signer.
-        FailoverNonceManager consults sendTx.getCurrentRPC() lazily on
-        every call, so the inner ethers.NonceManager rebinds when the
-        active RPC flips.  ensureReachable() probes the primary and
-        engages failoverToNextRPC() if it's already down at boot, so
-        the read-side managed provider and the TX side both follow
-        the same active-RPC selection. */
+    /*-
+     *  Bring up the send-transaction module's providers from chain
+     *  config, one per endpoint, before constructing the signer.
+     *  FailoverNonceManager consults sendTx.getCurrentRPC() lazily on
+     *  every call, so the inner ethers.NonceManager rebinds when the
+     *  active endpoint changes. ensureReachable() tries the endpoints in
+     *  order at boot and moves to the first that answers, so the
+     *  read-side managed provider and the transaction side both follow
+     *  the same endpoint.
+     */
     sendTx.init({ urls: config.RPC_URLS }, ethersLib);
     await sendTx.ensureReachable();
     provider = sendTx.getManagedReadProvider();

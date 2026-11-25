@@ -284,11 +284,12 @@ function _formatPositionSpec(active) {
  * @param {string} verb    Human verb for the message ("manage"/"unmanage").
  * @param {object|string} payload  Server error body `{ error, message }`
  *   (preferred) OR a bare reason string (an http status the body did
- *   not explain, or a network error that never reached the json parse).
+ *   not explain, a network error that never reached the json parse, or
+ *   the re-open check's own `error`, src/client/web/js/dashboard-reopen-flow.js).
  * @param {object} [active] Active position (for the spec line).
  * @param {object} [opts]
  * @param {number} [opts.status]  The answer's http status; none for a
- *   network error.
+ *   network error or the re-open check.
  * @param {Function} [opts.tell]  Shows the message; the browser's
  *   `alert` unless a test passes its own.
  */
@@ -306,7 +307,8 @@ export function _handleManageFailure(
   try {
     /*-
      *  Normalize the payload: accept a bare string (a network error, an
-     *  http-status-only fallback) and the structured body the server
+     *  http-status-only fallback, the re-open check's `error`) and the
+     *  structured body the server
      *  sends from the bot's Manage (`manage` in
      *  src/bot/position-lifecycle.js), `{ error, message, tokenId }`.
      */

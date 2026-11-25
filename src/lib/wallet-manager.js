@@ -10,11 +10,21 @@
  * encrypt/decrypt window, and never appears in the persisted file.
  *
  * A save is all or nothing: the whole file goes to `wallet.json.tmp`,
- * flushed to disk, and is then renamed over `wallet.json`, so a save that
- * fails or is cut short leaves the wallet file as it was. When
- * `wallet.json` is found missing, empty or damaged, as a crash or a faulty
- * file system can leave it, and `wallet.json.tmp` holds a whole wallet,
- * the wallet is recovered from it, without the operator doing anything.
+ * flushed to disk, given `wallet.json`'s file mode, and is then renamed
+ * over `wallet.json`, so a save that fails or is cut short leaves the
+ * wallet file as it was, and a mode the operator set (`chmod 600`, say)
+ * stays. When `wallet.json` is found missing, empty or damaged, as a crash
+ * or a faulty file system can leave it, and `wallet.json.tmp` holds a
+ * whole wallet, the wallet is read from that copy, without the operator
+ * doing anything.
+ *
+ * Loading this module only reads. The files are put right by
+ * `settleWalletFile`, which only the programs that own the wallet call as
+ * they start (src/server.js, src/bot.js, scripts/import-wallet.js): the
+ * copy becomes `wallet.json` again, or a copy left beside a good
+ * `wallet.json` is removed. A util tool that loads this module, as any
+ * that loads src/lib/config.js does, touches neither file, so it can never
+ * take a save's copy while the server writes it.
  *
  * Security model
  * ──────────────
@@ -61,7 +71,7 @@ let _testFile = null;
  * through `readEnv`; else, under `node --test`, a file in a temp folder of
  * the test process's own, so no test reads or writes the operator's
  * wallet; else app-config/user-configurable/wallet.json in the install
- * (the app-config/ section of src/server.js gives the layout). Asked on
+ * ("The app-config Directory" in docs/engineering.md gives the layout). Asked on
  * every read and write. A save writes `<this>.tmp` first.
  * @returns {string}
  */
@@ -105,11 +115,38 @@ function _deriveKey(password, salt) {
 }
 
 /**
+ * A file's permission bits, or undefined when it cannot be read (no file).
+ * @param {string} file
+ * @returns {number|undefined}
+ */
+function _modeOf(file) {
+  try {
+    return fs.statSync(file).mode & 0o777;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Rename a wallet file's temp copy over it, the copy first given the
+ * wallet file's permission bits when there is a wallet file, so the mode
+ * the operator set stays. A rename makes the copy the file, and a new copy
+ * has the default mode.
+ * @param {string} tmp   The temp copy.
+ * @param {string} file  The wallet file.
+ */
+function _renameKeepingMode(tmp, file) {
+  const mode = _modeOf(file);
+  if (mode !== undefined) fs.chmodSync(tmp, mode);
+  fs.renameSync(tmp, file);
+}
+
+/**
  * Write a wallet to the wallet file (`walletFilePath`), encrypted, with no
  * plaintext secrets, all or nothing: the whole file goes to its `.tmp`
- * copy, flushed to disk, then is renamed over it. A write that fails
- * removes what it left of the temp file before it throws, so the wallet
- * file is as it was.
+ * copy, flushed to disk, then is renamed over it, keeping its mode. A
+ * write that fails removes what it left of the temp file before it throws,
+ * so the wallet file is as it was.
  * @param {{address: string, source: string, hasMnemonic: boolean,
  *   encrypted: object}} wallet  What the file holds, as `_state` does.
  */
@@ -129,7 +166,7 @@ function _saveToDisk(wallet) {
       encoding: "utf8",
       flush: true,
     });
-    fs.renameSync(tmp, file);
+    _renameKeepingMode(tmp, file);
   } catch (err) {
     _removeTmpFile(tmp);
     throw err;
@@ -145,12 +182,15 @@ function _saveToDisk(wallet) {
 /**
  * Remove a wallet file's temp copy, if there is one to remove.
  * @param {string} tmp  The temp copy's path.
+ * @returns {boolean} Whether it was removed: false when there was none,
+ *   or it could not be (a folder at that path, a read-only folder).
  */
 function _removeTmpFile(tmp) {
   try {
     fs.unlinkSync(tmp);
+    return true;
   } catch {
-    /* nothing to remove */
+    return false;
   }
 }
 
@@ -189,16 +229,14 @@ function _readWalletFile(file) {
 }
 
 /**
- * Put the wallet in wallet.json.tmp back as wallet.json, when wallet.json
- * holds none; a warning names it. Should the rename fail, the wallet is
- * still loaded from the temp file, and the next save puts the file right.
- * @param {object} wallet  The wallet the temp file holds.
- * @param {string} file  The wallet file, whose `.tmp` copy holds it.
- * @returns {object} The same wallet.
+ * Put the copy in wallet.json.tmp back as wallet.json, keeping the broken
+ * wallet.json's mode, with a warning saying so. Should the rename fail, the
+ * wallet stays loaded from the copy, and the warning says why.
+ * @param {string} file  The wallet file, whose `.tmp` copy holds the wallet.
  */
-function _recoverFromTmpFile(wallet, file) {
+function _recoverFromTmpFile(file) {
   try {
-    fs.renameSync(`${file}.tmp`, file);
+    _renameKeepingMode(`${file}.tmp`, file);
     log.warn(
       "[wallet] wallet.json was missing, empty or damaged: recovered the wallet from wallet.json.tmp, the whole copy a save writes first",
     );
@@ -208,25 +246,40 @@ function _recoverFromTmpFile(wallet, file) {
       err.message,
     );
   }
-  return wallet;
 }
 
 /**
- * Load _state from wallet.json. Without a wallet there and with a whole
- * one in wallet.json.tmp, the wallet is recovered from the temp file. A
- * temp file beside a good wallet.json, or one holding no wallet, is what
- * a save cut short left, and is removed.
+ * Put the wallet's files right, as a program that owns the wallet starts
+ * (src/server.js, src/bot.js, scripts/import-wallet.js), never as this
+ * module loads. With no wallet in wallet.json and a whole one in
+ * wallet.json.tmp, as a save cut short can leave them, the copy becomes
+ * wallet.json again. A copy beside a good wallet.json, or one holding no
+ * wallet, is what a save cut short left, and is removed.
+ */
+function settleWalletFile() {
+  const file = walletFilePath();
+  const tmp = `${file}.tmp`;
+  if (!fs.existsSync(tmp)) return;
+  if (_readWalletFile(file) === null && _readWalletFile(tmp) !== null) {
+    _recoverFromTmpFile(file);
+    return;
+  }
+  if (_removeTmpFile(tmp))
+    log.info("[wallet] Removed wallet.json.tmp, left by a save cut short");
+  else
+    log.warn(
+      "[wallet] Could not remove wallet.json.tmp, left by a save cut short",
+    );
+}
+
+/**
+ * Load _state from wallet.json, reading only. Without a wallet there and
+ * with a whole one in wallet.json.tmp, the wallet is read from that copy,
+ * which stays where it is until `settleWalletFile` puts it back.
  */
 function _loadFromDisk() {
   const file = walletFilePath();
-  const tmp = `${file}.tmp`;
-  let raw = _readWalletFile(file);
-  const fromTmp = raw === null ? _readWalletFile(tmp) : null;
-  if (fromTmp !== null) raw = _recoverFromTmpFile(fromTmp, file);
-  else if (fs.existsSync(tmp)) {
-    _removeTmpFile(tmp);
-    log.info("[wallet] Removed wallet.json.tmp, left by a save cut short");
-  }
+  const raw = _readWalletFile(file) ?? _readWalletFile(`${file}.tmp`);
   if (raw === null) return;
   _state.address = raw.address;
   _state.source = raw.source || "key";
@@ -369,8 +422,8 @@ function hasWallet() {
 }
 
 /**
- * Forget the wallet in memory and read it from disk again, as a fresh
- * start does (tests only).
+ * Forget the wallet in memory and read it from disk again, as this module
+ * does as it loads, reading only (tests only).
  */
 function _reloadFromDiskForTests() {
   _state.address = null;
@@ -388,5 +441,6 @@ module.exports = {
   getAddress,
   hasWallet,
   walletFilePath,
+  settleWalletFile,
   _reloadFromDiskForTests,
 };

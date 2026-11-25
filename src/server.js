@@ -185,7 +185,8 @@ logVersionBanner("[server]");
 // ── app-config migration ─────────────────────────────
 // One-time move of legacy root-level config files into app-config/.
 // Idempotent: a no-op after the first successful run. See
-// src/lib/migrate-app-config.js and the app-config/ section of this file.
+// src/lib/migrate-app-config.js and "The app-config Directory" in
+// docs/engineering.md.
 migrateAppConfig();
 
 // ── MIME type map ────────────────────────────────────
@@ -631,6 +632,14 @@ if (require.main === module) {
   /*- Fresh start: delete the previous run's error.log so no stale entry
    *  lingers (current problems are re-logged by the scans). See src/lib/error-log.js. */
   resetErrorLog();
+  /*-
+   *  Put the wallet's files right before anything can save the wallet:
+   *  the copy a save cut short left is put back as wallet.json, or
+   *  removed (src/lib/wallet-manager.js). Only the programs that own the
+   *  wallet do this, as they start; a util tool that loads the module
+   *  only reads.
+   */
+  walletManager.settleWalletFile();
   start()
     .then(() => {
       /*-

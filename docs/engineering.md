@@ -381,10 +381,10 @@ badge reads Syncing, and the server refuses a Manage or a second import
 (`beginWalletImport`, `src/bot/app-phase.js`). It refuses an unlock too,
 and asks again once the unlock's decrypt is done, since an import can
 begin during it; the launch's key step stands aside the same way
-(`refusalToTakeKey`). The key step does not come back afterwards: an
-import that fails before it takes its own key (its wallet file not
-written, about half a second in) leaves the launch with no key, and the
-operator unlocks from the dashboard. No start-up begins but the import's own
+(`refusalToTakeKey`). The key step does not come back afterwards. An
+import can fail before it takes its own key, its wallet file not
+written, about half a second in. That leaves the launch with no key, and
+the operator unlocks from the dashboard. No start-up begins but the import's own
 (`forImport`): an unlock's, begun during the import, would start the old
 wallet's saved positions with the old wallet's key once the new wallet
 was in. A Manage already past its
@@ -3168,16 +3168,19 @@ One home for each kind of data:
   user's password). Holds address, source (generated/seed/key),
   encrypted private key and mnemonic. Plaintext secrets are NEVER
   written to disk. Read/written by `src/lib/wallet-manager.js`. A save
-  is all or nothing: the whole file goes to `wallet.json.tmp`, flushed
-  to disk, then is renamed over `wallet.json`, so a save that fails or
-  is cut short leaves the file as it was. When `wallet.json` is found
-  missing, empty or damaged at a start, as a crash or a faulty file
-  system can leave it, and `wallet.json.tmp` holds a whole wallet, the
-  wallet is recovered from it, with a warning in the log; a temp file
-  beside a good `wallet.json` is removed. `npm run reset-wallet` removes
-  both. Under `node --test` it is a file in the test process's own temp
-  folder, unless the `WALLET_FILE_PATH` environment variable names
-  another.
+  is all or nothing. The whole file goes to `wallet.json.tmp`, flushed
+  to disk, and is given `wallet.json`'s file mode. Then it is renamed
+  over `wallet.json`. So a save that fails or is cut short leaves the
+  file as it was, and a mode the operator set stays. A crash or a faulty
+  file system can leave `wallet.json` missing, empty or damaged beside
+  a whole `wallet.json.tmp`. Then the wallet is read from that copy, and
+  the programs that own the wallet (the server, the headless bot and
+  `scripts/import-wallet.js`) put the copy back as `wallet.json` as they
+  start, with a warning in the log. They also remove a copy left beside
+  a good `wallet.json`. A util tool only reads. `npm run reset-wallet`
+  removes both files. Under `node --test` the wallet file is in the test
+  process's own temp folder, unless the `WALLET_FILE_PATH` environment
+  variable names another.
 - **`user-configurable/api-keys.json`** — Runtime, gitignored.
   Encrypted storage for third-party API keys (Moralis, Telegram bot
   token + chat ID), using the same wallet password and encryption
@@ -3295,7 +3298,7 @@ where a file could be lost to an interrupted move.
 under the two operator-state directories — `app-config/user-configurable/`
 and `app-data/` — before running tests, wipes them (preserving each
 dir's tracked `README.md`), runs the full test suite, then restores the
-originals via an `EXIT` trap. This prevents test-created fixtures from
+originals in a `finally`, and on SIGINT, SIGTERM or SIGHUP. This prevents test-created fixtures from
 ever clobbering live user state. The shipped-defaults directory
 (`app-config/app-defaults-for-user-configurable/`, which holds the
 tracked `api-keys.example.json` format template alongside the tunable
@@ -3439,8 +3442,11 @@ Several test files copy the shipped settings folder,
 `app-config/app-defaults-for-user-configurable/`, into a temp folder of
 their own as they load, so they can change a setting without touching
 the tracked file (`useShippedDefaultsCopy`,
-`test/helpers/shipped-defaults-copy.js`; `git grep -l
-useShippedDefaultsCopy -- test` lists them). The copy reads each file
+`test/helpers/shipped-defaults-copy.js`): `test/lp-providers.test.js`,
+`test/setting-labels.test.js`, `test/boot-log-file.test.js` and
+`test/load-merged-defaults.test.js`, and through
+`test/helpers/help-settings-moved.js` `test/help-figures.test.js` and
+`test/param-help-figures.test.js`. The copy reads each file
 the folder lists, one at a time. A file listed but gone before it is
 read fails the copy, and with it the whole test file, before any of its
 tests runs.
@@ -3840,8 +3846,9 @@ What happens when the process starts, in order:
       - If no wallet exists: logs `No wallet key — dashboard-only mode`.
       - It stands aside, taking no key and starting nothing, while a
         wallet import is under way, and once the bot holds a key, as
-        when the dashboard was unlocked while the terminal prompt
-        waited. It asks before the decrypt and again after it.
+        when the dashboard was unlocked while the launch waited on the
+        prompt or the decrypt. It asks before the decrypt and again
+        after it.
 9. **If imported as a module (e.g. from a test)**: nothing in step 8
    runs. The caller controls `start()` / `stop()` lifecycle explicitly.
 
@@ -3864,8 +3871,9 @@ What happens when the process starts, in order:
    `position-state-routes.js`, `user-configurable-routes.js`,
    `server-pause.js`, `server-unlock.js` and `handle-api-status.js`.
 3. A closed position's history, `GET /api/position/:tokenId/history`,
-   matched by the shape of its path (`historyTokenId`,
-   `position-routes.js`).
+   matched by the shape of its whole url (`historyTokenId`,
+   `position-routes.js`), so one with a query string falls through to
+   the page.
 4. Any other GET: a static file from `src/client/web/`, or
    `index.html` for a client-side route (`_serveStaticOrSpa`).
 5. Anything else: 405.
@@ -3875,18 +3883,20 @@ operation's refusal becomes a status in
 [`src/server/bot-result.js`](../src/server/bot-result.js). A route
 answers some refusals itself. A malformed request gets 400: the
 unlock's missing password, a malformed key asked of
-`GET /api/is-position-managed`, an api-key save missing a field, and a
-Telegram save whose event choices are not valid, or whose bot token or
-chat id comes with no password. A Telegram test before a bot token and
-chat id are saved gets 400 too. The unlock answers a wrong password
-401, and 404 when no wallet is saved to unlock. The wallet's own steps answer 409: the import while the app may
+`GET /api/is-position-managed`, and an api-key save missing its service
+or key. A save with no password gets 400 too, the api keys' or the
+Telegram bot token's and chat id's, when no unlock this session holds
+one. So does a Telegram save whose event choices are not valid, and a
+Telegram test while no bot token and chat id are held this session. The
+unlock answers a wrong password 401, and 404 when no wallet is saved to
+unlock. The wallet's own steps answer 409: the import while the app may
 start nothing (a stop, a start-up or another import under way), and the
 unlock while an import is under way. An error a route in the route
 table throws becomes 400, or 403 for a wrong password, in
-`handleRequest`. The closed position's history
-(`GET /api/position/:tokenId/history`), matched by its path's pattern
-after the table, is outside that catch: an error it throws reaches the
-server's error guard (`src/server/server-error-guard.js`). The full
+`handleRequest`. The closed position's history, matched after the
+table, is outside that catch: an error it throws reaches the server's
+error guard (`src/server/server-error-guard.js`), which ends the server
+for any error but an rpc timeout, network or server error. The full
 route surface, the csrf token included, is
 covered by the OpenAPI spec (see [API Documentation](#api-documentation)
 above).

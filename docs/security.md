@@ -762,9 +762,11 @@ Every `fs.readFileSync` / `fs.writeFileSync` call in `src/lib/` resolves
 its path via `path.join(process.cwd(), CONSTANT)` — no user-controlled
 path component ever reaches the filesystem layer. Atomic writes
 (`.tmp` + `rename`) prevent partial-file corruption from an interrupted
-shutdown; `wallet.json` also flushes its temp file to disk before the
-rename, and a start that finds `wallet.json` missing, empty or damaged
-recovers the wallet from a whole `wallet.json.tmp`
+shutdown. `wallet.json` also flushes its temp file to disk and gives it
+the old file's mode before the rename, so a `chmod 600` stays. When
+`wallet.json` is missing, empty or damaged, the wallet is read from a
+whole `wallet.json.tmp`, and the server, the headless bot and the
+import script put that copy back as they start; a util tool only reads
 (`src/lib/wallet-manager.js`). The static-file serving guard (described in **Path Traversal
 in Static Serving** above) provides the equivalent protection on the
 inbound side.
@@ -1258,10 +1260,13 @@ are caught, so an interrupt still restores the files before the process
 exits. A test that creates a stub config or keyfile therefore never
 clobbers live user state: one that believed it had written to
 `app-config/user-configurable/wallet.json` was writing where the live file
-had been wiped, and the original comes back afterwards. Outside the gate
-too, a test reaches none of the live files: under `node --test` the
-wallet, the api keys, bot-config.json, the records and the scan caches
-are each the test process's own files, and no `.env` is read. Tests that
-need explicit paths instead use the `WALLET_FILE_PATH` /
-`API_KEYS_FILE_PATH` environment variables or pass a `dir` argument to
-`loadConfig` / `saveConfig` directly.
+had been wiped, and the original comes back afterwards. Outside the gate,
+under `node --test`, the wallet, the api keys, bot-config.json, the
+records and the scan caches are each the test process's own files, and
+no `.env` is read. Two things are not redirected: the rebalance log,
+which a test that rebalances points at a test folder itself, and the
+folder of the operator's copies of the settings files. The gate fails a
+run whose tests changed `app-config/user-configurable/`, `app-data/` or
+the shipped settings. Tests that need explicit paths instead use the
+`WALLET_FILE_PATH` / `API_KEYS_FILE_PATH` environment variables or pass
+a `dir` argument to `loadConfig` / `saveConfig` directly.

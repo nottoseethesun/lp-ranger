@@ -311,7 +311,8 @@ import (via the dashboard UI or `node scripts/import-wallet.js`) —
 decrypts both `wallet.json` and every service entry in
 `api-keys.json`. One password, every secret. Clearing the wallet (the
 dashboard's Clear Wallet, or `npm run reset-wallet`) deletes only
-`wallet.json`: the api keys stay, under the old password, so a wallet
+`wallet.json` and its save's temp copy, `wallet.json.tmp`: the api keys
+stay, under the old password, so a wallet
 imported again under a new password cannot open them until each is
 saved again. The Clear Wallet dialog warns of this.
 
@@ -335,7 +336,9 @@ process exits.
 (invoked via `npm run reset-wallet`) performs two idempotent
 actions:
 
-1. Delete `app-config/user-configurable/wallet.json`.
+1. Delete `app-config/user-configurable/wallet.json`, and
+   `wallet.json.tmp` beside it, the copy a save writes first, from which
+   the next start would otherwise put the wallet back.
 2. Remove every line matching `^WALLET_PASSWORD=` from `.env`
    by reading the file, filtering out the matching lines, writing
    to a `.tmp` sibling, and atomically renaming. File permissions

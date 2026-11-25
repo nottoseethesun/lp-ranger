@@ -10,9 +10,9 @@
  *
  *   Each case loads the real src/lib/runtime-flags.js afresh with one
  *   variable set. Operator overrides are read from an empty directory of
- *   the test's own, and every variable a case sets is cleared again, so
- *   the operator's own `.env`, which dotenv never lets override a set
- *   variable, cannot reach these cases.
+ *   the test's own, and every variable a case sets is cleared again, so a
+ *   value the shell exports cannot reach these cases (under `node --test`
+ *   no `.env` is read).
  */
 
 const { describe, it, after } = require("node:test");

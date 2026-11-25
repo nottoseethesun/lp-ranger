@@ -10,8 +10,8 @@
  *   final resolved json value, which means, of course, it should include
  *   overrides done by the user", and "include .env too". Each layer is set
  *   here before anything under `src/lib/` loads: an override file of the
- *   test's own, and an environment variable, which dotenv leaves alone
- *   once it is set, so the operator's own `.env` cannot reach these cases.
+ *   test's own, and an environment variable, set over any value the shell
+ *   exports (under `node --test` no `.env` is read).
  */
 
 const { describe, it, after } = require("node:test");

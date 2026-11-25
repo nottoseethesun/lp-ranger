@@ -31,7 +31,7 @@ const lib = (name) =>
  * environment, so only the `.env` can set it.
  * @param {string} script
  * @param {{asInstall?: boolean}} [opts]
- * @returns {{out: *, cwd: string}}  What it wrote, parsed as JSON, and
+ * @returns {{out: *, cwd: string}}  What it wrote, parsed as json, and
  *   its folder.
  */
 function inChild(script, { asInstall = false } = {}) {

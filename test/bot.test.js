@@ -11,6 +11,8 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const path = require("path");
+const util = require("util");
+const { _setSinkForTests } = require("../src/lib/log");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
 const config = require("../src/lib/config");
@@ -297,12 +299,14 @@ describe("cli-help — bot mode advertises the new pause flag", () => {
    *  without spawning a subprocess (which would require a live RPC). */
   it("MODES.bot includes --start-with-price-lookups-unpaused", () => {
     const captured = [];
-    const orig = console.log;
-    console.log = (...args) => captured.push(args.join(" "));
+    // The log module's seam for its output, put back in the `finally`.
+    const restoreLog = _setSinkForTests({
+      log: (...args) => captured.push(util.format(...args)),
+    });
     try {
       showHelp("bot");
     } finally {
-      console.log = orig;
+      restoreLog();
     }
     const text = captured.join("\n");
     assert.ok(
@@ -317,12 +321,14 @@ describe("cli-help — bot mode advertises the new pause flag", () => {
 
   it("MODES.server does NOT advertise the bot-only flag", () => {
     const captured = [];
-    const orig = console.log;
-    console.log = (...args) => captured.push(args.join(" "));
+    // The log module's seam for its output, put back in the `finally`.
+    const restoreLog = _setSinkForTests({
+      log: (...args) => captured.push(util.format(...args)),
+    });
     try {
       showServerHelp("server");
     } finally {
-      console.log = orig;
+      restoreLog();
     }
     const text = captured.join("\n");
     assert.ok(

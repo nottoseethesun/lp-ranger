@@ -7,8 +7,8 @@
  * `rebalance_log.json`, plus the legacy `.bot-config.backup.json` and
  * `.bot-config.v1.json`) at the project root.
  *
- * Target layout (see the `app-config/` section of server.js for the full
- * explanation): per-operator runtime state lives under
+ * Target layout (see "The app-config Directory" in docs/engineering.md
+ * for the full explanation): per-operator runtime state lives under
  * `app-config/user-configurable/`; the historical rebalance log lives
  * under `app-data/`, the scan caches under `app-data/scan-cache/`; shipped
  * defaults live in `app-config/app-defaults-for-user-configurable/`.

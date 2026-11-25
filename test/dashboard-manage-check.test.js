@@ -240,4 +240,33 @@ describe("the Manage/Stop click", () => {
       ["POST"],
     );
   });
+
+  it("adds no retry advice of its own when the server refuses the Manage (409)", async () => {
+    const words =
+      "LP Ranger is importing a wallet. " +
+      "Try again once it has started that wallet's positions.";
+    held.set("/api/position/manage", {
+      ok: false,
+      status: 409,
+      json: async () => ({ ok: false, error: words }),
+    });
+    events.injectPosStoreForEvents(store.posStore);
+    show(nft(12));
+    /*-
+     *  TEST-ONLY global swap: the click tells a refusal through the
+     *  browser's `alert`, and its path takes no seam for it; the stand-in
+     *  records what it says. Restored pristine in the `finally` below.
+     */
+    const told = [];
+    const saved = globalThis.alert;
+    globalThis.alert = (text) => told.push(text);
+    try {
+      await events._toggleManagePosition();
+    } finally {
+      globalThis.alert = saved;
+    }
+    assert.equal(told.length, 1);
+    assert.ok(told[0].endsWith(words), told[0]);
+    assert.doesNotMatch(told[0], /again to retry/);
+  });
 });

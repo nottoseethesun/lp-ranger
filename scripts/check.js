@@ -84,10 +84,13 @@ const _KEPT_FOLDERS = [
   _APP_DATA_DIR,
 ];
 
-/*- The file-name predicate used by the backup/wipe/restore helpers.
+/*-
+ *  The file-name predicate used by the backup/wipe/restore helpers.
  *  Hoisted up here so the top-level script body (restoreProdFiles is
- *  called from the EXIT trap, which fires anywhere below) can
- *  reference it without hitting the temporal-dead-zone. */
+ *  called from the `finally` and the interrupt handlers, which can run
+ *  anywhere below) can reference it without hitting the
+ *  temporal-dead-zone.
+ */
 const _IS_README = (n) => n === "README.md";
 process.chdir(ROOT);
 
@@ -503,14 +506,15 @@ wipeRuntimeFiles();
  * operator's files back whatever happens, an interrupt included.
  * Forces --test-reporter=tap so the output is deterministic TAP v14
  * regardless of Node version or TTY state. What the install's folders
- * hold is read before the tests and after them, and every change named.
+ * hold is read before the tests and after them, and every change named;
+ * null when they were not read again, the test stage having failed first.
  * @returns {Promise<{configValuesExit: number|undefined,
- *   testsExit: number, folderChanges: string[]}>}
+ *   testsExit: number, folderChanges: (string[]|null)}>}
  */
 async function runTestStages() {
   let configValuesExit;
   let testsExit;
-  let folderChanges = [];
+  let folderChanges = null;
   try {
     const foldersBefore = _KEPT_FOLDERS.map((dir) => folderSnapshot(dir));
     /*-
@@ -592,7 +596,7 @@ async function runTestStages() {
  * prints the summary and writes the PDF, and exit with its verdict. An
  * interrupted run reports nothing and exits 1.
  * @param {{configValuesExit: number|undefined, testsExit: number,
- *   folderChanges: string[]}} tests
+ *   folderChanges: (string[]|null)}} tests
  */
 function reportRun({ configValuesExit, testsExit, folderChanges }) {
   if (interrupted !== null) {
@@ -622,7 +626,7 @@ function reportRun({ configValuesExit, testsExit, folderChanges }) {
     secretlint: secretlintRun.status,
     configValues: configValuesExit,
     tests: testsExit,
-    keptFolders: folderChanges.length === 0 ? 0 : 1,
+    keptFolders: folderChanges !== null && folderChanges.length === 0 ? 0 : 1,
     htmlFileCount,
   };
   fs.writeFileSync(
@@ -633,7 +637,11 @@ function reportRun({ configValuesExit, testsExit, folderChanges }) {
     path.join(RAW_DIR, "kept-folders.json"),
     JSON.stringify({ changes: folderChanges }, null, 2) + "\n",
   );
-  if (folderChanges.length > 0)
+  if (folderChanges === null)
+    log.error(
+      "[check] The install's folders were not compared: the test stage failed first.",
+    );
+  else if (folderChanges.length > 0)
     log.error(
       "[check] The tests changed the install's folders:\n  %s",
       folderChanges.join("\n  "),

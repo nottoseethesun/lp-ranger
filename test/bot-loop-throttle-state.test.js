@@ -48,6 +48,13 @@ after(() => {
 });
 
 let _originalFetch;
+/*-
+ *  TEST-ONLY global swap: a poll's price lookups reach the price services
+ *  through `fetch` (src/bot/price-fetcher.js, price-sources-current.js),
+ *  which takes no seam for it; the stand-in answers every request empty,
+ *  so no case reaches the network. Restored pristine after each case
+ *  (`afterEach`).
+ */
 beforeEach(() => {
   _originalFetch = globalThis.fetch;
   _resetForTest();

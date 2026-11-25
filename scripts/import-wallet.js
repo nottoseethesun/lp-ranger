@@ -69,6 +69,12 @@ function readStdin() {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 (async function main() {
+  /*-
+   *  Put the wallet's files right first: the copy a save cut short left
+   *  is put back as wallet.json, or removed (src/lib/wallet-manager.js),
+   *  as the server and the headless bot do as they start.
+   */
+  walletManager.settleWalletFile();
   if (walletManager.hasWallet()) {
     const status = walletManager.getStatus();
     log.error("A wallet is already imported (address: %s).", status.address);

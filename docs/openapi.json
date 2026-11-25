@@ -544,7 +544,7 @@
       "post": {
         "tags": ["Positions"],
         "summary": "Scan wallet for LP positions",
-        "description": "Enumerate up to 300 NFT and ERC-20 LP positions for the loaded wallet. Results are cached.",
+        "description": "Enumerate up to 300 NFT and ERC-20 LP positions for the loaded wallet. Results are cached. A request that arrives while a scan runs gets that scan's result, and none of its fields is read.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -561,7 +561,7 @@
                   },
                   "erc20Address": {
                     "type": "string",
-                    "description": "An ERC-20 LP token to check when the wallet holds no NFT position; a scan answered from the cache does not check it, nor does a request that joins a scan already running, which is answered with that scan's result"
+                    "description": "An ERC-20 LP token to check when the wallet holds no NFT position; a scan answered from the cache does not check it"
                   }
                 }
               }
@@ -700,7 +700,7 @@
             "description": "Position started. Names it by positionKey, and by livePositionKey too when a re-open's first rebalance minted it a new NFT before the answer; a refusal after the key is known names it by positionKey."
           },
           "400": {
-            "description": "Missing tokenId or no private key"
+            "description": "Nothing was started: no tokenId, or one not in plain digits; a `contract` other than this server's position manager; no wallet loaded; or no private key held. `error` says which."
           },
           "409": {
             "description": "Nothing was started, for one of these reasons. LP Ranger manages one active position per liquidity pool, so that profit and loss stays attributable to it. `pool-already-managed`: another position already manages this pool, and the body names it. `pool-has-open-position`: the position is closed, so its Manage would re-open it, and the wallet already holds an open position in its pool, which the body names; the wallet's positions are those the last wallet scan saw open, each still open unless the chain answers otherwise. Or nothing may start now: the server is still starting the positions saved as managed, one of which may be in the same pool, a wallet import is under way, or it is stopping; the body then carries only `ok` and `error`. Manage asks again after each of its two waits, the pool check and the shared signer, along with whether the wallet's key changed meanwhile; refused then, the body names the position by positionKey. A stop that begins while Manage waits is answered this way too. A re-open retried on a running position (`forceRebalance: true`) while a scan is running on it is refused too, since its rebalance would be left out of the figures the scan rebuilds; `error` then asks for Manage again once the read finishes, and the body names the position by positionKey.",

@@ -138,8 +138,10 @@ describe("per-NFT scan floors", () => {
   });
 
   it("reads the modules in subfolders, and takes their load of the helper", () => {
-    /*- A scan site in a subfolder of src/bot/ is read like any other, and
-     *  its `../nft-mint-blocks` counts as the floor. */
+    /*-
+     *  A scan site in a subfolder of src/bot/ is read like any other, and
+     *  its `../nft-mint-blocks` counts as the floor.
+     */
     const names = _modules().map((m) => m.name);
     assert.ok(
       names.includes("telegram-notifications/balanced-notifier.js"),

@@ -9,8 +9,8 @@
  * Storage location: `app-config/user-configurable/api-keys.json`
  * (gitignored). A format template lives at
  * `app-config/app-defaults-for-user-configurable/api-keys.example.json`
- * (tracked). See the `app-config/` section of server.js for the full
- * layout. A test can name the file in the `API_KEYS_FILE_PATH`
+ * (tracked). See "The app-config Directory" in docs/engineering.md for
+ * the full layout. A test can name the file in the `API_KEYS_FILE_PATH`
  * environment variable; under `node --test` without one, the file is in
  * a temp folder of the test process's own (src/lib/test-temp-folders.js),
  * as the scan caches and bot-config.json are, so no test reads or writes

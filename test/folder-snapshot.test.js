@@ -26,6 +26,15 @@ function folderWithFiles() {
   fs.writeFileSync(path.join(dir, "a.json"), "{}");
   fs.mkdirSync(path.join(dir, "cache"));
   fs.writeFileSync(path.join(dir, "cache", "b.json"), "{}");
+  /*-
+   *  Every time set back to 1970, so a change a case makes moves it. A
+   *  kernel without fine-grained timestamps (Linux before 6.13) stamps
+   *  every change within one clock tick alike, and a case's change comes
+   *  well within a tick of this setup; the gate's own snapshots are
+   *  seconds apart.
+   */
+  for (const p of ["a.json", "cache/b.json", "cache", "."])
+    fs.utimesSync(path.join(dir, p), 0, 0);
   return dir;
 }
 

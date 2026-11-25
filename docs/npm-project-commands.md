@@ -106,7 +106,7 @@ resetting local state.
 | `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint, knip's unused files, and the walk that fails on a module under `src/` no part of the app loads (`scripts/check-unused-src-modules.js`). | `npm run lint` |
 | `lint:fix` | — | The same set with autofix where each tool supports it. | `npm run lint:fix` |
 | `nuke` | — | Delete `node_modules` and `package-lock.json` for a clean reinstall. Run `npm install` afterwards. | `npm run nuke` |
-| `reset-wallet` | — | Delete `wallet.json` and scrub `WALLET_PASSWORD` from `.env`. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run reset-wallet` |
+| `reset-wallet` | — | Delete `wallet.json` (and its save's temp copy, `wallet.json.tmp`) and scrub `WALLET_PASSWORD` from `.env`. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run reset-wallet` |
 | `restore-settings` | — | Restore whatever `wipe-settings` backed up. | `npm run restore-settings` |
 | `show-dependency-cycles` | — | madge circular-import report across the whole source tree. See [Dependency Cycles](#dependency-cycles). | `npm run show-dependency-cycles` |
 | `show-gallery` | — | Serve a Pages-accurate preview of the screenshot gallery at `http://localhost:5557`. Architecture in [engineering.md § Previewing the Screenshot Gallery](engineering.md#previewing-the-screenshot-gallery). | `npm run show-gallery` |
@@ -290,7 +290,8 @@ task.
 
 ### Wallet and Scan-Cache Resets
 
-- `npm run reset-wallet` — Delete `app-config/user-configurable/wallet.json` + clear
+- `npm run reset-wallet` — Delete `app-config/user-configurable/wallet.json`
+  and its save's temp copy, `wallet.json.tmp`, + clear
   `WALLET_PASSWORD` from `.env`. Forces a fresh wallet import via the
   dashboard on next start.
 - `npm run clear-blockchain-scan-cache` — Empty `app-data/scan-cache/`,

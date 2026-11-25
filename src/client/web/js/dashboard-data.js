@@ -227,9 +227,11 @@ function _updateSyncBadge(d) {
    *
    *  The Manage button's sync gate is computeManageUI()'s
    *  (dashboard-manage-ui.js), which paintManageUI() runs every poll. The
-   *  Rebalance button is `_updateRebalanceButtons`'s alone, and its
-   *  decision tree does not ask about Syncing: Rebalance Now stays
+   *  Rebalance button is set every poll by `_updateRebalanceButtons`,
+   *  whose decision tree does not ask about Syncing: Rebalance Now stays
    *  enabled during Syncing, and the server refuses one it cannot make.
+   *  A submit disables it until the next poll
+   *  (`_disableRebalanceButtonForInFlight`, dashboard-rebalance-confirm.js).
    */
   if (c && !_scanWasComplete) _onScanFinished(d);
   _scanWasComplete = c;
@@ -331,8 +333,8 @@ function _updateRebalanceButtons(d) {
   /*-
    *  The Rebalance button's decision tree. The Manage button is not
    *  touched here: paintManageUI() (dashboard-manage-ui.js) owns it, and
-   *  updateDashboardFromStatus paints it twice a poll. Each branch below
-   *  sets ONLY rb.
+   *  updateDashboardFromStatus paints it twice a poll while a position is
+   *  on screen. Each branch below sets ONLY rb.
    */
   const active = posStore.getActive();
   if (!active) {
@@ -463,8 +465,9 @@ function updateDashboardFromStatus(data) {
   // Read for the position on screen, it replaces any other position's.
   noteStatusAnswerFor(posStore.getActive());
   /*-
-   *  The first of a poll's two Manage-UI paints; `_syncManagedAndGlobals`
-   *  paints again below, once the managed list is updated. This one runs
+   *  The first of a poll's Manage-UI paints; `_syncManagedAndGlobals`
+   *  paints again below, once the managed list is updated, while a
+   *  position is on screen. This one runs
    *  BEFORE any branch that may return early (the cross-wallet skip
    *  below, say), so the button follows the server every poll, even when
    *  the rest of the dashboard skips this one. Both read `isSyncComplete()`,

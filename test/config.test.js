@@ -2,8 +2,9 @@
  * @file test/config.test.js
  * @description Unit tests for src/lib/config.js.
  *
- * Because config.js reads process.env at require-time, we test
- * assertLiveModeReady() by manipulating the exported object. How each
+ * Because config.js reads process.env as it loads, assertLiveModeReady()
+ * is tested in child processes, each loading config.js over the inputs
+ * its case decides. How each
  * `.env` variable is read is covered by test/settings-check.test.js
  * (src/lib/env-settings.js), and the Bot Settings `.env` can set by
  * test/config-env-ranges.test.js.
@@ -16,10 +17,12 @@
 const { describe, it } = require("node:test");
 const assert = require("assert");
 const path = require("path");
+const util = require("util");
 const { spawnSync } = require("child_process");
 
 const config = require("../src/lib/config");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+const { _setSinkForTests } = require("../src/lib/log");
 
 // ── Default values ────────────────────────────────────────────────────────────
 
@@ -95,8 +98,9 @@ describe("config default values", () => {
  * What `assertLiveModeReady` says in a child process, which reads
  * PRIVATE_KEY as config.js loads, so each case decides it there: left out
  * unless `privateKey` names one, with the wallet file in a folder of the
- * child's own, holding a wallet when `withWallet`. The child keeps the
- * test runner's marker, so it reads no `.env`.
+ * child's own, holding a wallet when `withWallet`. The child runs from an
+ * empty folder of its own, so it never finds the install's `.env`, even
+ * with this file run as a plain script.
  * @param {{privateKey?: string, withWallet?: boolean}} opts
  * @returns {string}  "ready", or the first line of what it threw.
  */
@@ -126,6 +130,7 @@ function liveModeReadyInChild({ privateKey, withWallet = false }) {
     }
   })();`;
   const res = spawnSync(process.execPath, ["-e", script], {
+    cwd: makeTestTempFolder("live-mode-cwd"),
     env,
     encoding: "utf8",
   });
@@ -249,30 +254,36 @@ describe("config module shape", () => {
   }
 });
 describe("cli-help", () => {
+  /*-
+   *  The help is printed through the log module, whose seam for its
+   *  output records it; put back in each case's `finally`.
+   */
   it("prints server help without throwing", () => {
-    const orig = console.log;
     let out = "";
-    console.log = (s) => {
-      out += s;
-    };
+    const restoreLog = _setSinkForTests({
+      log: (...args) => {
+        out += util.format(...args);
+      },
+    });
     try {
       require("../src/server/server-cli-help")("server");
       assert.ok(out.includes("Dashboard"));
     } finally {
-      console.log = orig;
+      restoreLog();
     }
   });
   it("prints bot help without throwing", () => {
-    const orig = console.log;
     let out = "";
-    console.log = (s) => {
-      out += s;
-    };
+    const restoreLog = _setSinkForTests({
+      log: (...args) => {
+        out += util.format(...args);
+      },
+    });
     try {
       require("../src/bot/bot-cli-help")("bot");
       assert.ok(out.includes("Headless"));
     } finally {
-      console.log = orig;
+      restoreLog();
     }
   });
 });

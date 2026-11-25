@@ -77,6 +77,7 @@ const { createBot } = require("./bot/bot-interface");
 const { startBotLoop } = require("./bot/bot-loop");
 const { resetErrorLog } = require("./lib/error-log");
 const { resolvePrivateKey } = require("./bot/bot-private-key");
+const walletManager = require("./lib/wallet-manager");
 const { loadConfig, managedKeys } = require("./lib/bot-config-v2");
 const { createPerPositionBotState } = require("./bot/position-states");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
@@ -92,6 +93,12 @@ migrateAppConfig();
 async function main() {
   // Read before anything starts, so an unusable value stops startup.
   const { exitTimeoutMs } = readShutdownTimings();
+  /*-
+   *  Put the wallet's files right before the key is read from them: the
+   *  copy a save cut short left is put back as wallet.json, or removed
+   *  (src/lib/wallet-manager.js), as the server does as it starts.
+   */
+  walletManager.settleWalletFile();
   const dryRun = config.DRY_RUN;
   if (!dryRun) config.assertLiveModeReady();
 

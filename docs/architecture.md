@@ -578,7 +578,8 @@ asks the bot for through its interface. Adding or removing a price
 source later requires zero changes here. Two kinds of request go to a
 price service without the gate. Historical prices are one:
 `fetchHistoricalPriceGecko` and the lookups in
-`src/bot/historical-token-price.js` ask whether or not the pause is on.
+`src/bot/historical-token-price.js` ask the price services while the
+pause is on as well.
 The server's check of the stored Moralis key is the other (`pingMoralis`,
 `src/lib/moralis-key.js`): it asks Moralis one price to prove the key,
 on a key save, the key dialog's status check and the check after the

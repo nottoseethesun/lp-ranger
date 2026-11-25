@@ -34,6 +34,13 @@ fs.writeFileSync(
   JSON.stringify({ moralisEnabled: false }),
 );
 process.env.LP_RANGER_USER_CONFIG_DIR = _USER_DIR;
+/*-
+ *  TEST-ONLY global swap: the working directory moves to a scratch folder
+ *  before anything under src/lib/ loads, so a file a module finds from
+ *  the working directory is looked for there, never in the install; the
+ *  modules take no seam for it. Restored pristine after the file's cases
+ *  (`after`).
+ */
 const _SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), "moralis-default-cwd-"));
 const _CWD = process.cwd();
 process.chdir(_SCRATCH);

@@ -195,11 +195,12 @@ function _showReopenIntroModal(active, formatPositionSpec) {
   const btn = overlay?.querySelector('[data-action="reopen-confirm"]');
   if (!btn) return;
   btn.addEventListener("click", async () => {
-    /*- Close the intro modal, then POST /api/position/manage directly.
-     *  No `customRangeWidthPct` in body — range width comes from
-     *  persistent config (POSITION_KEY `rebalanceRangeWidthPct`),
-     *  read by the bot loop via `deps._getConfig` in
-     *  `src/bot/bot-cycle-opts.js`; empty ⇒ `preserveRange()` fallback. */
+    /*-
+     *  Close the intro modal, then POST /api/position/manage directly.
+     *  No `customRangeWidthPct` in the body: the re-open's range follows
+     *  the position's Range settings, No Override toggle included, as any
+     *  rebalance's does (`buildRebalanceOpts`, src/bot/bot-cycle-opts.js).
+     */
     if (overlay) overlay.remove();
     /*- Manage: fire the POST.  The Price Range Extension input stays
      *  empty until the user types a value (empty = preserveRange).

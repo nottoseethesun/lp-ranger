@@ -82,12 +82,12 @@ function createUnlockHandler(deps) {
       unlockLog.logUnlockMissing();
       return jsonResponse(res, 400, { ok: false, error: "Missing password" });
     }
-    unlockLog.logUnlockAttempt(String(body.password).length);
     if (_refused(res)) return;
     if (!walletManager.hasWallet()) {
       unlockLog.logUnlockNoWallet();
       return jsonResponse(res, 404, { ok: false, error: _NO_WALLET });
     }
+    unlockLog.logUnlockAttempt(String(body.password).length);
     const wasLocked = !bot.hasPrivateKey();
     let privateKey;
     try {

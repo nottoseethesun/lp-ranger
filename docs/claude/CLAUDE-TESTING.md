@@ -140,10 +140,10 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 ### How it works
 
 1. Before tests: `backupProdFiles()` copies every file under the operator-state dirs (`app-config/user-configurable/`, `app-data/` and `app-data/scan-cache/`, each preserving its tracked `README.md`) to a `mkdtempSync` directory, then `wipeRuntimeFiles()` deletes the originals so tests start from vanilla state
-2. Tests run (may create, modify, or delete any of these files)
+2. Tests run. None may create, change or delete a file in those folders: the gate reads them before and after the tests and fails the run on any change, a file written and put back included (its "Folders kept" row).
 3. After tests (try/finally in `check.js`): `restoreProdFiles()` deletes any test-created files and copies the backed-up originals back into place
 
-This is the ONLY protection mechanism. Individual test files do NOT need their own snapshot/restore logic.
+The backup is the safety net, not the way a test keeps clear of those files. Under `node --test` most of them are a test process's own already (see "Temp folders" below); a test that needs another points it at a `makeTestTempFolder` folder itself, as the tests that rebalance do with the rebalance log (`config.LOG_FILE`). A test never snapshots and restores an operator file.
 
 ### `logs/`
 
@@ -180,7 +180,7 @@ asserts in an `after` hook that the file survived the suite.
 When adding a new disk-backed cache or config file:
 
 1. If it's a scan cache → name its file with `scanCachePath` (`src/lib/scan-cache-dir.js`), which puts it in `app-data/scan-cache/`, or under `node --test` in the test process's own folder. Protected by the backup pass, and out of every test's reach.
-2. If it's runtime state (managed by the app, may include user secrets) → put it in `app-config/` (top level). Automatically protected by the `find app-config -maxdepth 1 -type f` scan.
+2. If it's runtime state the operator chose (may include user secrets) → put it in `app-config/user-configurable/`; if it's state the bot records → in `app-data/`. Both folders are protected by the backup pass.
 3. If it's a tracked shipped default → put it in `app-config/app-defaults-for-user-configurable/`. Excluded from the protection scan (it's committed to git). Operators override at the matching `app-config/user-configurable/<same-name>.json` (gitignored, protected by the backup pass). Every value in a file there is checked for type and range by `test/shipped-config-values.test.js`: by its range in `setting-bounds.json`, by the timer rule, or by the kind of value its entry in that test's `RULES` names. A value, or a file, with no rule fails that test, naming it, until it is given one; a file that holds no defaults is named in `NOT_DEFAULTS` instead. `npm run check` runs that test and `test/setting-bounds.test.js` before every other test (`configValueTests()` in `scripts/check.js`), so a wrong shipped value is reported as the cause before the failures it causes.
 4. Document new files in this file under "Protected files".
 
@@ -199,7 +199,7 @@ Default/vanilla config values come from `.env.example` and the shipped JSON file
 
 ### Temp folders
 
-A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so are the scan-cache folder, the api-key store's folder (`src/lib/api-key-store.js`, when `API_KEYS_FILE_PATH` names no file) and the wallet's (`src/lib/wallet-manager.js`, when `WALLET_FILE_PATH` names none). A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
+A test run leaves no folder behind. A test that needs a folder of its own takes one from `makeTestTempFolder(purpose)` (`src/lib/test-temp-folders.js`). It is made in the system's temp directory, named `lp-ranger-test-<purpose>-<pid>-<random>`, and removed when the test process exits, whether its tests passed or failed: one exit hook per process removes them all, so a file may make as many as it needs without Node's warning past ten exit hooks. The config folder above is one of these, and so are the records file's folder (`src/lib/util/position-records.js`), the scan-cache folder, the api-key store's folder (`src/lib/api-key-store.js`, when `API_KEYS_FILE_PATH` names no file) and the wallet's (`src/lib/wallet-manager.js`, when `WALLET_FILE_PATH` names none). A folder made any other way is removed by the test that made it, in a `finally` or an `after` hook.
 
 A process stopped outright (Ctrl+C, kill -9) cannot remove its folders, so `npm run check` removes them before its tests start: each `lp-ranger-test-` folder whose process, named in the folder's name, is no longer running. A running process's folder is left alone, so a test run under way elsewhere keeps its files.
 
@@ -210,7 +210,7 @@ Why the system's temp directory and not the project's `tmp/`: anything left in t
 A test of a configured value runs on a value other than the shipped one. At the shipped value, code with that figure typed in passes too. There are three ways to move one, each set up before anything under `src/lib/` loads, since the loader reads its folders' paths as it loads:
 
 - **An operator's override.** Write the file into a `makeTestTempFolder` folder and point `LP_RANGER_USER_CONFIG_DIR` at it. Most tests do this.
-- **`.env`.** Set the variable in `process.env`. Under `node --test` no `.env` file is read (`envFilePath`, `src/lib/env-settings.js`), so a test sees only what it sets.
+- **`.env`.** Set the variable in `process.env`. Under `node --test` no `.env` file is read (`envFilePath`, `src/lib/env-settings.js`), so a test sees what it sets, and any variable the shell exports, which the gate passes on to the tests.
 - **A copy of the shipped folder.** For what reads the shipped files alone, such as the User Manual's build, or a test of how a reader copes with a broken shipped file: `useShippedDefaultsCopy()` (`test/helpers/shipped-defaults-copy.js`) copies the folder and points `LP_RANGER_DEFAULTS_DIR` at the copy, and `changeShippedCopy` changes values in it. `useMovedHelpSettings()` (`test/helpers/help-settings-moved.js`) moves every value the help quotes. A test never writes the tracked file itself; `test/tests-leave-shipped-files-alone.test.js` fails one that does.
 
 A test that checks the shipped values themselves, such as the manual on disk, reads the tracked files and moves nothing.
