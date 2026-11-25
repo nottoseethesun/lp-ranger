@@ -26,7 +26,10 @@ async function askForImport(prompt, deps = {}) {
   const stop = deps.stop === undefined ? () => process.exit(1) : deps.stop;
   const answer = await ask(prompt);
   if (answer === null) {
-    log.error("Nothing was imported.");
+    log.error(
+      "Nothing was imported. Run npm run import-wallet again in a " +
+        "terminal you can type into.",
+    );
     return stop();
   }
   return answer.trim();

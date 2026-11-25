@@ -168,13 +168,25 @@ test("passwords that differ save nothing, asking Moralis nothing", async () => {
   assert.equal(saved, false);
 });
 
-test("an empty key or password saves nothing", async () => {
+test("an empty key or password saves nothing, and says what to do", async () => {
   const noKey = stage(["  ", PASSWORD, PASSWORD]);
   const first = unlockMoralisKey(noKey.deps);
-  await assert.rejects(first, refusedWith("No Moralis api key was entered."));
+  await assert.rejects(
+    first,
+    refusedWith(
+      "No Moralis api key was entered, so none was saved. Run again and " +
+        "enter the key as Moralis shows it.",
+    ),
+  );
   const noPassword = stage([KEY, "", ""]);
   const second = unlockMoralisKey(noPassword.deps);
-  await assert.rejects(second, refusedWith("No password was entered."));
+  await assert.rejects(
+    second,
+    refusedWith(
+      "No password was entered, so the key was not saved. Run again and " +
+        "type LP Ranger's wallet password.",
+    ),
+  );
   const saved = hasEncryptedKey("moralis");
   assert.equal(saved, false);
 });
@@ -195,18 +207,15 @@ test("a prompt closed with nothing typed stops the run, saving and asking nothin
    *  The prompt answers null when its input ends first, as with no
    *  terminal to type into (src/lib/ask-password.js).
    */
+  const closed =
+    "Nothing was typed: the prompt closed first. Run the report again " +
+    "in a terminal you can type into.";
   const newKey = stage([null]);
-  await assert.rejects(
-    unlockMoralisKey(newKey.deps),
-    refusedWith("Nothing was typed: the prompt closed first."),
-  );
+  await assert.rejects(unlockMoralisKey(newKey.deps), refusedWith(closed));
   assert.equal(hasEncryptedKey("moralis"), false);
   await saveEncryptedKey("moralis", KEY, PASSWORD);
   const savedKey = stage([null]);
-  await assert.rejects(
-    unlockMoralisKey(savedKey.deps),
-    refusedWith("Nothing was typed: the prompt closed first."),
-  );
+  await assert.rejects(unlockMoralisKey(savedKey.deps), refusedWith(closed));
   assert.equal(savedKey.pings[0], 0);
 });
 

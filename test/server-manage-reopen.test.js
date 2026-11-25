@@ -88,6 +88,8 @@ describe("Manage's re-open flag propagation", () => {
     const dc = _makeDiskConfig();
     const deps = _makeRouteDeps({
       diskConfig: dc,
+      // A closed position: its NFT holds no liquidity.
+      ...poolReadStandIn({ liquidity: 0n }),
       readJsonBody: async () => ({
         tokenId: "158970",
         forceRebalance: true,
@@ -182,6 +184,8 @@ describe("Manage's re-open flag propagation", () => {
      *  the next poll.
      */
     const liveState = {
+      // Its last poll read the NFT empty, as the aborted re-open left it.
+      activePosition: { tokenId: "99999", liquidity: "0" },
       rebalancePaused: true,
       rebalanceFailedMidway: true,
       rebalanceError: "Swap aborted: price impact 2.4% exceeds slippage 0.75%",
@@ -311,5 +315,86 @@ describe("Manage's re-open flag propagation", () => {
     assert.strictEqual(res._body.reopenStamped, false);
     assert.strictEqual(liveState.forceRebalance, undefined);
     getAllPositionBotStates().delete(liveKey);
+  });
+});
+
+describe("a re-open of a position that still holds liquidity", () => {
+  /*-
+   *  The user's ruling, 2026-11-25: a position whose NFT holds liquidity
+   *  is managed with no re-open rebalance, its Bot Settings deciding when
+   *  it rebalances. The page sends a re-open only for a position its list
+   *  shows closed, which can be out of date.
+   */
+  const WORDS =
+    "still holds liquidity, so LP Ranger manages it without a re-open " +
+    "rebalance. Its Bot Settings decide when it rebalances.";
+
+  it("starts the position with no rebalance asked of its first check, and says so", async () => {
+    let stateAtStartPosition = null;
+    const dc = _makeDiskConfig();
+    const deps = _makeRouteDeps({
+      diskConfig: dc,
+      // The chain reads the NFT holding liquidity.
+      readJsonBody: async () => ({ tokenId: "158971", forceRebalance: true }),
+      positionMgr: _makePositionMgr({
+        get: () => null,
+        startPosition: async (key) => {
+          stateAtStartPosition = { ...getAllPositionBotStates().get(key) };
+        },
+      }),
+    });
+    const routes = createPositionRoutes(deps);
+    const res = makeRes();
+    await routes["POST /api/position/manage"]({}, res);
+    try {
+      assert.strictEqual(res._status, 200);
+      assert.ok(stateAtStartPosition, "the position starts");
+      assert.strictEqual(stateAtStartPosition.forceRebalance, undefined);
+      assert.strictEqual(res._body.reopenRebalanceSkipped, true);
+      assert.ok(
+        res._body.message.startsWith(`NFT #158971 ${WORDS}`),
+        res._body.message,
+      );
+    } finally {
+      const key = Object.keys(dc.positions).find((k) => k.endsWith("-158971"));
+      if (key) getAllPositionBotStates().delete(key);
+    }
+  });
+
+  it("leaves a running one as it is, and says so", async () => {
+    const liveKey = compositeKey(
+      "pulsechain",
+      WALLET,
+      config.POSITION_MANAGER,
+      "66666",
+    );
+    const liveState = {
+      activePosition: { tokenId: "66666", liquidity: "5000" },
+      rebalancePaused: true,
+      rebalanceError: "Swap aborted",
+    };
+    getAllPositionBotStates().set(liveKey, liveState);
+    const deps = _makeRouteDeps({
+      readJsonBody: async () => ({ tokenId: "66666", forceRebalance: true }),
+      positionMgr: _makePositionMgr({
+        get: (k) => (k === liveKey ? { status: "running" } : null),
+      }),
+    });
+    const routes = createPositionRoutes(deps);
+    const res = makeRes();
+    try {
+      await routes["POST /api/position/manage"]({}, res);
+      assert.strictEqual(res._status, 200);
+      assert.strictEqual(res._body.alreadyRunning, true);
+      assert.strictEqual(res._body.reopenStamped, false);
+      assert.strictEqual(res._body.reopenRebalanceSkipped, true);
+      assert.ok(res._body.message.startsWith(`NFT #66666 ${WORDS}`));
+      assert.strictEqual(liveState.forceRebalance, undefined);
+      // Its hold stays until a Slippage save or a Rebalance Now lifts it.
+      assert.strictEqual(liveState.rebalancePaused, true);
+      assert.strictEqual(liveState.rebalanceError, "Swap aborted");
+    } finally {
+      getAllPositionBotStates().delete(liveKey);
+    }
   });
 });

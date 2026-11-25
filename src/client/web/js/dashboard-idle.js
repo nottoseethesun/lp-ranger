@@ -25,9 +25,8 @@
  *
  * It also answers whether the browser loaded this page on its own
  * (`pageReloadedByBrowser`): a tab it unloaded to save memory and loads
- * again as the operator returns, or a page brought back by Back or
- * Forward. Such a page goes on as if it had stayed open, which the
- * wallet restore asks (dashboard-wallet.js).
+ * again as the operator returns. Such a page goes on as if it had stayed
+ * open, which the wallet restore asks (dashboard-wallet.js).
  */
 
 import { log } from "./dashboard-log.js";
@@ -224,23 +223,13 @@ export function isStaleForUiPurposes(eventMs) {
 /*-
  *  How this page was loaded, as the browser reports it: whether it
  *  reloaded a tab it had unloaded to save memory (`document.wasDiscarded`,
- *  which Chrome sets), and the navigation's type (`back_forward` for Back
- *  or Forward; `navigate` for an address, a bookmark or a link; `reload`).
+ *  which Chrome sets).
  */
-let _pageLoad = () => {
-  const entries =
-    typeof performance.getEntriesByType === "function"
-      ? performance.getEntriesByType("navigation")
-      : [];
-  return {
-    discarded: document.wasDiscarded === true,
-    type: entries.length > 0 ? entries[0].type : "navigate",
-  };
-};
+let _pageLoad = () => ({ discarded: document.wasDiscarded === true });
 
 /**
  * TEST-ONLY seam: give how the page was loaded, as jsdom reports nothing.
- * @param {() => {discarded: boolean, type: string}} fn
+ * @param {() => {discarded: boolean}} fn
  * @returns {() => void}  Puts the browser's report back.
  */
 export function _setPageLoadForTests(fn) {
@@ -252,16 +241,15 @@ export function _setPageLoadForTests(fn) {
 }
 
 /**
- * Whether the browser loaded this page on its own rather than the
- * operator opening it: it reloaded a tab it had unloaded to save memory,
- * as the operator came back to it, or brought the page back from the
- * tab's history (Back, Forward). Such a page goes on as if it had stayed
- * open, and a tab that stays open follows the server's wallet
- * (dashboard-wallet-change.js). An address the operator opens, from the
- * address bar, a bookmark or a link, takes priority instead.
+ * Whether the browser loaded this page on its own: it reloaded a tab it
+ * had unloaded to save memory, as the operator came back to it. Such a
+ * page goes on as if it had stayed open, and a tab that stays open
+ * follows the server's wallet (dashboard-wallet-change.js). An address
+ * the browser came to any other way takes priority instead, typed,
+ * from a bookmark or a link, or by Back or Forward (the user's ruling,
+ * 2026-11-25).
  * @returns {boolean}
  */
 export function pageReloadedByBrowser() {
-  const load = _pageLoad();
-  return load.discarded || load.type === "back_forward";
+  return _pageLoad().discarded;
 }

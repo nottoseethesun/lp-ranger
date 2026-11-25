@@ -717,7 +717,7 @@
                   },
                   "forceRebalance": {
                     "type": "boolean",
-                    "description": "True for the re-open of a closed position: its first poll makes the rebalance that mints fresh liquidity, which the dashboard's re-open dialog asks for. Sent for a position already running, as when a re-open is tried again after a swap abort held it, it lifts that hold, and the position's next poll makes a rebalance as a Rebalance Now would, in range or not, every automatic check skipped; it is refused (409) while a scan runs on the position."
+                    "description": "True for the re-open of a closed position: its first poll makes the rebalance that mints fresh liquidity, which the dashboard's re-open dialog asks for. Sent for a position already running whose NFT holds no liquidity, as when a re-open is tried again after a swap abort held it, it lifts that hold, and the position's next poll makes the rebalance; it is refused (409) while a scan runs on the position. Honored only while the NFT holds no liquidity, as Manage reads it from the chain, or a running position's last poll read it: a position that still holds liquidity is managed with no re-open rebalance, its Bot Settings deciding when it rebalances, and the answer says so (`reopenRebalanceSkipped`)."
                   }
                 }
               }
@@ -726,7 +726,7 @@
         },
         "responses": {
           "200": {
-            "description": "Position started. Names it by positionKey, and by livePositionKey too when a re-open's first rebalance minted it a new NFT before the answer; a refusal after the key is known names it by positionKey."
+            "description": "Position started. Names it by positionKey, and by livePositionKey too when a re-open's first rebalance minted it a new NFT before the answer; a refusal after the key is known names it by positionKey. A request with `forceRebalance: true` for a position whose NFT still holds liquidity starts it with no re-open rebalance, and the answer adds `reopenRebalanceSkipped: true` and a `message` saying so."
           },
           "400": {
             "description": "Nothing was started: no tokenId, or one not in plain digits; a `contract` other than this server's position manager; no wallet loaded; or no private key held. `error` says which."

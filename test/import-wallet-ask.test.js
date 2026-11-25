@@ -44,5 +44,8 @@ test("a prompt closed with nothing typed stops the import, saying so", async () 
   }
   assert.equal(stops, 1);
   assert.equal(answer, "stopped");
-  assert.match(said.join("\n"), /Nothing was imported\./);
+  assert.match(
+    said.join("\n"),
+    /Nothing was imported\. Run npm run import-wallet again in a terminal you can type into\./,
+  );
 });

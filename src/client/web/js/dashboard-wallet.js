@@ -514,13 +514,14 @@ export function copyText(id) {
  * Restore a server-persisted wallet, unless the page's address names
  * another wallet that takes priority.
  *
- * An address the operator opened (the address bar, a bookmark, a link)
- * takes priority: the server's wallet is not loaded, and the wallet
+ * The page's address takes priority, however the browser came to it:
+ * typed, from a bookmark or a link, or by Back or Forward (the user's
+ * ruling, 2026-11-25). The server's wallet is not loaded, and the wallet
  * dialog asks for the address's, after whose import the server holds it
- * and other tabs follow (dashboard-wallet-change.js). A page the browser
- * loaded on its own, after unloading the tab to save memory or by Back or
- * Forward (`pageReloadedByBrowser`, dashboard-idle.js), goes on as if it
- * had stayed open instead: it forgets the address and takes the server's
+ * and other tabs follow (dashboard-wallet-change.js). Only a page the
+ * browser reloaded on its own, after unloading the tab to save memory
+ * (`pageReloadedByBrowser`, dashboard-idle.js), goes on as if it had
+ * stayed open instead: it forgets the address and takes the server's
  * wallet, as a tab that stayed open does.
  * @param {{address: string, source: string}} data  The server's wallet.
  */

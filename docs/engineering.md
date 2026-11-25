@@ -433,13 +433,14 @@ first, and starts once it is accepted.
 
 A tab the browser unloaded to save memory, and loads again as the
 operator returns to it, runs no code at the change. It goes on as if it
-had stayed open instead: a page the browser loaded on its own, after
-unloading the tab or by Back or Forward (`pageReloadedByBrowser`,
+had stayed open instead: a page the browser reloaded on its own, after
+unloading the tab (`pageReloadedByBrowser`,
 src/client/web/js/dashboard-idle.js), forgets the wallet its address
-names and takes the server's. An address the operator opens, from the
-address bar, a bookmark or a link, takes priority: the wallet dialog asks
-for its wallet, and once that is imported the server holds it and the
-other tabs follow.
+names and takes the server's. Any other address takes priority, however
+the browser came to it: typed, from a bookmark or a link, or by Back or
+Forward (the user's ruling, 2026-11-25). The wallet dialog asks for its
+wallet, and once that is imported the server holds it and the other
+tabs follow.
 
 Each position then runs the same sequence as a fresh one, with two
 differences that account for the speed:
@@ -4500,6 +4501,16 @@ bot loop directly:
    `rebalancePaused` / `rebalanceFailedMidway` / `rebalanceError` so
    the next poll runs a fresh rebalance. Liquidity flips from 0 to
    positive; position is alive again.
+
+   Only a closed position is re-opened this way (the user's ruling,
+   2026-11-25). Manage reads the NFT's liquidity from the chain in its
+   pool check; a running position's comes from its last poll. When the
+   NFT still holds liquidity, as when an addition made outside LP Ranger
+   has left the dashboard's list out of date, no flag is stamped: the
+   position is managed as any other, its Bot Settings deciding when it
+   rebalances, and the answer carries `reopenRebalanceSkipped` with words
+   the dashboard shows in a "Managed Without a Re-open" dialog and the
+   Activity Log, in place of a re-open.
 
    Re-open collects no per-rebalance width of its own: range width is a
    persistent Bot Configuration field, so the reopened position uses the

@@ -441,6 +441,17 @@ be reached. Try again later.
 `The two passwords differ, so the key was not saved.` — Run again, and
 type the same password twice.
 
+`No Moralis api key was entered, so none was saved.` — Run again, and
+enter the key exactly as Moralis shows it.
+
+`No password was entered, so the key was not saved.` — Run again, and
+type LP Ranger's wallet password.
+
+`Nothing was typed: the prompt closed first.` — The report could not
+ask you anything: Ctrl+D was pressed, or it ran with no terminal to type
+into, as when a script or a service starts it. Run it again in a
+terminal window, and type each answer when it asks.
+
 `Neither Moralis nor CoinGecko (GeckoTerminal) gave a USD price for …`
 — Neither source has a price for that coin on that day, and the report
 writes no csv without every price. CoinGecko reaches back only 180

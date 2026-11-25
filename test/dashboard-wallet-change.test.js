@@ -240,7 +240,7 @@ describe("a page loading anew", () => {
       restore();
     }
   }
-  const opened = { discarded: false, type: "navigate" };
+  const opened = { discarded: false };
   const dialogOpen = () =>
     !document.getElementById("walletModal").classList.contains("hidden");
 
@@ -253,7 +253,11 @@ describe("a page loading anew", () => {
   });
 
   it("opened at an address naming another wallet asks for it, and stays", async () => {
-    // The address the operator opens takes priority.
+    /*-
+     *  The address takes priority, however the browser came to it: typed,
+     *  from a bookmark or a link, or by Back or Forward, which the browser
+     *  reports as a load like this one (the user's ruling, 2026-11-25).
+     */
     await loadsAt(OLD, opened);
     assert.equal(walletMod.wallet.address, null);
     assert.equal(dialogOpen(), true);
@@ -264,16 +268,10 @@ describe("a page loading anew", () => {
 
   it("reloaded by the browser after unloading the tab, follows the server's wallet", async () => {
     // As if it had stayed open: a tab that stays open reloads to it.
-    await loadsAt(OLD, { discarded: true, type: "navigate" });
+    await loadsAt(OLD, { discarded: true });
     assert.equal(dropped, 1);
     assert.equal(walletMod.wallet.address, NEW);
     assert.equal(dialogOpen(), false);
-  });
-
-  it("brought back by Back or Forward, follows the server's wallet", async () => {
-    await loadsAt(OLD, { discarded: false, type: "back_forward" });
-    assert.equal(dropped, 1);
-    assert.equal(walletMod.wallet.address, NEW);
   });
 });
 

@@ -368,6 +368,20 @@ export function _settleRebalanceAnswer({
   triggerActLabel,
 }) {
   const onScreen = isAnswerForPositionOnScreen(data, requestKey);
+  /*-
+   *  A re-open of a position that still holds liquidity: the server
+   *  manages it with no rebalance, its Bot Settings deciding when it
+   *  rebalances, and its answer says so. No rebalance is shown under way.
+   */
+  if (data?.ok === true && data.reopenRebalanceSkipped === true) {
+    _showRebalanceError(
+      "Managed Without a Re-open",
+      data.message,
+      active,
+      onScreen,
+    );
+    return onScreen;
+  }
   if (data?.ok === true) {
     _handleRebalanceOk(active, inFlight, url, triggerActLabel, onScreen);
     return onScreen;

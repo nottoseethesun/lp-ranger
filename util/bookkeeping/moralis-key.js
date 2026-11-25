@@ -97,7 +97,10 @@ function refused(message) {
 async function _typed(ask, prompt) {
   const answer = await ask(prompt);
   if (answer === null)
-    throw refused("Nothing was typed: the prompt closed first.");
+    throw refused(
+      "Nothing was typed: the prompt closed first. Run the report again " +
+        "in a terminal you can type into.",
+    );
   return answer;
 }
 
@@ -172,9 +175,17 @@ async function openSavedKey(ask) {
  */
 async function askNewKey(ask) {
   const key = (await _typed(ask, "Moralis api key: ")).trim();
-  if (key.length === 0) throw refused("No Moralis api key was entered.");
+  if (key.length === 0)
+    throw refused(
+      "No Moralis api key was entered, so none was saved. Run again and " +
+        "enter the key as Moralis shows it.",
+    );
   const password = await _typed(ask, PASSWORD_PROMPT);
-  if (password.length === 0) throw refused("No password was entered.");
+  if (password.length === 0)
+    throw refused(
+      "No password was entered, so the key was not saved. Run again and " +
+        "type LP Ranger's wallet password.",
+    );
   const again = await _typed(ask, "That password again: ");
   // eslint-disable-next-line security/detect-possible-timing-attacks -- Safe: comparing two strings the user typed, to confirm one, not checking a secret
   if (again !== password)

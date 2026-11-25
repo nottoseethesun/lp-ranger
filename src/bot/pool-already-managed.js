@@ -299,6 +299,9 @@ function _refuse(o, pool, r) {
  * @param {Function} [o.openInPool]  `(pool) => Promise<string|null>`:
  *   the token id of an open position the wallet holds in `pool`, other
  *   than this one, or null (src/bot/open-in-pool.js).
+ * @param {Function} [o.onPoolRead]  `(pool) => void`: hands the caller
+ *   the position as read, its liquidity included, once the read
+ *   succeeds; Manage takes from it whether the position is closed.
  * @returns {Promise<object|null>}  The refusal (`ok: false`, a `reason`
  *   and the answer's fields), or null when the request may go on.
  */
@@ -328,6 +331,7 @@ async function rejectIfPoolManaged(o) {
         "so LP Ranger cannot check that no other position is managed in that pool",
       remedy: `Nothing was started for ${self} ${selfEmoji}; click Manage again in a moment`,
     });
+  if (typeof o.onPoolRead === "function") o.onPoolRead(pool);
   const reopening = pool.liquidity === 0n;
   const openSibling =
     reopening && typeof o.openInPool === "function"
