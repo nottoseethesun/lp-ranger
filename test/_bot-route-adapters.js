@@ -19,6 +19,8 @@ const { createReloadPosition } = require("../src/bot/reload-position");
 const { createRescanPrices } = require("../src/bot/rescan-prices");
 const { createStatusReport } = require("../src/bot/status-report");
 const { botOperations } = require("../src/bot/bot-interface");
+const { refusalToTakeKey } = require("../src/bot/app-phase");
+const { createWalletInUse } = require("../src/server/wallet-in-use");
 const {
   createPositionRoutes: positionRoutesOver,
 } = require("../src/server/position-routes");
@@ -97,7 +99,12 @@ function createRouteHandlers(deps) {
  * the test passes: `positionMgr`, `buildStatusPositions`,
  * `buildGasStatusPayload`, `actualGasCostUsd`, `primaryRouteLabel`,
  * `managedKeys`, and the wallet scan's progress from
- * `routeHandlers.getPositionScanStatus`.
+ * `routeHandlers.getPositionScanStatus`. Whether the server holds a
+ * wallet and its key (the answer's `walletUnlocked`) is neither, unless
+ * the test passes `walletManager.hasWallet` or `hasPrivateKey`. Whether a
+ * Clear would be refused (`clearWalletRefusal`) comes from the bot's own
+ * import phase (src/bot/app-phase.js) and the tracker the test passes as
+ * `walletInUse`, else an idle one of the server's own.
  * @param {object} deps
  * @returns {(req: object, res: object) => Promise<void>}
  */
@@ -112,7 +119,14 @@ function createApiStatusHandler(deps) {
     primaryRouteLabel: deps.primaryRouteLabel,
     managedKeys: deps.managedKeys,
   });
-  return statusRouteOver({ ...deps, bot: { statusReport } });
+  const walletManager = { hasWallet: () => false, ...deps.walletManager };
+  const hasPrivateKey = deps.hasPrivateKey ?? (() => false);
+  return statusRouteOver({
+    ...deps,
+    walletManager,
+    walletInUse: deps.walletInUse ?? createWalletInUse(),
+    bot: { statusReport, hasPrivateKey, refusalToTakeKey },
+  });
 }
 
 /**

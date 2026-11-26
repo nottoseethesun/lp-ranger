@@ -18,8 +18,10 @@
  * Three places apply the rule. A Manage is refused when another position
  * already manages the pool, and a re-open of a closed position when the
  * wallet holds an open one in its pool (`rejectIfPoolManaged`). At
- * start-up, each pool keeps one of the positions saved as managed, and
- * the rest come off the list (`poolHoldersForStartUp`).
+ * start-up, each pool keeps the first listed of the open positions saved
+ * as managed, and the rest come off the list (`poolHoldersForStartUp`);
+ * the start-up has already taken each closed one off it
+ * (src/bot/auto-start.js).
  *
  * Each position's pool is read from the chain, through the position
  * manager's own interface (src/bot/pm-abi.js), whose outputs carry the names
@@ -386,39 +388,35 @@ async function rejectIfPoolManaged(o) {
 }
 
 /**
- * Which of the positions saved as managed each pool keeps, at start-up.
+ * Which of the open positions saved as managed each pool keeps, at
+ * start-up.
  *
  * bot-config.json can name two saved positions in one pool, since only a
- * Manage request is checked against the rule. Each pool keeps one: the
- * first open one listed, since the rule is one ACTIVE position per pool;
- * with none open, the first listed. Every other saved position in that
- * pool cannot be managed. This function only answers: the start-up takes
- * those off the list (src/bot/auto-start.js). A position whose pool could
- * not be read is not passed in, since the start-up does not start it.
+ * Manage request is checked against the rule. Each pool keeps one, the
+ * first listed. Every other saved position in that pool cannot be
+ * managed. This function only answers: the start-up takes those off the
+ * list (src/bot/auto-start.js). Only open positions are passed in: the
+ * start-up takes a closed one off the list before it asks, and does not
+ * start one whose pool could not be read.
  *
  * Each position comes with its pool key, built with that position's own
  * wallet, so two wallets' positions in one pool are in two pools here, as
  * they are to a Manage.
  *
- * @param {Array<{key: string, tokenId: string, pool: object,
- *   poolKey: string}>} listed  The saved positions in list order, each
- *   with its pool as `readPoolOfPosition` reads it and that pool's
+ * @param {Array<{key: string, tokenId: string, poolKey: string}>} listed
+ *   The open saved positions in list order, each with its pool's
  *   canonical key (`poolKey`, src/lib/pool-key.js).
  * @returns {Map<string, string>}  For each saved position that does not
  *   keep its pool, the token id of the one that does.
  */
 function poolHoldersForStartUp(listed) {
   const holders = new Map();
-  for (const p of listed) {
-    const open = p.pool.liquidity > 0n;
-    const held = holders.get(p.poolKey);
-    if (held === undefined || (open && !held.open))
-      holders.set(p.poolKey, { tokenId: p.tokenId, open });
-  }
+  for (const p of listed)
+    if (!holders.has(p.poolKey)) holders.set(p.poolKey, p.tokenId);
   const losers = new Map();
   for (const p of listed) {
-    const held = holders.get(p.poolKey);
-    if (held.tokenId !== p.tokenId) losers.set(p.key, held.tokenId);
+    const holder = holders.get(p.poolKey);
+    if (holder !== p.tokenId) losers.set(p.key, holder);
   }
   return losers;
 }

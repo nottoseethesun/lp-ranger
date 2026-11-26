@@ -46,10 +46,13 @@ let _clearHistory = null;
 let _getPendingRouteWallet = null;
 let _dropPendingRoute = null;
 let _flushPendingUnmanagedFetch = null;
+let _walletGoneAtUnlock = null;
 
 /**
  * Inject position-module references. Called once from
- * dashboard-init.js.
+ * dashboard-init.js. `walletGoneAtUnlock` is what an unlock does when
+ * the server answers that it holds no wallet
+ * (src/client/web/js/dashboard-wallet-import.js).
  */
 export function injectWalletDeps(deps) {
   _updatePosStripUI = deps.updatePosStripUI;
@@ -68,6 +71,7 @@ export function injectWalletDeps(deps) {
   if (deps.dropPendingRoute) _dropPendingRoute = deps.dropPendingRoute;
   if (deps.flushPendingUnmanagedFetch)
     _flushPendingUnmanagedFetch = deps.flushPendingUnmanagedFetch;
+  if (deps.walletGoneAtUnlock) _walletGoneAtUnlock = deps.walletGoneAtUnlock;
 }
 
 // ── Wallet state ──────────────────────────────────────────
@@ -391,6 +395,12 @@ export async function confirmWallet() {
 
   _walletUnlocked = true;
   delete wallet._pending;
+  // The import hands the server the key; a tab left in View-Only offered it.
+  const unlockBtn = g("unlockWalletBtn");
+  if (unlockBtn) {
+    unlockBtn.disabled = true;
+    unlockBtn.title = "Wallet is already unlocked";
+  }
 
   const revealBtn = g("wsRevealBtn");
   if (revealBtn) revealBtn.style.display = "inline-block";
@@ -620,13 +630,19 @@ export function showUnlockDialog() {
   if (errEl) errEl.classList.add("hidden");
 }
 
-/** Check if the wallet is locked and show unlock modal. */
+/**
+ * Check if the wallet is locked and show unlock modal. A locked answer
+ * changes nothing once the page shows the wallet unlocked: a status
+ * answer can have shown it so while this check was out.
+ */
 export async function checkWalletLocked() {
   unlockLog.logInfo("checkWalletLocked: fetching status");
   try {
     const s = await (await fetch("/api/wallet/status")).json();
     unlockLog.logStatus("checkWalletLocked", s);
-    if (s.locked) {
+    if (s.locked && _walletUnlocked) {
+      unlockLog.logInfo("locked answer after the page showed it unlocked");
+    } else if (s.locked) {
       const m = g("walletUnlockModal");
       const pw = g("unlockPassword");
       unlockLog.logLockedBranch(m, pw);
@@ -659,6 +675,61 @@ export async function checkWalletLocked() {
   }
 }
 
+/**
+ * Show the wallet unlocked on this page: the Unlock dialog closed,
+ * View-Only left, the Unlock Wallet button disabled and the Manage
+ * button repainted, then what waited for the api keys: the Moralis key's
+ * check and an unmanaged position's details. Run by this page's own
+ * unlock, and when a status answer says the server holds the key
+ * (`showUnlockedIfServerIs`).
+ * @param {string} detail  The Activity entry's detail.
+ */
+function _showWalletUnlocked(detail) {
+  _viewOnly = false;
+  _walletUnlocked = true;
+  const m = g("walletUnlockModal");
+  if (m) m.classList.add("hidden");
+  const b = g("unlockWalletBtn");
+  if (b) {
+    b.disabled = true;
+    b.title = "Wallet is already unlocked";
+  }
+  /*- Manage button is repainted by the single owner
+   *  (paintManageUI in dashboard-manage-ui.js) — its compute reads
+   *  isWalletUnlocked(), set to true above. */
+  paintManageUI();
+  act(ACT_ICONS.play, "wallet", "Wallet Unlocked", detail);
+  // Validate Moralis key after unlock — notify if corrupted
+  _validateMoralisAfterUnlock();
+  /*- Now that API keys are decrypted, drain the pending unmanaged
+   *  fetch (deferred from initial activation — prices need the
+   *  Moralis key).  See flushPendingUnmanagedFetch JSDoc. */
+  if (_flushPendingUnmanagedFetch) _flushPendingUnmanagedFetch();
+}
+
+/**
+ * Show the wallet unlocked once a status answer says the server holds a
+ * wallet and its key (`walletUnlocked`, src/server/handle-api-status.js)
+ * while this page, holding that same wallet, still shows it locked: its
+ * Unlock dialog open, or View-Only. The page asks whether the wallet is
+ * locked only as it loads (`checkWalletLocked`), and the server can take
+ * the key a moment later: a launch with WALLET_PASSWORD takes it a second
+ * or so after the server starts listening, and another tab can unlock it.
+ * An answer about another wallet, as during an import in another tab,
+ * changes nothing here.
+ * @param {boolean|undefined} serverUnlocked  The answer's `walletUnlocked`.
+ * @param {string|null|undefined} serverWallet  The answer's
+ *   `walletAddress`: the wallet the server holds.
+ */
+export function showUnlockedIfServerIs(serverUnlocked, serverWallet) {
+  if (serverUnlocked !== true || _walletUnlocked) return;
+  if (wallet.address === null || typeof serverWallet !== "string") return;
+  if (serverWallet.toLowerCase() !== wallet.address.toLowerCase()) return;
+  _showWalletUnlocked(
+    "Position management enabled: the server holds the wallet's key",
+  );
+}
+
 /** Submit the unlock password to the server. */
 export async function submitUnlock(e) {
   const m = g("walletUnlockModal");
@@ -672,43 +743,21 @@ export async function submitUnlock(e) {
   const errEl = g("unlockError");
   try {
     unlockLog.logSubmitPost(pw);
-    const d = await (
-      await fetchWithCsrf("/api/wallet/unlock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pw.value }),
-      })
-    ).json();
+    const res = await fetchWithCsrf("/api/wallet/unlock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw.value }),
+    });
+    const d = await res.json();
     unlockLog.logSubmitResponse(d);
     if (d.ok) {
       // The server holds the password now; the tab keeps no copy.
       pw.value = "";
-      _viewOnly = false;
-      _walletUnlocked = true;
-      const m = g("walletUnlockModal");
-      if (m) m.classList.add("hidden");
-      const b = g("unlockWalletBtn");
-      if (b) {
-        b.disabled = true;
-        b.title = "Wallet is already unlocked";
-      }
-      /*- Manage button is repainted by the single owner
-       *  (paintManageUI in dashboard-manage-ui.js) — its compute reads
-       *  isWalletUnlocked() and was set to true above by the unlock
-       *  flow. */
-      paintManageUI();
-      act(
-        ACT_ICONS.play,
-        "wallet",
-        "Wallet Unlocked",
-        "Position management enabled",
-      );
-      // Validate Moralis key after unlock — notify if corrupted
-      _validateMoralisAfterUnlock();
-      /*- Now that API keys are decrypted, drain the pending unmanaged
-       *  fetch (deferred from initial activation — prices need the
-       *  Moralis key).  See flushPendingUnmanagedFetch JSDoc. */
-      if (_flushPendingUnmanagedFetch) _flushPendingUnmanagedFetch();
+      _showWalletUnlocked("Position management enabled");
+    } else if (res.status === 404 && _walletGoneAtUnlock !== null) {
+      // The server holds no wallet, as after a Clear in another tab.
+      pw.value = "";
+      _walletGoneAtUnlock();
     } else if (errEl) {
       errEl.textContent = d.error || "Wrong password";
       errEl.classList.remove("hidden");

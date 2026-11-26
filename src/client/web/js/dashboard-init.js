@@ -27,6 +27,7 @@ import {
   wallet,
   checkWalletLocked,
 } from "./dashboard-wallet.js";
+import { walletGoneAtUnlock } from "./dashboard-wallet-import.js";
 import {
   injectPositionDeps,
   scanPositions,
@@ -193,6 +194,7 @@ injectWalletDeps({
   getPendingRouteWallet,
   dropPendingRoute,
   flushPendingUnmanagedFetch,
+  walletGoneAtUnlock,
 });
 injectPositionDeps({
   positionRangeVisual,

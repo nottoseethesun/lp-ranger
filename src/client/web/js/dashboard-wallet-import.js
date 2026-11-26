@@ -459,25 +459,103 @@ export function closeClearWalletModal() {
   if (modal) modal.className = "modal-overlay hidden";
 }
 
-/** Execute wallet clear after user confirms. */
-export async function confirmClearWallet() {
-  closeClearWalletModal();
-  try {
-    await fetchWithCsrf("/api/wallet", { method: "DELETE" });
-  } catch {
-    /* server unavailable */
-  }
+/**
+ * Forget the wallet on this page, the server's being gone: its address
+ * and source, the Reveal and Clear buttons, Unlock Wallet, every
+ * position's state, and the wallet in the address bar.
+ */
+function _forgetWalletOnThisPage() {
   wallet.address = null;
   wallet.source = null;
   const revealBtn = g("wsRevealBtn");
   if (revealBtn) revealBtn.style.display = "none";
   const clearBtn = g("wsClearBtn");
   if (clearBtn) clearBtn.style.display = "none";
+  // A tab left in View-Only offered it; there is nothing to unlock now.
+  const unlockBtn = g("unlockWalletBtn");
+  if (unlockBtn) {
+    unlockBtn.disabled = true;
+    unlockBtn.title = "No wallet to unlock";
+  }
 
   clearAllPositionState();
   applyWalletUI();
   const updateRoute = getUpdateRouteForWallet();
   if (updateRoute) updateRoute(null);
+}
+
+/**
+ * What an unlock does when the server answers that it holds no wallet
+ * (404), as after a Clear in another tab since this page loaded
+ * (src/server/server-unlock.js): close the Unlock dialog, forget
+ * the wallet on this page as the Clear did in its own, and show the
+ * Wallet file not found notice, whose OK opens Wallet Setup to import a
+ * wallet or generate one. Handed to dashboard-wallet.js as
+ * `walletGoneAtUnlock` (dashboard-init.js).
+ */
+export function walletGoneAtUnlock() {
+  const m = g("walletUnlockModal");
+  if (m) m.classList.add("hidden");
+  _forgetWalletOnThisPage();
+  act(
+    ACT_ICONS.clear,
+    "wallet",
+    "Wallet Not Found",
+    "The server holds no wallet; set one up to continue",
+  );
+  _showWalletFileGoneDialog();
+}
+
+// Clear Wallet's tooltip while a Clear may go ahead, as in index.html.
+const _CLEAR_TITLE = "Clear wallet from server and browser";
+
+/**
+ * Hold Clear Wallet to the server's rule on every status answer
+ * (dashboard-data.js): disabled, the reason its tooltip, while the answer
+ * says a Clear would be refused (`clearWalletRefusal`,
+ * src/server/wallet-clear.js), as while an unlock, the launch's key step
+ * or a wallet import is using the wallet; enabled otherwise.
+ * @param {string|null|undefined} refusal  The answer's `clearWalletRefusal`.
+ */
+export function paintClearWalletButton(refusal) {
+  const clearBtn = g("wsClearBtn");
+  if (!clearBtn) return;
+  const refused = typeof refusal === "string";
+  clearBtn.disabled = refused;
+  clearBtn.title = refused ? refusal : _CLEAR_TITLE;
+}
+
+/**
+ * A Clear the server refused (409), as when this tab's last status answer
+ * came before an unlock began: the wallet is kept, and the reason shown.
+ * @param {Response} res  The refusal.
+ */
+async function _clearRefused(res) {
+  let reason = "The server refused to clear the wallet.";
+  try {
+    const d = await res.json();
+    if (typeof d.error === "string") reason = d.error;
+  } catch {
+    /* no reason given: the general one stands */
+  }
+  act("⚠️", "warning", "Wallet Not Cleared", reason);
+  alert("The wallet was not cleared. " + reason);
+}
+
+/** Execute wallet clear after user confirms. */
+export async function confirmClearWallet() {
+  closeClearWalletModal();
+  let res = null;
+  try {
+    res = await fetchWithCsrf("/api/wallet", { method: "DELETE" });
+  } catch {
+    /* server unavailable */
+  }
+  if (res !== null && res.status === 409) {
+    await _clearRefused(res);
+    return;
+  }
+  _forgetWalletOnThisPage();
   act(
     ACT_ICONS.clear,
     "wallet",

@@ -431,39 +431,26 @@ describe("rejectIfPoolManaged() for a re-open", () => {
 
 describe("poolHoldersForStartUp()", () => {
   /*-
-   *  Each pool keeps one of the positions saved as managed: its open one,
-   *  wherever it stands in the list, else the first listed. The answer
-   *  names, for each other saved position in that pool, the one kept.
+   *  Each pool keeps the first listed of the open positions saved as
+   *  managed; the start-up has taken every closed one off the list
+   *  before it asks. The answer names, for each other saved position in
+   *  that pool, the one kept.
    */
-  const pool = (liquidity, tokens = [A, B], fee = 2500) => ({
+  const pool = (tokens = [A, B], fee = 2500) => ({
     token0: tokens[0],
     token1: tokens[1],
     fee,
-    liquidity,
   });
   const saved = (tokenId, p) => ({
     key: `chain-w-c-${tokenId}`,
     tokenId,
-    pool: p,
     poolKey: poolKeyOf(p, poolKeyFn),
   });
   const decide = (...listed) =>
     Object.fromEntries(poolHoldersForStartUp(listed));
 
-  it("keeps a pool for its open position, wherever it stands in the list", () => {
-    assert.deepEqual(decide(saved("111", pool(0n)), saved("222", pool(5n))), {
-      "chain-w-c-111": "222",
-    });
-  });
-
-  it("keeps a pool with no open position for the first listed", () => {
-    assert.deepEqual(decide(saved("111", pool(0n)), saved("222", pool(0n))), {
-      "chain-w-c-222": "111",
-    });
-  });
-
-  it("keeps a pool with two open positions for the first listed", () => {
-    assert.deepEqual(decide(saved("111", pool(7n)), saved("222", pool(5n))), {
+  it("keeps a pool for the first listed", () => {
+    assert.deepEqual(decide(saved("111", pool()), saved("222", pool())), {
       "chain-w-c-222": "111",
     });
   });
@@ -471,19 +458,18 @@ describe("poolHoldersForStartUp()", () => {
   it("keeps every position alone in its pool", () => {
     assert.deepEqual(
       decide(
-        saved("111", pool(5n)),
-        saved("222", pool(5n, [A, C])),
-        saved("333", pool(5n, [A, B], 10000)),
+        saved("111", pool()),
+        saved("222", pool([A, C])),
+        saved("333", pool([A, B], 10000)),
       ),
       {},
     );
   });
 
   it("matches a pool regardless of the order the tokens come back in", () => {
-    assert.deepEqual(
-      decide(saved("111", pool(5n)), saved("222", pool(0n, [B, A]))),
-      { "chain-w-c-222": "111" },
-    );
+    assert.deepEqual(decide(saved("111", pool()), saved("222", pool([B, A]))), {
+      "chain-w-c-222": "111",
+    });
   });
 });
 

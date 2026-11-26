@@ -50,6 +50,11 @@ describe("holdAfterPriceMove", () => {
     assert.match(state.rebalanceError, /impermanent loss/);
     assert.match(state.rebalanceError, /click Rebalance Now/);
     assert.match(state.rebalanceError, /in 45 minutes/);
+    // A restart takes a closed position off the list at once.
+    assert.match(
+      state.rebalanceError,
+      /in 45 minutes, or as it starts if it restarts first/,
+    );
     assert.deepStrictEqual(emitted, {
       rebalancePaused: true,
       rebalanceError: state.rebalanceError,

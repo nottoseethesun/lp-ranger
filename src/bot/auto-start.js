@@ -9,14 +9,24 @@
  *
  * The positions start one at a time, spread over a poll interval, all
  * signing through the app-wide shared signer (one NonceManager for the
- * wallet). A position starts only while its NFT is still in the wallet,
- * and only if it is the one position its pool keeps: LP Ranger manages
- * one active position per pool, so a pool's open position keeps it, and
- * any other saved position in that pool comes off the list. While the
- * start-up runs, src/bot/app-phase.js records its progress, which the
- * dashboard shows as Syncing and the bot reads to refuse a request
- * that would start positions. The server and the headless bot (bot.js)
- * both start their saved positions this way, through the bot's
+ * wallet). A position starts only while its NFT is still in the wallet
+ * and open, and only if it is the one position its pool keeps: LP Ranger
+ * manages one active position per pool, so the first listed keeps it,
+ * and any other saved position in that pool comes off the list. A closed
+ * one comes off the list too, at once. While the app runs, the
+ * drained-position retire waits before it takes one off: from the first
+ * check that finds the position drained with no rebalance under way or
+ * asked for and no mint retry coming, a later one holding the retire off
+ * with its time still counted (src/bot/bot-cycle-drain.js). That wait is
+ * the owner's time to rescue a rebalance that stopped between its drain
+ * and its mint, as by raising Slippage so the bot retries the mint. The
+ * retry rests on state the bot keeps only in memory, which a restart
+ * clears, so a start has nothing to wait for.
+ *
+ * While the start-up runs, src/bot/app-phase.js records its progress,
+ * which the dashboard shows as Syncing and the bot reads to refuse a
+ * request that would start positions. The server and the headless bot
+ * (bot.js) both start their saved positions this way, through the bot's
  * interface (src/bot/bot-interface.js).
  *
  * Exported as `createAutoStartManagedPositions(deps)` factory.
@@ -42,6 +52,7 @@ const {
 const { startBotLoop } = require("./bot-loop");
 const { createOnRetire } = require("./position-states");
 const { parseCompositeKey } = require("../lib/composite-key");
+const { notify } = require("../lib/telegram-notifications/telegram");
 const { isContractRevert } = require("./rpc-error-classifier");
 const {
   beginStartUp,
@@ -151,6 +162,46 @@ function createAutoStartManagedPositions(deps) {
   }
 
   /**
+   * Take a closed saved position off the list, leaving it as the drain
+   * retire leaves one after its wait (`createOnRetire`,
+   * src/bot/position-states.js): its saved status `stopped`, its other
+   * settings kept for history, and its auto-compound off, so a later
+   * Manage, which re-opens it, does not find it on. It comes off at once,
+   * without the retire's wait (the user's ruling, 2026-11-25): that wait
+   * is the owner's time to rescue a stopped rebalance, which rests on
+   * state the bot keeps only in memory, and a restart has cleared it.
+   *
+   * It sends the retire's Telegram alert too ("Drained Position
+   * Auto-Retired", on by default), since a start after a crash between a
+   * rebalance's drain and its mint may have nobody at the dashboard. When
+   * the key came from the wallet's password, the server decrypts the
+   * Telegram keys before its start-up begins, so the alert finds Telegram
+   * set up unless that decrypt failed, which is logged. A launch with a
+   * `PRIVATE_KEY` decrypts none, and the headless bot sets up no
+   * Telegram: neither sends it.
+   * @param {string} key  The position's composite key.
+   * @param {{token0: string, token1: string, fee: number}} pool  Its pool,
+   *   as `readPoolOfPosition` read it.
+   */
+  function _dropClosed(key, pool) {
+    // Its saved slot is there: nothing deletes one during the start-up.
+    getPositionConfig(diskConfig, key).autoCompoundEnabled = false;
+    _dropFromList(key, "it is closed");
+    notify("positionRetired", {
+      position: {
+        tokenId: key.split("-").pop(),
+        fee: pool.fee,
+        token0: pool.token0,
+        token1: pool.token1,
+      },
+      message:
+        "Position closed (0 liquidity) — taken off the managed positions " +
+        "as LP Ranger started. NFT is not burned; re-manage from the " +
+        "dashboard to resume.",
+    });
+  }
+
+  /**
    * Whether the wallet still holds the position's NFT. One it no longer
    * holds, or that no longer exists, comes off the list: the contract
    * reverts when asked who owns an NFT that was burned. Any other failure
@@ -228,18 +279,18 @@ function createAutoStartManagedPositions(deps) {
   }
 
   /**
-   * Which of the saved positions to start: those the wallet still holds,
-   * less any whose pool another saved position keeps, since LP Ranger
-   * manages one active position per pool. A pool's open position keeps
-   * it wherever it stands in the list, so who owns each NFT and which
-   * pool it is in are read for every position before any starts.
+   * Which of the saved positions to start: those the wallet still holds
+   * that are open, less any whose pool another saved position keeps,
+   * since LP Ranger manages one active position per pool; the first
+   * listed keeps it. Who owns each NFT, and its pool and liquidity, are
+   * read for every position before any starts.
    *
    * A position that cannot be managed comes off the list here: its NFT
-   * left the wallet or no longer exists (`_verifyOwnership`), or another
-   * saved position keeps its pool (`poolHoldersForStartUp`). One whose
-   * owner or pool could not be read stays on the list and is not
-   * started: with its pool unknown, nothing shows that no other saved
-   * position is in it.
+   * left the wallet or no longer exists (`_verifyOwnership`), it is
+   * closed (`_dropClosed`), or another saved position keeps its pool
+   * (`poolHoldersForStartUp`). One whose owner or pool could not be read
+   * stays on the list and is not started: with its pool unknown, nothing
+   * shows that no other saved position is in it.
    *
    * @param {string[]} keys  The saved positions, in list order.
    * @param {object} ctx     As for `_startListed`.
@@ -264,6 +315,10 @@ function createAutoStartManagedPositions(deps) {
         );
         continue;
       }
+      if (pool.liquidity === 0n) {
+        _dropClosed(key, pool);
+        continue;
+      }
       /*-
        *  The pool is keyed by the position's own wallet, as a Manage keys
        *  it: one active position per pool in each wallet. With no wallet
@@ -277,7 +332,7 @@ function createAutoStartManagedPositions(deps) {
         pool.token1,
         pool.fee,
       );
-      held.push({ key, tokenId, pool, poolKey });
+      held.push({ key, tokenId, poolKey });
     }
     const losers = poolHoldersForStartUp(held);
     for (const [key, holder] of losers) {
@@ -301,10 +356,12 @@ function createAutoStartManagedPositions(deps) {
     /*-
      *  Read again at the position's turn, without creating a slot: the
      *  stagger leaves time for a Stop Managing, which clears the saved
-     *  status, or a purge, which deletes the slot.
+     *  status. Nothing deletes the slot meanwhile: the phantom purge runs
+     *  only as the settings load, a rebalance moves only a running
+     *  position's key, and a Manage is refused while the start-up runs.
      */
     const pc = getPositionConfig(diskConfig, key);
-    if (pc === null || pc.status !== "running") {
+    if (pc.status !== "running") {
       const nft = _nftOf(key);
       log.info("[bot] auto-start: %s is no longer saved as managed", nft);
       return;

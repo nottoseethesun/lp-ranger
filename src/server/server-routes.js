@@ -55,6 +55,7 @@ function createRouteHandlers(deps) {
     bot,
     diskConfig,
     walletManager,
+    walletInUse,
     jsonResponse,
     readJsonBody,
     askPassword,
@@ -124,11 +125,19 @@ function createRouteHandlers(deps) {
       address: body.address,
     });
     try {
-      bot.setPrivateKey(
-        (await walletManager.revealWallet(body.password)).privateKey,
+      const { privateKey } = await walletManager.revealWallet(body.password);
+      /*-
+       *  The api keys before the key, as at a launch or an unlock, so the
+       *  new wallet's start-up finds Telegram and Moralis set up, unless
+       *  their decrypt fails, which is logged and the import goes on. Until
+       *  its start-up has finished, the import refuses a Manage, an unlock,
+       *  a Clear and any other start-up.
+       */
+      await _decryptApiKeys(body.password).catch((err) =>
+        log.warn("[server] API key decrypt failed: %s", err.message),
       );
+      bot.setPrivateKey(privateKey);
       log.info("[server] Loading key from imported wallet");
-      _decryptApiKeys(body.password).catch(() => {});
       await bot.startManagedPositions({ forImport: true });
     } catch (err) {
       log.warn("[server] Key resolution after import:", err.message);
@@ -224,11 +233,98 @@ function createRouteHandlers(deps) {
   }
 
   /**
-   * The launch's key step: resolve the private key, hand it to the bot
-   * and start the positions saved as managed. It stands aside while a
-   * wallet import is under way, and once the bot holds a key, asked
-   * before the decrypt and again after it, since the prompt and the
-   * decrypt can each take a while.
+   * Whether the launch's key step stands aside now
+   * (`_whyKeyStepStandsAside`), logging why when it does.
+   * @returns {boolean}
+   */
+  function _keyStepStandsAside() {
+    const aside = _whyKeyStepStandsAside();
+    if (aside === null) return false;
+    log.info("[server] The launch's key step stands aside: %s", aside);
+    return true;
+  }
+
+  /**
+   * The launch's key step: resolve the private key and, when it came from
+   * the wallet's password, decrypt the api keys with it (a `PRIVATE_KEY`
+   * brings no password and decrypts none, and the dashboard offers no
+   * unlock while the server holds a key), then hand the key to the bot
+   * and begin the start-up of the positions saved as managed, so no
+   * position starts until every decrypt has finished. It stands aside
+   * while a wallet import is under way and once the bot holds a key,
+   * asked before the wallet's decrypt and again after it and after the
+   * api keys', since the prompt and each decrypt can take a while.
+   * @returns {Promise<{startUp: Promise<void>}|null>} The start-up begun,
+   *   or null when none was.
+   */
+  async function _keyStep() {
+    let pk = null;
+    let password = null;
+
+    // 1. PRIVATE_KEY env var — plaintext, simplest.
+    if (config.PRIVATE_KEY && /^(0x)?[0-9a-f]{64}$/i.test(config.PRIVATE_KEY)) {
+      pk = config.PRIVATE_KEY;
+    }
+    // 2. Encrypted wallet — env var, headless prompt,
+    //    or wait for dashboard unlock.
+    else if (walletManager.hasWallet()) {
+      ({ pk, password } = await _keyFromPassword());
+    }
+
+    // Asked again after the wallet's decrypt, as well as before it.
+    if (_keyStepStandsAside()) return null;
+
+    if (!pk) {
+      if (askPassword) {
+        // --headless: CLI is the only path — don't suggest the dashboard.
+        if (walletManager.hasWallet())
+          log.error(
+            "[server] The wallet is locked: no password was given. Set" +
+              " WALLET_PASSWORD in .env, or start the server with" +
+              " --headless from a terminal to type it.",
+          );
+        else
+          log.error(
+            "[server] No wallet imported. Run" +
+              " `node scripts/import-wallet.js` first.",
+          );
+        process.exit(1);
+      }
+      if (walletManager.hasWallet())
+        log.info(
+          "[server] Wallet locked — unlock" + " via dashboard to start bot.",
+        );
+      else log.info("[server] No wallet key" + " — dashboard-only mode.");
+      return null;
+    }
+    if (password) {
+      /*-
+       *  The api keys are decrypted before the bot takes the key, so no
+       *  position starts until that decrypt has ended. Asked again after
+       *  it, since an import or the dashboard's unlock can come meanwhile.
+       *  A failure is logged and the start goes on.
+       */
+      await _decryptApiKeys(password).catch((err) =>
+        log.warn("[server] API key decrypt failed: %s", err.message),
+      );
+      if (_keyStepStandsAside()) return null;
+    } else {
+      log.info(
+        "[server] Wallet key loaded from PRIVATE_KEY — encrypted Telegram/Moralis keys (if any) are not decrypted this session: a PRIVATE_KEY brings no password. Start with WALLET_PASSWORD instead of PRIVATE_KEY to have them.",
+      );
+    }
+    bot.setPrivateKey(pk);
+    // It reads the wallet's address before its first wait.
+    return { startUp: bot.startManagedPositions() };
+  }
+
+  /**
+   * Run the launch's key step (`_keyStep`), one at a time, and wait for
+   * the start-up it begins. The wallet is marked in use from the key
+   * step's first step, the terminal prompt of `--headless` included, until
+   * the start-up has begun (src/server/wallet-in-use.js): a Clear is
+   * refused meanwhile (src/server/wallet-clear.js), so the wallet is there
+   * at every step.
    */
   async function _tryResolveKey() {
     if (_starting) {
@@ -237,62 +333,14 @@ function createRouteHandlers(deps) {
     }
     _starting = true;
     try {
-      let pk = null;
-      let password = null;
-
-      // 1. PRIVATE_KEY env var — plaintext, simplest.
-      if (
-        config.PRIVATE_KEY &&
-        /^(0x)?[0-9a-f]{64}$/i.test(config.PRIVATE_KEY)
-      ) {
-        pk = config.PRIVATE_KEY;
+      let begun = null;
+      walletInUse.begin();
+      try {
+        begun = await _keyStep();
+      } finally {
+        walletInUse.end();
       }
-      // 2. Encrypted wallet — env var, headless prompt,
-      //    or wait for dashboard unlock.
-      else if (walletManager.hasWallet()) {
-        ({ pk, password } = await _keyFromPassword());
-      }
-
-      // Asked again after the decrypt, as well as before it.
-      const aside = _whyKeyStepStandsAside();
-      if (aside !== null) {
-        log.info("[server] The launch's key step stands aside: %s", aside);
-        return;
-      }
-
-      if (!pk) {
-        if (askPassword) {
-          // --headless: CLI is the only path — don't suggest the dashboard.
-          if (walletManager.hasWallet())
-            log.error(
-              "[server] The wallet is locked: no password was given. Set" +
-                " WALLET_PASSWORD in .env, or start the server with" +
-                " --headless from a terminal to type it.",
-            );
-          else
-            log.error(
-              "[server] No wallet imported. Run" +
-                " `node scripts/import-wallet.js` first.",
-            );
-          process.exit(1);
-        }
-        if (walletManager.hasWallet())
-          log.info(
-            "[server] Wallet locked — unlock" + " via dashboard to start bot.",
-          );
-        else log.info("[server] No wallet key" + " — dashboard-only mode.");
-        return;
-      }
-      bot.setPrivateKey(pk);
-      if (password) {
-        _sessionPassword = password;
-        _decryptApiKeys(password).catch(() => {});
-      } else {
-        log.info(
-          "[server] Wallet key loaded without password — encrypted Telegram/Moralis keys (if any) will NOT be decrypted this session. Unlock via dashboard to enable notifications.",
-        );
-      }
-      await bot.startManagedPositions();
+      if (begun !== null) await begun.startUp;
     } finally {
       _starting = false;
     }
@@ -335,10 +383,22 @@ function createRouteHandlers(deps) {
     getSessionPassword: () => _sessionPassword,
   });
 
-  /** Decrypt all API keys + Telegram credentials after wallet unlock. */
+  /**
+   * Decrypt the stored api keys, Telegram's and Moralis's, with the
+   * wallet's password. It settles once every one is decrypted or has
+   * failed, each failure logged, so a caller that waits for it, as the
+   * launch, the unlock and the import do before the bot takes the key,
+   * starts no position until Telegram and Moralis are set up or their
+   * decrypt has failed (the user's ruling, 2026-11-25: "In finance,
+   * reliability is more important than responsiveness").
+   * @param {string} password  The wallet's password.
+   * @returns {Promise<void>}
+   */
   async function _decryptApiKeys(password) {
     _sessionPassword = password;
-    _tgHandlers.decryptTelegramKeys(password).catch(() => {});
+    await _tgHandlers.decryptTelegramKeys(password).catch((err) => {
+      log.warn("[server] Failed to decrypt the Telegram keys: %s", err.message);
+    });
     for (const svc of ["moralis"]) {
       if (!hasEncryptedKey(svc)) continue;
       try {

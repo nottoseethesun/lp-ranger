@@ -180,6 +180,8 @@ const { migrateAppConfig } = require("./lib/migrate-app-config");
 const { userConfigurableRoutes } = require("./server/user-configurable-routes");
 const { createPauseInfra } = require("./server/server-pause");
 const { createUnlockHandler } = require("./server/server-unlock");
+const { createWalletInUse } = require("./server/wallet-in-use");
+const { createWalletClearRoute } = require("./server/wallet-clear");
 const { logVersionBanner } = require("./server/build-info");
 const { createBot } = require("./bot/bot-interface");
 
@@ -412,10 +414,17 @@ const {
   notifyShutdown: _notifyShutdown,
 } = require("./server/telegram-notifications/server-shutdown");
 
+/*-
+ *  Whether an unlock or the launch's key step is using the wallet: a
+ *  Clear is refused meanwhile (src/server/wallet-clear.js).
+ */
+const _walletInUse = createWalletInUse();
+
 const _routeHandlers = createRouteHandlers({
   bot: _bot,
   diskConfig: _diskConfig,
   walletManager,
+  walletInUse: _walletInUse,
   jsonResponse,
   readJsonBody,
   askPassword: _headless ? _askPassword : null,
@@ -453,6 +462,7 @@ const _routes = {
     config,
     diskConfig: _diskConfig,
     walletManager,
+    walletInUse: _walletInUse,
     bot: _bot,
     getLpProviderDisplayName,
     moralisEnabledIn,
@@ -465,18 +475,18 @@ const _routes = {
     }),
   "POST /api/wallet/unlock": createUnlockHandler({
     walletManager,
+    walletInUse: _walletInUse,
     bot: _bot,
     decryptApiKeys: (pw) => _routeHandlers._decryptApiKeys(pw),
     jsonResponse,
     readJsonBody,
   }),
-  "DELETE /api/wallet": (_, res) => {
-    log.warn(
-      "[server] DELETE /api/wallet received" + " — clearing wallet file",
-    );
-    walletManager.clearWallet();
-    jsonResponse(res, 200, { ok: true });
-  },
+  "DELETE /api/wallet": createWalletClearRoute({
+    walletManager,
+    walletInUse: _walletInUse,
+    bot: _bot,
+    jsonResponse,
+  }),
   "POST /api/config": _routeHandlers._handleApiConfig,
   "POST /api/api-keys": _routeHandlers._handleApiKeySave,
   "GET /api/api-keys/status": _routeHandlers._handleApiKeyStatus,

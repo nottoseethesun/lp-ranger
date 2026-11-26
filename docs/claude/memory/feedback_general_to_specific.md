@@ -1,12 +1,16 @@
 ---
 name: feedback_general_to_specific
-description: "Open every explanation at the highest level — name the thing and the situation in the operator's terms — then descend to mechanism and evidence. Never start mid-explanation."
-metadata: 
-  node_type: memory
+description: "Explain in the operator's terms: name the thing first, say what happens before naming functions, talk behavior rather than internal constants, and answer in badge and dialog terms, the log being my instrument"
+metadata:
   type: feedback
-  originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-10-19T17:58:59.715Z
 ---
+
+# Explaining to the user
+
+Merged from: feedback_explain_behavior_not_call_sites, feedback_no_internal_constants_in_design_talk, feedback_operator_sees_ui_not_logs — those slugs no longer exist
+separately; search this one.
+
+## general to specific
 
 Start at the top and work down. The first sentence names **what is being
 discussed**, in the terms the user sees it — the position, the panel, the
@@ -76,3 +80,100 @@ dialog terms, not log terms), [[feedback_no_internal_constants_in_design_talk]]
 (describe operator-facing behavior, not implementation constants),
 [[feedback_distinct_terms_for_distinct_things]] (one word per entity),
 [[feedback_prose_style]].
+
+## explain behavior, not call sites
+
+When reporting what was changed and why, lead with **what happens** —
+the feature, what went wrong, what a reader or operator would see. A
+function name is a pointer for someone who has understood the point and
+now wants to read the code. It is never the explanation.
+
+**Why.** Twice on 2026-10-02. First: *"You've spewed out a lot of vague
+material."* Then, quoting a paragraph of mine back verbatim: *"What the
+fuck does this mean? … Do you have any idea how a reader has no idea what
+you mean there?"*
+
+The paragraph was accurate and useless:
+
+> I first put the hold's announcement in `_drain` — but `acquire()` has
+> two fast paths that return without ever draining once the halt is
+> clear. On the common path the line would never have fired, and the
+> deadline would have stayed set until some later moment when a queue
+> happened to form, announcing itself then. It now sits in
+> `_haltRemainingMs`, the one function every path asks.
+
+Four private identifiers, no statement of what anybody would observe.
+The same content, as it should have been written:
+
+> When every rpc endpoint stops answering, the app stops sending
+> requests for an hour. It announced the start of that hour and not the
+> end. I added a line for the end — and put it somewhere the code only
+> reaches when requests are queued up, which they usually are not by the
+> time the hour runs out. So it would not have printed at all, and the
+> app would still have believed it was paused: hours later, the first
+> time requests did pile up, it would have announced a wait that had
+> ended long before. It now sits on the check every request makes, so
+> whichever asks first notices and says so, once.
+
+**How to apply.**
+
+- Order: the feature, then the behaviour that was wrong, then what a
+  reader would see, then the fix. File and function names come after
+  that, if at all.
+- A sentence carrying two private identifiers and no observable
+  consequence is a sentence to rewrite, not to footnote.
+- This applies to chat, commit messages and release notes alike. The
+  commit may then name the call site, because whoever reads a commit is
+  about to read the diff — but even there the first paragraph says what
+  happens.
+- The test: could someone who has never opened the file follow it? If
+  not, it is not an explanation yet.
+
+**Internal shorthand counts too (2026-10-17).** A report's open bugs
+read "A retried send can send a move twice" and "a cancel answered
+'already known' fails the move". The user: *"What's a 'send' - we have
+compound and rebalance. … What move? … you are just failing hard at
+explaining what you are talking about."* "Send", "move", "slot",
+"settle" are the code's words, not the operator's. Name the operator's
+action (a rebalance, a compound), the step inside it (the removal of
+liquidity, the swap, the mint, the fee collection), and what the
+operator would see. When a report needs a mechanism term such as the
+wallet's transaction sequence number or the speed-up and cancel, define
+it once, in plain words, before the first item that uses it.
+
+Related: [[feedback_no_internal_constants_in_design_talk]] (same
+instinct, about constants), [[feedback_operator_sees_ui_not_logs]] (same
+instinct, about app state), [[feedback_general_to_specific]],
+[[feedback_prose_style]].
+
+## no internal constants in design talk
+
+When discussing a design or plan with the user, describe the operator-facing BEHAVIOR, not internal implementation constants (validation ranges, thresholds, magic numbers).
+
+**Why:** surfacing an internal constant invites confusion and tangents without adding value. Concrete instance (2026-07-31): I mentioned the `[0,77]` ERC-20 decimals *validation* range while explaining the decimals heal; the user read it as a possible *fallback-value* strategy and we spent two turns clearing it up. The range was never operator-relevant.
+
+**How to apply:** say "the heal uses a valid decimals value (on-chain or your manual entry), or it auto-stops — it never guesses" instead of naming the `[0,77]` check. Only surface an internal constant if it changes what the operator sees or must decide. Related: [[feedback_concise_responses]], [[feedback_kiss]], [[feedback_short_sentences]].
+
+## operator sees the UI, not logs
+
+The operator watches the dashboard — the Sync badge, the status pills,
+the modals. They do not read `logs/lp-ranger.log`. When answering "is it
+done", "is it safe to stop", "why is it doing that", lead with what the
+UI shows and what it means. The log is the assistant's instrument for
+establishing the facts, not the operator's interface.
+
+**Why:** advice phrased around a log line is advice the operator cannot
+act on without being told to go and grep, which is not how they use the
+app. Told to watch for `Lifetime P&L for #165032 done`, the right answer
+was "wait for the Sync badge to go green". Worse, a defect only visible
+in the log is invisible in practice — if the UI reads Synced while the
+history is short, the operator has no way to know, which is why the
+badge must assert something real rather than merely "a scan returned".
+
+**How to apply:** state the answer in UI terms first, and cite the log
+only as the evidence behind it. When designing, ask what the operator
+would see — a figure that is wrong but confident is worse than one
+visibly absent. When a log-only signal matters operationally, that is a
+sign the UI is missing something, not that the operator should learn to
+grep. Related: [[feedback_no_internal_constants_in_design_talk]],
+[[project_unmanaged_na_principle]], [[feedback_keep_browser_logs]].

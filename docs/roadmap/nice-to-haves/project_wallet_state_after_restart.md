@@ -11,7 +11,8 @@ Restart the server without `WALLET_PASSWORD` in `.env` while a
 dashboard tab stays open. The server comes back with its wallet
 locked, but the open page still treats it as unlocked: the Unlock
 Wallet button stays disabled, Manage stays enabled, and no unlock
-dialog appears. The page reads the wallet's state only when it loads.
+dialog appears. The page learns that the wallet is locked only as it
+loads; a status answer can show it unlocked later, never locked.
 
 A Manage clicked then reaches the server, which refuses it for want of
 a key. Reloading the page brings up the unlock dialog.
@@ -19,10 +20,15 @@ a key. Reloading the page brings up the unlock dialog.
 ## Shape of the fix
 
 The page needs to learn the wallet's state again when the server comes
-back, not only when it loads. The status answer the page asks for
-every few seconds could carry whether the wallet is locked, and the
-page could open the unlock dialog when that turns to locked.
+back, not only when it loads. Half of this is built: the status answer
+the page asks for every few seconds carries `walletUnlocked`, whether
+the server holds a wallet and its key (`src/server/handle-api-status.js`),
+and a page still showing the wallet locked shows it unlocked once that
+is true (`showUnlockedIfServerIs`, `src/client/web/js/dashboard-wallet.js`,
+called from the poll's handler in `src/client/web/js/dashboard-data.js`).
+That covers a page loaded in the moment before a launch with
+`WALLET_PASSWORD` takes the key.
 
-Likely touch points: the status answer (`src/server/handle-api-status.js`),
-the poll's handler (`src/client/web/js/dashboard-data.js`) and the unlock dialog
-(`src/client/web/js/dashboard-wallet.js`).
+What remains is the other direction: when `walletUnlocked` turns false
+while a wallet is saved, the page would show the wallet locked again,
+opening the unlock dialog and disabling Manage.

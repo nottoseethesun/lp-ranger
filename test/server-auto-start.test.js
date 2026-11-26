@@ -9,11 +9,12 @@
  *   next turn once the app is stopping.
  *
  *   A saved position that cannot be managed comes off the list: its NFT
- *   left the wallet or no longer exists, or another saved position keeps
- *   its pool, since LP Ranger manages one active position per pool: the
- *   pool's open position keeps it, else the first listed. One that only
- *   failed to start, or whose owner or pool could not be read, stays on
- *   the list for the next launch. While a wallet is loaded, a saved
+ *   left the wallet or no longer exists, it is closed, or another saved
+ *   position keeps its pool, since LP Ranger manages one active position
+ *   per pool: the first listed keeps it. A closed one also sends the
+ *   drained-position retire's Telegram alert. One that only failed to
+ *   start, or whose owner or pool could not be read, stays on the list
+ *   for the next launch. While a wallet is loaded, a saved
  *   position of another wallet or chain is neither started nor touched;
  *   with none loaded, every wallet's are read, and each wallet keeps its
  *   own position in a pool.
@@ -25,11 +26,15 @@
  *   bot loops.
  */
 
-const { describe, it, beforeEach } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const config = require("../src/lib/config");
 const appPhase = require("../src/bot/app-phase");
 const { botOperations } = require("../src/bot/bot-interface");
+const tg = require("../src/lib/telegram-notifications/telegram");
+const {
+  EVENT_DEFAULTS,
+} = require("../src/lib/telegram-notifications/telegram-events");
 const { captureWarnings } = require("./helpers/capture-warnings");
 const {
   contractReverted,
@@ -324,14 +329,50 @@ describe("a saved position that cannot be managed", () => {
     assert.equal(statusOf(s, keys[0]), "running", "left for the next launch");
   });
 
-  it("comes off the list when the open position in its pool is listed after it", async (t) => {
-    // One active position per pool: the open one keeps it.
+  it("comes off the list when it is closed, its auto-compound off", async (t) => {
+    /*-
+     *  A closed position comes off at once, as the drain retire takes one
+     *  off after its wait, rather than holding its pool through that wait
+     *  (the user's ruling, 2026-11-25). Its auto-compound goes off as the
+     *  retire's does, so a later Manage, which re-opens it, does not find
+     *  it on.
+     */
+    const key = keyOf(101);
+    const s = startUp({ keys: [key], pools: { 101: CLOSED } });
+    s.diskConfig.positions[key].autoCompoundEnabled = true;
+    const warned = captureWarnings();
+    try {
+      await runToEnd(t, s.run);
+    } finally {
+      warned.restore();
+    }
+    assert.deepEqual(s.started, []);
+    assert.equal(statusOf(s, key), "stopped");
+    assert.equal(s.diskConfig.positions[key].autoCompoundEnabled, false);
+    assert.match(
+      warned.lines.join("\n"),
+      /auto-start: NFT #101 \S+ cannot be managed: it is closed/,
+    );
+  });
+
+  it("comes off the list when it is closed, and the open position in its pool starts", async (t) => {
     const keys = [keyOf(101), keyOf(102)];
     const s = startUp({ keys, pools: { 101: CLOSED, 102: OPEN } });
-    await runToEnd(t, s.run);
+    const warned = captureWarnings();
+    try {
+      await runToEnd(t, s.run);
+    } finally {
+      warned.restore();
+    }
     assert.deepEqual(s.started, [keys[1]]);
     assert.equal(statusOf(s, keys[0]), "stopped");
     assert.equal(statusOf(s, keys[1]), "running");
+    assert.match(
+      warned.lines.join("\n"),
+      /NFT #101 \S+ cannot be managed: it is closed/,
+    );
+    // Dealt with before the first start, as the badge's count shows.
+    assert.deepEqual(s.progress, [{ done: 1, total: 2 }]);
   });
 
   it("stays on its own wallet's list when another wallet's position is in the same pool", async (t) => {
@@ -365,12 +406,62 @@ describe("a saved position that cannot be managed", () => {
     const keys = [keyOf(101), keyOf(102)];
     const s = startUp({
       keys,
-      pools: { 101: OPEN, 102: CLOSED },
+      pools: { 101: OPEN, 102: OPEN },
       failStart: [keys[0]],
     });
     await runToEnd(t, s.run);
     assert.deepEqual(s.started, []);
     assert.equal(statusOf(s, keys[0]), "running", "a failed start stays");
     assert.equal(statusOf(s, keys[1]), "stopped");
+  });
+});
+
+describe("the Telegram alert for a closed position the start-up drops", () => {
+  /*-
+   *  The drained-position retire's alert, on by default: a start after a
+   *  crash between a rebalance's drain and its mint may have nobody at
+   *  the dashboard to see the position dropped.
+   */
+  const realFetch = globalThis.fetch;
+  let sent;
+  beforeEach(() => {
+    sent = [];
+    /*-
+     *  TEST-ONLY global swap: the telegram module sends through the
+     *  global fetch and takes none of its own. The original is put back
+     *  pristine after each case.
+     */
+    globalThis.fetch = async (_url, opts) => {
+      sent.push(JSON.parse(opts.body).text);
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+    tg.setBotToken("tok");
+    tg.setChatId("123");
+    tg.setEnabledEvents(EVENT_DEFAULTS);
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    tg.setBotToken(null);
+    tg.setChatId(null);
+  });
+
+  it("goes out as Drained Position Auto-Retired, naming the NFT", async (t) => {
+    const s = startUp({ keys: [keyOf(101)], pools: { 101: CLOSED } });
+    await runToEnd(t, s.run);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 1);
+    // MarkdownV2 escapes its punctuation; read without the escapes.
+    const text = sent[0].replace(/\\/g, "");
+    assert.match(text, /Drained Position Auto-Retired/);
+    assert.match(text, /Position: #101/);
+    assert.match(text, /taken off the managed positions as LP Ranger started/);
+  });
+
+  it("is not sent for an open position, which starts", async (t) => {
+    const s = startUp({ keys: [keyOf(101)] });
+    await runToEnd(t, s.run);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(s.started, [keyOf(101)]);
+    assert.deepEqual(sent, []);
   });
 });

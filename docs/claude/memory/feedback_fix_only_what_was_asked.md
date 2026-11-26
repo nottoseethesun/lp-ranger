@@ -1,12 +1,16 @@
 ---
 name: fix-only-what-was-asked
-description: "When user says \"fix X\" or \"stop doing Y\", change only X (or only Y). Do not sweep adjacent things that \"look similar\" and might have the same class of problem."
-metadata: 
-  node_type: memory
+description: "Fix X changes only X; hardening is no refactor beyond the fix; one thing at a time, and a yes/no question gets yes or no"
+metadata:
   type: feedback
-  originSessionId: d932d59e-01b4-45db-82b1-6d987abcda8f
-  modified: 2026-10-18T02:51:40.783Z
 ---
+
+# Scope: only what was asked
+
+Merged from: feedback_hardening_minimal_scope, feedback_one_thing_at_a_time — those slugs no longer exist
+separately; search this one.
+
+## fix only what was asked
 
 When the user calls out a specific problem ("just use regular quotes", "stop it with the fancy character-entities"), change ONLY that thing. Do NOT expand the fix to adjacent things you assume are the same class of problem.
 
@@ -40,3 +44,72 @@ to mention that."
 without the change still fails that scenario, the change is in scope;
 if it only improves something nearby, it is a sweep, and this file's
 rule stands.
+
+## hardening minimal scope
+
+When the user says we're "hardening a production release," running burn-in, or otherwise stabilizing for soft-launch, **keep every change strictly inside the requested boundary**.  If the request names a single modal/component/file, do not touch its neighbours — even for parsimony's sake, even for consistency, even if a nearby element clearly follows an older pattern.
+
+**Why:** Each new touch surface is another place for a regression to appear during burn-in and reset the soft-launch clock.  On 2026-05-13, while restyling the Pool Details modal alone (PR #128), the user said three times in a row: "Limit the change to just this modal dialog.  Don't go wild throughout the app.  We are hardening a production release." — making it clear that pattern-propagation work (introducing `<section>` semantics, restructuring siblings, etc.) is unwelcome during this phase.
+
+**How to apply:**
+
+- If the user names a target (a modal, a button, a card, a specific file), edit *only* that target's markup/JS/CSS — even if neighbouring elements share the same anti-pattern.
+- Do not "improve consistency" across unrelated parts of the app.  No incidental refactors, no renames, no helper extractions outside the named target.
+- Audit `git diff --stat main` after each change in hardening mode and confirm the file list matches the named scope.  If it expanded, undo the spread.
+- When the user invokes hardening / burn-in / production-release language, treat it as a hard scope lock that lasts until they explicitly green-light larger work again.
+
+## one thing at a time
+
+Two failures, same root, repeated all through 2026-09-02/03 until the
+user was shouting:
+
+1. **Answering more than was asked.** A yes/no question gets "yes" or
+   "no" first, then at most a few lines. Twice the user asked one and
+   got several paragraphs; both times they said the reply was useless to
+   them and they would ignore it. Over-answering does not merely waste
+   words — it destroys the answer.
+2. **Widening the scope.** Asked to investigate the **Per-Day** table, I
+   surveyed Per-Day *plus* the Current and Lifetime panels in one table
+   and then kept defending the two nobody asked about. It took several
+   exchanges just to establish which panel I meant.
+
+Their words: *"It is almost impossible to get you to control spew"* and
+*"you work hard against doing only one thing at a time."*
+
+3. **Answering before the answer exists.** 2026-10-03, asked "so the
+   global rpc handler is for reads only?" The true answer was one
+   sentence — everything uses it, sends included. But I had not finished
+   tracing the write path when I started replying, so instead of the
+   answer I published the half-built model: a three-way breakdown of
+   internal components, with module names, and a "NonceManager
+   exception" that turned out not to be an exception at all. Five
+   exchanges of the user correcting my taxonomy followed, ending in
+   *"nothing you've said about this topic makes sense"* and *"you could
+   have said that initially, and saved me half an hour of work."*
+
+   This is not over-answering. The words were not the problem — the
+   missing conclusion was. A component inventory is what you produce
+   while still working out the answer, and handing it over makes the
+   user debug your understanding instead of reading a result.
+
+**How to apply:**
+
+- Answer the question asked, about the thing named. Stop.
+- Yes/no first, on its own. Justify only if asked, or in one or two
+  lines.
+- **Finish the investigation before replying.** If the yes/no is not yet
+  known, keep working — the tools are free, the user's attention is not.
+  A scope question ("is X only for Y?", "does this apply to
+  everything?") wants the scope, and nothing else answers it. Never
+  publish the component breakdown that preceded the conclusion; if a
+  qualification turns out not to hold, the user should never have seen
+  it.
+- Do not present findings about B while the subject is A. If B looks
+  broken, say so in **one line naming the panel and the exact figure**
+  — "LIFETIME panel → PROFIT reads X, should read Y" — and return to A.
+  Not flagging a real problem is also wrong; burying it in a survey is
+  what fails.
+- Never restate an argument the user has already accepted or rejected.
+- Before sending, ask: did they ask for this? If not, cut it.
+
+Related: [[feedback_prose_style]], [[feedback_fix_only_what_was_asked]].

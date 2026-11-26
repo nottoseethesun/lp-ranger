@@ -263,9 +263,9 @@ until it is done.
 position and exits within three seconds (`shutdown.exitTimeoutMs`),
 whatever is under way. A rebalance cut off after the drain and before
 the mint leaves the coins in the wallet. On the next start the bot finds
-the position empty and stops managing it after `retire.drainedAfterMs`
-(30 minutes as shipped); Manage on the closed position re-opens it from
-the wallet. A transaction already sent
+the position closed and stops managing it at once, before any position
+starts; Manage on the closed position re-opens it from the wallet. A
+transaction already sent
 can still be mined after the server has gone. Mission Control shows what
 is under way.
 

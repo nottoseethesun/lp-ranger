@@ -15,9 +15,12 @@
  * (`rebalancePaused`, with the advice as `rebalanceError`), which the
  * dashboard shows as a yellow warning (src/client/web/js/dashboard-alerts.js), and
  * the Rebalance Failed Telegram alert sends the same words. A Rebalance
- * Now, or a Slippage save, lets the bot go on; a position left so is
- * retired once drained for `retire.drainedAfterMs`
- * (src/bot/bot-cycle-drain.js).
+ * Now lets the bot go on. A Slippage save only lifts the hold: this stop
+ * marks no mint as due (`rebalanceFailedMidway` stays unset), so nothing
+ * retries it. A position left so is retired once drained for
+ * `retire.drainedAfterMs` (src/bot/bot-cycle-drain.js), or taken off the
+ * managed list as the app starts if it restarts first
+ * (src/bot/auto-start.js), since the hold lives only in memory.
  */
 
 const { log } = require("../lib/log");
@@ -39,7 +42,8 @@ function priceMovedStopMessage() {
     "loss; if it is acceptable, click Rebalance Now. Otherwise LP Ranger " +
     "stops managing this position in " +
     duration(config.DRAINED_RETIRE_MS / 1000) +
-    ", keeping its NFT, which you can manage again."
+    ", or as it starts if it restarts first, keeping its NFT, which you " +
+    "can manage again."
   );
 }
 

@@ -364,6 +364,23 @@ The server finds the stored wallet rather than starting empty. With a
 wallet password configured (`WALLET_PASSWORD` in `.env`, or one typed at
 the terminal when started with `--headless`) it unlocks immediately;
 otherwise it waits for the browser unlock and continues from there.
+Either way, every decrypt finishes before anything starts: with the same
+password it decrypts the stored api keys (Telegram, Moralis) before the
+bot takes the key, so no position starts until that decrypt has ended,
+and no alert the start-up sends is lost to one still under way. A failed
+api-key decrypt is logged and the start goes on. A wallet import keeps
+the same order. Clear Wallet (`DELETE /api/wallet`,
+`src/server/wallet-clear.js`) is refused, answered 409 with the reason,
+while the server is using the wallet: from an unlock's first step, or
+the launch's key step's, the `--headless` prompt included, until the bot
+holds the key and the start-up has begun (`src/server/wallet-in-use.js`),
+and through a whole wallet import, its start-up included. So no decrypt
+finds its wallet gone partway (the user's design, 2026-11-26). Every
+status answer carries the refusal as `clearWalletRefusal`, null when a
+Clear would go through, and every tab disables Clear Wallet meanwhile,
+the refusal its tooltip. A page that loaded while the wallet was still
+locked shows it unlocked once a status answer naming its wallet says,
+in `walletUnlocked`, that the server holds a wallet and its key.
 
 It then starts each position whose saved status is **running**: the list
 Manage adds to and Stop Managing removes from, which a stop of the app
@@ -374,10 +391,19 @@ wallet's listed positions on this chain are taken, no owner is checked,
 and each wallet keeps its own position in a pool, as a Manage keys it.
 Before any starts, it reads every listed position's owner and pool, and
 takes off the list each one that cannot be managed: its NFT was sold,
-transferred or burned since the last run, or another listed position
-keeps its pool. LP Ranger manages
-one active position per pool, so each pool keeps its open position, or
-the first listed if none is open. One whose owner or pool could not be
+transferred or burned since the last run, it is closed, or another
+listed position keeps its pool. A closed one comes off at once, with its
+auto-compound off and the retire's Telegram alert sent, as the
+drained-position retire leaves one after its wait. While the app runs,
+that wait runs from the first check that finds the position drained with
+no rebalance under way or asked for and no mint retry coming; a later
+one holds the retire off, its time still counted. It is the owner's
+time to rescue a rebalance that stopped between its drain and its mint,
+as by raising Slippage so the bot retries the mint. That retry rests on
+state the bot keeps only in memory, which a restart clears, so a start
+has nothing to wait for.
+LP Ranger manages one active position per pool, so each pool keeps the
+first listed. One whose owner or pool could not be
 read is not started, since nothing then shows its pool free; it stays on
 the list for the next launch, as does one that merely fails to start.
 The headless bot (`src/bot.js`) starts its listed positions through the
@@ -397,8 +423,9 @@ the new wallet's saved positions. From its first step until that
 start-up has finished, `GET /api/status` reports `importingWallet`, the
 badge reads Syncing, and the server refuses a Manage or a second import
 (`beginWalletImport`, `src/bot/app-phase.js`). It refuses an unlock too,
-and asks again once the unlock's decrypt is done, since an import can
-begin during it; the launch's key step stands aside the same way
+and asks again after each of the unlock's two decrypts, the wallet's and
+the api keys', since an import can begin during either; the launch's
+key step stands aside the same way
 (`refusalToTakeKey`). The key step does not come back afterwards. An
 import can fail before it takes its own key, its wallet file not
 written, about half a second in. That leaves the launch with no key, and
@@ -3966,8 +3993,11 @@ What happens when the process starts, in order:
       `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or,
       only when the server was started with `--headless`, from a password
       typed at the terminal prompt.
-      - On success: it hands the bot the key (`setPrivateKey`) and asks
-        it to start the positions saved as managed
+      - On success: when the key came from a password, it first
+        decrypts the stored api keys (Telegram, Moralis) with it,
+        logging a failure and going on; then it hands the bot the key
+        (`setPrivateKey`) and asks it to start the positions saved as
+        managed
         (`startManagedPositions`), one bot loop per position whose v2
         config has `status: 'running'`, on
         this chain and in this wallet (src/bot/auto-start.js). The
@@ -3987,8 +4017,9 @@ What happens when the process starts, in order:
       - It stands aside, taking no key and starting nothing, while a
         wallet import is under way, and once the bot holds a key, as
         when the dashboard was unlocked while the launch waited on the
-        prompt or the decrypt. It asks before the decrypt and again
-        after it.
+        prompt or a decrypt. It asks before the wallet's decrypt, again
+        after it, and again after the api keys'. A Clear Wallet is
+        refused from its first step until the start-up has begun.
 9. **If imported as a module (e.g. from a test)**: nothing in step 8
    runs. The caller controls `start()` / `stop()` lifecycle explicitly.
 
@@ -4000,16 +4031,16 @@ What happens when the process starts, in order:
    without a valid token; a browser's preflight (OPTIONS), which the
    cors check answers first, needs none. Each request under `/api/` then resets the
    server's idle countdown (`markActivity`, `src/server/server-pause.js`).
-2. The route table, which maps method+path to a handler. Three small
-   routes are answered in `src/server.js` itself: `GET /health`,
-   `GET /api/wallet/status` and `DELETE /api/wallet`. The rest are
-   built in `src/server/`:
+2. The route table, which maps method+path to a handler. Two small
+   routes are answered in `src/server.js` itself: `GET /health` and
+   `GET /api/wallet/status`. The rest are built in `src/server/`:
    [`server-routes.js`](../src/server/server-routes.js) (settings, api
    keys, wallet import and reveal, the held stop, and the Telegram
    routes from `telegram-notifications/server-telegram.js`),
    [`position-routes.js`](../src/server/position-routes.js),
    `position-state-routes.js`, `user-configurable-routes.js`,
-   `server-pause.js`, `server-unlock.js` and `handle-api-status.js`.
+   `server-pause.js`, `server-unlock.js`, `wallet-clear.js` and
+   `handle-api-status.js`.
 3. A closed position's history, `GET /api/position/:tokenId/history`,
    matched by the shape of its whole url (`historyTokenId`,
    `position-routes.js`), so one with a query string falls through to
@@ -4031,8 +4062,10 @@ or an import. So does a Telegram save whose event choices are not valid, and a
 Telegram test while no bot token and chat id are held this session. The
 unlock answers a wrong password 401, and 404 when no wallet is saved to
 unlock. The wallet's own steps answer 409: the import while the app may
-start nothing (a stop, a start-up or another import under way), and the
-unlock while an import is under way. An error a route in the route
+start nothing (a stop, a start-up or another import under way), the
+unlock while an import is under way, and Clear Wallet while the server
+is using the wallet (an unlock, the launch's key step or an import under
+way). An error a route in the route
 table throws becomes 400, or 403 for a wrong password, in
 `handleRequest`. The closed position's history is matched after the
 table, outside that catch. An error it throws reaches the server's
@@ -4536,7 +4569,9 @@ When a position auto-retires (drained for at least
 `retire.drainedAfterMs` in `app-runtime.json`, 30 minutes as shipped;
 see `src/bot/bot-cycle-drain.js`), its `cfg.positions[key].status` flips to
 `stopped`, the bot loop stops, and the NFT is left intact (not
-burned). To bring such a position back to life, the user clicks
+burned). A position found closed as the app starts comes off the same
+way, at once, before any loop starts (`src/bot/auto-start.js`). To
+bring such a position back to life, the user clicks
 **Manage** on its row in the dashboard. For closed positions, the
 Manage button drives a guided three-step flow instead of starting the
 bot loop directly:

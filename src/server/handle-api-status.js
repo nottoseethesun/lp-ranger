@@ -22,6 +22,7 @@ const { configuredErrorLogPath } = require("../lib/error-log");
 const { readUiDefaults } = require("../lib/ui-defaults");
 const { getActiveLogFilePath } = require("../lib/log-file");
 const { createWalletChangeTracker } = require("./wallet-change");
+const { refusalToClear } = require("./wallet-clear");
 
 /**
  * The file the server is logging to, relative to where it runs, or null
@@ -40,8 +41,12 @@ function _logFileForDisplay() {
  * @param {object} deps.config           Loaded src/lib/config.js module.
  * @param {object} deps.diskConfig       Mutable v2 disk config object.
  * @param {object} deps.walletManager    Wallet manager instance.
+ * @param {{inUse: Function}} deps.walletInUse  Whether an unlock or the
+ *   launch's key step is using the wallet (src/server/wallet-in-use.js).
  * @param {object} deps.bot              The bot's interface
- *   (src/bot/bot-interface.js): its `statusReport`.
+ *   (src/bot/bot-interface.js): its `statusReport`, whether it holds a
+ *   key (`hasPrivateKey`), and whether it may take one now
+ *   (`refusalToTakeKey`, set while a wallet import is under way).
  * @param {Function} deps.getLpProviderDisplayName  LP-provider label lookup by (factory, PM).
  * @param {Function} deps.moralisEnabledIn       Whether the stored Moralis key is used, from `global`.
  * @param {Function} deps.jsonResponse           HTTP JSON responder.
@@ -52,6 +57,7 @@ function createApiStatusHandler(deps) {
     config,
     diskConfig,
     walletManager,
+    walletInUse,
     bot,
     getLpProviderDisplayName,
     moralisEnabledIn,
@@ -79,6 +85,21 @@ function createApiStatusHandler(deps) {
          *  `importingWallet` is false (src/server/wallet-change.js).
          */
         walletJustChanged,
+        /*-
+         *  Whether the server holds a wallet and its key. A page that
+         *  showed the wallet locked as it loaded, its Unlock dialog open
+         *  or View-Only, shows it unlocked once this is true: the server
+         *  can take the key a moment after the page loaded, as a launch
+         *  with WALLET_PASSWORD does (src/client/web/js/dashboard-wallet.js).
+         */
+        walletUnlocked: walletManager.hasWallet() && bot.hasPrivateKey(),
+        /*-
+         *  Why a Clear (`DELETE /api/wallet`) would be refused now, or
+         *  null: an unlock, the launch's key step or a wallet import is
+         *  using the wallet. Every tab disables Clear Wallet meanwhile,
+         *  this the reason it shows (src/server/wallet-clear.js).
+         */
+        clearWalletRefusal: refusalToClear(walletInUse, bot),
         positionScan: report.positionScan,
         port: config.PORT,
         host: config.HOST,

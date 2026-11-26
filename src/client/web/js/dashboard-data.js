@@ -17,7 +17,8 @@ import {
   updateHistoryFromStatus,
   updateHistorySyncLabels,
 } from "./dashboard-history.js";
-import { wallet } from "./dashboard-wallet.js";
+import { wallet, showUnlockedIfServerIs } from "./dashboard-wallet.js";
+import { paintClearWalletButton } from "./dashboard-wallet-import.js";
 import { reloadIfOnPriorWallet } from "./dashboard-wallet-change.js";
 import {
   updateManageBadge,
@@ -562,11 +563,14 @@ import { announceRefill } from "./dashboard-config-save.js";
 /**
  * Each status answer: a tab left on a wallet the server no longer holds
  * reloads and does nothing more with it (dashboard-wallet-change.js);
- * any other tab shows it.
+ * any other tab shows it, the wallet shown unlocked first once the server
+ * holds its key, should the tab still show it locked (dashboard-wallet.js).
  * @param {object} data  The status answer, flattened.
  */
 function _statusAnswered(data) {
   if (reloadIfOnPriorWallet(data, wallet.address)) return;
+  showUnlockedIfServerIs(data.walletUnlocked, data.walletAddress);
+  paintClearWalletButton(data.clearWalletRefusal);
   updateDashboardFromStatus(data);
 }
 

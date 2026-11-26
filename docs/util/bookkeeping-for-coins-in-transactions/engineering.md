@@ -378,11 +378,13 @@ number in the wallet's count of transactions.
   `tx.midwayRetryLimit` times (four as shipped, in `app-runtime.json`).
   It does not try again on its own after an aborted swap (one refused
   for its price impact, say), after the price left the new range before
-  the mint, or once those tries are spent; the owner then raises
-  Slippage or clicks Rebalance Now. A position left empty for
+  the mint, or once those tries are spent; the owner then clicks
+  Rebalance Now, or, after an aborted swap with tries left, raises
+  Slippage, which lets the bot try again. A position left empty for
   `retire.drainedAfterMs` after that (30 minutes as shipped, in
-  `app-runtime.json`) is no longer managed, so no rebalance finishes the
-  failed one until the owner manages it again.
+  `app-runtime.json`) is no longer managed, nor is one LP Ranger finds
+  empty when it starts, so no rebalance finishes the failed one until
+  the owner manages it again.
 
 Transactions of different positions can sit in the same blocks. Match
 each transaction to its position by the NFT id in its events, or by the

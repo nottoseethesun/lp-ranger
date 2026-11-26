@@ -4,8 +4,9 @@
  * @description
  * Drained-position retirement logic — extracted from bot-cycle.js to
  * keep that file under the 500-line ESLint limit.  When a managed
- * NFT sits at 0 liquidity with no rebalance in flight for longer
- * than `DRAINED_RETIRE_MS`, the bot loop auto-retires the position
+ * NFT has sat at 0 liquidity for `DRAINED_RETIRE_MS`, counted from the
+ * first check that found it so with no rebalance in flight or asked
+ * for and no mint retry coming, the bot loop auto-retires the position
  * (status 'running' → 'stopped').  NFTs are NEVER burned — this is
  * a pure software state flip and the user can re-manage the same
  * NFT from the dashboard at any time.
@@ -20,8 +21,9 @@ const { getTokenSymbol } = require("../lib/token-symbol-cache");
 const { notify } = require("../lib/telegram-notifications/telegram");
 
 /*-
- *  How long a managed position may sit at 0 liquidity (with no rebalance
- *  in flight) before auto-retirement: app-runtime.json →
+ *  How long the bot waits before it auto-retires a drained position,
+ *  counted from the first check that found it drained with no rebalance
+ *  in flight or asked for and no mint retry coming: app-runtime.json →
  *  retire.drainedAfterMs. Time-based (not poll-count-based) so it stays
  *  predictable whatever CHECK_INTERVAL_SEC is.
  */

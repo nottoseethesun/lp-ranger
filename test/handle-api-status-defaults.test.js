@@ -40,6 +40,8 @@ const { moralisEnabledIn } = require("../src/lib/moralis-key");
 const config = require("../src/lib/config");
 const { configuredErrorLogPath } = require("../src/lib/error-log");
 const logFile = require("../src/lib/log-file");
+const appPhase = require("../src/bot/app-phase");
+const { createWalletInUse } = require("../src/server/wallet-in-use");
 
 /** Drive the real handler with the smallest viable dependency set. */
 async function statusPayload(overrides = {}) {
@@ -141,5 +143,54 @@ test("/api/status names the file the server logs to, or null while that is off",
   } finally {
     logFile.disableLogFile();
     fs.rmSync(file, { force: true });
+  }
+});
+
+test("/api/status says whether the server holds a wallet and its key", async () => {
+  /*-
+   *  A page that showed the wallet locked as it loaded shows it unlocked
+   *  once this is true (src/client/web/js/dashboard-wallet.js). A key from
+   *  PRIVATE_KEY with no wallet file is no wallet to show unlocked.
+   */
+  const saved = { getAddress: () => "0xW", hasWallet: () => true };
+  const none = { getAddress: () => null, hasWallet: () => false };
+  const keyHeld = () => true;
+  const noKey = () => false;
+  const unlocked = await statusPayload({
+    walletManager: saved,
+    hasPrivateKey: keyHeld,
+  });
+  assert.equal(unlocked.global.walletUnlocked, true);
+  const locked = await statusPayload({
+    walletManager: saved,
+    hasPrivateKey: noKey,
+  });
+  assert.equal(locked.global.walletUnlocked, false);
+  const noWallet = await statusPayload({
+    walletManager: none,
+    hasPrivateKey: keyHeld,
+  });
+  assert.equal(noWallet.global.walletUnlocked, false);
+});
+
+test("/api/status says why a Clear would be refused, while the wallet is in use", async () => {
+  /*-
+   *  Every tab disables Clear Wallet while this is set, the reason its
+   *  tooltip (src/client/web/js/dashboard-wallet-import.js): the same
+   *  refusal a Clear is answered with (src/server/wallet-clear.js).
+   */
+  const walletInUse = createWalletInUse();
+  const idle = await statusPayload({ walletInUse });
+  assert.equal(idle.global.clearWalletRefusal, null);
+  walletInUse.begin();
+  const unlocking = await statusPayload({ walletInUse });
+  assert.match(unlocking.global.clearWalletRefusal, /unlocking the wallet/);
+  walletInUse.end();
+  appPhase.beginWalletImport();
+  try {
+    const importing = await statusPayload({ walletInUse });
+    assert.match(importing.global.clearWalletRefusal, /importing a wallet/);
+  } finally {
+    appPhase._resetAppPhaseForTests();
   }
 });

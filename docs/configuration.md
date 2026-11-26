@@ -834,7 +834,7 @@ In `app-runtime.json`.
 | `tx.midwayRetryLimit` | `4` | How many times a rebalance left mid-way, its coins in the wallet, is tried again before the bot aborts and asks you to act. 1 to 20. |
 | `poll.afterActionMs` | `2000` | How soon the bot looks again after a rebalance, compound or cancel, so the dashboard shows the result. |
 | `poll.lifetimeRescanCheckMs` | `1800000` | How often the bot checks whether a position's lifetime figures need their scan run again, and runs it if so. |
-| `retire.drainedAfterMs` | `1800000` | How long a managed position may sit drained, with no rebalance under way, before LP Ranger stops managing it. A rebalance aborted after its drain counts. One minute to two days. |
+| `retire.drainedAfterMs` | `1800000` | How long LP Ranger waits before it stops managing a drained position, from the first check that finds it drained with no rebalance under way or asked for and no mint retry coming; a later rebalance or retry holds the stop off, its time still counted. A rebalance aborted after its drain counts. One found drained as the app starts is taken off the managed list at once. One minute to two days. |
 | `shutdown.exitTimeoutMs` | `3000` | How long the server spends stopping before it exits regardless. One second to one minute. |
 | `shutdown.stopKillMarginMs` | `2000` | How much longer `npm stop` waits, after that, before it falls back to SIGKILL. Half a second to one minute. |
 | `shutdown.stopCheckIntervalMs` | `100` | How often `npm stop`, and `npm run gentle-stop` once the server has taken its stop, check whether the server has gone. 10 milliseconds to five seconds. |

@@ -7,10 +7,16 @@
 
 "use strict";
 
-/** Build a minimal deps object with stubs for createRouteHandlers. */
+const { createWalletInUse } = require("../../src/server/wallet-in-use");
+
+/**
+ * Build a minimal deps object with stubs for createRouteHandlers; the
+ * tracker of whether the wallet is in use is the server's own.
+ */
 function makeDeps(overrides = {}) {
   const posStates = new Map();
   return {
+    walletInUse: createWalletInUse(),
     diskConfig: {
       global: {},
       positions: {},

@@ -142,6 +142,15 @@
                           "type": "boolean",
                           "description": "Whether a wallet import is under way, from its first step until the start-up of the new wallet's saved positions has finished. A Manage and an unlock are refused meanwhile, and the dashboard's badge reads Syncing."
                         },
+                        "walletUnlocked": {
+                          "type": "boolean",
+                          "description": "Whether the server holds a wallet and its key. A dashboard tab holding the wallet walletAddress names that showed it locked as it loaded, its Unlock dialog open or View-Only, shows it unlocked once this is true, as after a launch with WALLET_PASSWORD that took the key a moment after the page loaded."
+                        },
+                        "clearWalletRefusal": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Why a Clear (DELETE /api/wallet) would be refused now, in the operator's words: an unlock, the launch's key step or a wallet import is using the wallet. Null when a Clear would go through. Every dashboard tab disables Clear Wallet while it is set, this its tooltip."
+                        },
                         "walletJustChanged": {
                           "type": "object",
                           "nullable": true,
@@ -425,7 +434,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Unlock encrypted wallet",
-        "description": "Decrypt the wallet file and the stored api keys with the provided password. The first unlock also starts the positions saved as managed; the request is idempotent, so entering the password again only confirms it. Refused while a wallet import is under way, and asked again once the decrypt is done.",
+        "description": "Decrypt the wallet file and the stored api keys with the provided password, both before the bot takes the key, so no position starts until the api keys' decrypt has ended; a failed one is logged and the unlock goes on. Answered once both decrypts are done. The first unlock also starts the positions saved as managed; the request is idempotent, so entering the password again only confirms it. Refused while a wallet import is under way, asked again after each decrypt. A Clear (DELETE /api/wallet) is refused while the unlock runs, so the wallet is there at every step.",
         "requestBody": {
           "required": true,
           "content": {
@@ -453,7 +462,7 @@
             "description": "Invalid password"
           },
           "404": {
-            "description": "No wallet is saved, so there is nothing to unlock. Nothing changed; `error` says so."
+            "description": "No wallet is saved, so there is nothing to unlock, as after a Clear in another tab since the page loaded. Nothing was decrypted and no key taken; `error` says there is no wallet. The dashboard then shows its Wallet file not found notice, and Wallet Setup after it."
           },
           "409": {
             "description": "A wallet import is under way. Nothing changed; `error` says why."
@@ -515,10 +524,13 @@
       "delete": {
         "tags": ["Wallet"],
         "summary": "Clear wallet",
-        "description": "Delete the encrypted wallet file from disk.",
+        "description": "Delete the encrypted wallet file from disk. Refused while the server is using the wallet: an unlock or the launch's key step under way, from its first step (the --headless prompt included) until the bot holds the key and the start-up has begun, or a wallet import under way, its start-up included. Every status answer carries the same refusal as clearWalletRefusal.",
         "responses": {
           "200": {
             "description": "Wallet file deleted"
+          },
+          "409": {
+            "description": "The server is using the wallet: an unlock, the launch's key step or a wallet import is under way. Nothing changed; `error` says why, in the operator's words."
           }
         }
       }

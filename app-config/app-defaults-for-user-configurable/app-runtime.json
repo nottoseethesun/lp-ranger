@@ -38,7 +38,7 @@
     "lifetimeRescanCheckMs": 1800000
   },
   "retire": {
-    "_comment": "drainedAfterMs: how long a managed position may sit drained, with no rebalance under way, before the bot stops managing it. The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too: the operator has this long to raise Slippage or click Rebalance Now. Read by src/bot/bot-cycle-drain.js; its range is in setting-bounds.json.",
+    "_comment": "drainedAfterMs: how long the bot waits before it stops managing a drained position, from the first check that finds it drained with no rebalance under way or asked for and no mint retry coming; a later rebalance or retry holds the stop off, its time still counted. One found drained as the app starts is taken off the managed list at once (src/bot/auto-start.js). The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too: the operator has this long to click Rebalance Now, or, after an aborted swap with tries left, raise Slippage, which lets the bot try again. Read by src/bot/bot-cycle-drain.js; its range is in setting-bounds.json.",
     "drainedAfterMs": 1800000
   },
   "rescanPrices": {
