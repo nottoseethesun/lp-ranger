@@ -250,7 +250,7 @@ async function checkGasBalance(opts) {
   );
   _fireGasAlert("lowGasBalance", {
     position,
-    message: `Balance ${balEth} below recommended ${recEth} (${status.positionCount} positions × 3× safety). Top up to avoid missed rebalances.`,
+    message: `Balance ${balEth} below recommended ${recEth} (${status.positionCount} positions × ${SAFETY_MULTIPLIER}× safety). Top up to avoid missed rebalances.`,
   });
 }
 

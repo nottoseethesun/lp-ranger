@@ -44,9 +44,11 @@ and the server never sees it.
 
 ## Getting Help on Any Command
 
-The server, the headless bot, the commands that start them and
-`npm run clean` take `--help` (or `-h`). Each prints its flag list and
-exits without starting anything:
+The server, the headless bot, the commands that start them, and the four
+commands that delete or stop something (`npm run clean`, `npm stop`,
+`npm run clear-blockchain-scan-cache` and `npm run reset-wallet`) take
+`--help` (or `-h`). Each prints its flag list and exits without starting
+anything:
 
 ```sh
 npm run build-and-start -- --help
@@ -55,7 +57,13 @@ npm run bot -- --help
 npm run debug -- --help
 npm run debug-bot -- --help
 npm run clean -- --help
+npm stop -- --help
+npm run clear-blockchain-scan-cache -- --help
+npm run reset-wallet -- --help
 ```
+
+Those four also refuse an argument they do not take, before they delete
+or stop anything, so a mistyped flag never sets them to work.
 
 `--help` starts no server and no bot, writes nothing to the log file, and
 prints no startup banner — so a help listing can never be mistaken for a
@@ -65,9 +73,9 @@ since `node --watch` keeps running after the script exits. Stop it with
 Ctrl+C.
 
 Not every other command reads `--help`; one that does not ignores it and
-does its work. `npm stop -- --help` stops the server,
-`npm run clear-blockchain-scan-cache -- --help` clears the scan caches,
-and `npm run reset-wallet -- --help` deletes the wallet file.
+does its work: `npm run gentle-stop -- --help` stops the server once
+nothing is under way, and `npm run wipe-settings -- --help` moves your
+settings aside.
 
 The text comes from `src/server/server-cli-help.js` (the server's and
 build-and-start's) and `src/bot/bot-cli-help.js` (the headless bot's),
@@ -84,10 +92,10 @@ Starting and stopping a running install.
 | Command | Flags | Description | Example |
 | ------- | ----- | ----------- | ------- |
 | `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run bot -- --log-file --delete-pre-existing-log-file` · `npm run bot -- --start-with-price-lookups-unpaused` · `npm run bot -- --help` |
-| `clear-blockchain-scan-cache` | `--dry-run` | Delete every blockchain scan cache in `app-data/scan-cache/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
+| `clear-blockchain-scan-cache` | `--dry-run`, `--help`/`-h` | Delete every blockchain scan cache in `app-data/scan-cache/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
 | `gentle-stop` | — | The recommended way to stop the server: asks it to stop once nothing is under way, then prints what it is still finishing until it exits. See [Stopping a Running Install](#stopping-a-running-install). | `npm run gentle-stop` |
 | `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--headless` | Start the dashboard server and, once the wallet is unlocked, every position saved as managed. `--headless` prompts for the wallet password on the terminal instead of needing a browser. Does not build first; a `prestart` hook verifies the artifacts exist. The log flags: see [Logging to a File](#logging-to-a-file). | `npm start -- --log-file --delete-pre-existing-log-file` · `npm start -- --verbose` · `npm start -- --help` |
-| `stop` | — | Force-stop: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. The server exits within three seconds, cutting off any rebalance or compound under way; prefer `npm run gentle-stop`. Falls back to an lsof-by-port lookup when there is no PID file, or its PID is no longer the server's. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
+| `stop` | `--help`/`-h` | Force-stop: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. The server exits within three seconds, cutting off any rebalance or compound under way; prefer `npm run gentle-stop`. Falls back to an lsof-by-port lookup when there is no PID file, or its PID is no longer the server's. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
 
 ---
 
@@ -116,7 +124,7 @@ resetting local state.
 | `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint, knip's unused files, and the walk that fails on a module under `src/` no part of the app loads (`scripts/check-unused-src-modules.js`). | `npm run lint` |
 | `lint:fix` | — | ESLint, stylelint, markdownlint and Prettier (json and yaml only) with autofix, then html-validate and actionlint. It runs no svg check, openapi-sync, Prettier on js, knip or unused-module walk. | `npm run lint:fix` |
 | `nuke` | — | Delete `node_modules` and `package-lock.json` for a clean reinstall. Run `npm install` afterwards. | `npm run nuke` |
-| `reset-wallet` | — | Delete `wallet.json` (and its save's temp copy, `wallet.json.tmp`) and scrub `WALLET_PASSWORD` from `.env`. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run reset-wallet` |
+| `reset-wallet` | `--help`/`-h` | Delete `wallet.json` (and its save's temp copy, `wallet.json.tmp`) and scrub `WALLET_PASSWORD` from `.env`. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run reset-wallet` |
 | `restore-settings` | — | Restore whatever `wipe-settings` backed up. | `npm run restore-settings` |
 | `show-dependency-cycles` | — | madge circular-import report across the whole source tree. See [Dependency Cycles](#dependency-cycles). | `npm run show-dependency-cycles` |
 | `show-gallery` | — | Serve a Pages-accurate preview of the screenshot gallery at `http://localhost:5557`. Architecture in [engineering.md § Previewing the Screenshot Gallery](engineering.md#previewing-the-screenshot-gallery). | `npm run show-gallery` |

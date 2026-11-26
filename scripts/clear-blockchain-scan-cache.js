@@ -37,12 +37,36 @@
  * Usage:
  *   npm run clear-blockchain-scan-cache
  *   npm run clear-blockchain-scan-cache -- --dry-run
+ *   npm run clear-blockchain-scan-cache -- --help
+ * An argument it does not take is refused before anything is deleted
+ * (scripts/_script-args.js).
  */
 
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
+const { readScriptArgs, answeredWithoutWork } = require("./_script-args");
+
+const HELP_TEXT = `
+clear-blockchain-scan-cache — rebuild the scan caches from the chain
+
+USAGE
+  npm run clear-blockchain-scan-cache             Delete every scan cache
+                                                  in app-data/scan-cache/
+                                                  and the scan-derived
+                                                  values in the position
+                                                  records. Refused while
+                                                  LP Ranger runs.
+  npm run clear-blockchain-scan-cache -- --dry-run
+                                                  List what would be
+                                                  deleted, deleting
+                                                  nothing.
+  npm run clear-blockchain-scan-cache -- --help   Show this text.
+
+Anything else is refused before anything is deleted. The next start
+scans from the chain again, at about an hour per position.
+`.trim();
 const { loadConfig, saveConfig } = require("../src/lib/bot-config-v2");
 const { CHAIN_DERIVED_POSITION_KEYS } = require("../src/lib/bot-config-keys");
 const { scanCacheDir } = require("../src/lib/scan-cache-dir");
@@ -212,7 +236,14 @@ function _reportDryRun(r, c) {
 }
 
 function main() {
-  const dryRun = process.argv.includes("--dry-run");
+  const args = readScriptArgs(process.argv.slice(2), ["--dry-run"]);
+  const text = {
+    tag: "clear-cache",
+    help: HELP_TEXT,
+    nothing: "Nothing was deleted.",
+  };
+  if (answeredWithoutWork(args, text)) return;
+  const dryRun = args.flags.has("--dry-run");
   const pid = waitForServerExit();
   if (pid !== null) {
     console.error(
@@ -258,4 +289,5 @@ module.exports = {
   runningPid,
   waitForServerExit,
   human,
+  HELP_TEXT,
 };

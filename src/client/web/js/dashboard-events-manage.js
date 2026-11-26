@@ -268,8 +268,8 @@ function _formatPositionSpec(active) {
  * specific position and tells the user how to retry.
  *
  * When the reason contains "No V3 NFT position found" or "RPC failure",
- * the retry hint adds that the bot has already failed over to the backup
- * rpc.
+ * the retry hint adds that LP Ranger moves to another rpc endpoint when
+ * one keeps failing.
  *
  * A refusal under the one-position-per-pool rule gets no retry hint,
  * since a second click would be refused the same way: its words say
@@ -335,14 +335,15 @@ export function _handleManageFailure(
     }
     const buttonLabel = verb === "manage" ? "Manage" : "Stop Managing";
     /*- A reason that names a missing V3 NFT position or an rpc failure
-     *  gets a hint that the bot has already failed over to the backup rpc. */
+     *  gets a hint that LP Ranger moves to another endpoint when one keeps
+     *  failing, so a second try may be answered elsewhere. */
     const looksLikeRpcFailure = /No V3 NFT position found|RPC failure/i.test(
       code || "",
     );
     let retryHint = `\n\nClick "${buttonLabel}" again to retry.`;
     if (status === 409) retryHint = "";
     else if (looksLikeRpcFailure)
-      retryHint = `\n\nClick "${buttonLabel}" again to retry \u2014 the bot has already failed over to the backup RPC.`;
+      retryHint = `\n\nClick "${buttonLabel}" again to retry \u2014 LP Ranger moves to another RPC endpoint when one keeps failing.`;
     /*- alert() is intentional here — the manage flow is a deliberate
      *  user action and silent failure is what got us into the stuck-UI
      *  state this branch is fixing. */

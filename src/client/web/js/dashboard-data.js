@@ -378,7 +378,7 @@ export function resetPollingState() {
   const dd = g("lifetimeDepositDisplay");
   if (dd) dd.textContent = "\u2014";
   const dl = g("initialDepositLabel");
-  if (dl) dl.textContent = "Edit Initial Deposit";
+  if (dl) dl.textContent = "Edit Total Lifetime Deposit for This Pool";
 }
 function _resolveManagedTid(a, mp, states) {
   const { migrateTo } = _computeRebalanceFollow(a, mp, states);

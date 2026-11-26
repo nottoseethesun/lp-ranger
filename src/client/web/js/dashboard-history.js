@@ -173,7 +173,7 @@ function _eventTs(e) {
 /** Format an event timestamp into a [utc, local] pair. */
 function _fmtEventTs(ts) {
   if (!ts) return [_EMDASH, ""];
-  const utc = ts.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  const utc = ts.toISOString().slice(0, 16).replace("T", " ") + "Z";
   const local =
     ts.toLocaleDateString() +
     " " +

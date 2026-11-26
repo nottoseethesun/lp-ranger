@@ -54,8 +54,9 @@ function _residualWarningHtml(rw) {
     rw.iterations +
     " times and gave up to avoid endless looping. " +
     "Your tokens are safe in your wallet. " +
-    "The bot sweeps residuals automatically 10 minutes after each rebalance when they exceed 5% of the position\u2019s value, " +
-    "or you can click <strong>Rebalance</strong> to try again sooner." +
+    "The bot sweeps residuals automatically after each rebalance once they exceed a share of the position\u2019s value " +
+    "(10 minutes after, at 5%, as shipped), " +
+    "or you can click <strong>Rebalance Now</strong> to try again sooner." +
     "</p>"
   );
 }

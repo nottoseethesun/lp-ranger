@@ -375,7 +375,9 @@ function _buildPopoverFrag(o) {
   );
   const sectionSlot = frag.querySelector('[data-tpl="sectionSlot"]');
   if (sectionSlot && sectionFrag) sectionSlot.replaceWith(sectionFrag);
-  const lpSide = o.isCur ? "LP Value" : "(LP Value + Wallet Residual)";
+  const lpSide = o.isCur
+    ? "(LP Value − Compounded)"
+    : "(LP Value − Compounded + Wallet Residual)";
   frag.querySelector('[data-tpl="formula"]').textContent =
     "IL = " +
     lpSide +

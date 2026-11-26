@@ -81,7 +81,7 @@ and the responsive layout &mdash; see the
 
 - Skills: Only very basic Terminal (a.k.a. "shell") skills, learnable in a few minutes.
 - Machine: Any common computer; specifically, a 64-bit Intel, Apple, or ARM machine.
-  - Known working light-weight computer: Raspberry Pi 5 (recommended configuration: with Heat Sink and Fan, 5GB RAM, and Ethernet cable Internet connection instead of Wi-Fi).
+  - Known working light-weight computer: Raspberry Pi 5 (recommended configuration: with Heat Sink and Fan, 16GB RAM, and Ethernet cable Internet connection instead of Wi-Fi).
     - If using a lightweight machine such as a Raspberry Pi 5, avoid all unnecessary software, including any unnecessary browser extensions. You can install browser extensions if you need them, but simply disable them in the Web browser so that they don't soak up memory and CPU when you don't need to use them.
   - Machine must be kept secure: Up-to-date with updates, free of malware, and physically secure.
 - Node.js 24+
@@ -460,8 +460,9 @@ engineering reference for this project.
 **For every `npm` command** — what it does, which flags it takes, and a
 line you can copy — see
 **[`docs/npm-project-commands.md`](docs/npm-project-commands.md)**. The
-server, the headless bot, `npm run build-and-start` and `npm run clean` also
-answer `--help`, for example `npm run build-and-start -- --help`.
+server, the headless bot, `npm run build-and-start`, `npm run clean`,
+`npm stop`, `npm run clear-blockchain-scan-cache` and `npm run reset-wallet`
+also answer `--help`, for example `npm run build-and-start -- --help`.
 
 **For bookkeeping** — a csv of every transaction behind your positions,
 with the coins each moved and the gas it paid, valued in USD — see the

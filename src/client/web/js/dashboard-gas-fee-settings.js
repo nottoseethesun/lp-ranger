@@ -36,7 +36,9 @@ export async function saveGasFeePct() {
         "\u2705",
         "info",
         "Gas Fee % Saved",
-        `Swap gate ceiling now ${raw}% across all positions`,
+        Number.isFinite(raw)
+          ? `Swap gate ceiling now ${raw}% across all positions`
+          : "Swap gate ceiling back to its default across all positions",
       ),
   });
 }

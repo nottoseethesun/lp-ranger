@@ -661,5 +661,5 @@ export function _updateCompoundButton(d, rebInProgress) {
   cb.disabled = !canCompound;
   cb.title = canCompound
     ? ""
-    : "Enabled when Fees available are > $usd " + minFee;
+    : "Enabled when Fees available are at least $usd " + minFee;
 }
