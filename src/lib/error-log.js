@@ -135,7 +135,8 @@ function writeErrorLog(err, context, opts) {
 /**
  * @returns {string} The absolute path where `writeErrorLog` would write
  *   with default options.  Used by the dashboard alert to tell the user
- *   where to look, and by the reload-position endpoint docs.
+ *   where to look, and by the decimals heal's log line
+ *   (src/bot/bot-recorder-decimals-heal.js).
  */
 function getErrorLogPath() {
   return _resolvePath(_defaultPath());

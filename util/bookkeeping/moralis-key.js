@@ -19,8 +19,8 @@
  *
  * The key's password is LP Ranger's wallet password, since the app
  * encrypts every api key it keeps with that password. The report needs
- * neither the wallet nor its private key, and never opens the wallet
- * file: the password opens only the key, and each prompt says so. A run
+ * neither the wallet nor its private key, and never unlocks the wallet:
+ * the password opens only the key, and each prompt says so. A run
  * asks for the password and opens the saved key with it. With no key
  * saved yet, it warns not to save a key or password in LP Ranger
  * meanwhile, asks for the key and for the password twice, asks Moralis
@@ -34,15 +34,15 @@
  * library reads. Git ignores everything in `app-config/user-configurable/`
  * but its README, so the store never reaches the remote.
  *
- * The password typed for a new key is not checked against the wallet's.
- * LP Ranger's wallet module reads the wallet file as it loads, so a check
- * through it would have the report, and each of its tests, read that
- * file. A key saved under another password is one LP Ranger cannot open:
- * it logs that as the wallet unlocks, and the dashboard's Settings can
- * save the key again. The same happens when the wallet is cleared and
- * imported again under a new password, so a password that does not open
- * the key is answered with both: run again with the wallet's password,
- * or, if that was it, save the key again in Settings.
+ * The password typed for a new key is not checked against the wallet's,
+ * since a check would mean decrypting the wallet's private key with it,
+ * which the report never does. A key saved under another password is one
+ * LP Ranger cannot open: it logs that as the wallet unlocks, and the
+ * dashboard's Settings can save the key again. The same happens when the
+ * wallet is cleared and imported again under a new password, so a
+ * password that does not open the key is answered with both: run again
+ * with the wallet's password, or, if that was it, save the key again in
+ * Settings.
  *
  * Every run asks Moralis about the key once, before it prices anything.
  * The price library answers a refused key as it answers a coin with no

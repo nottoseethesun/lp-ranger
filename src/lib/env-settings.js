@@ -13,7 +13,12 @@
  * address is EIP-55, and nothing is coerced. `readEnv` answers the value
  * a variable sets, or undefined when it sets none, and throws naming the
  * variable when its text is anything else; the app's readers read
- * through it (src/lib/runtime-flags.js, src/lib/config.js). `envProblems` asks
+ * through it (src/lib/runtime-flags.js, src/lib/config.js, and each
+ * module whose file a variable moves), all but three:
+ * `LP_RANGER_DEFAULTS_DIR` and `LP_RANGER_USER_CONFIG_DIR` are read
+ * straight from the environment by the layered loader these rules are
+ * built on (src/lib/load-merged-defaults.js), and `CHAIN_NAME` by its own
+ * rule (`resolveChainName`, src/lib/runtime-flags.js). `envProblems` asks
  * every variable at once, its range or timer rule included, and
  * `envFileProblems` finds a line in `.env` that sets nothing LP Ranger
  * reads, both for the settings check (src/lib/settings-check.js) at startup

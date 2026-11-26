@@ -13,13 +13,13 @@
  *      future high-gas chains (Ethereum, Arbitrum at peak load); on
  *      PulseChain the gate almost never trips because gas is cheap.
  *
- * `shouldSkipSwap` evaluates **dust first**.  Rationale: a dust-gate
- * failure is cheaper and more reliable to detect than a gas-gate
- * failure.  The dust check uses a cached USD/unit reference price and
- * a single comparison; the gas check requires a fresh
- * `provider.getFeeData()` round-trip plus a native-token USD lookup.
- * Running dust first lets us short-circuit before paying for the
- * gas-gate inputs on every dust-rejected swap.
+ * `shouldSkipSwap` evaluates **dust first**: a swap below the dust
+ * threshold is skipped as dust whatever its gas would cost, and only a
+ * swap at or above the threshold has its gas ratio worked out, so the
+ * ratio never divides by a swap worth nothing.  The order saves no
+ * lookup: each caller prices the swap's gas first (`estimateSwapGasUsd`:
+ * a `provider.getFeeData()` round-trip plus a native-token USD lookup)
+ * and passes it in as `gasUsd`.
  */
 
 "use strict";

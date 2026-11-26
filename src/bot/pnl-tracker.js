@@ -18,7 +18,8 @@
  *  - Entry value (USD) at the time liquidity was deployed
  *  - Exit value (USD) when the epoch closes
  *  - Fees earned while in range
- *  - Impermanent loss relative to a HODL benchmark
+ *  - An impermanent-loss estimate from the price ratio (`calcIlMultiplier`,
+ *    src/bot/il-calculator.js)
  *  - Gas cost of the rebalance that opened / closed this epoch
  *  - Timestamps for duration calculation
  *  - Historical token prices (token0UsdEntry/Exit, token1UsdEntry/Exit)
@@ -30,13 +31,13 @@
  * display purposes).  On-chain implementations should use BigInt wei values.
  *
  * @example
- * import { createPnlTracker } from './pnl-tracker.js';
+ * const { createPnlTracker } = require('./pnl-tracker');
  * const tracker = createPnlTracker({ initialDeposit: 2000 });
  * tracker.openEpoch({ entryValue: 2000, entryPrice: 0.00042,
  *                     lowerPrice: 0.000336, upperPrice: 0.000504,
  *                     token0UsdPrice: 0.00042, token1UsdPrice: 1.0 });
  * tracker.updateLiveEpoch({ currentPrice: 0.00044, feesAccrued: 0.12 });
- * const snap = tracker.snapshot();
+ * const snap = tracker.snapshot(0.00044);
  * log.info(snap.priceChangePnl, snap.liveEpoch?.fees);
  */
 
@@ -91,7 +92,7 @@ const { calcIlMultiplier, estimateLiveValue } = require("./il-calculator");
  * @property {number}  importedGasNative The same, in the chain's native token.
  * @property {number|null} exitValue    USD value at close (null while open).
  * @property {number|null} epochPnl     Closed P&L: exitValue − entryValue + fees − il − gas.
- * @property {number|null} priceChangePnl Price-change component: exitValue − entryValue (excludes fees).
+ * @property {number|null} priceChangePnl Price-change component: exitValue − entryValue − fees once closed; while open, the IL model's estimate of the value, less entryValue.
  * @property {number}  feePnl           Fee component: cumulative fees earned (USD).
  * @property {number}  token0UsdEntry   USD price of token0 at epoch open (0 if not provided).
  * @property {number}  token1UsdEntry   USD price of token1 at epoch open (0 if not provided).
@@ -108,10 +109,10 @@ const { calcIlMultiplier, estimateLiveValue } = require("./il-calculator");
  * @property {number}     cumulativePnl      Sum of all closed + live epoch P&L.
  * @property {number}     priceChangePnl     Total P&L from token price changes (across all epochs).
  * @property {number}     totalIL            IL across all epochs.
- * @property {number}     totalGas           Gas across all epochs.
+ * @property {number}     totalGas           Gas across all epochs, with the compound gas imported from before the open epoch and the gas failed moves paid (`_gasTotals`).
+ * @property {number}     totalGasNative     The same, in the chain's native token.
  * @property {number}     initialDeposit     Original deposit value.
- * @property {number}     currentValue       Live current position value.
- * @property {DailyPnl[]} dailyPnl           Per-day P&L breakdown (up to 31 days).
+ * @property {DailyPnl[]} dailyPnl           Per-day P&L, one row per day with activity, newest first, with no limit.
  * @property {string|null} firstEpochDateUtc  ISO date of the earliest epoch (UTC), or null.
  * @property {string}     snapshotDateUtc    Current UTC date (ISO format).
  */
@@ -326,7 +327,7 @@ function createPnlTracker(opts = {}) {
     const livePriceChange = liveEpoch?.priceChangePnl ?? 0;
     const priceChangePnl = closedPriceChange + livePriceChange;
 
-    // ── Per-day P&L (up to 31 days) ──────────────────────────────────────────
+    // ── Per-day P&L (every day with activity, no limit) ──────────────────────
     const dailyPnl = _buildDailyPnl(closedEpochs, liveEpoch, charges);
 
     // ── Date range for lifetime P&L ───────────────────────────────────────────
@@ -358,7 +359,8 @@ function createPnlTracker(opts = {}) {
   }
 
   /**
-   * Return the number of completed epochs.
+   * The number of epochs held: every closed one, and the open one if
+   * there is one.
    * @returns {number}
    */
   function epochCount() {
@@ -629,10 +631,10 @@ function _epochIl(ep) {
  * Each day shows the breakdown of price-change P&L vs fee P&L.
  * Only days with activity get a row; inactive calendar days are omitted
  * rather than padded with dashes.  Activity is sparse — 55 active days
- * across 172 calendar is typical — so padding would put roughly fifteen
- * pages of empty rows around one page of figures, and a row of dashes
- * is indistinguishable from missing data.  An absent day carries the
- * same information without the paging cost.
+ * across 172 calendar is typical — so at 11 rows a page, padding would
+ * put about eleven pages of empty rows around five pages of figures, and
+ * a row of dashes is indistinguishable from missing data.  An absent day
+ * carries the same information without the paging cost.
  *
  * @param {Epoch[]} closedEpochs
  * @param {Epoch|null} liveEpoch

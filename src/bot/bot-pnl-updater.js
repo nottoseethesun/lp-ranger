@@ -104,10 +104,14 @@ function positionValueUsd(p, ps, pr0, pr1) {
 /**
  * The open period's NFT mint gas, in native coins, or 0.
  *
- * Every other charge the position ever paid is on a period: a closed
- * period carries its NFT's whole gas, read from chain and priced at that
- * period's close day, and the open one collects its compounds and
- * cancels as they happen. The one charge no period holds is the mint of
+ * Every other charge the position ever paid reaches the snapshot's gas
+ * another way: a closed period carries its NFT's whole gas, read from
+ * chain and priced at that period's close day; the open one collects its
+ * compounds as they happen (`addGas`, src/bot/bot-cycle-compound.js); and
+ * a failed move's charges, a cancel among them, are kept in the
+ * position's records (`failedMoveGas`, src/bot/spent-gas.js) and added
+ * by `snapshot` to the period each was paid in. The one charge none of
+ * these holds is the mint of
  * the NFT open right now — it was spent before that period began, and
  * only reaches a period when the period closes and is rebuilt from
  * chain. Without this the Lifetime Gas line omits it, while the Current

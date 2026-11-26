@@ -9,12 +9,16 @@
  * wallet = same nonce).
  *
  * Functional API — no classes, no mutable singleton state.  Call
- * `createPositionManager(opts)` to get a handle with start/stop/pause/resume.
+ * `createPositionManager(opts)` to get a handle that starts and stops
+ * positions; it has no pause or resume.
  *
  * @example
- * const mgr = createPositionManager({ signer, provider, ethersLib, rebalanceLock });
- * await mgr.startPosition(compositeKey, { tokenId, botState, updateBotState });
- * mgr.getAll();  // → Map of managed positions
+ * const mgr = createPositionManager({ rebalanceLock: createRebalanceLock() });
+ * await mgr.startPosition(compositeKey, {
+ *   tokenId,
+ *   startLoop: () => startBotLoop(loopOpts),
+ * });
+ * mgr.getAll();  // → [{ key, tokenId, status }]
  */
 
 "use strict";
@@ -133,13 +137,6 @@ function createPositionManager(opts) {
   const _clock = opts.nowFn || Date.now;
   let _poolResetAt = nextMidnight(_clock);
 
-  /**
-   * Build a fully-qualified pool key.  The namespace (chain, contract,
-   * wallet) is required so a single wallet running multiple NFT providers
-   * (or the same pool on two chains) cannot cross-count.  Token
-   * addresses are sorted for a canonical ordering regardless of how the
-   * caller orders them.
-   */
   /** Reset all pool counters at midnight UTC. */
   function _tickPoolDaily() {
     if (_clock() >= _poolResetAt) {
@@ -230,7 +227,6 @@ function createPositionManager(opts) {
    *   Returns `{ stop() }`.  The caller (Manage in position-lifecycle.js,
    *   or the start-up in auto-start.js) is responsible for wiring up the
    *   bot state and dependencies.
-   * @param {object}   [posOpts.savedConfig]  Saved position config from disk.
    * @returns {Promise<void>} Rejects when the app is stopping, when the
    *   loop fails to start, or when the position was removed while it
    *   started.

@@ -267,7 +267,8 @@ async function _attachInitialResidual(stPatch, ctx) {
 }
 
 /**
- * Resolve pool address and scan on-chain rebalance history (fire-and-forget).
+ * Resolve pool address and scan on-chain rebalance history. The scan pass
+ * (`_scanAndReconstruct`) awaits it.
  *
  * @returns {Promise<boolean>}  False when the scan failed. `events` then
  *   still holds what it held before the pass, which on a cold start is

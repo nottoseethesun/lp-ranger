@@ -84,12 +84,12 @@ const _DROP = [".bot-config.backup.json", ".bot-config.v1.json"];
 /**
  * Move legacy root-level config files into their new homes. Idempotent.
  *
- * Creates each destination directory if it does not yet exist, then
- * iterates over the known legacy file names. For each entry in
+ * Iterates over the known legacy file names. For each entry in
  * `_MIGRATIONS`:
  *
  *  - If the source does not exist → skip (fresh install or already migrated).
- *  - If the source exists and the destination does not → `renameSync` it.
+ *  - If the source exists and the destination does not → make the
+ *    destination's folder if it is missing, then `renameSync` the file.
  *  - If both exist → log a warning and leave both files in place.
  *
  * For each entry in `_DROP`: if the file exists, unlink it.

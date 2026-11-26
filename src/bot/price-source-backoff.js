@@ -2,7 +2,10 @@
  * @file src/bot/price-source-backoff.js
  * @module priceSourceBackoff
  * @description
- * One 429 backoff for every price source.
+ * One 429 backoff for the price sources, which only GeckoTerminal's two
+ * callers use: its OHLCV fetch (src/bot/price-fetcher.js) and its pool
+ * lookup (src/bot/gecko-pool-cache.js), whose rate limiter
+ * (src/bot/gecko-rate-limit.js) waits out the penalty.
  *
  * A price source refuses with HTTP 429 when it has had enough. Two
  * things have to happen in response, and only one of them is a retry:
@@ -18,7 +21,7 @@
  *      is a missing one — and an epoch whose price is unknown is
  *      withheld from the Per-Day table entirely.
  *
- * The second is why this module holds state. `_streak` counts refusals
+ * The second is why this module holds state. `streak` counts refusals
  * with no success between them, and the penalty doubles with it, so the
  * process as a whole backs off rather than 131 callers each waiting the
  * same insufficient ten seconds. Any success clears the streak, so an

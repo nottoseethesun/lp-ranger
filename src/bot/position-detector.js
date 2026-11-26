@@ -6,14 +6,16 @@
  *
  * Detection strategy
  * ──────────────────
- * 1. **NFT enumeration** — call `balanceOf(wallet)` on the
+ * 1. **Single NFT probe** — when a `tokenId` and the position manager's
+ *    address are supplied, that NFT is read first (`positions(tokenId)`),
+ *    and a position found ends the search.  A probe that finds nothing —
+ *    no such NFT, a burned one, or a failed read — goes on to step 2.
+ *
+ * 2. **NFT enumeration** — call `balanceOf(wallet)` on the
  *    NonfungiblePositionManager to discover how many NFTs the wallet holds,
  *    then call `tokenOfOwnerByIndex(wallet, i)` for each index to get token
  *    IDs.  Each ID is queried via `positions(tokenId)` to retrieve range data.
  *    Supports up to MAX_NFT_SCAN positions per wallet.
- *
- * 2. **Single NFT probe** — if a specific `tokenId` is supplied, skip
- *    enumeration and probe that ID directly.
  *
  * 3. **ERC-20 fallback** — if no NFT positions are found, call
  *    `balanceOf(wallet)` on the candidate contract address.  If non-zero,
@@ -323,9 +325,10 @@ async function enumerateNftPositions(provider, input, opts) {
 /**
  * Auto-detect position type and return all positions found.
  *
- * When a `tokenId` is supplied in `input`, only that specific NFT is probed
- * (no full enumeration).  Otherwise full enumeration is attempted first,
- * then ERC-20 fallback.
+ * When `input` names a `tokenId` and the position manager, that NFT is
+ * probed first, and a position found is the whole answer.  Otherwise, and
+ * when the probe finds nothing (no such NFT, a burned one, or a failed
+ * read), the wallet's NFTs are enumerated, then the ERC-20 probe runs.
  *
  * @param {object}         provider
  * @param {DetectionInput} input

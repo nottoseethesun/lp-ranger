@@ -7,7 +7,8 @@
  *
  * Structure:
  *   { global: { rpcUrls, moralisEnabled, approvalMultiple, … },
- *     positions: { [compositeKey]: { status, thresholdPct, … } } }
+ *     positions: { [compositeKey]: { status,
+ *       rebalanceOutOfRangeThresholdPercent, … } } }
  *
  * The `positions` object is the single source of truth.
  * Managed positions are derived: any key with
@@ -139,7 +140,9 @@ function _empty() {
  * copies. So does the server as it loads, which calls `backUpSettings`
  * itself once it holds its port: a second start, which fails on the
  * port, then replaces neither copy of the server already running.
- * @param {string} [dir]  Directory override (default: cwd).
+ * @param {string} [dir]  Directory override for both files (default:
+ *   `app-config/user-configurable/` for bot-config.json and `app-data/`
+ *   for the records file).
  * @param {boolean} [skipBackups]  True to make no copies. Default false.
  * @returns {object}       Config object (or empty structure if no file).
  */
@@ -166,7 +169,9 @@ function loadConfig(dir, skipBackups = false) {
  * that holds nothing, or is missing or not json, leaves its copy as it
  * was. `loadConfig` calls it unless asked not to; the server calls it
  * once it holds its port (src/server.js).
- * @param {string} [dir]  Directory override (default: cwd).
+ * @param {string} [dir]  Directory override for both files (default:
+ *   `app-config/user-configurable/` for bot-config.json and `app-data/`
+ *   for the records file).
  */
 function backUpSettings(dir) {
   const file = _configPath(dir);
@@ -424,8 +429,8 @@ function _writeSplit(cfg, filePath, dir) {
 }
 
 /**
- * Return composite keys of all managed positions.
- * Managed = any position whose status is not 'stopped'.
+ * Return composite keys of all managed positions: those whose status is
+ * 'running'. A slot with any other status, or none, is not managed.
  * @param {object} cfg  Config object.
  * @returns {string[]}
  */
@@ -482,7 +487,6 @@ function getOrCreatePositionConfig(cfg, positionKey) {
  * Add a position to the managed set.
  * @param {object} cfg          Config object.
  * @param {string} positionKey  Composite key.
- * @param {string} [status]     Initial status (default: 'running').
  */
 function addManagedPosition(cfg, positionKey) {
   const pos = getOrCreatePositionConfig(cfg, positionKey);

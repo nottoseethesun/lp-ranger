@@ -13,8 +13,8 @@
  * slashes, so a url of "/" alone is no aggregator either.
  *
  * Three things act on this answer and must agree: the swap, which tries
- * the aggregator first (`src/bot/rebalancer-aggregator.js`); the "Routing
- * through:" badge, which must not name a route the swap does not try; and
+ * the aggregator first (`src/bot/rebalancer-aggregator.js`); the "Route:"
+ * badge, which must not name a route the swap does not try; and
  * the help, which names the aggregator in use. So the rule is written
  * once, here.
  *

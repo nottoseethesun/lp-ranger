@@ -10,8 +10,9 @@
  * the position (the Wallet Residual) in the Lifetime figures, so until
  * those coins are counted as money put in, they read as a gain there: in
  * Lifetime Net P&L and the Lifetime IL/G. The Current IL/G and the
- * Impermanent Loss Guard count no coin in the wallet, so a deposit moves
- * them only once a compound takes it into the NFT (src/bot/bot-pnl-il.js).
+ * Impermanent Loss Guard count no coin in the wallet, so a deposit counts
+ * in them only once a rebalance mints it into a new NFT or a compound
+ * takes it into the NFT (src/bot/bot-pnl-il.js).
  * The Lifetime scan counts deposits, but only after the next rebalance
  * has minted them (src/bot/lifetime-hodl.js).
  *
@@ -207,7 +208,7 @@ function _pricingFailed(deps, err) {
  * Dropped, as a move's count is, when Reload Current Position cleared
  * the Lifetime results while the count read the chain. A price that
  * cannot be had leaves the deposit held unpriced: its coins still count
- * in the IL/G figures, and the next move's count prices it.
+ * in the Lifetime IL/G, and the next move's count prices it.
  *
  * @param {object} deps  The poll's deps.
  * @param {object|null} overlay  What earlier polls found.

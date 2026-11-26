@@ -43,8 +43,11 @@ const { parseCompositeKey } = require("../lib/composite-key");
  *     Supports multi-hop migrations because the bot state's events
  *     array is preserved across all rekey hops.
  *   - `originalKey` unchanged when no live match is found (the
- *     position is stopped, or never existed) — callers should treat
- *     the result as authoritative and 404 if disk lookup fails.
+ *     position is stopped, or never existed), and when `positionMgr`
+ *     or `originalKey` is missing or the key does not parse. Each
+ *     caller decides what a key with nothing under it means: Reload
+ *     Current Position and Re-scan Prices refuse it as `missing`,
+ *     while the settings save creates the slot.
  *
  * @param {object}  positionMgr  Must expose `get(key)` and `getAll()`.
  * @param {string}  originalKey  Composite key captured pre-await.

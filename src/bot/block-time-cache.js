@@ -5,8 +5,10 @@
  * Disk-backed JSON cache mapping block numbers to UTC timestamps (Unix seconds).
  * Block timestamps are immutable, so entries never expire.
  *
- * Used by historical price fetchers that need a real block-time when querying
- * date-bucketed APIs like GeckoTerminal OHLCV (`before_timestamp`).
+ * Used by the Lifetime deposit pricing (`priceDepositEntries`,
+ * src/bot/bot-hodl-scan.js), which needs a deposit's block time to ask a
+ * date-bucketed price api, such as GeckoTerminal's OHLCV
+ * (`before_timestamp`), for that day's price.
  *
  * Cache file: `app-data/scan-cache/block-time-cache.json` (gitignored;
  * src/lib/scan-cache-dir.js).
@@ -50,7 +52,8 @@ function _key(blockchain, blockNumber) {
 
 /**
  * Resolve a block number to its Unix-seconds timestamp.
- * Hits cache first; falls back to `provider.getBlock(blockNumber)` and persists.
+ * Hits the cache first; else asks `provider.getBlock(blockNumber)` and
+ * keeps a positive answer in memory, for `flushBlockTimeCache` to write.
  *
  * @param {object} provider     ethers JsonRpcProvider (or compatible).
  * @param {string} blockchain   Chain name (e.g. 'pulsechain').

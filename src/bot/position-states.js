@@ -62,7 +62,7 @@ const PERSISTED_STATE_KEYS = RECORD_POSITION_KEYS;
 
 /**
  * Create a fresh per-position bot state with defaults + saved config.
- * @param {object} globalCfg  Global config section from v2 disk config.
+ * @param {object} _globalCfg  Not read.
  * @param {object} [saved]    Saved position config from disk.
  * @returns {object}
  */
@@ -225,7 +225,8 @@ function updatePositionState(keyRef, patch, diskConfig, positionMgr, dir) {
 
 /**
  * Attach multi-position deps (lock, daily cap, scan lock) to a bot state.
- * These are read by bot-loop.js during pollCycle and startBotLoop.
+ * bot-loop.js reads them during pollCycle and startBotLoop, except the
+ * scan locks, which no module reads.
  * @param {object} botState      Per-position bot state.
  * @param {object} positionMgr   Position manager instance.
  */
@@ -269,7 +270,8 @@ function getAllPositionBotStates() {
 /**
  * Build an `onRetire` callback for a bot loop managing a single
  * position.  The bot loop calls this after it has already stopped its
- * own timer on detection of a drained-for-too-long NFT; we just need to
+ * own timer to retire the position (an NFT drained for too long, data the
+ * lifetime scan cannot heal, or a failed re-open); we just need to
  * flip the on-disk status to 'stopped', clear auto-compound so it
  * doesn't resume on next manage, drop the in-memory bot state, and
  * mark the position manager entry as stopped.  NFT is never burned.

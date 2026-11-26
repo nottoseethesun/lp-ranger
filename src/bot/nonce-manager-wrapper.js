@@ -12,33 +12,39 @@
  *
  * Two layers of behaviour:
  *
- *   1. **Lazy rebind** — `_sync()` checks the current RPC URL on every
- *      call.  If it changed since the last call, we discard the
+ *   1. **Lazy rebind** — `_sync()` compares the provider the current RPC
+ *      names, as an object, on every call.  If it changed since the last
+ *      call, we discard the
  *      previous `ethers.NonceManager` and build a fresh one wrapping
  *      `_baseWallet.connect(activeProvider)`.  The fresh NonceManager
  *      starts with `#delta = 0` and re-fetches the on-chain nonce on
  *      first use, so a freshly-bound fallback never inherits a stale
  *      delta from the dead primary.
  *
- *   2. **Broadcast failover** — `sendTransaction` catches transient RPC
- *      errors (per `rpc-error-classifier.classifyRpcError`) and retries
- *      ONCE on the alternate RPC.  Terminal errors (nonce-consumed,
- *      nonce-unused, unknown) bubble up unchanged — they're not
- *      RPC-availability problems.  No retry when we're already on the
- *      fallback (single-URL chains, or active failover window already).
+ *   2. **Broadcast failover** — `sendTransaction` reports each broadcast's
+ *      outcome to the failure rate in `rpc-out-of-service.js`, and for a
+ *      transient rpc error (per `rpc-error-classifier.classifyRpcError`)
+ *      asks `failoverToNextRPC` to leave the endpoint, then retries ONCE
+ *      if selection has moved.  Any other error (nonce-consumed,
+ *      nonce-unused, already-known, unknown) bubbles up unchanged and is
+ *      not counted — it belongs to the transaction, not the endpoint.
+ *      Selection stays, and the error is thrown, on a single-URL chain,
+ *      while the endpoint's share of failures is within
+ *      `rpcFailoverRatePercentage`, and on the last endpoint, where
+ *      failover holds all rpc traffic instead.
  *
  * Compatibility shape: this class is duck-typed as an ethers v6 Signer.
  * It exposes `provider`, `signer`, `getAddress`, `getNonce`,
- * `populateTransaction`, `estimateGas`, `call`, `resolveName`,
+ * `populateTransaction`, `populateCall`, `estimateGas`, `call`, `resolveName`,
  * `signTransaction`, `signMessage`, `signTypedData`, `sendTransaction`,
  * `connect`, `reset`, `increment` — every method the codebase or
  * `ethers.Contract` uses on a `NonceManager`.
  *
  * The `.signer` getter returns the inner wallet (matching
  * `ethers.NonceManager.signer` semantics) so the existing
- * `_baseSigner(s) = s.signer ?? s` unwrap pattern in send-transaction
- * keeps working for explicit-nonce TXs (speed-up / cancel) that must
- * bypass nonce management.
+ * `_baseSigner(s) = s.signer ?? s` unwrap pattern in tx-speedup.js and
+ * rebalancer-aggregator.js keeps working for explicit-nonce TXs
+ * (speed-up / cancel) that must bypass nonce management.
  */
 
 "use strict";
@@ -49,10 +55,10 @@ const sendTx = require("./send-transaction");
 const { classifyRpcError } = require("./rpc-error-classifier");
 
 /**
- * Read a JsonRpcProvider's URL via the two attribute names ethers has
- * used across versions.  Used only for log messages — internal
- * tracking compares provider object identity (more reliable in test
- * stubs where URLs may be undefined).
+ * A provider's URL for the warning below, read from `_url` or
+ * `connection.url`.  An ethers v6 `JsonRpcProvider` has neither, so this
+ * answers null for every provider the bot builds.  Tracking never uses
+ * it: `_sync` compares provider object identity.
  */
 function _providerUrl(provider) {
   return provider?._url ?? provider?.connection?.url ?? null;
@@ -61,16 +67,16 @@ function _providerUrl(provider) {
 /**
  * Failover-aware wrapper around `ethers.NonceManager`.
  *
- * Construct once per app boot with the user's `ethers.Wallet`; pass the
- * resulting instance everywhere the code currently passes a plain
- * `ethers.NonceManager`.
+ * Built around the user's `ethers.Wallet` for the shared signer
+ * (`getSharedSigner`, src/bot/position-manager.js), which every managed
+ * position signs through, so all of them draw nonces from one counter.
  */
 class FailoverNonceManager {
   /**
    * @param {import('ethers').Wallet} baseWallet
-   *   Plain wallet (private key + provider).  The wrapper will reconnect
-   *   it to the active RPC on every `_sync`, so the provider it was
-   *   originally constructed with does not matter.
+   *   Plain wallet (private key + provider).  `_sync` connects it to the
+   *   active RPC whenever that changes, so the provider it was originally
+   *   constructed with does not matter.
    * @param {object} [opts]
    * @param {object} [opts.ethersLib]  Injected ethers (for tests).
    */
@@ -216,8 +222,10 @@ class FailoverNonceManager {
    * bubble up unchanged.
    *
    * No retry when the failover call doesn't actually change the active
-   * provider (single-URL chain or already-engaged failover window) —
-   * retrying on the same provider would just produce the same failure.
+   * provider (a single-URL chain, a failure rate still within
+   * `rpcFailoverRatePercentage`, or the last endpoint, where failover
+   * pauses all rpc traffic instead) — retrying on the same provider
+   * would just produce the same failure.
    */
   async sendTransaction(tx) {
     const before = sendTx.getCurrentRPC();

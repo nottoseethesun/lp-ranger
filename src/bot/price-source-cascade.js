@@ -27,8 +27,10 @@ const { getTokenSymbol } = require("../lib/token-symbol-cache");
  * address — bare 0x… addresses are unreadable at a glance.
  *
  * @param {string|null|undefined} addr  Token contract address.
- * @param {string} [explicitSymbol]  Use this symbol if cache has none.
- * @returns {string}  e.g. "WPLS (0xA1077a…9a27)" or "(unknown)".
+ * @param {string} [explicitSymbol]  Used in place of the symbol cache's
+ *   when given.
+ * @returns {string}  e.g. "WPLS (0xA107…9a27)", or "(unknown)" for no
+ *   address.
  */
 function formatToken(addr, explicitSymbol) {
   if (!addr) return "(unknown)";

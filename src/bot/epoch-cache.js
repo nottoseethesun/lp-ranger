@@ -6,8 +6,8 @@
  * identity, `blockchain.contract.wallet.token0.token1.fee` (`_cacheKey`),
  * so a position's history survives the new NFT every rebalance mints.
  * Each entry also holds the lifetime HODL amounts and fresh-deposit
- * totals, written by the bot's lifetime scan and by the unmanaged
- * details view.
+ * totals, written by the bot's lifetime scan (src/bot/bot-hodl-scan.js)
+ * and by the deposit count (src/bot/deposit-count.js).
  *
  * The blockchain segment is the active chain, which this module reads
  * itself rather than taking from callers: a process runs one chain, so

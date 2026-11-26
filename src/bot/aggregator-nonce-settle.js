@@ -59,11 +59,15 @@ async function receiptOrNull(provider, hash) {
 /**
  * Decide which transaction owns a nonce once the swap's wait has expired.
  *
- * A receipt for the swap means it landed and there is nothing to retry. A
- * receipt for the cancel means the slot is spent, the swap can never mine, and
- * a fresh quote at the next nonce is safe. Neither means the slot is still
- * open and the swap may yet mine — the one state in which sending anything
- * risks swapping the same balance a second time.
+ * A receipt for the swap with status 1 means it landed and there is
+ * nothing to retry; with status 0 it reverted, the slot is spent, and a
+ * fresh quote at the next nonce is safe; with no status, the slot is
+ * treated as still open. A receipt for the cancel, or one the cancel's
+ * wait hands back for any other transaction at the nonce, means the slot
+ * is spent, the swap can never mine, and a fresh quote at the next nonce
+ * is safe. Neither means the slot is still open and the swap may yet
+ * mine — the one state in which sending anything risks swapping the same
+ * balance a second time.
  *
  * The chain is asked directly rather than the cancel's own `wait()` being
  * trusted, because that wait collapses three different outcomes into a null:
@@ -146,11 +150,12 @@ async function settleNonce(provider, swapHash, cancel) {
  * Turn a settled nonce into the retry loop's next move.
  *
  * Each of the three answers from `_handleSwapError`
- * (src/bot/rebalancer-aggregator.js), which `settleNonce` gives it, has exactly
+ * (src/bot/rebalancer-aggregator.js), `settleNonce`'s after a timeout and
+ * its own spent nonce after a revert, has exactly
  * one safe continuation. A `swapReceipt` means the swap mined after its wait
  * expired, so it is returned as the swap's result — which is what keeps the
  * caller's router fallback from swapping the same balance a second time, since
- * that fallback treats any throw from here as "no swap happened". A spent
+ * that fallback treats an unflagged throw as "no swap happened". A spent
  * nonce means the slot is closed to the swap and a fresh quote at the next
  * nonce is safe, so this returns null and the loop continues. An unspent nonce
  * means the swap is still able to mine, and every continuation — retrying at

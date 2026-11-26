@@ -44,26 +44,36 @@ and the server never sees it.
 
 ## Getting Help on Any Command
 
-Every entry point that takes flags also takes `--help` (or `-h`). It
-prints the flag list and exits without starting anything:
+The server, the headless bot, the commands that start them and
+`npm run clean` take `--help` (or `-h`). Each prints its flag list and
+exits without starting anything:
 
 ```sh
 npm run build-and-start -- --help
 npm start -- --help
 npm run bot -- --help
-npm run dev -- --help
 npm run debug -- --help
 npm run debug-bot -- --help
+npm run clean -- --help
 ```
 
 `--help` starts no server and no bot, writes nothing to the log file, and
 prints no startup banner — so a help listing can never be mistaken for a
-running process.
+running process. `npm run dev -- --help` is the exception: it runs the
+whole build first, then prints the help and waits for a file change,
+since `node --watch` keeps running after the script exits. Stop it with
+Ctrl+C.
+
+Not every other command reads `--help`; one that does not ignores it and
+does its work. `npm stop -- --help` stops the server,
+`npm run clear-blockchain-scan-cache -- --help` clears the scan caches,
+and `npm run reset-wallet -- --help` deletes the wallet file.
 
 The text comes from `src/server/server-cli-help.js` (the server's and
 build-and-start's) and `src/bot/bot-cli-help.js` (the headless bot's),
 which share the options and environment in `src/lib/cli-help.js`, so the
-help output and the tables below describe the same flags.
+help output and the tables below describe the same flags. `npm run clean`
+prints its own, from `scripts/clean.js`.
 
 ---
 
@@ -104,14 +114,14 @@ resetting local state.
 | `knip` | — | Dead-code report, for information: also lists unused exports, which are not gated (the dashboard's modules are reached through HTML `<script>` tags knip cannot trace, and `src/lib/` exports internals for tests). | `npm run knip` |
 | `knip:files` | — | The gating dead-code check: fails on any file nothing reaches. `lint` and `check` run it. | `npm run knip:files` |
 | `lint` | — | Linters only: ESLint, stylelint, html-validate, SVG policy, openapi-sync, markdownlint, Prettier across JS/JSON/YAML, actionlint, knip's unused files, and the walk that fails on a module under `src/` no part of the app loads (`scripts/check-unused-src-modules.js`). | `npm run lint` |
-| `lint:fix` | — | The same set with autofix where each tool supports it. | `npm run lint:fix` |
+| `lint:fix` | — | ESLint, stylelint, markdownlint and Prettier (json and yaml only) with autofix, then html-validate and actionlint. It runs no svg check, openapi-sync, Prettier on js, knip or unused-module walk. | `npm run lint:fix` |
 | `nuke` | — | Delete `node_modules` and `package-lock.json` for a clean reinstall. Run `npm install` afterwards. | `npm run nuke` |
 | `reset-wallet` | — | Delete `wallet.json` (and its save's temp copy, `wallet.json.tmp`) and scrub `WALLET_PASSWORD` from `.env`. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run reset-wallet` |
 | `restore-settings` | — | Restore whatever `wipe-settings` backed up. | `npm run restore-settings` |
 | `show-dependency-cycles` | — | madge circular-import report across the whole source tree. See [Dependency Cycles](#dependency-cycles). | `npm run show-dependency-cycles` |
 | `show-gallery` | — | Serve a Pages-accurate preview of the screenshot gallery at `http://localhost:5557`. Architecture in [engineering.md § Previewing the Screenshot Gallery](engineering.md#previewing-the-screenshot-gallery). | `npm run show-gallery` |
 | `view-report` | — | Open the PDF report produced by the last `check`. | `npm run view-report` |
-| `wipe-settings` | — | Back up operator settings to `tmp/.settings-backup/` to simulate a fresh install. `check` uses this, so never run it against a live server. | `npm run wipe-settings` |
+| `wipe-settings` | — | Back up operator settings to `tmp/.settings-backup/`, and remove them, to simulate a fresh install. Never run it against a live server. | `npm run wipe-settings` |
 
 ---
 
@@ -159,15 +169,20 @@ matching table row.
 
 ### Before Running Any Lint or Test Command
 
-**Caution — read before running any lint or test command.** `npm run check`,
-`npm test`, and their variants actively write to config and cache files
-during test execution. Those files are backed up by `scripts/check.js`
-before the tests start and restored automatically when the process exits.
-A Ctrl+C stops `npm run check` after the test run under way and puts the
-files back before it exits. A harder stop (kill -9, a crash) leaves no
-chance to, and the files are left in a state that is only appropriate
-for the automated tests (stub position keys, missing managed positions,
-etc.). **Always let tests and checks finish before interrupting.**
+**Caution — read before running any lint or test command.** While its
+tests run, `npm run check` moves your own files out of
+`app-config/user-configurable/`, `app-data/` and `app-data/scan-cache/`
+(each folder's `README.md` stays) into a folder in the system's temp
+directory, whose path it prints first (`[check] Operator files backed up
+to … for the tests`), and copies them back once the tests end. A Ctrl+C
+stops `npm run check` after the test run under way and puts the files
+back before it exits. A harder stop (kill -9, a crash) leaves no chance
+to: your files are then only in that printed folder, so copy them back
+from it before you start LP Ranger, since a reboot can clear the system's
+temp directory. **Always let checks finish before interrupting.**
+`npm test` and the other test commands move none of your files: under the
+test runner each test keeps to folders of its own
+([`docs/claude/CLAUDE-TESTING.md`](claude/CLAUDE-TESTING.md#temp-folders)).
 
 **Back up your real state out of tree first**, once per machine, before
 your first run:
@@ -269,9 +284,9 @@ so another program on the port is left alone.
 ### Dependency Cycles
 
 `npm run show-dependency-cycles` is an optional diagnostic. It runs
-[`madge`](https://github.com/pahen/madge) `--circular` across every `.js`
-file in the project (`src/`, `scripts/`,
-`eslint-rules/`, `test/`, `src/client/web/`) and lists any circular module
+[`madge`](https://github.com/pahen/madge) `--circular` across the `.js`
+files in `src/` (the web client's `src/client/web/` included), `scripts/`,
+`eslint-rules/`, `test/` and `util/`, and lists any circular module
 imports. It is not wired into `npm run check` — surface it only when you
 want it.
 
@@ -295,11 +310,18 @@ task.
   `WALLET_PASSWORD` from `.env`. Forces a fresh wallet import via the
   dashboard on next start.
 - `npm run clear-blockchain-scan-cache` — Empty `app-data/scan-cache/`,
-  and nothing else. That folder holds derived scan results only — event
+  and delete the figures each position's records keep from a scan, in
+  `app-data/position-records.json`: the compounded coins, the per-NFT gas
+  and compound figures, the HODL baseline and the lifetime deposit. Their
+  previous values stay in `app-data/position-records.backup.json` until
+  the next start. The records a scan cannot reproduce, such as the
+  residuals, are left alone, and so is the compound history. The folder
+  holds derived scan results only — event
   scans, LP position enumeration, P&L epochs and the lifetime HODL
   amounts kept beside them, block timestamps, pool creation
-  blocks, token symbols, fetched prices — all rebuilt from chain on the
-  next start. This is the command for testing scan behaviour from cold.
+  blocks, token symbols, fetched prices — all worked out again on the
+  next start, from the blockchain and the price services. This is the
+  command for testing scan behaviour from cold.
   Refuses while a server is running, because clearing the cache under a
   live process achieves nothing: it rewrites the files within seconds and
   keeps its in-memory copies regardless. `-- --dry-run` lists without
@@ -307,8 +329,10 @@ task.
 - `npm run clean` — Returns the install to the state a fresh clone is
   in. Stops the server and **waits for it to exit**, runs `reset-wallet`,
   then deletes operator state (`bot-config.json`,
-  `bot-config.backup.json`, `api-keys.json`, `rebalance_log.json`),
-  every scan cache in `app-data/scan-cache/`, `logs/*.log`, the build artifacts
+  `bot-config.backup.json`, `api-keys.json`, `position-records.json`,
+  `position-records.backup.json`, `rebalance_log.json`),
+  every scan cache in `app-data/scan-cache/`, the log files `logging.json`
+  names that lie inside the install folder, the build artifacts
   (`src/client/web/dist/`, `src/client/web/fonts/`, `src/client/web/css/ui-tokens.css`,
   `src/client/web/js/disclosure-content.js`) and `test/report-artifacts/`.
   It leaves `app-data/util/bookkeeping/`, where the bookkeeping tools
@@ -333,9 +357,10 @@ task.
   faster development restart: the historical price cache
   (`historical-price-cache.json`), the block-time cache
   (`block-time-cache.json`) and the gecko-pool orientation cache
-  (`gecko-pool-cache.json`), all in `app-data/scan-cache/`. None is derived from chain and all three
-  cost third-party API quota to refill. Logs are kept too. Same script,
-  `--dev`.
+  (`gecko-pool-cache.json`), all in `app-data/scan-cache/`. The price and
+  orientation caches cost price-service quota to refill, and the
+  block-time cache one paced rpc request per block it holds. Logs are kept
+  too. Same script, `--dev`.
 
 ### Housekeeping
 

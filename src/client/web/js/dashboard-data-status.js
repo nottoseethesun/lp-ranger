@@ -133,9 +133,9 @@ export function _posContextHtml() {
  * way every dialog's position line is filled, for the position on screen
  * and for one a server alert names alike. The pair and its provider,
  * then the NFT and its fee tier, then the chain and the wallet, a middle
- * dot between the figures on a line. The chain's name is blank until the
- * first poll names it, and its dot goes with it rather than standing
- * alone before the wallet.
+ * dot between the figures on a line. The chain's name is blank until
+ * startup has learned the chain (dashboard-chain.js), and its dot goes
+ * with it rather than standing alone before the wallet.
  * @param {DocumentFragment} frag  A clone of `tplPosContext`.
  * @param {{pair: string, pm: string, tokenId: string, fee: string,
  *   wallet: string}} p  The figures; `pm` and `fee` may be empty.
@@ -520,7 +520,7 @@ function _todayColor(r) {
   return "#e0eaf4";
 }
 
-/** Paint the "Today's Rebalances" X / Y KPI for a managed position. */
+/** Paint the "Number of Rebalances Done This Period" X / Y KPI for a managed position. */
 function _renderTodayKpi(today, cnt, max) {
   if (!today) return;
   today.title = "";

@@ -17,8 +17,9 @@
  * **Why it throws.** A value silently replaced by a default leaves the
  * bot running on a schedule nobody chose, and the schedule is then the
  * last thing anyone would think to check. At startup the throw stops the
- * app, naming the setting; after startup the lenient reader of
- * bot-config-defaults.json catches it and keeps the shipped default.
+ * app, naming the setting; the lenient reader of bot-config-defaults.json,
+ * for a caller that did not ask for the startup check, catches it and
+ * keeps the shipped default.
  *
  * **What the ceilings are protecting.** A timer holds its delay as a
  * 32-bit count of milliseconds, about 24.8 days. Asked for longer it

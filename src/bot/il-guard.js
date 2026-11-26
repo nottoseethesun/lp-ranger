@@ -38,20 +38,22 @@
  * rejection is a decision not to start the rebalance at all — the gate
  * sits upstream of `executeRebalance`, so no `decreaseLiquidity` or
  * `collect` is ever reached.  That ordering is the guarantee; see
- * `_checkRebalanceGates` in `src/bot/bot-cycle.js`.
+ * `_decideRebalance` in `src/bot/bot-cycle.js`.
  *
  * Two consequences worth understanding, both documented for the user in
  * the `inIlGuard` help dialog:
  *
- *   1. **A rejection clears only at a retry check.**  The minted coins
- *      are reset by `updateHodlBaseline` when a rebalance mints a new
- *      NFT. A position rejected by the Impermanent Loss Guard cannot
- *      rebalance, so it cannot mint, so it keeps measuring against the
- *      same coins — it stays blocked until the two coins' prices move
- *      back enough to bring it within the Guard of holding, seen at the
- *      next retry check, or the operator saves a higher guard
- *      percentage, which lifts the wait (`clearIlGuardWait`) so the
- *      next poll reads it.
+ *   1. **A rejection clears only at a check, or with a Rebalance Now.**
+ *      The minted coins are reset by `updateHodlBaseline` when a
+ *      rebalance mints a new NFT. A position rejected by the Impermanent
+ *      Loss Guard cannot rebalance on its own, so it cannot mint, so it
+ *      keeps measuring against the same coins — it stays blocked until
+ *      the two coins' prices move back enough to bring it within the
+ *      Guard of holding, seen at the next retry check, or the operator
+ *      saves the Guard setting, which lifts the wait (`clearIlGuardWait`)
+ *      so the next poll decides on the new value. A Rebalance Now, which
+ *      the Guard stands aside for, ends the block once it succeeds
+ *      (`endIlGuardBlock`).
  *   2. **It bites while the position is idle.**  The guard only comes
  *      up when a rebalance was going to happen, which usually means the
  *      position is out of range and earning nothing.  A tight setting
@@ -80,9 +82,11 @@ const { isThisPositionDrained } = require("./position-drained");
 /*- Retry backoff tunables.  Read through `readBotConfigDefaults` — NOT
  *  `loadShippedDefaults` — so a per-install override at
  *  `app-config/user-configurable/bot-config-defaults.json` is honoured
- *  and out-of-range values are clamped, the same way gas-monitor and
- *  bot-cycle-residual read their own tunable groups.  Read once at
- *  module init like those two: a live edit needs a restart. */
+ *  and an out-of-range value is not (startup refuses it, and a reader
+ *  that skips that check keeps the shipped default), the same way
+ *  gas-monitor and bot-cycle-residual read their own tunable groups.
+ *  Read once at module init like those two: a live edit needs a
+ *  restart. */
 const _DEFAULTS = readBotConfigDefaults();
 
 /*-
@@ -413,8 +417,8 @@ function _inBackoff(st) {
  * Whether the Guard will measure this poll, rather than stand aside for
  * a Rebalance Now or a position that holds no liquidity, or wait out a
  * rejection. The poll asks before taking fresh prices for it
- * (src/bot/bot-cycle.js), so a lookup is spent only when the Guard will use
- * it.
+ * (`snapForGuard`, src/bot/bot-cycle-gates.js), so a lookup is spent only
+ * when the Guard will use it.
  * @param {object} deps    Bot deps; `_botState` holds the Guard's wait,
  *   `position` the position's liquidity.
  * @param {boolean} forced  A Rebalance Now.
@@ -448,10 +452,10 @@ function _stampRejection(st) {
  * `executeRebalance`, so a rejection cannot reach `removeLiquidity`.
  * The position is left exactly as it was found.
  *
- * Skipped for user-forced rebalances, like every other gate in
- * `_checkRebalanceGates` — a
- * Rebalance Now click is held by none of them, and it has already shown
- * its own impermanent-loss confirmation.
+ * Skipped for user-forced rebalances, like every gate before it
+ * (`gatesBeforeGuard`, src/bot/bot-cycle-gates.js) — a Rebalance Now
+ * click is held by none of them, and it has already shown its own
+ * impermanent-loss confirmation.
  *
  * Skipped too while the position holds no liquidity, the user's decision
  * (2026-10-23), as after a rebalance that emptied the old position and

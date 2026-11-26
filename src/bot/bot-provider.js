@@ -2,7 +2,10 @@
  * @file src/bot/bot-provider.js
  * @module bot-provider
  * @description
- * RPC provider with automatic fallback and fee data patching.
+ * Builds the rpc provider for one endpoint (`buildProvider`), with
+ * request pacing and fee data patching.  The failover between endpoints
+ * is src/bot/send-transaction.js's, which keeps one provider per endpoint
+ * built here.
  * Extracted from bot-loop.js.
  */
 
@@ -23,11 +26,14 @@ const _FEE_LOG_INTERVAL_MS = readBotConfigDefaults().feeDataLogIntervalMs;
 let _lastFeeDataLogAt = 0;
 
 /**
- * Patch `provider.getFeeData()` to guarantee a non-zero gas price.
+ * Patch `provider.getFeeData()` so it answers with a non-zero legacy gas
+ * price where it can.
  * PulseChain supports EIP-1559 but ethers.js v6's `getFeeData()` intermittently
  * returns null/0 for all fee fields.  When this happens, ethers submits TXs with
  * 0 gas price — they sit pending forever or get mined as failed.  This patch
- * intercepts the call and falls back to raw `eth_gasPrice` RPC when needed.
+ * intercepts the call and falls back to raw `eth_gasPrice` RPC when needed;
+ * when that also fails or answers zero, ethers' own answer is returned
+ * unchanged.
  * @param {import('ethers').JsonRpcProvider} provider
  */
 function _patchFeeData(provider) {
@@ -75,11 +81,14 @@ function _patchFeeData(provider) {
  * Route every JSON-RPC call this provider makes through the global
  * request manager.
  *
- * `send()` is the single funnel ethers puts all traffic through — reads,
- * writes, `eth_call`, `getBlockNumber`, transaction submission — so one
- * wrapper here paces the lot.  Patching at this level rather than at
- * each call site is what makes the guarantee hold: a new scan or a new
- * helper added later is paced automatically, with nothing to remember.
+ * ethers puts reads, writes, `eth_call`, `getBlockNumber` and transaction
+ * submission through `send()`, so one wrapper here paces them all.
+ * Patching at this level rather than at each call site is what makes the
+ * guarantee hold: a new scan or a new helper added later is paced
+ * automatically, with nothing to remember.  ethers has two paths around
+ * `send()`, and `buildProvider` closes both: network detection before a
+ * provider is ready (closed by `staticNetwork`, see `_knownNetwork`), and
+ * its 250 ms request cache (closed by `cacheTimeout: -1`).
  *
  * Every provider shares the one queue, so pacing is a property of the
  * process, not of any single endpoint.

@@ -9,7 +9,8 @@ rules that are most commonly violated, so they are impossible to miss.
 
 - **Prettier is enforced** by `npm run lint`, which the husky pre-commit
   hook runs. A commit with unformatted JS FAILS rather than being silently
-  rewritten — run `npm run format` (or `npm run lint:fix`) to fix it. The
+  rewritten — run `npm run format` to fix it (`npm run lint:fix` formats
+  the json and yaml files, not the JavaScript). The
   file list lives in `scripts/lint-targets.js`, shared by every gate.
 - **NEVER add `// prettier-ignore`** directives. They create technical debt
   that must be cleaned up later.

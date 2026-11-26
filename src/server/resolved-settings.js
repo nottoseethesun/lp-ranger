@@ -16,7 +16,7 @@
  *
  * It is a module of its own because it needs both of those, and
  * `src/lib/config.js` reads `src/lib/bot-config-defaults.js` at startup, so
- * neither of them can ask the other.
+ * the latter cannot ask the former.
  *
  * Ranges are not resolved. setting-bounds.json is read from the shipped
  * copy only, since a range an override could widen would bound nothing.

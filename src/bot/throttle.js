@@ -6,14 +6,16 @@
  *
  * Rules enforced:
  *  1. A minimum interval must elapse between any two rebalances.
- *  2. A daily maximum caps total rebalances per 24-hour window.
+ *  2. A daily maximum caps rebalances per UTC day: the count resets at
+ *     00:00 UTC, as the first poll after it finds (`tick`).
  *  3. **Doubling mode**: if `TRIGGER_COUNT` rebalances occur within
  *     `TRIGGER_WINDOW_MULTIPLE` times the minimum interval, every
  *     subsequent rebalance in the same day must wait twice as long as the
  *     previous wait.  The multiplier compounds — 10m → 20m → 40m → 80m…
- *  4. Doubling mode clears automatically if no rebalance trigger fires within
- *     `QUIET_WINDOW_MULTIPLE` times the current (already-doubled) wait after
- *     the last rebalance, or at the daily midnight reset.
+ *  4. Doubling mode clears once no rebalance has been made for more than
+ *     `QUIET_WINDOW_MULTIPLE` times the current (already-doubled) wait
+ *     since the last one, as the next poll's `tick` finds, or at the daily
+ *     reset at 00:00 UTC.
  *
  * The three doubling numbers live in bot-config-defaults.json →
  * `throttleDoubling`, with an operator's override applied; the
@@ -83,9 +85,10 @@ const {
 /**
  * @typedef {Object} ThrottleHandle
  * @property {function(): CanRebalanceResult} canRebalance   Check if a rebalance is permitted.
- * @property {function(): void}               recordRebalance Record that a rebalance just ran.
- * @property {function(): void}               tick            Call on each bot poll cycle to
- *                                                            handle resets and expiry checks.
+ * @property {function(): {newlyDoubled: boolean}} recordRebalance  Record that a rebalance
+ *   just ran; `newlyDoubled` when it switched doubling mode on.
+ * @property {function(): {didReset: boolean, didClearDoubling: boolean}} tick  Call on each
+ *   bot poll cycle to handle the daily reset and doubling's expiry; says which happened.
  * @property {function(): ThrottleState}      getState        Return a snapshot of current state.
  * @property {function(Partial<ThrottleOptions>): void} configure  Update options live.
  */

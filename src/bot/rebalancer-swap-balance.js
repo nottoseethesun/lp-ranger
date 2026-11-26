@@ -12,9 +12,9 @@
  * after it is the one that matters most, because by then the swap has
  * happened and cannot be undone: a failure there that let `swapIfNeeded`
  * fall back to the other route would swap the same balance twice. So
- * that read asks every endpoint before it gives up, and an error it
- * gives up with is marked `swapLanded`, which `swapIfNeeded` reads as
- * "no fallback".
+ * that read is asked again after any error until its budget of attempts
+ * is spent (`_landedBalance`), and an error it gives up with is marked
+ * `swapLanded`, which `swapIfNeeded` reads as "no fallback".
  *
  * The rise in the balance counts any coins that reached the wallet while
  * the swap ran, a deposit the owner made included. So the swap's own
@@ -55,13 +55,14 @@ function _setLandedReadDelayForTests(ms) {
  * The recipient's balance of the token bought, read once the swap has
  * landed.
  *
- * Asked as pool state is asked: each endpoint in service up to
- * `boundedReadAttemptsPerEndpoint` times, any error counting as the
- * endpoint's, every outcome reported to the app's failover so that
- * selection moves off an endpoint whose failure rate says it should.
+ * Asked as pool state is asked: up to `boundedReadAttemptsPerEndpoint`
+ * attempts for each endpoint in service, in all, each on the endpoint
+ * selection holds at that moment, any error counting as the endpoint's,
+ * every outcome reported to the app's failover so that selection moves
+ * off an endpoint whose failure rate says it should.
  * An ordinary read fails over only when an endpoint cannot be reached,
- * and fails at once when one answers with an error; this read asks the
- * others either way, because the swap behind it cannot be undone. Only
+ * and fails at once when one answers with an error; this read asks again
+ * either way, because the swap behind it cannot be undone. Only
  * once that budget is spent does the last error come back, for
  * `balanceDiff` to mark `swapLanded`.
  *
@@ -107,8 +108,8 @@ function _landedBalance(ethersLib, tokenOut, recipient) {
  * router swap are handed this function and run their send and
  * confirmation inside it; a swap that throws passes its error through
  * unchanged, with whatever gas it carries. The read after the swap is
- * `_landedBalance`, which asks every endpoint before it gives up. One
- * that fails even so carries the swap's gas instead, and is marked
+ * `_landedBalance`, which asks again after any error until its budget is
+ * spent. One that fails even so carries the swap's gas instead, and is marked
  * `swapLanded`: the swap happened, so `swapIfNeeded` must not send
  * another of the same balance through a fallback route.
  *

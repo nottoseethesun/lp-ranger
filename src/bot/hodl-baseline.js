@@ -2,9 +2,17 @@
  * @file hodl-baseline.js
  * @module hodlBaseline
  * @description
- * Initializes the HODL baseline for impermanent loss calculation.
- * Looks up historical token prices from GeckoTerminal at the position's
- * first mint timestamp to compute an accurate IL benchmark.
+ * The HODL baseline of a position's current NFT: the coins the NFT was
+ * minted with, read from its mint's receipt, which, with the wallet's
+ * coins its compounds took in since, the Current panel's IL/G and the
+ * Impermanent Loss Guard measure the position against at today's prices.
+ * The baseline also keeps the mint's date, time and gas, and an entry
+ * value: the minted coins at the prices of the mint's block, from the
+ * price cache, then Moralis when a key is stored and switched on, then
+ * GeckoTerminal, each only where the chain's `priceServices` names it
+ * (`fetchHistoricalPriceGecko`, src/bot/price-fetcher.js). The entry
+ * value is the NFT's dollar value at its mint; the IL/G needs no
+ * historical price.
  */
 
 "use strict";
@@ -21,7 +29,7 @@ const { getPoolCreationBlockCached } = require("./pool-creation-block");
 
 /**
  * Compute token amounts for a V3 position at a given tick.
- * Duplicated from bot-loop to avoid circular dependency.
+ * The same formula as `positionAmounts` in src/bot/range-math.js.
  * @param {bigint|number} liquidity  Position liquidity.
  * @param {number} currentTick       Current pool tick.
  * @param {number} tickLower         Lower tick bound.
@@ -61,7 +69,9 @@ function _positionAmounts(
 
 /**
  * Compute USD value of a V3 position given token prices.
- * Duplicated from bot-loop to avoid circular dependency.
+ * The same sum as `positionValueUsd` in src/bot/bot-pnl-updater.js,
+ * which throws on a result that is not a finite number; this one
+ * returns it.
  * @param {object} position  V3 position with liquidity + tick range.
  * @param {object} poolState Pool state with tick + decimals.
  * @param {number} price0    Token0 USD price.
@@ -289,9 +299,13 @@ function _patchMintTimestamp(botState, updateBotState, mintTimestamp) {
 }
 
 /**
- * Look up historical token prices from GeckoTerminal and set the HODL baseline.
- * Queries the NFT mint Transfer event to find the position creation timestamp,
- * then fetches OHLCV candle data from GeckoTerminal at that timestamp.
+ * Set the HODL baseline of the position's current NFT: the coins it was
+ * minted with, read from its mint's receipt, and their entry value at the
+ * prices of the mint's block (`fetchHistoricalPriceGecko`,
+ * src/bot/price-fetcher.js: the price cache, then Moralis when a key is
+ * stored and switched on, then GeckoTerminal, each only where the chain's
+ * `priceServices` names it). The mint is the NFT's `Transfer` from the
+ * zero address.
  *
  * @param {object} provider   Ethers provider.
  * @param {object} ethersLib  Ethers library (for Contract).

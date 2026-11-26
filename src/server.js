@@ -45,7 +45,8 @@
  * ROUTES
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- *   GET  /                          → src/client/web/index.html (dashboard)
+ *   GET  /                          → the dashboard: src/client/web/dist/index.html,
+ *                                     or src/client/web/index.html before a build
  *   GET  /public/*                  → static files from src/client/web/
  *   GET  /health                    → 200 OK (load-balancers / pm2)
  *
@@ -96,7 +97,9 @@
  * // start dashboard:
  * node src/server.js          // → http://localhost:5555
  *
- * // start bot (requires PRIVATE_KEY):
+ * // start the headless bot (PRIVATE_KEY, or the imported wallet unlocked
+ * // by WALLET_PASSWORD or a password typed at the terminal; no key in a
+ * // dry run):
  * node src/bot.js
  *
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -274,12 +277,13 @@ for (const [k, v] of Object.entries(_diskConfig.positions || {})) {
 /**
  * Resolve a URL path to a file under `src/client/web/`,
  * read it, and write it to `res`.
- * Returns false if the file does not exist
- * (caller should 404).
+ * Returns false, with nothing written, if the file does not exist
+ * (the caller then sends the dashboard for a path with no extension,
+ * else a 404).
  * @param {string}              urlPath
  * @param {http.ServerResponse} res
  * @returns {boolean}
- *   true if the file was found and served
+ *   true if it answered: with the file, or with a 400, 403 or 500
  */
 function serveStatic(urlPath, res) {
   // Normalise: strip query string, percent-decode (so filenames with

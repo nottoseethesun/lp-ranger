@@ -6,15 +6,16 @@
  * Price-impact gate + multi-attempt error synthesis for the swap path,
  * and the read of an aggregator quote's own impact figure. Extracted from
  * rebalancer-pools.js to keep that file under the project's max-lines
- * cap.  Pure functions apart from one log line, when a quote is refused;
- * the one setting they use is read once, at load.
+ * cap.  Apart from the `attempts` log a caller passes in, which
+ * `_checkSwapImpact` fills, and one log line, when a quote is refused, the
+ * functions change nothing; the one setting they use is read once, at load.
  */
 
 const { log } = require("../lib/log");
 const { readBotConfigDefaults } = require("../lib/bot-config-defaults");
 
 /*-
- *  The percentage points a "raise slippage to" message adds above the
+ *  The percentage points an "Increase to at least" message adds above the
  *  impact it saw, once that impact is rounded up to a tenth of a percent:
  *  bot-config-defaults.json → slippageSuggestionMarginPct.
  */
@@ -65,7 +66,8 @@ function quoteImpactPct(quote, cx, how, symIn, symOut) {
 }
 
 /**
- * Abort swap if price impact is too high or exceeds slippage setting.
+ * Abort swap if price impact is not a finite number or exceeds slippage
+ * setting.
  *
  * @param {number} impactPct  Computed price impact percentage.
  * @param {number} slip       User's slippage setting (percent).
@@ -103,7 +105,8 @@ function _checkSwapImpact(impactPct, slip, attempts, label) {
  * step often misleads — the V3 router fallback against a single low-liquidity
  * pool can post a 30% impact even though the aggregator's earlier multi-hop
  * route only saw 6%.  This helper picks the smallest impactPct from the
- * attempts log and produces a single, accurate "raise slippage to X%" message.
+ * attempts log and produces a single, accurate "Increase to at least X%"
+ * message.
  *
  * Only attempts that FAILED the slippage gate (`impactPct > slip`) are
  * considered — earlier attempts that PASSED the gate (e.g., a chunk that

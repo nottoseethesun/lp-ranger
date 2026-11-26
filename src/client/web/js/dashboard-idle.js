@@ -1,8 +1,8 @@
 /**
  * @file dashboard-idle.js
  * @description Browser-side idle detection for the idle-driven price-
- *   lookup pause (component 4 of 4 — see docs/architecture.md
- *   "Idle-Driven Price-Lookup Pause").
+ *   lookup pause (one of its sources, which docs/architecture.md lists
+ *   in "Idle-Driven Price-Lookup Pause").
  *
  * One timer:
  *   - 15-min window of no input/activity → POST /api/pause-price-lookups
@@ -18,8 +18,9 @@
  * may have already moved the long-deferred callback into the task queue,
  * and `clearTimeout` no longer cancels what's queued.
  *
- * The 3-second `/api/status` polling loop in dashboard-data.js is
- * intentionally orthogonal — it keeps polling whether paused or not,
+ * The `/api/status` polling loop in dashboard-data-poll.js (every
+ * `dashboardPollIntervalMs`, 3 seconds as shipped) is intentionally
+ * orthogonal — it keeps polling whether paused or not,
  * and the server happily serves it from cached / last-known prices
  * without unpausing.
  *
@@ -191,8 +192,8 @@ export function startBrowserIdleTracker() {
  * returning to a long-untouched tab is not greeted with a backlog of
  * rebalance/compound jingles.
  *
- * Item 4 of the four pause sources (move-scope `withFreshPricesAllowed`)
- * lives entirely server-side in `src/bot/price-fetcher-gate.js` — it never
+ * The move-scope pause source (`withFreshPricesAllowed`) lives entirely
+ * server-side in `src/bot/price-fetcher-gate.js` — it never
  * touches this flag, so an auto-rebalance/compound that fires while the
  * user is away leaves the browser still believing itself paused.
  *

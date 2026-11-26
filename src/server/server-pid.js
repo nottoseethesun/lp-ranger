@@ -8,9 +8,11 @@
  * uncaught error all end in Node's `exit` event, which removes it.  Only a
  * process killed outright leaves it behind, since that runs no code at
  * all.  `npm stop`
- * (scripts/stop.js) reads the PID and sends SIGTERM — the same graceful
- * shutdown path as Ctrl+C — so an operator can stop the server without
- * switching to its terminal or hunting the process by port.
+ * (scripts/stop.js) reads the PID and sends SIGTERM — the force-stop Ctrl+C
+ * also makes, which exits within `shutdown.exitTimeoutMs` (app-runtime.json,
+ * three seconds as shipped) and cuts off a rebalance or compound under way —
+ * so an operator can stop the server without switching to its terminal or
+ * hunting the process by port.
  *
  * Every function is defensive: a PID-file failure must never crash startup or
  * block shutdown.  The file lives under `tmp/` (gitignored, ephemeral) and is

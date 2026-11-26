@@ -6,12 +6,14 @@ const { scanChunked } = require("./get-logs-chunked");
  * @module eventScannerMintLookup
  * @description
  * True-first-mint resolution helpers extracted from `src/bot/event-scanner.js`
- * (which sits right at its `max-lines: 500` cap).  Two exports:
+ * (which sits right at its `max-lines: 500` cap).  Three exports:
  *   - `resolveFirstMintWithForeign` — earliest-ever true-mint reconciler
  *     that considers both direct mints (Transfer 0x0 → wallet) AND
  *     foreign-minted NFTs that were transferred in from another wallet.
  *   - `findOriginalMintOnChain` — the underlying per-tokenId lookup for
  *     the foreign-mint case.
+ *   - `resolveChainFirstMint` — the earliest NFT that arrived as a mint:
+ *     the first link of the chain the app infers, which per-day P&L needs.
  *
  * See the docstrings on each function for the design rationale.  The
  * enhancement was introduced 2026-07-18 by the
@@ -54,8 +56,9 @@ const ZERO = "0x0000000000000000000000000000000000000000";
  * @param {object} cachedEvents  Prior cache; may carry `firstMintTimestamp`.
  * @param {object[]} transfers  Filtered transfers for this scan window.
  * @param {object} poolCtx  `{ factoryAddress, poolAddress }` for the true-
- *   mint lookup's `fromBlock` bound.  Both may be null; the helper still
- *   works (falls back to arrival timestamp when the bound is unknown).
+ *   mint lookup's `fromBlock` bound.  Both may be null: the lookup then
+ *   starts at block 0. The arrival timestamp stands in only when the
+ *   lookup finds no mint or fails.
  * @returns {Promise<{firstMintTimestamp: number|null, firstMintBlockNumber: number|null}>}
  */
 async function resolveFirstMintWithForeign(
@@ -151,9 +154,11 @@ async function resolveFirstMintWithForeign(
  * Bounds `fromBlock` at the pool creation block (via
  * `getPoolCreationBlockCached`) so we're not doing a genesis-to-tip scan
  * per `feedback_no_genesis_chain_scans`.  Falls back to `fromBlock=0`
- * when the pool creation block is unavailable — the Transfer event has
- * `tokenId` as an indexed topic, so a single-tokenId query is fast even
- * without a lower bound.
+ * when the pool creation block is unavailable. The query walks windows
+ * oldest first (`scanChunked`), because an endpoint caps a query's span
+ * however selective its topics, and stops at the first window that holds
+ * the mint, since an NFT is minted once; from block 0 that can still be
+ * thousands of windows.
  *
  * @param {object} provider  ethers provider.
  * @param {object} ethersLib ethers namespace (v6 shape).
@@ -229,9 +234,9 @@ async function findOriginalMintOnChain(
  *
  * Distinct from `resolveFirstMintWithForeign`, which answers "the oldest
  * position NFT this wallet ever held here", for Lifetime Days. The two
- * name the same NFT whenever every arrival was a mint, and different
- * NFTs as soon as one arrived by transfer: `pairTransfers` builds the
- * chain from mints only, so a transferred-in NFT is never a link in it.
+ * name the same NFT when the oldest arrival was a mint, and different
+ * NFTs when it came by transfer: this one counts the arrivals that were
+ * mints only.
  *
  * Per-day P&L needs THIS one. Its mint block opens the first row of the
  * table, and no rebalance event names it — every other NFT in the chain

@@ -48,8 +48,9 @@
  *    batching changes the cost and not the meaning.
  *
  * The head block is resolved ONCE for the whole batch, so every NFT and
- * every event type covers exactly the same range. The per-NFT path
- * resolves it once per event type for the same reason.
+ * every event type ends at the same block, each NFT starting at its own
+ * floor. The per-NFT path resolves it once per event type for the same
+ * reason.
  */
 
 const config = require("../lib/config");
@@ -162,7 +163,9 @@ function _chunkIds(ids, size) {
  * "Per-NFT Scan Windows".
  *
  * @param {string[]} tokenIds
- * @param {Map<string, number>|object} mintBlocks  tokenId -> mint block.
+ * @param {Map<string, number>} mintBlocks  tokenId -> mint block, as
+ *   `mintBlocksByTokenId` builds it. Only a Map is read: any other value
+ *   leaves every id at `sharedFloor`.
  * @param {number} sharedFloor  Floor beneath every id's own, such as the
  *   pool's creation block.
  * @returns {{floors: Map<string, number>, unionFrom: number}}
@@ -289,16 +292,18 @@ function _keepAtOrAbove(logs, floors) {
  * @param {object} o
  * @param {string[]} o.tokenIds     Every NFT in the chain. An empty list
  *   reads nothing and returns an empty Map.
- * @param {Map|object} o.mintBlocks tokenId -> mint block.
+ * @param {Map<string, number>} o.mintBlocks tokenId -> mint block; see
+ *   `scanFloors`.
  * @param {number} o.sharedFloor    Floor beneath every id's own, such as
  *   the pool's creation block.
  * @param {object} o.provider       ethers provider.
  * @param {object} o.iface          ethers Interface carrying the three events.
  * @param {string} o.address        NonfungiblePositionManager address.
  * @param {number} [o.toBlock]      Head block. Resolved once when absent,
- *   so every id and event type covers an identical range.
+ *   so every id and event type ends at the same block.
  * @param {number} [o.chunkSize]    Block-window width.
- * @param {Function} [o.parseLogs]  (iface, logs) -> decoded events.
+ * @param {Function} o.parseLogs    (iface, logs) -> decoded events.
+ *   Required: called for each event type that finds logs.
  * @param {Iterable<string>} [o.eventNames]  Event types to fetch;
  *   defaults to all three. See `eventNamesOf`.
  * @returns {Promise<Map<string, object>>}  One entry per requested id.
@@ -354,8 +359,8 @@ async function fetchChainNftEvents(o) {
  *
  * The first call starts the read, and every later call gets the same
  * promise, so the chain is read once however many consumers ask. A read
- * that fails is not kept: the next call starts a fresh one, so each
- * consumer still gets an attempt of its own.
+ * that fails is not kept: a call after the failure starts a fresh one.
+ * Callers waiting on the read when it fails all get its error.
  *
  * @template T
  * @param {() => Promise<T>} readOnce  Performs the read.
@@ -410,7 +415,8 @@ function eventsFor(batch, tokenId) {
  *
  * @param {Iterable<string|number>} tokenIds  Every NFT to fetch.
  * @param {object} o
- * @param {Map|object} o.mintBlocks  tokenId -> mint block.
+ * @param {Map<string, number>} o.mintBlocks  tokenId -> mint block; see
+ *   `scanFloors`.
  * @param {number} o.sharedFloor     Floor beneath every id's own, such
  *   as the pool's creation block.
  * @param {Iterable<string>} [o.eventNames]  Event types to fetch;

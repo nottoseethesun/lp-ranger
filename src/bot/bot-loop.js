@@ -2,8 +2,11 @@
  * @file src/bot/bot-loop.js
  * @module bot-loop
  * @description
- * Shared reusable bot logic for the LP Ranger.
- * Used by both `server.js` (unified mode) and `bot.js` (headless mode).
+ * One managed position's bot loop (`startBotLoop`).  Started for each
+ * position by Manage (src/bot/position-lifecycle.js) and the start-up
+ * (src/bot/auto-start.js), which the server reaches through the bot's
+ * interface (src/bot/bot-interface.js), and by the headless bot
+ * (`bot.js`) in its single-position mode.
  *
  * Exports:
  *   - `startBotLoop(opts)` — create provider/signer, detect position, start polling
@@ -126,7 +129,7 @@ function isRecoveryResult(result, botState) {
  * case an operator needs the line for.
  *
  * Extracted and exported because the timer it serves has no test
- * fixture (see docs/roadmap/nice-to-haves/
+ * fixture (see docs/roadmap/clean-ups/
  * project_bot_loop_test_scaffolding.md), and this decision schedules
  * the single most expensive thing the bot does unattended.  Same
  * treatment as `_isStaleFire` in src/client/web/js/dashboard-idle.js.
@@ -342,8 +345,8 @@ async function startBotLoop(opts) {
   const GAS_DEFER_MS = readBotConfigDefaults().gasDeferRetrySec * 1000;
   /*- Poll scheduler + kickPoll wake-up.  Extracted to
    *  src/bot/bot-loop-scheduler.js so the ~15-line closure can be tested
-   *  directly.  `setPolling` / `setStopped` mirror the outer state
-   *  transitions (`polling` / `_stopped` above). */
+   *  directly.  `setPolling` mirrors the outer `polling` above, and
+   *  `stop` halts the scheduler whenever `_stopped` is set. */
   const _scheduler = createBotPollScheduler({
     defaultIntervalMs: config.CHECK_INTERVAL_SEC * 1000,
     setTimeoutFn: setTimeout,

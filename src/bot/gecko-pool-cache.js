@@ -99,8 +99,8 @@ async function _fetchPoolInfoOnce(network, poolAddress) {
  * and both hit the endpoints the free tier is strictest on. A restart
  * inside the 60-second rate-limit window can draw a 429 even when the
  * in-process limiter says there is budget, and a 429 that is not retried
- * does not merely slow something down: the answer is cached on success
- * only, so the subject goes unresolved for the life of the process.
+ * costs the price the read was for: the answer is cached on success
+ * only, so the subject stays unresolved until a later read asks again.
  *
  * The schedule and the cross-call escalation are NOT kept here. Both
  * belong to `price-source-backoff.js`, because a refusal of this
@@ -166,8 +166,10 @@ function _resolveOrientation(baseAddr, token0, token1, poolAddress) {
  * Returns `'normal'` if GeckoTerminal's base token == our token0,
  * or `'flipped'` if GeckoTerminal's base token == our token1.
  *
- * Hits the disk cache first, then falls back to a single GeckoTerminal pool
- * info request and persists the result.
+ * Hits the disk cache first, then falls back to a GeckoTerminal pool-info
+ * request (a 429 retried) and keeps the result in memory, marked for the
+ * next `flushGeckoPoolCache`, which the caller runs. A failed request, or
+ * a base token that is neither of the pair, answers null and keeps nothing.
  *
  * @param {string} network       GeckoTerminal network identifier.
  * @param {string} poolAddress   V3 pool contract address.
@@ -303,9 +305,10 @@ function _pickBestPool(pools) {
  * moves. It is cached without expiry anyway, because a stale choice
  * cannot produce a wrong number: the pool it names either still has
  * candles, in which case it is still a real market for the token, or it
- * does not, in which case the OHLCV read answers zero and the caller
- * falls through to its next source. The failure mode is a missing
- * price, never a misleading one.
+ * does not, in which case the OHLCV read answers zero. The one caller,
+ * src/bot/historical-token-price.js, asks GeckoTerminal last, so it then
+ * answers that no source could price the token. The failure mode is a
+ * missing price, never a misleading one.
  *
  * @param {string} network       GeckoTerminal network identifier.
  * @param {string} tokenAddress  Token contract address.

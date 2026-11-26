@@ -6,8 +6,9 @@
  * has a key, a value (any JSON-serialisable object), and a TTL.  The cache is
  * loaded lazily on first access and persisted to disk on every write.
  *
- * Used by the event scanner (rebalance history) and P&L tracker (daily P&L
- * snapshots) to avoid re-fetching thousands of on-chain records every load.
+ * Used by the pool scanner (src/bot/pool-scanner.js), which keeps each
+ * pool's rebalance history in one, to avoid re-fetching thousands of
+ * on-chain records every load.
  *
  * The app remains stateless from a correctness standpoint — the cache is a
  * pure performance optimisation.  If the cache file is deleted, everything is
@@ -63,7 +64,7 @@ function createCacheStore(opts) {
   let store = null;
 
   /**
-   * Load the cache from disk into memory. Creates the directory if needed.
+   * Load the cache from disk into memory.
    * Silently starts with an empty Map on any error.
    */
   function _load() {

@@ -137,10 +137,11 @@ async function _detectCurrentNftValues(
  * one.
  *
  * A slot with no saved coins answers zero, and stays zero for as long as
- * the position is unmanaged — only the bot's lifetime scan writes them.
- * Removing nothing is the right answer there rather than a guess: the
- * figure is the LP value as it stands, and it corrects itself the first
- * time the position is managed.
+ * the position is unmanaged — only the bot writes them, from its lifetime
+ * scan and its read of the current NFT's compounds
+ * (src/bot/bot-pnl-current-nft.js). Removing nothing is the right answer
+ * there rather than a guess: the figure is the LP value as it stands, and
+ * it corrects itself the first time the position is managed.
  *
  * @param {object} diskConfig  Loaded bot config.
  * @param {string} posKey      Composite key for the position.

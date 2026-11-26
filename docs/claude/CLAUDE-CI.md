@@ -36,7 +36,9 @@ getting code from a feature branch into `main`. The remote must
   skip to step 5; the remote CI then carries the risk step 3 would have
   retired.
 - **Step 6** merges via PR on GitHub (not a direct push) so that
-  branch protection rules — 6 required status checks — gate the merge.
+  branch protection gates the merge on its five required status checks:
+  Check (Node 24), Check (Node 26), Dependency Audit, Security Lint and
+  Secret Scan.
 - The principle: the remote is a shared resource. All breakage stays
   local.
 
@@ -48,15 +50,15 @@ getting code from a feature branch into `main`. The remote must
 
 | Check | Detail |
 | ----- | ------ |
-| **ESLint** | JS lint (`src/`, `test/`, dashboard files, eslint-rules) — 0 warnings |
+| **ESLint** | JS lint of `JS_TARGETS` in `scripts/lint-targets.js`: `src/` (the web client's `dashboard-*.js` modules included), `test/`, `scripts/`, `util/`, `eslint-rules/`, `stylelint-rules/` — 0 warnings |
 | **stylelint** | CSS lint (`src/client/web/css/*.css`) |
-| **markdownlint** | Markdown lint (`README.md`, `CLAUDE.md`, `docs/*.md`) |
+| **markdownlint** | Markdown lint of `MARKDOWN_TARGETS` in `scripts/lint-targets.js`: `README.md`, `CLAUDE.md`, most of `docs/` and `docs/claude/`, the bookkeeping docs and `docs/roadmap/`; not `CLAUDE-CI.md`, `CLAUDE-CODE-STYLE.md` or `docs/release-notes-header.md` |
 | **lint-svg** | `src/client/web/icons/*.svg` — strict XML, no `id=` attributes (`scripts/lint-svg.js`) |
 | **knip (files)** | Dead files — `knip --include files`. Only the `files` issue type gates; unused *exports* are deliberate seams, not defects. `knip.json` declares every real entry point (`scripts/`, `util/`, `src/telegram-send.js`, the dashboard bundle root, tests), without which CLI tools read as unreachable |
 | **unused-src-modules** | A module under `src/` no part of the app loads: a dependency walk (madge) from the app's entry points, the tests left out (`scripts/check-unused-src-modules.js`). knip counts the tests as entry points, so it passes a module only its own tests load |
 | **openapi-sync** | `docs/openapi.json` still matches the code — every registered route documented, every documented route still served, every `POST /api/config` key in its schema, every operation summarised, every tag declared |
 | **Config values** | The tests of the shipped config files themselves, run before every other test, so a wrong value is reported as the cause before what it broke — all must pass |
-| **Tests** | `node --test test/*.test.js` (every other test) — all must pass |
+| **Tests** | `node --test` on every other `*.test.js` in `test/`, `test/eslint-rules/`, `test/stylelint-rules/` and `util/test/` — all must pass |
 | **Folders kept** | After the tests, the shipped settings folder, `app-config/user-configurable/` and `app-data/` hold exactly what they held before them; each file created, removed or written is named (`scripts/_folder-snapshot.js`) |
 | **Coverage** | 80% line coverage minimum |
 | **Security: deps** | `npm run audit:deps` — no high-severity CVEs |
@@ -75,7 +77,7 @@ tool, add it in both places.**
 The **openapi-sync** gate also runs inside `npm run lint`, so the husky
 pre-commit hook rejects an API change that leaves the spec behind rather
 than letting it reach the remote. It reads the real route registrations
-and the real `POSITION_KEYS` / `GLOBAL_KEYS` allowlists, so adding a
+and the real `SETTING_POSITION_KEYS` / `GLOBAL_KEYS` allowlists, so adding a
 route or a config key without documenting it fails locally at step 2.
 Source: [`scripts/check-openapi-sync.js`](../../scripts/check-openapi-sync.js);
 the update workflow is in `docs/engineering.md` § "API Documentation".
@@ -87,9 +89,10 @@ the update workflow is in `docs/engineering.md` § "API Documentation".
 - **Never push main directly.** The merge to `main` always happens on
   GitHub through a PR.
 - **Never commit to main.** Always fix on the feature branch first.
-- **Run Prettier before commit.** Run `npm run format` (or
-  `npm run lint:fix`) on changed files before committing, then re-run
-  `npm run check`.  Prettier can expand compact lines past the 500-line
+- **Run Prettier before commit.** Run `npm run format` before
+  committing (it formats every JavaScript file `JS_TARGETS` in
+  `scripts/lint-targets.js` lists; `npm run lint:fix` does not format
+  JavaScript), then re-run `npm run check`.  Prettier can expand compact lines past the 500-line
   `max-lines` limit, so formatting first keeps the line-count check
   accurate.  The pre-commit hook runs `npm run lint`, which now *checks*
   formatting rather than rewriting it — an unformatted file fails the
@@ -118,6 +121,6 @@ reminder that reads:
 > publishing.
 
 The reminder fires even if Claude is not the one cutting the release
-(per [[feedback-never-cut-release]] the user always cuts every release
-themselves). The purpose is a checklist prompt, not an action Claude
+(the user always cuts every release themselves:
+[feedback_git_workflow.md](memory/feedback_git_workflow.md)). The purpose is a checklist prompt, not an action Claude
 performs.

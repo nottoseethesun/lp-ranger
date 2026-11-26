@@ -179,8 +179,9 @@ function _ilgExampleRejected(floor, allowedLoss) {
  * Takes values already resolved, whichever way the caller resolves them:
  * the manual's build passes the shipped files, and the server passes what
  * the install runs on, its operator's overrides and `.env` included. The
- * three timings arrive as plain numbers for the same reason: `.env` can
- * set each, and the cancel delay is derived when it does not.
+ * two timings, `txSpeedupSec` and `txCancelSec`, arrive as plain numbers
+ * for the same reason: `.env` can set each, and the cancel delay is
+ * derived when it does not.
  *
  * @param {object} values
  * @param {object} values.botDefaults    bot-config-defaults.json, resolved.

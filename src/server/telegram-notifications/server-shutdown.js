@@ -1,8 +1,9 @@
 /**
  * @file src/server/telegram-notifications/server-shutdown.js
  * @description
- * Fire-and-forget Telegram notification for server/bot shutdown.  Extracted
- * from server.js to keep that file within the max-lines budget.
+ * Fire-and-forget Telegram notification for the server's shutdown; the
+ * headless bot (src/bot.js) sends none.  Extracted from server.js to keep
+ * that file within the max-lines budget.
  *
  * Spawns a detached child process (src/telegram-send.js) so the message
  * survives the parent's process.exit().  Gated on the `shutdown` event being
@@ -35,10 +36,12 @@ const _SEND_SCRIPT = path.join(__dirname, "..", "..", "telegram-send.js");
  * Pure, and exported, because the sending half is a `spawn` that a test
  * cannot look inside — so the part with a decision in it is separated
  * from the part with the side effect, and the decision is what gets
- * driven. Every other message the app sends is escaped by `notify`;
- * this one is not, so it is the one place where a reserved character in
- * fixed prose goes unnoticed. `test/server-shutdown.test.js` runs the
- * result through Telegram's rule.
+ * driven. Every alert the app sends is escaped by `notify`; this message
+ * and the test notification (`testConnection`,
+ * src/lib/telegram-notifications/telegram.js) are built outside it, so
+ * they are the two places where a reserved character in fixed prose can
+ * go unnoticed. `test/server-shutdown.test.js` runs the result through
+ * Telegram's rule.
  *
  * Only ONE value is interpolated and it is escaped: the hostname is not
  * ours to choose, and a `-` or `_` in it is markup to MarkdownV2. The

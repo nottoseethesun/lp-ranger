@@ -163,8 +163,10 @@ function _validateKey(body) {
 /**
  * Resolve the live bot state and the pool identity for `rawKey`. The pool
  * identity (token0/token1/fee) is read from `state.activePosition`, the
- * summary `bot-recorder._activePosSummary` publishes to the state map
- * (`emit({activePosition: ...})`) every poll cycle. It is deliberately
+ * summary `bot-recorder._activePosSummary` builds, which the bot loop
+ * publishes to the state map (`emit({activePosition: ...})`) when it
+ * starts, after each rebalance, and on a poll that sees the position's
+ * liquidity change. It is deliberately
  * not read from `positionMgr.get(liveKey)`: that entry carries only the
  * loop's own fields (`key`, `tokenId`, `status`, `handle`, `starting`),
  * no pool identity, and would produce a false `missing`.
@@ -294,7 +296,9 @@ function _performReset(diskConfig, liveKey, state, position, wallet) {
  * Create Reload Current Position.
  * @param {object} deps
  * @param {Function} deps.getAllPositionBotStates
- * @param {object} deps.positionMgr  Position manager (getPosition, key resolution).
+ * @param {object} deps.positionMgr  Position manager; its `get(key)` and
+ *   `getAll()` resolve a key a rebalance moved (`resolveLiveKey`,
+ *   src/bot/server-key-resolver.js).
  * @param {object} deps.walletManager
  * @param {object} deps.diskConfig   Shared in-memory disk config reference
  *   (the same object the rest of the bot, its loops included, reads

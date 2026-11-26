@@ -14,12 +14,12 @@
  * the timestamp is injected immediately after the tag:
  *
  *   log.info("[bot] OOR but within 5% threshold")
- *   → [bot] [2026-06-16 20:32:02] OOR but within 5% threshold
+ *   → [bot] [2026-06-16 20:32:02Z] OOR but within 5% threshold
  *
  * When the first argument doesn't start with a `[`, the timestamp is
  * prepended bare:
  *
- *   log.info("plain text") → [2026-06-16 20:32:02] plain text
+ *   log.info("plain text") → [2026-06-16 20:32:02Z] plain text
  *
  * Non-string first arguments pass through untouched — `printf`-style
  * extra args after the format string are forwarded as-is so existing

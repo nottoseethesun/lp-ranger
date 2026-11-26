@@ -36,8 +36,8 @@ export function pickEarliestDate(candidates) {
  *   - Unix seconds (number) — the canonical form.
  *   - ISO string ("YYYY-MM-DDTHH:MM:SS.sssZ") — written by the patch path
  *     in `_patchMintTimestamp` and the publish path in `_publishBaseline`
- *     before normalization.  Older `.bot-config.json` files in the wild
- *     still carry these.
+ *     before normalization.  A record saved by an older release in
+ *     `app-data/position-records.json` can still carry these.
  *   - Unix milliseconds (number > 1e12) — never intentional but defended
  *     here as a safety net.
  *

@@ -1,8 +1,8 @@
 /**
  * @file dashboard-wallet.js
  * @description Core wallet state, generate flow, unlock,
- * tab switching, and utility functions for the 9mm v3
- * Position Manager dashboard.
+ * tab switching, and utility functions for the LP Ranger
+ * dashboard.
  *
  * The import flows (seed, private key), the key-reveal modal and the
  * wallet clear live in dashboard-wallet-import.js, and are imported from
@@ -11,10 +11,10 @@
  * Depends on: dashboard-helpers.js (g, act, ACT_ICONS),
  * ethers-adapter.js (ethers).
  *
- * NOTE: Imports from positions (updatePosStripUI,
- * scanPositions, posStore) are resolved at call time, not
- * at parse time, so the circular reference between wallet
- * and positions is safe.
+ * NOTE: Positions (updatePosStripUI, scanPositions, posStore) are not
+ * imported: dashboard-init.js hands them in through `injectWalletDeps`
+ * once every module has loaded, which keeps wallet and positions from
+ * importing each other in a circle.
  */
 
 import { g, act, ACT_ICONS, fetchWithCsrf } from "./dashboard-helpers.js";
@@ -158,15 +158,16 @@ export function getUpdateRouteForWallet() {
 // ── RPC URL ───────────────────────────────────────────────
 
 /**
- * Get the RPC URL the operator typed, or the server's configured
- * primary when the field is blank.
+ * Get the server's configured primary rpc endpoint, waiting for the
+ * endpoint list if it is still loading (`rpcUrlReady`,
+ * dashboard-rpc-endpoints.js).
  *
  * Async on purpose.  There is no hardcoded URL here any more — the
  * shipped list in chains.json is the only place that value exists — so
- * when the field is blank the answer has to come from the server, and
- * early in page load it has not arrived yet.  A synchronous version
- * returned "" during that window, and the one caller built an ethers
- * provider from it, whose every call then threw.
+ * the answer has to come from the server, and early in page load it has
+ * not arrived yet.  A synchronous version returned "" during that window,
+ * and the one caller built an ethers provider from it, whose every call
+ * then threw.
  *
  * Returns "" only if the endpoint request itself failed. Callers must
  * treat that as "unknown", never as an answer.

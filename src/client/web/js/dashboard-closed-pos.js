@@ -36,8 +36,8 @@ export function isViewingClosedPos() {
 }
 
 /**
- * Enter closed-position history view.  Shows the amber banner, fetches
- * historical data from the server, and populates KPI elements.
+ * Enter closed-position history view.  Shows the CLOSED status pill,
+ * fetches historical data from the server, and populates KPI elements.
  * @param {object} posEntry  Position entry from posStore (liquidity=0).
  */
 export async function enterClosedPosView(posEntry) {
@@ -107,8 +107,8 @@ export async function refetchClosedPosHistory() {
 }
 
 /**
- * Exit closed-position history view.  Hides the banner and lets the next
- * poll cycle repopulate live KPIs.
+ * Exit closed-position history view.  Lets the next poll cycle
+ * repopulate live KPIs.
  */
 export function exitClosedPosView() {
   _viewingClosed = false;
@@ -161,7 +161,7 @@ function _priceSummary(p0, p1, label) {
 
 /**
  * Render historical KPI values from the server response into existing DOM elements.
- * Shows available data (dates, tx hashes, token prices) even when total USD
+ * Shows available data (dates, token prices) even when total USD
  * values are missing — e.g. when the rebalance log was cleared but
  * GeckoTerminal historical prices are available.
  * @param {object} data  Response from GET /api/position/:tokenId/history.

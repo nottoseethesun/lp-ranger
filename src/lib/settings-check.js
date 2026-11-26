@@ -224,10 +224,12 @@ function problemsReport(problems) {
 
 /**
  * Refuse to start while any setting is wrong: print every problem and
- * exit. The server and the bot call this before they read a setting, so
- * the app never runs on a value nobody chose. `npm stop` and
- * `npm run gentle-stop` do not, so a bad setting never keeps an operator
- * from stopping a server that is running.
+ * exit. The server and the bot call this before they read any other
+ * setting, so the app never runs on a value nobody chose; only the
+ * log-file wiring (src/lib/boot-log-file.js, which reads logging.json)
+ * runs first. `npm stop` and `npm run gentle-stop` do not, so a bad
+ * setting never keeps an operator from stopping a server that is
+ * running.
  *
  * @param {object} [o]  Test seams; the process's own otherwise.
  * @param {(text: string) => void} [o.print]

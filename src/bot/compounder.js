@@ -4,7 +4,9 @@
  * and re-deposit them as additional liquidity via `increaseLiquidity`.
  *
  * TX flow:
- *   1. multicall [decreaseLiquidity(0), collect] — collects fees to wallet
+ *   1. collect — one `collect` transaction (src/bot/compound-collect.js)
+ *      brings the fees into the wallet; the position manager's collect
+ *      updates the fee accounting itself first (`pool.burn(0)`)
  *   2. an optional swap bringing the fees to the range's ratio
  *      (`src/bot/compounder-swap.js`)
  *   3. approve + increaseLiquidity — re-deposits collected tokens as liquidity
@@ -395,7 +397,8 @@ function _compoundedResult(opts, collected, swap, deposited, beforeDeposit) {
    *  The fee coins the collect brought in, and their USD value — typically
    *  larger than usdValue because increaseLiquidity requires tokens in the
    *  current tick's exact ratio, so one side usually has leftover that
-   *  stays in the wallet as residual (tracked by residual-tracker.js).
+   *  stays in the wallet, where the Wallet Residual (Pool) counts it from
+   *  the wallet's balance (`walletResiduals`, src/bot/bot-pnl-updater.js).
    *  Surfaced so the compound log can show users both numbers, and kept
    *  on the compound's record for its Activity Log figure
    *  (src/bot/compound-activity-figures.js).
@@ -553,7 +556,9 @@ async function _fetchCompoundGas(prov, compoundEvents) {
 
 /**
  * Fetch IncreaseLiquidity, Collect, and DecreaseLiquidity logs for one NFT.
- * Single RPC round-trip (3 parallel getLogs).  Pure data — no classification.
+ * Three chunked scans run in parallel (`scanChunked`), each over windows
+ * of `getLogsChunkSize` blocks.  Pure data — no classification.  A failed
+ * window rejects the whole read rather than answer "no events".
  * @param {string|number} tokenId
  * @param {{ fromBlock?: number, toBlock?: number|string }} [scanOpts]
  * @returns {Promise<{ilEvents: object[], collectEvents: object[], dlEvents: object[], ilLogsCount: number}>}
@@ -659,9 +664,9 @@ function _logCompoundSummary(opts, parts) {
   const s0 = opts.token0Symbol || "Token0";
   const s1 = opts.token1Symbol || "Token1";
   /*-
-   *  Full context per feedback-log-full-context: chain + wallet + NFT
-   *  factory + tokenId + emoji + both token symbols. Every caller passes
-   *  `opts.positionManagerAddress`, the NFT factory.
+   *  Full context, per docs/claude/memory/feedback_logging.md: chain +
+   *  wallet + NFT factory + tokenId + emoji + both token symbols. Every
+   *  caller passes `opts.positionManagerAddress`, the NFT factory.
    */
   const cx = logCtx({
     chain: config.CHAIN_NAME,
@@ -762,9 +767,9 @@ async function classifyCompounds(nftEvents, opts = {}) {
     compoundEvents,
   );
   /*- Per-event USD = the event's own deposit value at current prices.
-   *  Same formula bot-recorder-lifetime._eventUsd uses inline. Attached
-   *  here so unmanaged callers can sum standalone compounds for the
-   *  Current panel's "Fees Compounded" row without re-implementing it. */
+   *  Attached here so unmanaged callers can sum standalone compounds for
+   *  the Current panel's "Fees Compounded" row without re-implementing
+   *  it. */
   for (const c of compounds) {
     c.usdValue =
       (Number(c.amount0Deposited) / 10 ** d0) * (opts.price0 || 0) +

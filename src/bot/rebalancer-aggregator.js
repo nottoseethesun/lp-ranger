@@ -4,7 +4,7 @@
  *   the Watergun Aggregator.
  *   Fetches quotes from the aggregator API, submits TXs with
  *   cancel-and-requote retry on timeout. Used as the primary
- *   swap path; V3 router in rebalancer-swap.js is the fallback.
+ *   swap path; V3 router in rebalancer-router.js is the fallback.
  *
  *   Chain-specific tunables (cancel gas multiplier, wait timeout,
  *   max attempts) are loaded from app-config/app-defaults-for-user-configurable/chains.json via config.CHAIN.
@@ -72,7 +72,7 @@ function _setWaitMsForTests(ms) {
  * Watergun keys the path by chain id. An empty string means the chain has
  * no aggregator; `src/lib/config.js` refuses to start on an entry that gives
  * no url at all. Whether there is one is `src/lib/aggregator-in-use.js`'s
- * answer, and this is where the app asks it: the swap through
+ * answer, and this is where the bot asks it: the swap through
  * `_aggregatorBase`, and the "Route:" badge through
  * `primaryRouteLabel`, so the badge cannot name a route the swap does not
  * try.
@@ -109,8 +109,8 @@ function _aggregatorBase() {
 /**
  * Display label for the aggregator route: the active chain's
  * `aggregator.name` in chains.json. Stamped onto `result.swapSources` on
- * every successful aggregator swap, and named by the Mission Control
- * "Route:" badge through `primaryRouteLabel`.
+ * every successful aggregator swap, and named by the "Route:" badge in the
+ * dashboard's header, through `primaryRouteLabel`.
  *
  * Intentionally coarse: we do NOT drill into the underlying pools
  * (NineMM_V3, PulseX_V2, …) that the aggregator chose, because the
@@ -294,8 +294,9 @@ async function _cancelNonce(signer, provider, nonce, waitMs, sentGasPrice, cx) {
  * timeout leaves the swap in the mempool, and the only way to free the slot is
  * a cancel at the same nonce. Every way that cancel can fail leaves the nonce
  * unexamined, and none of them may escape as an error: refused as "nonce too
- * low" because the swap mined, or never broadcast at all because the txpool
- * is full or the retries ran out. ("Already known" is not one of them: the
+ * low" because something already mined at the nonce, the swap or an earlier
+ * copy of the cancel, or never broadcast at all because the txpool is full
+ * or the retries ran out. ("Already known" is not one of them: the
  * cancel is pending, and `_retrySend` returns it to be waited on.) An error
  * leaving here is unflagged, and the caller's
  * router fallback reads unflagged as "no swap happened" and sends a second
@@ -435,9 +436,10 @@ async function _handleSwapError(
  *
  * Those two cannot be settled the way a timeout can — the send threw, so there
  * is no hash to ask the chain about — so they are stamped `nonceUnsettled` and
- * the rebalance fails rather than risking the swap twice. An endpoint that
- * answers "already known" holds the swap already: the retry recovers it,
- * and it is waited on like any other.
+ * the rebalance fails rather than risking the swap twice. So is every other
+ * failure but `terminal-nonce-unused`, an `unknown` one included. An
+ * endpoint that answers "already known" holds the swap already: the retry
+ * recovers it, and it is waited on like any other.
  *
  * @param {import('ethers').Signer} signer Nonce-managed signer.
  * @param {object} txReq   Populated transaction request, without a nonce.
@@ -486,8 +488,13 @@ async function _submitGasPrice(provider, quote) {
 /**
  * Submit aggregator TX with retry on both timeout and on-chain revert.
  *
- * Two failure modes, same recovery (fresh quote + retry):
- *  - Timeout: TX not mined in waitMs → cancel nonce, then re-quote.
+ * Two failure modes, each recovered with a fresh quote and a retry once
+ * its nonce is spent:
+ *  - Timeout: TX not mined in waitMs → cancel nonce and settle it from the
+ *    chain (`_handleSwapError`, `resolveSwapOutcome`), then re-quote. A
+ *    swap that mined after all is returned as the result; a nonce still
+ *    open throws with `nonceUnsettled`, so `swapIfNeeded` sends no second
+ *    swap.
  *  - On-chain revert (CALL_EXCEPTION, status=0): route's encoded pool
  *    states went stale between quote and execution. Nonce is already
  *    consumed — just re-quote and submit at the next nonce.

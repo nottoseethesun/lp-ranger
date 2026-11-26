@@ -30,8 +30,9 @@
  * A rebalance event records the mint of its `newTokenId` at
  * `blockNumber`, so the chain yields a floor for every NFT except the
  * very first — which appears only as an `oldTokenId` and whose mint
- * predates the chain. Callers fall back to the pool's creation block
- * for that one.
+ * predates the chain. Callers fall back to the pool's floor for that
+ * one, raised to the chain's first mint where the event scanner found it
+ * (`chainScanFloor`).
  *
  * Where an id somehow appears more than once, the EARLIEST block wins.
  * A floor that is too high silently loses events; too low only costs
@@ -66,9 +67,10 @@ function mintBlocksByTokenId(events) {
  *
  * @param {Map<string, number>} mintBlocks  From `mintBlocksByTokenId`.
  * @param {string|number} tokenId
- * @param {number} fallbackBlock  Used when the NFT's mint is not in the
- *   chain — normally the pool's creation block.
- * @returns {number}
+ * @param {number|null} fallbackBlock  Returned when the chain names no
+ *   mint for this NFT: `nftScanFrom` passes 0, and the Current panel's
+ *   one-NFT scans pass null to learn that it is unknown.
+ * @returns {number|null}  The mint block, else `fallbackBlock`.
  */
 function scanFloorFor(mintBlocks, tokenId, fallbackBlock) {
   const known =

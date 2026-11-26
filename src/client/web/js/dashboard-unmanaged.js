@@ -100,7 +100,8 @@ export function resetLastFetchedId() {
  * Once a poll HAS landed the answer is authoritative, because the
  * server's `managedPositions` is the union of live bot loops and
  * positions whose saved status is `running` but have not started yet
- * (`src/server/handle-api-status.js`). So intent is known from the very first
+ * (`managedPositionList`, `src/bot/managed-positions.js`, which
+ * `GET /api/status` reports). So intent is known from the very first
  * payload, well before the bot loop exists.
  *
  * Pure so the decision can be driven directly by a test rather than
@@ -115,7 +116,7 @@ export function shouldSkipUnmanagedFetch({ isManaged, hasPolled }) {
 /**
  * Fire any pending unmanaged-details fetch that was deferred because the
  * wallet was still locked when the activation path tried to fetch.  Called
- * from the wallet unlock paths (auto-unlock, manual submit, import).  No-op
+ * from the wallet unlock paths (auto-unlock, manual submit).  No-op
  * when nothing is pending.
  */
 export function flushPendingUnmanagedFetch() {

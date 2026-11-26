@@ -15,8 +15,8 @@
  *
  * There is no per-chunk delay: rate limiting is global and lives in
  * src/bot/rpc-request-manager.js, which paces individual requests. The chunk
- * size comes from the shared chunker, which reads the one shipped value
- * (`getLogsChunkSize`).
+ * size comes from the shared chunker, which reads `getLogsChunkSize` from
+ * bot-config-defaults.json, an operator's copy applied.
  */
 
 "use strict";
@@ -47,7 +47,9 @@ const _PAIRING_WINDOW_SEC = readBotConfigDefaults().rebalancePairingWindowSec;
  */
 
 /**
- * Fetch all Transfer events in a single chunk, swallowing RPC errors.
+ * Fetch the Transfer events into and out of the wallet in one window, as
+ * two queries run together. Errors are not caught: the shared chunker
+ * must see them to recognise a block-range-cap rejection.
  * @param {object} contract - ethers Contract bound to the position manager.
  * @param {string} walletAddress - Checksummed wallet address.
  * @param {number} fromBlock - Start of range (inclusive).
@@ -372,8 +374,8 @@ async function scanChunks(
    *  appeared to bound.
    *
    *  `bestEffort` preserves this scanner's long-standing behaviour of
-   *  logging a failed window and carrying on; `queryChunk` already
-   *  swallows per-window errors itself. */
+   *  logging a failed window and carrying on; `queryChunk` catches
+   *  nothing, so the chunker is what logs and skips a failed window. */
   /*- Track where the first hole starts.  bestEffort keeps a flaky
    *  endpoint from failing a whole five-year scan, but the result is
    *  then incomplete, and the caller persists a "scanned through block

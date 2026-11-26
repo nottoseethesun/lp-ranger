@@ -125,7 +125,7 @@ export function _bindCopyBtn(id) {
 
 // ── Pool Details modal ──────────────────────────────
 
-/** @type {import('./dashboard-positions.js').PosStore | null} */
+/** @type {typeof import('./dashboard-positions-store.js').posStore | null} */
 let _posStoreRef = null;
 
 /**
@@ -267,10 +267,9 @@ function _formatPositionSpec(active) {
  * Restores the button text and shows an actionable alert that names the
  * specific position and tells the user how to retry.
  *
- * When the server reason indicates an RPC-side failure, the retry hint
- * also tells the user the bot has already engaged sticky failover — so
- * the next click hits the backup RPC immediately instead of repeating
- * the same dead-RPC walk.  See `src/bot/bot-loop-detect.js`.
+ * When the reason contains "No V3 NFT position found" or "RPC failure",
+ * the retry hint adds that the bot has already failed over to the backup
+ * rpc.
  *
  * A refusal under the one-position-per-pool rule gets no retry hint,
  * since a second click would be refused the same way: its words say
@@ -335,9 +334,8 @@ export function _handleManageFailure(
       return;
     }
     const buttonLabel = verb === "manage" ? "Manage" : "Stop Managing";
-    /*- The bot-loop-detect retry chain engages sticky RPC failover on
-     *  every miss, so by the time the server returns "No V3 NFT position
-     *  found" the next attempt is already routed through the backup. */
+    /*- A reason that names a missing V3 NFT position or an rpc failure
+     *  gets a hint that the bot has already failed over to the backup rpc. */
     const looksLikeRpcFailure = /No V3 NFT position found|RPC failure/i.test(
       code || "",
     );
@@ -604,7 +602,8 @@ export async function _toggleManagePosition() {
  * all previous in-line state checks (closed gate, managed gate, in-
  * flight gate, rebalance-in-flight gate) are folded into the pure
  * compute function there.  Arguments are ignored; paintManageUI()
- * reads its own inputs from posStore + getLastStatus + DOM.
+ * reads its own inputs from posStore + getLastStatus + isSyncComplete
+ * + the wallet.
  */
 export function updateManageBadge() {
   paintManageUI();

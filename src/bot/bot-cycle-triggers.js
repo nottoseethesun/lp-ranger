@@ -1,11 +1,12 @@
 /**
  * @file src/bot/bot-cycle-triggers.js
- * @description Pure trigger/config helpers extracted from
+ * @description Trigger/config helpers extracted from
  * `src/bot/bot-cycle.js` (which sat at its 500-line cap):
  *
  *   - `_isTimeoutExpired(bs, gc)` — has the position been continuously
- *     out of range longer than the configured OOR Rebalance Time
- *     Threshold?  One of the two independent automatic triggers.
+ *     out of range for at least the configured OOR Rebalance Time
+ *     Threshold (`rebalanceTimeoutMin`)?  A threshold of 0 turns this
+ *     trigger off.  One of the two independent automatic triggers.
  *   - `_isBeyondThreshold(poolState, position, gc)` — has the price
  *     moved beyond the position's price boundary by more than the OOR
  *     threshold?  The distance is measured as a percentage of the
@@ -59,7 +60,8 @@ function _isBeyondThreshold(poolState, position, gc) {
   return false;
 }
 
-/** Reload config values from disk on each poll cycle. */
+/** Apply the position's saved throttle settings to the live throttle on
+ *  each poll cycle, read through `gc` from the settings held in memory. */
 function _reloadFromConfig(gc, throttle) {
   throttle.configure({
     minIntervalMs:

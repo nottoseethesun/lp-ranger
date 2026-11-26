@@ -13,8 +13,8 @@ Configuration reaches the app through three layers — shipped JSON defaults,
 per-install operator overrides, and `.env`, in that order of increasing
 precedence. [Configuration Precedence](#configuration-precedence) is the rule
 that decides which wins, and most surprises come from not knowing it: `.env`
-sits on top, so a line left there overrides anything set later in the
-dashboard.
+sits on top of the JSON files, so a line left there overrides a later edit to
+either of them. A value saved in the dashboard outranks all three.
 
 For the runtime mechanisms these settings govern, see
 [`docs/engineering.md`](engineering.md). For the commands that read this
@@ -191,9 +191,9 @@ includes `PORT` and `HOST`, whose defaults live in
 `app-config/app-defaults-for-user-configurable/app-runtime.json`.
 
 `PRIVATE_KEY` and `WALLET_PASSWORD` have no JSON home by design, but they
-are not an exception to the rule — they *are* the headless case. A
-dashboard install imports its wallet through the UI and unlocks it in the
-browser, and never needs either one.
+are not an exception to the rule — they *are* the headless and
+unattended case. A dashboard install whose wallet someone unlocks in the
+browser after each start never needs either one.
 
 The reason to be careful is precedence: a value set here beats both the
 shipped default and your own `user-configurable/` override, so a
@@ -270,8 +270,8 @@ each layer live in [`docs/security.md`](security.md).
 
 | Variable | Default | JSON counterpart | Notes |
 | --- | --- | --- | --- |
-| `PRIVATE_KEY` | *(unset)* | **none, by design** | This setting is for Headless Operation only (running the bot only, and not the web app). Hex signing key, `0x`-prefixed, in plaintext. A dashboard install imports its wallet through the UI and unlocks it in the browser instead. |
-| `WALLET_PASSWORD` | *(unset)* | **none, by design** | This setting is for Headless Operation only (running the bot only, and not the web app). It decrypts the wallet and the stored API keys at startup without prompting, which is what lets an unattended bot sign. The trade-off is a plaintext password in `.env` — see [Wallet password persistence](claude/CLAUDE-SECURITY.md#wallet-password-persistence). Read by [`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js) and [`src/server/server-routes.js`](../src/server/server-routes.js), not by `config.js`. A dashboard install is asked for the password in the browser instead, and `node src/server.js --headless` asks in the terminal. |
+| `PRIVATE_KEY` | *(unset)* | **none, by design** | For headless and unattended operation. The signing key in plaintext: 64 hexadecimal digits, with or without `0x`. When set, the headless bot and the dashboard's server both sign with it, ahead of any wallet imported in `wallet.json`. A dashboard install imports its wallet through the UI and unlocks it in the browser instead. |
+| `WALLET_PASSWORD` | *(unset)* | **none, by design** | For headless and unattended operation. It decrypts the wallet at startup without prompting, for the headless bot and the dashboard's server alike, which is what lets an unattended install sign after a restart; the server decrypts the stored API keys with it too. The trade-off is a plaintext password in `.env` — see [Wallet password persistence](claude/CLAUDE-SECURITY.md#wallet-password-persistence). Read by [`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js) and [`src/server/server-routes.js`](../src/server/server-routes.js), not by `config.js`. Without it, a dashboard install is asked for the password in the browser, and `node src/server.js --headless` asks in the terminal. |
 
 ### Position Discovery (`.env`)
 
@@ -357,7 +357,8 @@ checked when you save — see
 | `TX_CANCEL_SEC` | `3600` | 1 to `172800` (48 hours) | 48 hours, since 1000× the default is 41 days |
 | `CHECK_INTERVAL_SEC` | `300` | `10` to `3600` (one hour) | its own range — an hour between looks at a position is already past any use |
 
-A fourth timer setting lives only in json: `aggregator.quoteTimeoutMs` in
+Other timer settings live only in json files, each held to the same rule.
+Among them is `aggregator.quoteTimeoutMs` in
 `chains.json`, 15000 by default, which limits how long a swap waits for
 the aggregator's quote. A quote that has not arrived by then counts as
 failed, and the swap goes through the V3 router in the position's own
@@ -440,14 +441,16 @@ bound nothing.
 | Slippage When Swapping to Token 0 / Token 1 | 0.1 to 20% |
 | Auto-Compound Threshold | at least the minimum fee a compound needs |
 | Approval Multiple | 1 to 1,000,000 |
-| Max Gas Fee | 0.1 to 15% |
+| Gas Fee Threshold (Settings menu, its Gas Fee % box) | 0.1 to 15% |
 | Total Lifetime Deposit | 0 or more |
 | Token Price Override | 0 or more (0 clears it) |
 | Token Decimals Override | 0 to 77 |
 | RPC Endpoints | 1 to 10 addresses, each beginning `http://` or `https://` |
 
 Two things that look like bad values are not. **An empty field clears
-the setting**, so it falls back to the shipped default — that is how you
+the setting**, so it falls back to the default in force: the shipped one,
+or the one your copy of its file or `.env` sets
+([Configuration Precedence](#configuration-precedence)) — that is how you
 undo an override from the same box you set it in. And **zero is a real
 setting** for some of them: a price override of zero means "no
 override", and an OOR Timeout of zero switches the timeout off.
@@ -661,9 +664,8 @@ for the duration, which is what the yellow line exists to explain.
 
 Set it to `0` to disable the wait entirely — the bot then keeps cycling
 through the endpoints continuously. The ceiling is two days, which is far
-past any outage worth waiting out. Unlike the two settings above, this one is
-read each time the list is exhausted, so a change to it takes effect without
-a restart.
+past any outage worth waiting out. Like the two settings above, it is read
+once, as the app starts, so a change to it takes effect at the next restart.
 
 ### Why chunking exists
 
@@ -727,7 +729,7 @@ and every scan in the app starts from a bound it already knows:
 | --- | --- |
 | Pool rebalance events | the later of the history lookback's floor, the pool's creation block, and the last cached block |
 | Per-NFT event history | that NFT's own mint block, and runs to the current block |
-| Pool creation lookup | the newest block, working backwards, stopping at the first match |
+| Pool creation lookup | no log scan: a binary search over the chain's blocks for the first that holds the pool's contract code (`eth_getCode`), about 25 reads, kept on disk for good once found |
 
 The per-NFT floor is the one that moves the needle on a long rebalance
 chain. Every scan runs to the current block, including a retired NFT's:

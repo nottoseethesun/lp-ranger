@@ -1,9 +1,11 @@
 /**
  * @file src/bot/lifetime-hodl.js
  * @description Compute accumulated lifetime HODL amounts across a rebalance
- * chain.  Classifies each IncreaseLiquidity event as original-mint,
- * rebalance-mint, compound, or external-deposit, and accumulates only
- * genuine external deposits.
+ * chain: the coins put into the position from outside, and the deposit
+ * list behind them.  Classifies each IncreaseLiquidity event: the first
+ * NFT's mint counts its minted coins in full; each later NFT's mint counts
+ * only the deposits it took in; a later addition to an NFT counts in full
+ * when another wallet paid for it, and not at all otherwise.
  *
  * A rebalance mints with the wallet's whole balance, so each mint after
  * the first takes in whatever the wallet received from outside since the
@@ -28,8 +30,8 @@
  * which: whether its transaction moved either of the pool's coins out of
  * the wallet.
  *
- * Receives pre-fetched NFT events (from scanNftEvents) + provider for
- * Transfer scanning.
+ * Receives pre-fetched NFT events (from `fetchAllNftEvents`,
+ * src/bot/bot-recorder-scan-helpers.js) + provider for Transfer scanning.
  */
 
 "use strict";
@@ -149,10 +151,12 @@ async function _walletPaidFor(il, reader) {
  * An addition the wallet paid for is never money put in, whoever made
  * it. Its coins were counted already: as a deposit when they reached the
  * wallet, or they are the position's own, a rebalance's leftovers or
- * fees. Its receipt says which (`_walletPaidFor`). A compound LP Ranger
- * recorded as it made it (`recorded`) paid from the wallet, so its
- * receipt is not read. An addition soon after a drain is a rebalance's
- * (`_filterRebalances`), whose mint the fresh deposits cover.
+ * fees. Its receipt says whether the wallet paid (`_walletPaidFor`). A
+ * compound LP Ranger recorded as it made it (`recorded`) paid from the
+ * wallet, so its receipt is not read. An addition within
+ * `compound.repositionWindowSec` (app-runtime.json, 500000 seconds as
+ * shipped) after liquidity was removed from the same NFT is a
+ * reposition (`_filterRebalances`), not money put in.
  *
  * @param {{ilEvents: object[], dlEvents: object[]}} events  The NFT's
  *   IncreaseLiquidity events in chain order, the first its mint, and its
@@ -435,6 +439,8 @@ async function _processNft(i, tid, allNftEvents, ordered, opts, ctx) {
  * - 1st IL on first NFT  → original mint  → full amounts
  * - 1st IL on Nth NFT    → rebalance mint → fresh deposits via Transfer
  *   scan, an entry for each at its own block
+ * - Later IL within `compound.repositionWindowSec` (app-runtime.json)
+ *   after liquidity was removed from the same NFT → 0, a reposition
  * - Later IL the wallet paid for → 0, whoever made it
  * - Later IL another wallet paid for → full amounts, an entry of its own
  *

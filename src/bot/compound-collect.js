@@ -78,8 +78,10 @@ function _collectedUnits(reported, before, after) {
 }
 
 /**
- * Collect unclaimed fees from a position to the wallet.
- * Calls decreaseLiquidity(0) to update fee accounting, then collect(MAX).
+ * Collect unclaimed fees from a position to the wallet: one `collect`
+ * transaction asking for the most of each coin (`_MAX_UINT128`), whose
+ * position manager updates the fee accounting itself first
+ * (`pool.burn(0)`).
  * @param {import('ethers').Signer} signer
  * @param {object} ethersLib  ethers module
  * @param {object} opts

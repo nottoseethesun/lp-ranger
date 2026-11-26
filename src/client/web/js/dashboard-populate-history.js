@@ -2,10 +2,11 @@
  * @file dashboard-populate-history.js
  * @description Populates the Activity Log with historical events on cold
  *   load.  Two entrypoints, one per event type, both share the same
- *   shape: fire once per position-view, sorted ascending, gated on the
- *   server-side scan-complete flag when the position is running.  A
- *   managed position's pass also waits for its second data load
- *   (`canDrawPositionEntries`, `dashboard-activity-figures.js`), the
+ *   shape: fire once per position-view, sorted ascending, gated on a
+ *   server-side scan-complete flag when the position is running
+ *   (`rebalanceScanComplete` for rebalances, `lifetimeScanComplete` for
+ *   compounds).  A managed position's pass also waits for its second data
+ *   load (`canDrawPositionEntries`, `dashboard-activity-figures.js`), the
  *   answer that carries its pool key: as the server starts a position,
  *   its loop is not yet running, so the scan gate alone would let the
  *   pass draw entries that no pool key files.
@@ -83,7 +84,10 @@ export function populateRebalanceHistoryOnce(data, posLabel) {
 /**
  * Populate historical compound rows into the Activity Log.
  * One-shot per viewed position (latch = `_compoundHistoryPopulated`).
- * Mirrors `populateRebalanceHistoryOnce` line-for-line.
+ * Shaped like `populateRebalanceHistoryOnce`, with three differences: a
+ * running position waits for `lifetimeScanComplete`, an entry
+ * `formatCompoundHistoryEntry` cannot word is skipped, and an entry with
+ * no `tokenId` takes `fallbackTokenId`.
  *
  * @param {object} data              Flattened `/api/status` response.
  * @param {string} [posLabel]        Position-context label.

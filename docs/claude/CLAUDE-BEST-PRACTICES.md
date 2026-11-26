@@ -56,7 +56,7 @@ if (x !== undefined && x !== null && String(x) === "0") { ... }
 const v = x ?? defaultValue;
 ```
 
-Ten-plus explicit `!== undefined && !== null` guards already exist across the codebase (`dashboard-history.js:203`, `position-detector.js:272-273`, `dashboard-data.js:193`, etc.) — this section codifies that as the standard.
+Ten-plus explicit `!== undefined && !== null` guards already exist across the codebase (the tick reads in `position-detector.js`, the page index in `dashboard-history.js`, and others) — this section codifies that as the standard.
 
 ## Formatting & Line Limits
 

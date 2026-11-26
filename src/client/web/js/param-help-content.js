@@ -1,7 +1,9 @@
 /**
  * @file param-help-content.js
- * @description Educational content for every configurable dashboard parameter.
- * Each entry maps an input element key to a structured help object rendered
+ * @description Educational content for every circle-i help dialog: the
+ * configurable dashboard parameters, and the badges, panels and tables that
+ * carry a circle-i.  Each entry maps the `data-param-help` key of the
+ * circle-i that opens it to a structured help object rendered
  * by dashboard-param-help.js.  Content is separated from rendering for
  * editorial review and SEC compliance.
  *

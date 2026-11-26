@@ -118,9 +118,10 @@ function _positionState(key) {
  * Build the canonical composite key for a position on the active
  * chain.  Both EVM addresses are EIP-55 checksummed so the key
  * byte-exactly matches the server-side composite key (built via
- * `bot-config-v2.compositeKey` which also checksums).  Deliberately
- * does NOT accept the raw posStore values — every caller must go
- * through here.  Exported for tests.
+ * `bot-config-v2.compositeKey` which also checksums).  Every key this
+ * file sends is built here, never from the position store's addresses as
+ * stored, which can be in lower case; an address `ethers.getAddress`
+ * cannot read is logged and used as given.  Exported for tests.
  *
  * @param {string} walletAddress    The position's wallet.
  * @param {string} contractAddress  Its NFT position manager.
@@ -298,8 +299,9 @@ function _waitForReloadCompletion(key, startedAtMs) {
  * null until the first poll lands, and a position that has not reported
  * yet is not one to spend hours re-scanning.
  *
- * Exported as a pure decision so it can be driven directly against the
- * real template — see CLAUDE-TESTING.md § No Mirroring.
+ * Exported, and reading nothing but its arguments, so it can be driven
+ * directly against the real template — see CLAUDE-TESTING.md § No
+ * Mirroring.
  *
  * @param {DocumentFragment|Element} frag  The dialog's content.
  * @param {{managed: boolean, synced: boolean|null}} state

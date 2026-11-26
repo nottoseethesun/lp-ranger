@@ -6,18 +6,19 @@
  *
  *   An unmanaged position shows no Lifetime panel — `ltContent` is
  *   replaced by a placeholder telling the operator to click Manage — and
- *   no Per-Day P&L. So this phase computes neither. What it returns is
+ *   no Per-Day P&L. So this phase returns neither. What it returns is
  *   what such a position actually displays: the Rebalance Events table,
  *   and the Current panel's Fees Compounded and Gas.
  *
- *   That is why nothing here walks the rebalance chain. The per-NFT walk
- *   is the largest repeated cost in the app, and on this path it can
- *   only produce figures no panel renders. The Current panel's two come
- *   from a single-NFT scan bounded to that NFT's own mint block.
+ *   The Current panel's two come from a single-NFT scan bounded to that
+ *   NFT's own mint block.
  *
- *   Epochs already saved for the pool are still restored, so a position
- *   managed earlier keeps what it built then. Reconstruction from chain
- *   is not run.
+ *   The pool's epochs are still brought up to date. Epochs already saved
+ *   for the pool are restored, and `reconstructEpochs` keeps them when
+ *   they cover every closed NFT in the rebalance chain. Otherwise it
+ *   rebuilds them from the chain, reading the closed NFTs' history, and
+ *   the rebuilt epochs are saved for the pool. The answer drops their
+ *   Per-Day rows (`_withoutPerDayRows`).
  */
 
 "use strict";
@@ -164,10 +165,11 @@ function _withoutPerDayRows(snap) {
 /**
  * Enrich a tracker snapshot with the fields the unmanaged view shows.
  *
- * Current-panel figures only. An unmanaged position replaces the
- * Lifetime panel with a placeholder, so nothing renders a lifetime IL, a
- * lifetime compounded total or the lifetime HODL amounts — and resolving
- * the HODL costs a walk of the whole rebalance chain.
+ * The Current panel's figures, and the wallet's residuals with the initial
+ * residual from the shared cache. No lifetime IL, lifetime compounded
+ * total or lifetime HODL amounts: an unmanaged position replaces the
+ * Lifetime panel with a placeholder, and resolving the HODL costs a walk
+ * of the whole rebalance chain.
  */
 async function _enrichSnap(snap, cur, curComp, curGasUsd, entry, pos) {
   /*- The caller always passes an object; this only stops a future one
@@ -279,17 +281,12 @@ async function computeLifetimeDetails(provider, ethersLib, body, diskConfig) {
     decimals1: ps.decimals1,
   };
   /*-
-   *  Never the chain. Epoch reconstruction exists here to fill the
-   *  Per-Day P&L table, and that table is not shown for an unmanaged
-   *  position — which is every position this path serves. Reconstructing
-   *  would walk each NFT in the chain to produce rows nothing renders.
-   *
-   *  Epochs already in the pool cache are still restored, so a position
-   *  that was managed before keeps whatever it built then. What is gone
-   *  is this path ALSO warming that cache for a position that was never
-   *  managed: the bot reconstructs for itself on the first Manage, and
-   *  paying minutes up front for a table with no reader was the cost
-   *  this removes.
+   *  No shared chain read for epoch reconstruction: nothing else in this
+   *  request reads the whole chain of NFTs, so `reconstructEpochs` reads
+   *  the closed NFTs' history itself, and only when the pool's saved
+   *  history falls short of covering every closed NFT.  The rebuilt
+   *  epochs are saved for the pool, and the Per-Day rows are left out of
+   *  the answer, since an unmanaged position shows no such table.
    */
   const epochChainFor = () => undefined;
   const { tracker, events } = await _getLifetimeSnapshot(

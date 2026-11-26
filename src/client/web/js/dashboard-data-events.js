@@ -91,8 +91,10 @@ export function _shouldTriggerRebalanceScan(lastRebalanceAt, trackedAt) {
 /**
  * Pure post-scan decision: given the scan result plus the tracker
  * state, what should the follow-up do?  A `commit:false` outcome means
- * the tracker stays unset so the next poll re-fires the scan (the
- * user-reported retry-on-transient-failure path); `log:false` means
+ * the tracker is left as it is: unset after a failed scan, so the next
+ * poll re-fires the scan (the user-reported retry-on-transient-failure
+ * path), or already set to this rebalance by a concurrent handler;
+ * `log:false` means
  * the Activity-log entry is skipped (no event yet in the payload, or
  * a concurrent handler already committed).
  * @param {{ok?:boolean}|null|undefined} scanResult
@@ -160,7 +162,7 @@ function _handleRebalance(key, st, ctx) {
  * the position from the blockchain: before it, an entry would have no
  * position line and no pool to be filed under. The trackers wait too, so
  * the entries are drawn on the answer that brings it.
- * @param {object} data  `/api/status` response.
+ * @param {object} data  The status answer, flattened (`_allPositionStates`).
  */
 export function logAllPositionEvents(data) {
   for (const [key, st] of Object.entries(data._allPositionStates || {})) {

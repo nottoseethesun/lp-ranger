@@ -10,19 +10,23 @@
  * `position-history-scan-helpers.js` because it owns persistent state —
  * the two files next to it are stateless.
  *
- * **When this runs.** Almost never. `supplementFromEvents` fills both
+ * **When this runs.** Whenever a closed NFT's history has no mint
+ * transaction hash. `supplementFromEvents` fills both
  * the mint date and the mint TRANSACTION for every NFT a rebalance
  * created, reading each off that rebalance's own event. The chain's
  * oldest NFT has no such event — it appears only as an `oldTokenId` —
  * so it arrives here with a date and block stamped from the scanner's
- * `chainFirstMint*` fields and no transaction hash. That hash is the
+ * `chainFirstMint*` fields and no transaction hash. So does a closed
+ * position looked at on its own (src/bot/position-views.js), which comes
+ * with no rebalance events. That hash is the
  * reason this runs: `needsEntryFromChain` and the creation-gas read in
  * `position-history.js` both require it.
  *
- * **What it costs.** One block. The caller passes the block it already
- * knows, so the search does not walk a range. Without it the window
- * would run from the pool's creation to the chain head. The disk cache
- * then makes even that one request a once-ever cost per NFT.
+ * **What it costs.** One block when the caller passes the block it
+ * already knows, so the search does not walk a range. Without it the
+ * window runs from the later of the history lookback's floor and the
+ * pool's creation to the chain head. The disk cache then makes even that
+ * a once-ever cost per NFT.
  */
 
 "use strict";
@@ -138,7 +142,9 @@ async function _mintScanWindow(prov, tokenId, knownBlock, pmAddress) {
  * on-chain, and record it on `result`.
  *
  * @param {object} result   Result object to supplement. Read for
- *   `closeBlockNumber` (the scan's upper bound); written with
+ *   `mintBlockNumber`: when it holds a block, the search reads that one
+ *   block; otherwise it runs from the later of the history lookback's
+ *   floor and the pool's creation block to the chain head. Written with
  *   `mintDate`, `mintTxHash` and `mintBlockNumber`.
  * @param {string} tokenId  NFT token ID.
  * @param {object} [opts]

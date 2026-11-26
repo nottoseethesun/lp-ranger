@@ -38,8 +38,8 @@ const V3_ROUTER_LABEL = config.SWAP_ROUTER_NAME;
  * @param {object} signer
  * @param {object} ethersLib
  * @param {object} params  See swapIfNeeded in rebalancer-swap.js for fields.
- * @param {function} balanceDiff  Balance-diff wrapper (injected to avoid
- *   a circular dep with rebalancer-swap.js).
+ * @param {function} balanceDiff  Balance-diff wrapper
+ *   (src/bot/rebalancer-swap-balance.js), handed in by rebalancer-swap.js.
  */
 async function swapViaRouter(signer, ethersLib, params, balanceDiff) {
   const { swapRouterAddress, tokenIn, amountIn, approvalMultiple } = params;

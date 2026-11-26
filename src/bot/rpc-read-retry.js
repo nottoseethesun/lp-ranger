@@ -6,21 +6,23 @@
  *
  * The one retry loop for a read that an endpoint refused.
  *
- * Extracted from `src/bot/send-transaction.js` rather than living beside the
- * failover state it drives, for two reasons: that file sits on the
- * 500-line cap, and the dependencies arrive by injection here, so the
- * loop can be exercised directly without booting the transaction layer
- * or standing up providers.
+ * It is a module of its own, apart from the failover state it drives in
+ * `src/bot/send-transaction.js`, because four modules use it and because
+ * its dependencies arrive by injection, so the loop can be exercised
+ * directly without booting the transaction layer or standing up
+ * providers.
  *
- * **Injection is what lets one loop serve two very different callers.**
+ * **Injection is what lets one loop serve every caller.**
  * The loop never decides which endpoint to use; it asks `current()` and
- * reports failures to `failover()`. A caller that reads through the
- * managed read provider passes the process-wide selection, so its
- * retries follow whatever failover has chosen. A caller that must try
- * every endpoint regardless — `getPoolState`, whose answer the bot
- * cannot poll without — passes a cursor of its own instead, and so
- * walks the list without moving global selection for everyone else.
- * Both get the same reporting, the same recovery line and the same
+ * reports failures to `failover()`. Every caller passes the process-wide
+ * selection (`sendTx.getCurrentRPC` and `sendTx.failoverToNextRPC`), so
+ * its retries follow whatever failover has chosen, and each attempt's
+ * outcome goes to the same failure rate through `note`. The callers
+ * differ in what they retry and for how long: the managed read provider
+ * retries one provider method until some endpoint serves it, while pool
+ * state (`getPoolState`), the re-open check's wallet balances and the
+ * balance read after a swap each retry a whole read within a bound. All
+ * get the same reporting, the same recovery line and the same
  * accounting.
  *
  * **The unit of retry is a function, not a provider method.** One pool
@@ -162,9 +164,13 @@ function _logAttemptFailure(tag, label, attempt, maxAttempts, url, err) {
  * one's own is wrong whatever the outcome.
  *
  * Whether selection moved is deliberately not passed back. `failover`
- * answers `false` for three different situations and only one of them
- * means the next attempt faces the same endpoint, so the loop settles
- * that by looking at the provider it is handed instead.
+ * answers `false` for three different situations: the next attempt faces
+ * the same endpoint in two of them (a chain with one endpoint, a failure
+ * rate not yet crossed) and another in the third (a caller has already
+ * moved selection off the named endpoint). It answers `true` when it
+ * moves, and also when the list is spent, where selection stays put. So
+ * the loop settles whether the endpoint changed by looking at the
+ * provider it is handed instead.
  *
  * @param {(failed?: object) => boolean} failover  Reporting function.
  * @param {?object} failed  Provider whose failure is being reported.
@@ -246,10 +252,10 @@ async function retryRead({
     /*- Report, rather than command: this says an endpoint failed and
      *  lets selection decide.  Its answer is deliberately not used to
      *  choose whether to wait, because `false` conflates three
-     *  situations — the failure rate has not crossed, another caller
-     *  already moved us off this endpoint, or the whole list is spent —
-     *  and only the first of those leaves us asking the same endpoint
-     *  again.
+     *  situations — the chain has one endpoint, the failure rate has not
+     *  crossed, or another caller already moved us off this endpoint —
+     *  and the first two leave us asking the same endpoint again while
+     *  the third does not.
      *
      *  Reported only when there IS a failure.  A caller that arrives
      *  having already failed names the provider it saw fail and so

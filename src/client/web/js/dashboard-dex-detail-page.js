@@ -13,7 +13,8 @@
  *   the chain, the DEX domain, or the NFT contract.
  *
  *   The link is per-provider, so it is looked up with the position's
- *   own position-manager address against the sticky factory context —
+ *   own position-manager address on the active chain (`getProviderFor`,
+ *   dashboard-lp-providers.js) —
  *   a wallet holding LPs from two different v3 forks gets the right
  *   DEX for whichever position is on screen. A position whose provider
  *   configures no detail page simply hides the row.
@@ -44,8 +45,10 @@ function _resolve(positionManager, poolAddress) {
  * Populate (or hide) the Dex Detail Page row of the Pool Details
  * modal. Hidden rather than disabled when unavailable: unlike the
  * chart links — a fixed set where a greyed entry tells the user the
- * pool address hasn't loaded yet — this row's absence is a permanent
- * property of the provider, so showing a dead one would be noise.
+ * pool address hasn't loaded yet — this row's absence is normally a
+ * permanent property of the provider, so showing a dead one would be
+ * noise.  It is also hidden while the pool address or the provider list
+ * is missing.
  * @param {string|null|undefined} positionManager  NFT contract address.
  * @param {string|null|undefined} poolAddress
  */

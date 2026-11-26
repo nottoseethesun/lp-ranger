@@ -8,8 +8,10 @@
  *
  * Pure functions on the result object `getPositionHistory` builds, split
  * from `src/bot/position-history.js` at the 500-line cap. Each fills a field
- * only from a source that names this NFT, and none overwrites a value
- * already known.
+ * only from a source that names this NFT. The rebalance log's entries are
+ * applied first, to an empty record, and set their fields outright;
+ * `supplementFromEvents` then fills a date or a hash only where none is
+ * known, and sets the mint and close blocks from the events.
  */
 
 "use strict";

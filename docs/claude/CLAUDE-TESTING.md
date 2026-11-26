@@ -17,10 +17,10 @@ Runtime code changes done for testability must be behaviour-neutral under the bu
 
 ## Test Runner
 
-Node built-in `node:test` runner + ganache (in-memory EVM for blockchain mocks). Run with:
+Node's built-in `node:test` runner. No chain runs under the tests: each fakes ethers and the rpc endpoints with stubs, and the price services and the aggregator with the helpers in `test/helpers/` (see "No outside service asked" below). Run with:
 
 ```bash
-npm test                # node --test test/*.test.js
+npm test                # node --test on test/, test/eslint-rules/, test/stylelint-rules/ and util/test/
 npm run test:coverage   # with --experimental-test-coverage (Node 20+)
 npm run test:watch      # watch mode
 npm run check           # Combined lint (JS+CSS) + test + coverage check (≥80%)
@@ -130,7 +130,7 @@ The `app-config/app-defaults-for-user-configurable/` subdir (including the track
 **`app-data/scan-cache/` directory (`src/lib/scan-cache-dir.js`; under `node --test` each test process has its own instead):**
 
 - `pnl-epochs-cache.json` — reconstructed P&L epochs (expensive to rebuild)
-- `historical-price-cache.json` — GeckoTerminal OHLCV prices (rate-limited API)
+- `historical-price-cache.json` — historical token prices, from Moralis or GeckoTerminal
 - `block-time-cache.json` — block-number → timestamp cache
 - `gecko-pool-cache.json` — GeckoTerminal pool base/quote orientation, and which pool a bare token's price is read from
 - `event-cache-*.json` — per-pool rebalance event scan results
@@ -165,9 +165,11 @@ That file is the operator's own log — `--log-file` opens it in append
 mode, so it accumulates across runs and a delete is permanent. It is
 gitignored, so its loss is reported nowhere and the suite still exits 0.
 
-The path that reaches it is `_DEFAULT_PATH` in `src/lib/boot-log-file.js`:
-it is the relative `"logs/lp-ranger.log"`, and `enableLogFile` resolves
-it against `process.cwd()`. Any test that boots the logger from the
+The path that reaches it is logging.json's `path`, the relative
+`"logs/lp-ranger.log"` as shipped, which `bootLogFile`
+(`src/lib/boot-log-file.js`) takes when `--log-file` names no path, and
+which `resolveLogFilePath` (`src/lib/log-file.js`) resolves against
+`process.cwd()`. Any test that boots the logger from the
 repo root without supplying an explicit path therefore opens the live
 file. Run such a test in a `mkdtempSync` working directory instead —
 `loadMergedDefaults` resolves from `__dirname`, so moving cwd does not
@@ -180,7 +182,7 @@ When adding a new disk-backed cache or config file:
 
 1. If it's a scan cache → name its file with `scanCachePath` (`src/lib/scan-cache-dir.js`), which puts it in `app-data/scan-cache/`, or under `node --test` in the test process's own folder. Protected by the backup pass, and out of every test's reach.
 2. If it's runtime state the operator chose (may include user secrets) → put it in `app-config/user-configurable/`; if it's state the bot records → in `app-data/`. Both folders are protected by the backup pass.
-3. If it's a tracked shipped default → put it in `app-config/app-defaults-for-user-configurable/`. Excluded from the protection scan (it's committed to git). Operators override at the matching `app-config/user-configurable/<same-name>.json` (gitignored, protected by the backup pass). Every value in a file there is checked for type and range by `test/shipped-config-values.test.js`: by its range in `setting-bounds.json`, by the timer rule, or by the kind of value its entry in that test's `RULES` names. A value, or a file, with no rule fails that test, naming it, until it is given one; a file that holds no defaults is named in `NOT_DEFAULTS` instead. `npm run check` runs that test and `test/setting-bounds.test.js` before every other test (`configValueTests()` in `scripts/check.js`), so a wrong shipped value is reported as the cause before the failures it causes.
+3. If it's a tracked shipped default → put it in `app-config/app-defaults-for-user-configurable/`. Excluded from the protection scan (it's committed to git). Operators override at the matching `app-config/user-configurable/<same-name>.json` (gitignored, protected by the backup pass). Every value in a file there is checked for type and range by `test/shipped-config-values.test.js`, against the file's JSON Schema in `src/lib/settings-file-rules.js` (`SETTINGS_FILE_SCHEMAS`), the one the startup check holds an install's own values to. A schema names every key its file takes and requires each, so a value added to a shipped file fails that test, naming it, until its schema names it; a file that holds no settings is named in `NOT_SETTINGS_FILES` instead. `npm run check` runs that test, `test/setting-bounds.test.js` and `test/shipped-env-example-values.test.js` before every other test (`configValueTests()` in `scripts/check.js`), so a wrong shipped value is reported as the cause before the failures it causes.
 4. Document new files in this file under "Protected files".
 
 ### Vanilla state

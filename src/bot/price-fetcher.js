@@ -118,7 +118,7 @@ const _cache = new Map();
  *  5. Return 0 if all sources fail or return no data.
  *
  * A service the chain's entry gives no id for is skipped. All network
- * errors are caught and logged via `console.warn` so that callers never
+ * errors are caught and logged via `log.warn` so that callers never
  * receive a rejected promise.
  *
  * @param {string} tokenAddress - ERC-20 contract address.
@@ -475,14 +475,15 @@ async function _fetchHistoricalPair(
  * Fetch historical USD prices for both tokens in a pool on the active
  * chain. When `token0Address` and `token1Address` are provided, results are
  * cached to disk (via price-cache) under the chain, keyed by token contract
- * address + UTC date.
+ * address + the block (`@<block>`) when one is given, else the UTC date.
  *
  * @param {string} poolAddress  - V3 pool contract address.
  * @param {number} timestamp    - Unix seconds of the target date.
  * @param {object} [opts]       - Optional token addresses for disk caching.
  * @param {string} [opts.token0Address] - Token0 contract address.
  * @param {string} [opts.token1Address] - Token1 contract address.
- * @param {number} [opts.blockNumber]   - Block number for Moralis fallback.
+ * @param {number} [opts.blockNumber]   - The block the prices are wanted at:
+ *   Moralis's query, and the cache key.
  * @param {boolean} [opts.refresh]      - Fetch even when the price is cached,
  *   and overwrite the cached entry with what comes back.
  * @returns {Promise<{price0: number, price1: number}>} Historical USD prices.

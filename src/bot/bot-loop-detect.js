@@ -44,8 +44,9 @@ const { withFreshPricesAllowed } = require("./price-fetcher-gate");
  *  Four attempts with doubling backoff (750/1500/3000 ms = 5.25 s
  *  total) converts a blip — or even a sustained primary-RPC outage —
  *  into a brief pause.  Between attempts we also call
- *  `opts.onRpcFailure()` (wired to `sendTx.failoverToNextRPC()` in
- *  production) so the next attempt is routed through the fallback RPC.
+ *  `opts.onRpcFailure()`, when the caller passes one (the bot loop
+ *  passes none: its provider follows failover itself), so the next
+ *  attempt can be routed through the fallback RPC.
  *  Sticky failover is idempotent and self-healing (1 h window then
  *  auto-reverts), so erroneous engagement on a truly empty wallet is
  *  cheap.  See PR fix-no-nft-found-error. */
@@ -77,12 +78,12 @@ function _pickBestNft(valid) {
  * @param {string} address    Wallet address.
  * @param {string} [targetId] Specific NFT token ID to select.
  * @param {object} [opts]
- * @param {() => object} [opts.getProvider]  Per-attempt provider getter
- *   (production wires this to `sendTx.getCurrentRPC` so failover
- *   re-routes reads).  Defaults to the static `provider` arg.
+ * @param {() => object} [opts.getProvider]  Per-attempt provider getter,
+ *   so a failover re-routes the next attempt.  Defaults to the static
+ *   `provider` arg; its one caller passes none.
  * @param {() => void} [opts.onRpcFailure]   Called between attempts when
- *   the detector returns no usable result (production wires this to
- *   `sendTx.failoverToNextRPC`).  Defaults to no-op.
+ *   the detector returns no usable result.  Defaults to no-op; its one
+ *   caller passes none.
  * @returns {Promise<object>} Selected position data.
  */
 /**

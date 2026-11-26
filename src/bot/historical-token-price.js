@@ -33,9 +33,10 @@
  * the caller wants, since the alternative is hundreds of API calls to
  * move a gas figure by a fraction of a cent.
  *
- * A failed lookup answers `0`. Callers decide what that means; for gas,
- * zero must not be mistaken for "free", so the caller falls back rather
- * than recording it.
+ * A failed lookup answers `0`, and each caller decides what that means.
+ * For a closed period's gas (`pastGasCostUsd`, src/bot/bot-pnl-updater.js),
+ * zero must not be mistaken for "free", so the Per-Day table shows a dash
+ * for that period's gas, Profit and Net P&L rather than record it.
  */
 
 "use strict";

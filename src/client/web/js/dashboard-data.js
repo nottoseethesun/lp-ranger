@@ -1,6 +1,7 @@
 /**
  * @file dashboard-data.js
- * @description Polls /api/status, updates live UI elements.
+ * @description Updates live UI elements from each answer to the
+ * /api/status poll, which dashboard-data-poll.js makes.
  */
 import { log } from "./dashboard-log.js";
 import { g, botConfig } from "./dashboard-helpers.js";
@@ -182,8 +183,9 @@ export function applySyncBlur(force) {
  * circuits in phase 1 (drained detected → closed view, phase 2 skipped)
  * so the server never writes rebalanceScanComplete for them.  Treat the
  * closed view itself as the synced signal: once isViewingClosedPos()
- * returns true, the one-shot closed-pos history fetch has landed and
- * there is nothing else to sync.
+ * returns true there is nothing else to sync.  Its history request may
+ * still be out; the figures stay stale until it answers
+ * (dashboard-stale-data.js).
  */
 function _syncStatus(d) {
   const active = posStore.getActive();
@@ -429,9 +431,9 @@ function _syncManagedAndGlobals(data) {
     botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
   _syncOorThreshold(data);
   /*- Per-poll so it retries on the "Manage on unmanaged position"
-   *  flow.  Each sync inside `syncBotSettingsConfigInputs`
-   *  self-throttles internally against dirty inputs and the
-   *  last-seen posKey — cadence rationale in
+   *  flow.  Each sync inside `syncBotSettingsConfigInputs`, but
+   *  `syncRangeOverride`, self-throttles internally against dirty
+   *  inputs and the last-seen posKey — cadence rationale in
    *  `dashboard-data-range-width.js`'s file header. */
   syncBotSettingsConfigInputs(data);
 }
@@ -577,7 +579,10 @@ initDataPoll(_statusAnswered);
  * dashboard-config-save.js, which empties a box whose value the server
  * refused and has it filled this way.
  *
- * @returns {Promise<void>}  Settled once the answer is applied.
+ * @returns {Promise<void>}  Settled once the answer is applied; at once,
+ *   with nothing applied yet, when a status poll is already out, whose
+ *   answer then fills the boxes; with nothing applied when the request
+ *   gets no answer.
  */
 function _refillFromServer() {
   _configSynced = false;

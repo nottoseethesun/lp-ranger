@@ -115,8 +115,13 @@ export function _computeSyncStatus(inputs) {
 }
 
 /**
- * Pure rebalance-follow decision.  See docs in the caller
- * (`_resolveManagedTid` in `dashboard-data.js`).
+ * Pure rebalance-follow decision: whether the position on screen has been
+ * rebalanced into a managed position's new NFT, so the screen should
+ * follow it.  Nothing to follow when the NFT on screen is itself one of
+ * the managed positions.  Otherwise the first managed position whose
+ * rebalance events show a rebalance from the NFT on screen to its own NFT
+ * is followed, and `_resolveManagedTid` in `dashboard-data.js` moves the
+ * position store's entry to it.
  * @param {{tokenId:string|number}} a
  * @param {Array<{tokenId:string|number, key:string}>} mp
  * @param {Record<string, {rebalanceEvents?:Array}>} states

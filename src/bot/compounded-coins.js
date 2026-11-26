@@ -316,7 +316,9 @@ function compoundedUnits(deposited, record) {
  * so a list of records needs no `recorded`.
  *
  * @param {object[]|undefined} entries  The compounds.
- * @param {Map<string, object>} [recorded]  From `recordedCompounds`.
+ * @param {Map<string, object>} [recorded]  From `feeRecords`: the
+ *   entries that name the fees their deposits put back, recorded live or
+ *   worked out from the chain.
  * @param {number} d0  Token0's decimals.
  * @param {number} d1  Token1's decimals.
  * @returns {{amount0: number, amount1: number}}

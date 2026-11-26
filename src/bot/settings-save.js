@@ -191,9 +191,9 @@ function _refusal(body, gPatch, pPatch) {
  *
  * Neither is optional; do not "simplify" this to one call.
  *
- * Failures are logged, not thrown: the value is already saved, and a
- * bad URL must not take down the config endpoint. The next restart
- * picks it up regardless.
+ * Failures are logged, not thrown: the value is already in the config,
+ * which the save writes to the file right after, and a bad URL must not
+ * take down the config endpoint. The next restart picks it up regardless.
  * @param {string[]} saved  The operator-added endpoints just saved.
  */
 function _applyRpcUrls(saved) {

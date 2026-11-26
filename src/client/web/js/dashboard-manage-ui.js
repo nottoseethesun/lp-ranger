@@ -158,10 +158,12 @@ export function injectManageUIDeps(deps) {
  * rest of the inputs give. The click's label comes first, since it says
  * what the button is waiting for.
  *
- * Fully pure — all inputs are primitives or plain objects; no DOM
- * access, no module-level state reads, no external function calls.
- * `paintManageUI()` is the caller that gathers the inputs from
- * posStore + getLastStatus + DOM; this function just decides.
+ * Pure — all inputs are primitives or plain objects; no DOM access and
+ * no module-level state reads.  Its one call outside this file,
+ * `abortReasonSummary`, is pure too.  `paintManageUI()` is the caller
+ * that gathers the inputs from posStore + getLastStatus +
+ * `isSyncComplete` + the wallet + this module's own waits; this function
+ * just decides.
  *
  * @typedef {object} UISpec
  * @property {string}  buttonText
@@ -182,7 +184,9 @@ export function injectManageUIDeps(deps) {
  *   null when no poll has landed yet for this position.
  * @param {boolean}     inputs.positionManaged  Whether the server manages
  *   the active position, from the managed set.
- * @param {boolean}     inputs.syncComplete     Sync-done DOM class state.
+ * @param {boolean}     inputs.syncComplete     Whether the active
+ *   position's sync is complete (`isSyncComplete() === true`); false until
+ *   a poll has said so.
  * @param {boolean}     inputs.walletUnlocked
  * @param {{text?: string, title: string}|null} inputs.manageInFlight
  *   The label of the active position's click in flight, or null.
@@ -411,8 +415,10 @@ function _pausedHelp(posState) {
   );
 }
 
-/** Closed + synced sub-tree.  Decision order matters — see the
- *  "Branch-precedence audit" in the plan file. */
+/** Closed + synced sub-tree.  Decision order matters: the first of a
+ *  re-open's rebalance under way, its mint being retried from the wallet,
+ *  a re-open that just failed, and the wait after a retire that holds
+ *  decides. */
 function _computeClosedSynced(posState, nowMs, retireDebounceMs) {
   let disabled = false;
   let title = _MANAGE_REOPEN_HELP;
@@ -530,7 +536,8 @@ function _paintBadge(spec) {
  *  this returns, using the canonical key from `src/lib/pool-key.js`.
  *  That rule cannot be imported here (CommonJS), and the position being
  *  managed is unmanaged, so the server has not attached a pool key for
- *  it. The comparison is therefore repeated on the raw triple.
+ *  it. Its key is therefore built here, by `_poolKeyOf`, and compared
+ *  with the one the server attaches to each running position's state.
  *
  *  Drift is tolerable precisely because this is advisory: if the two
  *  ever disagree, the button is offered and the server refuses the
@@ -610,8 +617,9 @@ function _samePool(a, b) {
  *
  * Returns a tokenId string when some OTHER closed position in the same
  * pool is newer, meaning `active` must not be re-opened; null when
- * `active` is the newest closed one, is not closed, or the comparison
- * cannot be made.
+ * `active` is the newest closed one, or the comparison cannot be made.
+ * It does not read `active`'s own liquidity: `paintManageUI` asks only
+ * about a closed position.
  *
  * Compared as BigInt, not as text: NFT ids grow with mint order, so
  * numeric order IS recency, but "#99" sorts after "#100" as a string

@@ -38,14 +38,14 @@ let _ready = null;
  * The server's preferred endpoint, waiting for the list if it is still
  * loading.
  *
- * Exists because the synchronous getter has a window where it answers
- * "" — between page load and the endpoint list arriving. A caller that
- * built an ethers provider from that "" got one whose calls all throw,
- * and the nearest catch turned that into "this wallet has no on-chain
- * activity", i.e. an existing wallet reported as brand new. Waiting
- * removes the window; the only way to still get "" is the endpoint
- * request itself failing, which callers must handle as "unknown"
- * rather than as an answer.
+ * Exists because a getter that answered at once would have a window where
+ * it answers "" — between page load and the endpoint list arriving. A
+ * caller that built an ethers provider from that "" would get one whose
+ * calls all throw, and the nearest catch would turn that into "this
+ * wallet has no on-chain activity", i.e. an existing wallet reported as
+ * brand new. Waiting removes the window; the only way to still get "" is
+ * the endpoint request itself failing, which callers must handle as
+ * "unknown" rather than as an answer.
  * @returns {Promise<string>}
  */
 export async function rpcUrlReady() {
@@ -57,10 +57,11 @@ export async function rpcUrlReady() {
 /**
  * The endpoints the operator added, newest first.
  *
- * The Add RPC dialog prepends to this list. It is the operator's own
- * list only — never the shipped endpoints — so that adding one does not
- * silently copy the shipped set into saved config, where it would then
- * stop tracking `chains.json`.
+ * The Add RPC dialog and a pick in the dropdown prepend to this list. It
+ * is the operator's own list only — never the whole shipped set, though
+ * a shipped endpoint picked as primary is in it — so that a write does
+ * not silently copy the shipped set into saved config, where it would
+ * then stop tracking `chains.json`.
  * @returns {string[]}
  */
 export function savedRpcUrls() {

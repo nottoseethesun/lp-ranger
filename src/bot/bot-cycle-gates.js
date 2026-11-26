@@ -10,8 +10,13 @@
  * which turns it down. It never meets a running scan here: the server
  * refuses one while a scan is running on the position, and no scan
  * starts while one waits (src/bot/scan-state.js). Split out of
- * src/bot/bot-cycle.js, which composes them (`_checkRebalanceGates`) and runs
- * them on each poll that finds the position out of range.
+ * src/bot/bot-cycle.js, whose `_decideRebalance` runs them, with
+ * `snapForGuard` between the two halves, on each poll that finds the
+ * position out of range past its threshold or timeout, or that has a
+ * Rebalance Now or a residual cleanup asked for (`forceRebalance`). A
+ * residual cleanup meets every gate, as an automatic rebalance does.
+ * `_checkRebalanceGates` in that file runs the two halves with no
+ * `snapForGuard` between them; only tests call it.
  *
  * The Guard is split from the gates before it so that, once the earlier
  * gates have passed, the figures it measures with can be worked out again
@@ -127,8 +132,9 @@ function gatesFromGuard(deps, poolState, forced, snap, notifyPos) {
  * The Guard compares the position with holding the coins its NFT was
  * minted with, at today's prices, and reads both from this poll's
  * figures. While price lookups are paused (the dashboard idle or closed,
- * and always under `npm run bot`), they carry the last prices fetched,
- * of any age.
+ * and under `npm run bot` unless it was started with
+ * `--start-with-price-lookups-unpaused`), they carry the last prices
+ * fetched, of any age.
  * A rebalance is due because the price has moved, so an old price makes
  * the loss look smaller than it is, and the Guard could let through the
  * rebalance it exists to stop. The figures are then worked out again

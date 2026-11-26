@@ -73,7 +73,11 @@ function _savedOverride(key) {
   };
 }
 
-/** Open the price override dialog, pre-populated with current prices. */
+/**
+ * Open the price override dialog for the position on screen.  Each price
+ * field shows the override the server keeps for it, else the price the
+ * last details answer gave an unmanaged position, else nothing.
+ */
 export function openPriceOverrideDialog() {
   const active = posStore.getActive();
   if (!active) return;

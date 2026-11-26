@@ -3,10 +3,11 @@
  * @module position-views
  * @description
  * What the bot reads from the chain for a position the dashboard shows:
- * an unmanaged position's quick details and lifetime figures, and a
- * closed position's history. The details and lifetime figures return a
- * result the server answers with (src/server/bot-result.js); the history
- * is the record itself.
+ * an unmanaged position's details in two phases (the quick figures, then
+ * the pool's rebalance events and the Current panel's figures,
+ * src/bot/position-details.js), and a closed position's history. The two
+ * phases return a result the server answers with
+ * (src/server/bot-result.js); the history is the record itself.
  *
  * The bot's own: the server reaches it only through the bot's interface
  * (src/bot/bot-interface.js).
@@ -154,7 +155,8 @@ function createPositionViews(deps) {
   }
 
   /**
-   * A position's lifetime figures, read from the chain.
+   * Phase 2 of a position's details: the pool's rebalance events and the
+   * Current panel's figures, read from the chain.
    * @param {object} body  As for `positionDetails`.
    * @returns {Promise<object>}  The result (src/server/bot-result.js).
    */

@@ -271,11 +271,13 @@ function _setRetryDelayForTests(ms) {
  * Each attempt validates every returned field (`PoolStateInvalidError`
  * on any failure — see `_getPoolStateOnce`).  An attempt that fails
  * for any reason (invalid data, RPC error, network timeout) is
- * retried: each configured RPC is tried up to
- * `boundedReadAttemptsPerEndpoint` times, with a
- * `boundedReadRetryDelayMs` wait before asking the SAME endpoint
- * again — moving to a different one is not a reason to wait.  After
- * spending that budget across every configured RPC it throws
+ * retried, within a budget of `boundedReadAttemptsPerEndpoint`
+ * attempts for each endpoint in service (`sendTx.endpointCount()`).  The
+ * budget counts attempts, not endpoints: each attempt goes to whichever
+ * endpoint selection holds, so one endpoint can take every attempt.
+ * Before asking the SAME endpoint again it waits
+ * `boundedReadRetryDelayMs` — moving to a different one is not a reason
+ * to wait.  Once the budget is spent it throws
  * `PoolStateUnavailableError`, wrapping the most recent underlying
  * error.  That error is what the dashboard renders as
  * `pool-info-unavailable` and what `bot-cycle.js` turns into a
@@ -320,7 +322,8 @@ function _setRetryDelayForTests(ms) {
  * @param {object} ethersLib    ethers module.
  * @param {object} opts         Same shape as `_getPoolStateOnce`.
  * @returns {Promise<object>}   Validated pool state.
- * @throws {PoolStateUnavailableError}  All RPCs exhausted.
+ * @throws {PoolStateUnavailableError}  When the attempt budget is spent
+ *   without a valid answer.
  */
 async function getPoolState(ethersLib, opts) {
   return retryRead({

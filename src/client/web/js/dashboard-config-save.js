@@ -41,7 +41,8 @@ let _refill = null;
  *
  * @param {() => Promise<void>} refill  Asks the server about the
  *   position on screen and fills the boxes from its answer; settled once
- *   that answer is applied.
+ *   that answer is applied, or sooner when a status poll is already out
+ *   or the request gets no answer (`_refillFromServer`, dashboard-data.js).
  * @returns {void}
  */
 export function announceRefill(refill) {

@@ -7,9 +7,9 @@
  * layered defaults+user-override loader) for the operator-level
  * `{enabled, path}` defaults — operators override at
  * `app-config/user-configurable/logging.json`.  When either source
- * opts in, requires `./log-file` and enables teeing before any other
- * module produces output — so the file captures the version banner
- * and every startup line, not just runtime logs.
+ * opts in, it enables teeing (`enableLogFile`, src/lib/log-file.js)
+ * before any other module produces output — so the file captures the
+ * version banner and every startup line, not just runtime logs.
  *
  * Precedence:
  *   1. `--log-file <path>`     → enable, use <path>
@@ -23,8 +23,8 @@
  * run's log that this run will not replace.
  *
  * When neither the CLI nor the config supplies a path, log-to-file stays
- * off and says so.  Called from server.js and bot.js as the very first
- * executable statement after `"use strict"`.
+ * off and says so.  Called from server.js and bot.js right after their
+ * `--help` check, which prints the help and exits when asked.
  */
 
 "use strict";

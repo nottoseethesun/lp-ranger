@@ -3,11 +3,14 @@
  * @description A dialog waiting for a position's scan to end.
  *
  * The server refuses a Rebalance Now or a Compound Now while a scan is
- * running on the position (`scanInProgress`, src/bot/scan-state.js). The
- * dialog the request came from then waits: the server's words beside a
- * spinner, Cancel, and no confirm button. Once a status answer says the
- * scan has ended, the notice goes and the confirm button comes back, so
- * the move is confirmed at that moment's price.
+ * running on the position (`scanInProgress`, src/bot/scan-state.js). A
+ * dialog then waits: for a Rebalance Now, the dialog the request came
+ * from; for a Compound Now, which is sent with no dialog, the Compound
+ * Now dialog that opens on the refusal (dashboard-compound.js). It shows
+ * the server's words beside a spinner, Cancel, and no confirm button.
+ * Once a status answer says the scan has ended, the notice goes and the
+ * confirm button comes back, so the move is confirmed at that moment's
+ * price.
  *
  * Each dialog keeps its wait in an object of its own, `{ noticeId,
  * confirmId, key, timer }`: the ids of its notice and its confirm button,

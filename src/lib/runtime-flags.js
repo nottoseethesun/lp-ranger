@@ -2,15 +2,20 @@
  * @file src/lib/runtime-flags.js
  * @module runtime-flags
  * @description
- * Runtime, environment-derived flags and helpers for LP Ranger. Anything
- * sourced from `process.env`, `process.argv`, or computed by selecting
- * a row out of `chains.json` (loaded via the layered defaults+user-
- * override loader; operators override at
- * `app-config/user-configurable/chains.json`) lives here. Pure tracked
- * data (ports, timeouts, aggregator URL, etc.) lives in
+ * Runtime, environment-derived flags and helpers for LP Ranger. The
+ * flags it exports are sourced from `process.env`, `process.argv`, or
+ * computed by selecting a row out of `chains.json` (loaded via the
+ * layered defaults+user-override loader; operators override at
+ * `app-config/user-configurable/chains.json`). The rest of `.env` is read
+ * where it is used, through `readEnv` (src/lib/env-settings.js): by
+ * `src/lib/config.js`, and by each module whose file a variable moves,
+ * except the two settings folders, which the layered loader reads
+ * itself. Pure tracked data (ports, timeouts, etc.) lives in
  * `app-config/app-defaults-for-user-configurable/app-runtime.json`,
  * loaded through the same layered loader by `src/lib/config.js` and — for
- * `defaults.chain`, the shipped fallback behind `CHAIN_NAME` — here.
+ * `defaults.chain`, the shipped fallback behind `CHAIN_NAME` — here. A
+ * chain's own figures, its aggregator url among them, live in its entry
+ * in `chains.json`.
  *
  * `src/lib/config.js` re-exports the flags its callers use, so they keep
  * working; new code can import directly from this module when it only

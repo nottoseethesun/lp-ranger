@@ -1,8 +1,8 @@
 /**
  * @file dashboard-positions.js
  * @description Position browser UI, scanning,
- *   routing, and activation for the 9mm v3
- *   Position Manager dashboard.
+ *   routing, and activation for the LP Ranger
+ *   dashboard.
  *
  * Depends on: dashboard-helpers.js, dashboard-wallet.js,
  *             dashboard-positions-store.js.

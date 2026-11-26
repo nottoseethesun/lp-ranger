@@ -8,16 +8,20 @@
  * Threshold formula (chain-agnostic — gas opcodes are the same on all
  * EVMs, so scaling from a 21k send is portable):
  *
- *   floor       = SEND_GAS × WORST_CASE_GAS_FACTOR            (one worst-case rebalance)
- *   recommended = SEND_GAS × WORST_CASE_GAS_FACTOR × SAFETY × positionCount
+ *   floor       = gasPrice × SEND_GAS × WORST_CASE_GAS_FACTOR   (one worst-case rebalance)
+ *   recommended = gasPrice × SEND_GAS × WORST_CASE_GAS_FACTOR × SAFETY × positionCount
+ *
+ * where gasPrice is the network's current gas price, so both are amounts
+ * of the native coin to compare with the wallet's balance.
  *
  * All three numeric inputs — `worstCaseGasFactor`, `safetyMultiplier`,
- * `standardSendGas` — are loaded at module init from the
- * `lowGasThresholds` group in
- * `app-config/app-defaults-for-user-configurable/bot-config-defaults.json` so operators can
- * retune without editing code.  The defaults match the shipped JSON and
- * are also used as a fallback when the file is missing/malformed, so
- * the guard never silently disables itself.
+ * `standardSendGas` — are read when the module loads, from the
+ * `lowGasThresholds` group of bot-config-defaults.json: the shipped copy
+ * in `app-config/app-defaults-for-user-configurable/`, with an operator's
+ * copy in `app-config/user-configurable/` over it, so operators can
+ * retune without editing code.  The startup check refuses a value outside
+ * its range in setting-bounds.json, and a copy that is not valid json,
+ * so the guard never silently disables itself.
  *
  * The shipped default `worstCaseGasFactor = 91` was derived from
  * observed PulseChain logs for a rebalance that fired all three
@@ -38,9 +42,12 @@
  * Both reset when balance recovers to 'ok'.  Dropping ok → critical
  * directly fires only 'veryLowGas' (strictly more severe).
  *
- * The module also keeps a singleton of the latest observation so the
- * /api/status handler can surface gas status to the UI without making
- * its own RPC call on every 3s poll.
+ * The module also keeps a singleton of the latest observation, taken by
+ * the `checkGasBalance` that follows each poll (src/bot/bot-loop.js), so
+ * the bot's status report (src/bot/status-report.js, which answers
+ * `GET /api/status`) can surface gas status to the UI without an rpc
+ * call of its own on every dashboard poll (`dashboardPollIntervalMs`,
+ * three seconds as shipped).
  */
 
 "use strict";
@@ -72,8 +79,11 @@ const SAFETY_MULTIPLIER = _TUNABLES.safetyMultiplier;
 /** Standard EVM send gas (default 21,000). See tunables JSON. */
 const SEND_GAS = BigInt(_TUNABLES.standardSendGas);
 
-/** Singleton of the latest raw observation — updated by checkGasBalance,
- *  consumed by the /api/status handler. */
+/**
+ * Singleton of the latest raw observation: set by `getGasStatus`, which
+ * `checkGasBalance` calls, and read by `buildGasStatusPayload` for the
+ * bot's status report.
+ */
 let _latestObservation = null;
 
 /** Wallet-level shared alert state keyed by address.  Gas is a wallet
@@ -100,8 +110,9 @@ function _resetSharedAlertState() {
 
 /**
  * Compute gas status tier from raw balance + gasPrice + position count.
- * Pure function — no I/O — so the server can recompute tier cheaply
- * whenever positionCount changes.
+ * Pure function — no I/O — so the bot's status report
+ * (`buildGasStatusPayload`) can recompute the tier cheaply whenever
+ * positionCount changes.
  *
  * @param {object} opts
  * @param {bigint} opts.balanceWei

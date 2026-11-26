@@ -1,12 +1,16 @@
 /**
  * @file dashboard-il-debug.js
- * @description IL/G (Impermanent Loss/Gain) debug popover for the 9mm v3
- * Position Manager dashboard.  Shows the actual values used in the HODL
+ * @description IL/G (Impermanent Loss/Gain) debug popover for the LP
+ * Ranger dashboard.  Shows the actual values used in the HODL
  * comparison calculation so the user can verify the IL/G result.
  *
- * The IL formula (from src/bot/il-calculator.js):
+ * The IL formulas (`ilFigures` in src/bot/bot-pnl-il.js, which calls
+ * `computeHodlIL` in src/bot/il-calculator.js):
  *   hodlValue = hodlAmount0 × currentPrice0 + hodlAmount1 × currentPrice1
- *   IL = lpValue − hodlValue
+ *   IL = (lpValue − compounded + residual) − hodlValue
+ * `compounded` is the fees compounded into the liquidity, priced now;
+ * `residual` is the Wallet Residual, which only the Lifetime figure
+ * counts.
  *
  * Two IL values are shown:
  *   - **Current position** (totalIL): uses baseline deposited amounts from
@@ -20,7 +24,8 @@
  * The amounts arrive in `ilInputs` already summed, so the popover shows
  * the coins each figure was measured against.
  *
- * Depends on: dashboard-helpers.js (g).
+ * Depends on: dashboard-helpers.js (cloneTpl),
+ * dashboard-events-manage.js (reapplyPrivacyBlur).
  */
 
 import { cloneTpl } from "./dashboard-helpers.js";
@@ -130,7 +135,8 @@ function _pct(now, hodl) {
  * @param {string} t0sym      Token0 symbol.
  * @param {string} t1sym      Token1 symbol.
  * @param {string} baseLabel  Baseline label ("HODL" or "Initial Deposit for This LP").
- * @returns {string} HTML string (empty if no current amounts).
+ * @returns {DocumentFragment|null} The block; null when the current amounts
+ *   are not numbers or the template is missing.
  */
 function _buildNowVsHodl(now0, now1, base0, base1, t0sym, t1sym, baseLabel) {
   if (!Number.isFinite(now0) || !Number.isFinite(now1)) return null;
@@ -166,7 +172,8 @@ function _buildNowVsHodl(now0, now1, base0, base1, t0sym, t1sym, baseLabel) {
  * @param {number|null} ilResult  Computed IL value.
  * @param {string} t0sym       Token0 symbol.
  * @param {string} t1sym       Token1 symbol.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment|null} The section; null when the template is
+ *   missing.
  */
 /*- One-line explanatory blurb shown directly below the heading.  Per
  *  the user-approved wording, covers only the Lifetime IL/G case; the
@@ -283,7 +290,9 @@ function _tokenSymbols() {
 }
 
 /**
- * Show the IL debug popover near the clicked info icon.
+ * Show the IL debug popover, a dialog centred over the dimmed page.
+ * Nothing is shown when the position's answer carries no
+ * `pnlSnapshot.ilInputs`.
  * @param {'cur'|'lt'} panel  Which panel's icon was clicked.
  */
 export function showILDebug(panel) {

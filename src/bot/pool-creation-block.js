@@ -12,9 +12,10 @@
  * persisted to disk under the canonical key `chain-factory-pool`
  * (`cacheKey` in `src/lib/cache-store.js`).
  *
- * Failure returns `0`, which the callers' `creationBlock > fromBlock` test
- * discards in favour of their own floor.  That widens a scan rather than
- * narrowing it, so an unanswerable lookup costs time and never events.
+ * Failure returns `0`, the chain's first block.  That widens a scan rather
+ * than narrowing it, so an unanswerable lookup costs time and never
+ * events.  A caller with a floor of its own keeps it: the event scanner's
+ * `creationBlock > fromBlock` test discards the 0 in favour of its floor.
  */
 
 "use strict";

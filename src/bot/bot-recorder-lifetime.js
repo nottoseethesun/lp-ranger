@@ -346,7 +346,8 @@ async function _classifyAllCompounds(
 /**
  * Resolve which lifetime figures are already saved. The lifetime HODL
  * amounts are in the pool's epoch cache. The compound and deposit totals
- * are in the position's config.
+ * are the position's records (app-data/position-records.json), read
+ * through its slot as `botState._getConfig` gives it.
  * Extracted to keep `_scanLifetimePoolData` under the cyclomatic-complexity
  * cap.
  *
@@ -399,8 +400,10 @@ async function _classifyAllCompounds(
  *
  *   2. **Lifetime deposit** (`hasDepositData`).  A positive
  *      `totalLifetimeDepositUsd` means an earlier scan already valued
- *      each deposit recorded in the lifetime HODL amounts.  Only a full
- *      rescan recomputes it.
+ *      each deposit recorded in the lifetime HODL amounts.  It is
+ *      recomputed only by a full rescan, by a recount of deposits that
+ *      stop short of the current NFT's mint (`depositsBehind`), and by
+ *      Re-scan Prices (`_needsPriceRevalue`).
  */
 function _resolveDiskState(botState, epochKey) {
   const cachedHodl = epochKey
@@ -955,8 +958,8 @@ async function _scanLifetimePoolData(
       token1Symbol: position.token1Symbol || "Token1",
       wallet: walletAddress,
       /*- NFT factory for the full-context log format (see
-       *  feedback-log-full-context).  Without this, _logCompoundSummary
-       *  would render the factory slot empty. */
+       *  docs/claude/memory/feedback_logging.md).  Without this,
+       *  _logCompoundSummary would render the factory slot empty. */
       positionManagerAddress: config.POSITION_MANAGER,
       /*- What is already known about each NFT's gas. The scan rebuilds
        *  that map and writes it whole, so an NFT whose receipts will not

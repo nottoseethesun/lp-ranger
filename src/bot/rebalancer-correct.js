@@ -18,10 +18,11 @@
  * rounds (bot-config-defaults.json → `correctiveSwapMaxRounds`).  Each
  * round re-reads pool state and balances,
  * stops when the imbalance falls below the dust threshold, and flags
- * `aboveThresholdAfterCap = true` if the cap is reached with residual
- * still above threshold.  The UI surfaces this as a non-blocking
- * warning so the user can manually retry later if they care about the
- * leftover amount.
+ * `aboveThresholdAfterCap = true` if every round fired a swap, so the
+ * cap ended the loop: the pool is not read again after the last swap, so
+ * whether the residual is still above threshold is not known.  The UI
+ * surfaces this as a non-blocking warning so the user can manually retry
+ * later if they care about the leftover amount.
  *
  * Dust threshold is pegged to units of a reference asset (not USD) so
  * the guard doesn't slowly loosen as fiat inflates.
@@ -336,7 +337,10 @@ async function _fireCorrectiveSwap(signer, ethersLib, ctx, ps, desired, i) {
   };
 }
 
-/** Terminal result: at least one corrective swap fired and residual is now below threshold. */
+/**
+ * Terminal result: at least one corrective swap fired, then a round fired
+ * none (no swap was needed, or the dust or gas gate stopped it).
+ */
 function _convergedResult(acc, i) {
   return {
     txHash: acc.txHashes[acc.txHashes.length - 1] || null,
@@ -354,7 +358,11 @@ function _convergedResult(acc, i) {
   };
 }
 
-/** Terminal result: cap exhausted, residual still above threshold. */
+/**
+ * Terminal result: every round fired a swap, so the cap ended the loop.
+ * The pool is not read after the last swap, so whether the residual is
+ * still above threshold is not known.
+ */
 function _capExhaustedResult(acc) {
   log.warn(
     "[rebalance] Step 6d: %d iterations exhausted, residual=$%s > threshold=$%s",

@@ -130,7 +130,9 @@ export function _resetPostRebalanceModalState() {
  * Pure dispatch decision for the post-rebalance rangeRounded /
  * residualWarning alerts.  Given the flattened states map and a
  * snapshot of the dedup state, returns which alerts should fire this
- * poll — caller performs modal creation and dedup mutation.
+ * poll.  Only the tests call it: `showPostRebalanceWarnings` decides
+ * through `_showForKey`, which applies the same rule, so a change to one
+ * is made in both.
  *
  * @param {Record<string, object>} allStates
  * @param {{ rrShown: Set<string>, rwShownAt: Map<string, number|null> }} dedup

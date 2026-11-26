@@ -49,7 +49,11 @@ const _locks = new Map();
  *  scanPoolHistory() finally-block. */
 const _activeScans = new Map();
 
-/** Build the canonical pool key used by both the lock and active-scan maps. */
+/**
+ * The key the lock and active-scan maps share: the pair and fee tier,
+ * lower-cased, in the order given. It is not the app's canonical pool key
+ * (src/lib/pool-key.js).
+ */
 function _poolKey(token0, token1, fee) {
   return (token0 + "-" + token1 + "-" + fee).toLowerCase();
 }
@@ -92,8 +96,8 @@ function getPoolScanLock(token0, token1, fee) {
 }
 
 /**
- * Abort any in-flight scan for a pool and invalidate the recent-scan TTL
- * entry.  No-op when no scan is active.
+ * Abort any in-flight scan for a pool, and drop the named wallet's
+ * recent-scan entry for it, whether or not a scan was running.
  *
  * The abort signal flows into the event-scanner's chunk loop, which checks
  * it between chunks.  On next check the scanner throws AbortError, the
@@ -162,9 +166,9 @@ function _recentKey(position, walletAddress) {
  * @param {string} [opts.poolAddress]  Resolved pool address (optional, for pool-age optimisation).
  * @param {function} [opts.onPoolCreationProgress]  (done, total) callback.
  * @param {function} [opts.onProgress]  (done, total) callback for chunk progress.
- * @param {function} [opts.computeFromHistoricalPrices]   Called with (events) while the lock is
- *   still held — use for epoch reconstruction so the second caller finds
- *   cached results instead of reconstructing in parallel.
+ * @param {function} [opts.computeFromHistoricalPrices]   Called with (events)
+ *   once they are known: under the lock when a recent scan answers, after
+ *   the lock is released when this call scanned.
  * @returns {Promise<object[]>}  Array of RebalanceEvent objects.
  */
 const _recentScans = new Map();
@@ -178,8 +182,9 @@ async function scanPoolHistory(provider, ethersLib, opts) {
   const recentKey = _recentKey(position, walletAddress);
   // Check recent scan BEFORE acquiring lock — return cached events immediately
   // if no callback needs to run. If a callback is needed, fall through to the
-  // lock path so the callback runs under lock protection (prevents duplicate
-  // epoch reconstruction from concurrent detail fetches).
+  // lock path, where a recent scan still fresh once the lock is held runs the
+  // callback under the lock (prevents duplicate epoch reconstruction from
+  // concurrent detail fetches).
   const recent = _recentScans.get(recentKey);
   if (recent && Date.now() - recent.at < _RECENT_TTL_MS) {
     if (!opts.computeFromHistoricalPrices) return recent.events;
@@ -295,9 +300,10 @@ function _buildEventEntry(result) {
 }
 
 /**
- * Append a rebalance event to the pool's event cache, so the next scan
- * starts after the rebalance instead of clearing the cache and reading
- * the pool's whole history again.
+ * Append a rebalance event to the pool's event cache, so the cache holds
+ * it at once, without clearing the cache and reading the pool's whole
+ * history again.  The append reads no blocks, so the next scan still
+ * starts where the last one stopped.
  *
  * Runs under the same per-pool lock as `scanPoolHistory`, because both
  * read the file, change it and write it back, and an interleaving would

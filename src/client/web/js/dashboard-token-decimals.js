@@ -171,8 +171,9 @@ function _currentDecimals(idx) {
  *
  * Pure and exported because it is the whole decision and the Synced flag
  * lives behind a non-exported poll handler, so the true branch cannot be
- * reached through the real singleton. Mirrors the `_syncStatus` /
- * `_computeSyncStatus` split in dashboard-data.js.
+ * reached through the real singleton. Mirrors the split between
+ * `_syncStatus` (dashboard-data.js) and `_computeSyncStatus`
+ * (dashboard-sync-decisions.js).
  *
  * @param {boolean} synced    The app-wide Synced state.
  * @param {number|undefined} decimals  Decimals as currently known.
@@ -264,8 +265,6 @@ export function refreshDecimalsOverrideOnPoll() {
   populateDecimalsOverride();
 }
 
-/*- Persist both tokens' overrides to server config for the active
- *  position, and run `onAccepted` once the server has taken them. */
 /**
  * The values a Save sends: both coins' fields and Force boxes as shown.
  *

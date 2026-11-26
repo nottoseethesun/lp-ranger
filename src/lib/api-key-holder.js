@@ -3,7 +3,7 @@
  * @description
  * In-memory holder for decrypted third-party API keys.
  * Keys are set after wallet unlock and read by modules like
- * price-fetcher.js that need them at runtime.
+ * src/bot/price-sources-current.js that need them at runtime.
  */
 
 "use strict";

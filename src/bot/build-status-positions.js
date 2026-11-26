@@ -13,10 +13,14 @@
  *   2. live bot state (loop 1)    — present only for actively-managed positions
  *   3. disk config slot           — settings, status, hodlBaseline, etc.
  *
- * Loop 2 (stopped / disk-only entries) emits a *terminal sync state*
- * so the dashboard's syncBadge resolves to "Synced" instead of staying
- * stuck on "Syncing…" for a position whose bot has retired.  See the
- * block comment on the loop-2 branch for the full bug-fix rationale.
+ * Loop 2 (disk-only entries, with no live bot state) gives each a subset
+ * of its saved keys (`_UNMANAGED_SETTINGS_KEYS`).  One saved as `stopped`
+ * also gets a *terminal sync state*, so the dashboard's syncBadge
+ * resolves to "Synced" instead of staying stuck on "Syncing…" for a
+ * position whose bot has retired; one saved as `running`, whose loop has
+ * not started yet, gets `status: "running"` and no sync state, so it
+ * reads as not yet loaded.  See the block comment on the loop-2 branch
+ * for the reasons.
  */
 
 "use strict";
@@ -31,7 +35,8 @@ const { isAscanRunningOnThisPosition } = require("./scan-state");
 /**
  * Settings keys that flow through to the dashboard for *unmanaged*
  * positions (so the user sees persisted settings for positions the bot
- * isn't actively managing, e.g. closed-view or paused positions).
+ * isn't actively managing, e.g. a closed position viewed, or one saved as
+ * running whose loop has not started yet).
  */
 const _UNMANAGED_SETTINGS_KEYS = [
   "impermanentLossGuardPct",

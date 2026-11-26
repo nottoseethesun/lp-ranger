@@ -77,7 +77,8 @@ function _moveWaiting(botState) {
  * position: a poll is deciding or making one, from its first gate to its
  * end (`duringMoveInitiation`), or a Rebalance Now or Compound Now waits
  * to be made. A move's own `rebalanceInProgress` and `compoundInProgress`
- * go up only once it holds the rebalance lock, inside this window.
+ * go up inside this window: once the move holds the rebalance lock, or,
+ * for a Rebalance Now, as it is asked for (src/bot/manual-moves.js).
  * @param {object|null|undefined} botState  The position's bot state.
  * @returns {boolean}
  */
@@ -116,7 +117,9 @@ async function duringMoveInitiation(botState, fn) {
 
 /**
  * Claim the start of a scan: it starts when none is running and one may
- * start; when one may not, it waits.
+ * start; while a coin move is under way it waits (`_scanWaiting`); while a
+ * scan is already running the claim is dropped and nothing is marked,
+ * since the running scan is the same whole operation.
  * @param {object} botState  The position's bot state.
  * @returns {boolean}  True when the caller is to run the scan now.
  */

@@ -50,8 +50,9 @@ function abbrAddr(addr) {
  *  rebalance, and swap entry-point loggers.  Keeps a single source of
  *  truth so every entry-point line is self-describing (chain, wallet,
  *  factory, tokenId+emoji, both token symbols) and disambiguates between
- *  positions when several are running concurrently.  See the
- *  `feedback-log-full-context` memory for the rule and rationale. */
+ *  positions when several are running concurrently.  The rule and its
+ *  reasons are in `docs/claude/memory/feedback_logging.md` § "log full
+ *  context". */
 function logCtx(opts) {
   const chain = opts.chain || "?";
   const wallet = abbrAddr(opts.wallet);

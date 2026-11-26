@@ -562,8 +562,8 @@ function _afterDisclaimer() {
   startStaleDataWatch(uiSetting("staleDataCheckIntervalMs"));
 
   /*- Browser-side idle detection for the idle-driven price-lookup pause
-   *  (component 4 of 4).  Posts /api/pause-price-lookups after 2-min
-   *  blur or 15-min no-input; posts /api/unpause-price-lookups on the
+   *  (one of its sources).  Posts /api/pause-price-lookups after 15-min
+   *  no-input; posts /api/unpause-price-lookups on the
    *  next throttled activity event.  See docs/architecture.md
    *  "Idle-Driven Price-Lookup Pause". */
   startBrowserIdleTracker();

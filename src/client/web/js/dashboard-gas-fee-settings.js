@@ -1,13 +1,14 @@
 /**
  * @file dashboard-gas-fee-settings.js
- * @description Settings popover handler for the global Gas Fee %
- * setting (the swap-gate ceiling shared by initial-rebalance, corrective,
- * and compound swap sites).  Extracted from dashboard-events.js to keep
- * that file under the project-wide 500-line cap.
+ * @description Handler, in the Gas Fee Threshold dialog the Settings menu
+ * opens, for the global Gas Fee % setting (the swap-gate ceiling shared
+ * by initial-rebalance, corrective, and compound swap sites).  Extracted
+ * from dashboard-events.js to keep that file under the project-wide
+ * 500-line cap.
  *
  * The ceiling is also clamped on every read by `gasFeePctToRatio` in
- * `src/bot/swap-gates.js`, so a stale cached page can't disable the gate or
- * block all swaps.
+ * `src/bot/swap-gates.js`, so a corrupt config or wild manual edit can't
+ * disable the gate or block all swaps.
  */
 
 import { g, act } from "./dashboard-helpers.js";

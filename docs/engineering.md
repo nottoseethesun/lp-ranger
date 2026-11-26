@@ -120,7 +120,11 @@ for consensus or validator rotation).
 
 1. Copy `.env.example` to `.env` and fill in your values.
 2. `npm install`
-3. `npm start` — dashboard + bot (if wallet key available)
+3. `npm run build-and-start` — builds the dashboard, then starts it and
+   the bot (if wallet key available). On a clone, `npm start` alone
+   refuses to start until `npm run build` has written the build
+   (`scripts/check-build-artifacts.js`, its `prestart` step); a release
+   tarball ships it built, so `npm start` is enough there.
 4. `npm run bot` — headless bot only (no dashboard)
 
 Every other command, with its flags and an example, is in
@@ -186,13 +190,13 @@ assumes that picture and names the pieces underneath it.
 | --- | --- | --- |
 | `startBotLoop` | `bot-loop.js` | One call per managed position. Builds or accepts a provider and signer, detects the position, restores cached P&L, polls once, starts the scheduler, fires the history scan. Returns `stop()`. |
 | `pollCycle` | `bot-cycle.js` | One poll. Reads pool state, refreshes the position, updates P&L, considers a compound, checks range, runs the rebalance gates, executes. Everything downstream is called from here. |
-| `executeRebalance` | `rebalancer.js` | Drains the old NFT, swaps to the ratio the new range needs, mints a new NFT. Holds the rebalance lock for its whole run. |
+| `executeRebalance` | `rebalancer.js` | Drains the old NFT, swaps to the ratio the new range needs, mints a new NFT. Takes no lock itself: its caller holds the rebalance lock from before the move's deposit count until the move is recorded (`_prepareRebalance` takes it, `_executeAndRecord` releases it, both in `bot-cycle.js`). |
 | `executeCompound` | `compounder.js` | Collects unclaimed fees, swaps to the range's ratio, adds them back as liquidity. Same NFT, same range, no mint. |
 | `detectPositionType` | `position-detector.js` | Enumerates the wallet's NFTs, up to 300, and returns the V3 positions it finds. The only discovery path; both the bot and the scan route use it. |
 | `scanPoolHistory` | `pool-scanner.js` | Walks a pool's Transfer events to build the rebalance chain. Serialized per pool, so two positions in one pool cannot scan it twice. |
 | `reconstructEpochs` | `epoch-reconstructor.js` | Turns that chain into P&L epochs with historical prices. Runs after the scan, never beside it. |
 | `getPoolState` | `rebalancer-pools.js` | Resolves the pool from the Factory, reads `slot0` and tick spacing. The price read every poll and every rebalance starts from. |
-| `getManagedReadProvider` | `send-transaction.js` | The single read path. A Proxy that retries a failed call through the RPC failover list, without giving up. Returns itself for `provider` so ethers' `queryFilter` cannot escape the wrapper — see docs/security.md. Nothing reads chain state another way. |
+| `getManagedReadProvider` | `send-transaction.js` | The shared read path. A Proxy that retries a failed call through the RPC failover list, without giving up. Returns itself for `provider` so ethers' `queryFilter` cannot escape the wrapper — see [Implementation detail: why the Proxy returns itself](#implementation-detail-why-the-proxy-returns-itself). Three reads skip it: pool state, the re-open check's wallet balances and a swap's output balance each run a bounded loop of their own (`retryRead`, `rpc-read-retry.js`) over the endpoint `sendTx.getCurrentRPC()` selects, and give up when it is spent. |
 | `loadMergedDefaults` | `load-merged-defaults.js` | Shipped JSON deep-merged with the operator's override. Every shipped default enters the app here. |
 
 **Major objects.** Each is created by a factory and held for the process
@@ -231,12 +235,14 @@ own scan state. One reading Synced while another reads Syncing is normal,
 and switching between them changes which state you are shown, not what
 the app is doing.
 
-**Synced also means the state is on disk.** Setting the flag writes the
-position's config, so a position showing Synced has its baseline and
-totals persisted and is safe to shut down, best with
-`npm run gentle-stop`, which waits out any rebalance, compound or scan
-under way. Ctrl+C and `npm stop`, which share a shutdown handler, do not
-wait.
+**Synced also means the state is on disk.** The bot saves each record a
+scan reports as it reports it, into `app-data/position-records.json`
+(`_persistPositionConfig`, `src/bot/position-states.js`), and the flag
+is set only once the deposit total, one of those records, is above
+zero. So a position showing Synced has its totals persisted and is safe
+to shut down, best with `npm run gentle-stop`, which waits out any
+rebalance, compound or scan under way. Ctrl+C and `npm stop`, which
+share a shutdown handler, do not wait.
 
 #### Start from Fresh Installation
 
@@ -255,8 +261,13 @@ The first scan is a **wallet scan**, and it is worth separating from the
 chain-history scans that follow. It asks only "which LP positions does
 this wallet hold?" — it enumerates them and resolves each pool's token
 symbols. No position's history is touched. The result is cached against
-the chain, contract and wallet, which is what makes every later startup
-skip this step.
+the chain, contract and wallet. A later startup reads the cache and asks
+the chain only whether any of the wallet's NFTs has moved since the block
+the cache last read: a `Transfer` to or from the wallet, or an
+`IncreaseLiquidity` or `DecreaseLiquidity` on a cached NFT
+(`hasPositionActivitySince`, `src/bot/lp-position-cache.js`). With none,
+the cache answers. With any, as after a rebalance or a compound, the
+wallet is enumerated again.
 
 You pick a position and click Manage. That starts a bot loop, and the
 loop does the work in a deliberate order: a poll runs **first**, so the
@@ -276,10 +287,15 @@ position reads Synced:
    fee collections and withdrawals. This is what compound totals, the
    HODL baseline and lifetime P&L are built from.
 
-Stage three is the expensive one, because its cost is per NFT rather than
-per pool. A hundred-NFT chain does a hundred walks. Hours is normal on a
-first run; the figures that appear afterwards are worth the wait, and
-nothing is lost if the process is stopped part-way — see
+Stage three reads every NFT in the chain for its own history, but in one
+batched pass for the whole chain, not one walk per NFT
+([Batched chain reads](#batched-chain-reads)): a 133-NFT chain measured
+6.5 minutes. The first run is still the slow one, since the pool's
+rebalance history is read from up to five years back as shipped, in
+thousands of requests
+([Lifetime History Lookback](#lifetime-history-lookback)); the figures
+that appear afterwards are worth the wait, and nothing is lost if the
+process is stopped part-way — see
 [How Scans Survive RPC Failures](#how-scans-survive-rpc-failures).
 
 #### Post-Initialization Operation
@@ -328,8 +344,9 @@ therefore a transaction nonce. Every transaction is watched, sped up if
 it stalls, and cancelled if it stays stuck, so a pending transaction
 cannot block the bot indefinitely.
 
-Afterwards the new NFT inherits the old one's accounting — baseline,
-residuals, P&L history — and a rescan is flagged so the new mint is
+Afterwards the new NFT takes over the position's residuals and P&L
+history, and gets a HODL baseline of its own, the coins it was minted
+with (`updateHodlBaseline`); a rescan is flagged so the new mint is
 picked up.
 
 #### Re-start from Initialized Installation (Has Completed Blockchain Scan)
@@ -344,8 +361,9 @@ Everything about an unmanaged position is browser-initiated and cannot
 begin until someone opens the dashboard.
 
 The server finds the stored wallet rather than starting empty. With a
-wallet password configured it unlocks immediately; otherwise it waits for
-the browser unlock and continues from there.
+wallet password configured (`WALLET_PASSWORD` in `.env`, or one typed at
+the terminal when started with `--headless`) it unlocks immediately;
+otherwise it waits for the browser unlock and continues from there.
 
 It then starts each position whose saved status is **running**: the list
 Manage adds to and Stop Managing removes from, which a stop of the app
@@ -452,8 +470,10 @@ differences that account for the speed:
   against the pool rather than the NFT. Every rebalance mints a new NFT;
   keying on the pool is what lets that history survive them.
 
-The wallet scan is skipped too — the browser's request hits the cache
-written on the first run instead of re-enumerating the wallet.
+The wallet scan is usually skipped too: the browser's request is
+answered from the cache, unless one of the wallet's NFTs has moved since
+the cache last read the chain, as a rebalance or a compound moves one
+([Start from Fresh Installation](#start-from-fresh-installation)).
 
 A scan can still run after a restart, for a reason unrelated to the
 restart: new rebalances have happened since the last one, or a previous
@@ -595,7 +615,7 @@ To stay under price-source quotas, `fetchTokenPriceUsd` and
 `src/bot/price-fetcher.js` whenever nobody needs them. `fetchHistoricalPriceGecko`
 is never gated.
 
-**Pause sources** (each can pause on its own):
+**Pause sources** (each but the move scope can pause on its own):
 
 - **Server idle** — every `/api/*` request except `/health` resets the
   countdown; after 15 min without one the server pauses itself.
@@ -603,10 +623,13 @@ is never gated.
   of no input; the next activity (focus, a click, mouse movement, the
   wheel, a key, a touch or a pointer press) posts unpause through a
   handler throttled to once per 500 ms.
-- **Move scope** — every auto- and manual-triggered rebalance and compound
-  runs inside `withFreshPricesAllowed(...)`, which bypasses both the pause
-  flag and cache TTL for the duration and restores prior state on exit
-  (success or thrown).
+- **Move scope** — the exception to the pause, not a source of it. Every
+  auto- and manual-triggered rebalance and compound first drops the
+  cached prices of its position's two coins (`invalidatePriceCacheFor`),
+  then runs inside `withFreshPricesAllowed(...)`. Inside it the pause
+  flag is ignored, and a cached price is used only while it is younger
+  than `moveCacheTtlMs` rather than `priceCacheTtlMs`; the prior state
+  comes back on exit, success or thrown.
 - **Headless `src/bot.js`** — starts paused by default; opt out with
   `--start-with-price-lookups-unpaused`.
 
@@ -623,19 +646,21 @@ browser-issued pause.
 
 **Two endpoints** (idempotent, no body required):
 
-- `POST /api/pause-price-lookups` → `{ paused: true }`
-- `POST /api/unpause-price-lookups` → `{ paused: false }`
+- `POST /api/pause-price-lookups` → `{ ok: true, paused: true }`
+- `POST /api/unpause-price-lookups` → `{ ok: true, paused: false }`
 
 **Operator quick-check.** Manually pause for diagnostics:
 
 ```bash
 curl -X POST http://127.0.0.1:5555/api/pause-price-lookups \
-     -H "x-csrf-token: $(curl -s :5555/api/csrf-token | jq -r .token)"
+     -H "x-csrf-token: $(curl -s http://127.0.0.1:5555/api/csrf-token | jq -r .token)"
 ```
 
 When paused with an empty cache, `fetchTokenPriceUsd` returns `0` rather
-than blocking — downstream consumers (gas-too-high gate, P&L snapshot)
-already tolerate that.
+than blocking, which the P&L snapshot tolerates. The gas-too-high gate
+never sees a paused price: it runs inside the move scope, since a `0` or
+a stale price would let an uneconomic rebalance pass it
+(`_decideRebalance`, `src/bot/bot-cycle.js`).
 
 ---
 
@@ -704,12 +729,13 @@ gate runs among the rebalance gates (`gatesFromGuard`,
 `src/bot/bot-cycle-gates.js`), which return before `executeRebalance` is
 called, so there is no path from a rejection to `decreaseLiquidity` or
 `collect`. A rejected position is left exactly as it was found.
-`test/il-guard.test.js` drives the gate with a `deps` whose provider and
+`test/il-guard-gate.test.js` drives the gate with a `deps` whose provider and
 signer throw on any property access, so a future chain read here fails
 the suite rather than shipping.
 
 **Fresh prices.** While price lookups are paused (the dashboard idle or
-closed, and always under `npm run bot`), the poll's figures carry the
+closed, and under `npm run bot` unless it was started with
+`--start-with-price-lookups-unpaused`), the poll's figures carry the
 last prices fetched, of any age, and a rebalance is due because the
 price has moved, so an old price makes the loss look smaller. Once every
 gate before the guard has passed and the guard will measure, the figures
@@ -871,7 +897,7 @@ normal operation in one step:
 | ------------------- | ------ |
 | `rebalanceError`, `rebalancePaused`, `rebalanceFailedMidway` | The dashboard stops showing the position as stuck |
 | `firstFailureAt`, `midwayRetryCount` | The failure streak is forgotten, so the next failure starts a fresh one |
-| `oorRecoveredMin` | Set to the minutes spent failing, which raises the **Position Recovered** modal; cleared five seconds later |
+| `oorRecoveredMin` | Set to the minutes spent failing, which raises the **Position Recovered** modal; cleared once the dashboard has had time to see it, its poll interval times `pollsBeforeAssumedSeen` (`src/bot/dashboard-has-polled.js`): 7.5 seconds as shipped |
 
 ### When it can fire
 
@@ -1122,9 +1148,10 @@ scan** is answered by three layered bounds, resolved in order by
    `lastBlock`, the last block it read
    ([Rebalance Event Caches](#rebalance-event-caches)). The next scan
    starts at the block after it, so only blocks produced since the
-   previous scan are queried. A 5-year first-time scan issues ~1,750
-   chunked queries (9,000 blocks per chunk, every request released by
-   the global request queue — see
+   previous scan are queried. A 5-year first-time scan reads ~1,750
+   chunks of 9,000 blocks, two queries each (the wallet's NFTs in, and
+   out), so about 3,500 requests, each released by the global request
+   queue (see
    [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking));
    a warm-cache rescan on the same wallet issues a handful.
 
@@ -1382,8 +1409,8 @@ after the last one counted up to the chain's head, one entry per
 transaction (`depositsInWindow`, `src/bot/wallet-deposits.js`, which the
 Lifetime scan uses too). A swap, a collect or drain, and the position
 manager's and pool's own transfers are left out; a wrap of the native
-coin is credited once. So is every transaction the wallet sent itself,
-read from each possible deposit's sender (`_sentByOthers`): every
+coin is credited once. Every transaction the wallet sent itself is left
+out too, read from each possible deposit's sender (`_sentByOthers`): every
 rebalance and compound the bot makes, for any position, is one, while a
 deposit is sent to the wallet by someone else. Without it, another
 managed pool's drain, fee collection or swap, paying in a coin this pool
@@ -1715,20 +1742,6 @@ deposit the swap's whole-balance deposit sweeps in then counts once, as
 the owner's money. A swap whose receipt could not be read leaves the
 readings alone to decide.
 
-**Limits.**
-
-- A deposit of a coin two managed pools hold is counted by each pool in
-  full, as the Lifetime scan counts it in each pool's window after a
-  rebalance, while the wallet credit splits the coin between the pools
-  by their shares.
-- Fees a compound leaves in the wallet, the ones its deposit could not
-  fit, are not in Fees Compounded. The Lifetime IL/G counts them on the
-  position's side, as the wallet's coins and, once a rebalance mints
-  them, in the position's value, until Re-scan Prices or Reload Current
-  Position rebuilds the compound list, whose total is every fee
-  collected. The Current panel shows them on its Fees Left Over line,
-  which its Profit and its Net P&L add.
-
 ---
 
 ## Activity Log Figures
@@ -1996,8 +2009,9 @@ reports, so the two rules that pair a move's transactions,
 
 ## Per-NFT Scan Windows
 
-The section above bounds the scan for **rebalance events**, which are
-per *pool*. A second family of scans is per *NFT*: the
+[Lifetime History Lookback](#lifetime-history-lookback) bounds the scan
+for **rebalance events**, which are per *pool*. A second family of scans
+is per *NFT*: the
 `IncreaseLiquidity` / `Collect` / `DecreaseLiquidity` history behind
 compound detection, HODL baselines and lifetime P&L. Those run once for
 every NFT in a position's rebalance chain, so a long chain multiplies
@@ -2056,7 +2070,7 @@ Three rules within that module decide correctness:
   other's.
 
   That NFT also needs its own mint date, for the opening row of the
-  Per-Day P&L table, and `_applyFirstMint` in `src/bot/position-history.js`
+  Per-Day P&L table, and `_applyFirstMint` in `src/bot/position-history-apply.js`
   takes it off the events array rather than reading chain. Two fields
   can supply it, and both are gated on a token id:
 
@@ -2093,7 +2107,7 @@ deposit, reading all three event types, as the lifetime scan does:
 
 | Window | Chunks | ~133 NFTs |
 | --- | --- | --- |
-| pool creation → head, per NFT | 954 each | ~26 hours |
+| pool creation → head, per NFT | 954 each | ~23 hours |
 | NFT mint → head, per NFT | up to 168 each | hours |
 | **chain's first mint → head, once** (what runs) | 168, shared by every NFT | minutes |
 
@@ -2301,9 +2315,13 @@ shareable URLs that reflect the active wallet and position.
 
 ### URL Structure
 
+The first segment is the active chain's key in `chains.json`
+(`activeChainId()`): `pulsechain` on PulseChain, `pulsechain-testnet` on
+the testnet.
+
 - `/` — Root (no state)
-- `/pulsechain/:wallet` — Wallet loaded, no position selected
-- `/pulsechain/:wallet/:contract/:tokenId` — Specific NFT position deep-link
+- `/<chain>/:wallet` — Wallet loaded, no position selected
+- `/<chain>/:wallet/:contract/:tokenId` — Specific NFT position deep-link
 
 Example:
 `/pulsechain/0x1111111111111111111111111111111111111111/0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2/157149`
@@ -2330,7 +2348,9 @@ allows Navigo to handle routing on the client side after page load.
 
 When the user selects a position or imports/clears a wallet, the URL bar is
 updated via `router.navigate()` with `callHandler: false` (no page reload,
-no re-triggering of route handlers). Addresses are lowercased in URLs.
+no re-triggering of route handlers). Addresses are written in EIP-55
+checksum form, and an address a link brings in, in any case, is put in
+that form as the route reads it (`_toChecksum`).
 
 Source: [`src/client/web/js/dashboard-router.js`](../src/client/web/js/dashboard-router.js)
 
@@ -2568,15 +2588,20 @@ audited by `npm run audit:security` and `npm run audit:secrets`, and
 tested by `npm test` / `npm run check` against the same 80% coverage
 floor.
 
-**One target list, shared by every gate.** `scripts/lint-targets.js`
-is the single source of truth for which files the lint, format, and
-security passes cover: `JS_TARGETS`, `SECURITY_TARGETS`, and
-`SECRET_TARGETS`. Both the npm scripts (via `scripts/format.js` and
-`scripts/audit.js`) and `scripts/check.js` import from it, and the
-husky pre-commit hook runs `npm run lint` rather than defining its own
-checks. Separate lists drift: one gate quietly checks fewer files than
-another, and a file no gate covers looks verified.
-`test/lint-targets.test.js` fails if a parallel list reappears.
+**One target list, shared by most gates.** `scripts/lint-targets.js`
+names the files the format, security, secret and markdown passes cover
+(`JS_TARGETS`, `SECURITY_TARGETS`, `SECRET_TARGETS` and
+`MARKDOWN_TARGETS`), and `scripts/check.js` lints `JS_TARGETS` with
+ESLint. The npm scripts read it through `scripts/format.js`,
+`scripts/audit.js` and `scripts/markdownlint.js`, and the husky
+pre-commit hook runs `npm run lint` rather than defining its own checks.
+The exception is ESLint under `npm run lint` and `npm run lint:fix`:
+each names its folders in `package.json`, and the two lists differ
+(`lint:fix` leaves out `stylelint-rules/`). Separate lists drift: one
+gate quietly checks fewer files than another, and a file no gate covers
+looks verified. `test/lint-targets.test.js` fails if `scripts/check.js`,
+`scripts/format.js` or `scripts/markdownlint.js` declares a list of its
+own, or if `npm run lint`'s ESLint targets leave out `util/`.
 
 **One file per utility, or a directory per utility.** A single-file
 tool sits directly in its category directory (`util/diagnostic/
@@ -2586,10 +2611,11 @@ tests — it gets its own subdirectory named for the utility, with
 `index.js` as the entry point so it still runs as `node
 util/<category>/<utility>`. Never scatter a tool's parts as sibling
 files with a shared name prefix. `verify-compound-usd/` is the
-reference example: `index.js` (CLI, chain I/O, rendering) plus
-`analysis.js` (pure math and formatting, no I/O). `reconcile-hodl/`
-and `wallet-token-flow/` follow the same shape with `index.js` (CLI,
-chain I/O, orchestration) plus `render.js` (console output only) —
+reference example: `index.js` (CLI, chain I/O, orchestration),
+`render.js` (console output only) and `analysis.js` (pure math and
+formatting, no I/O). `reconcile-hodl/` and `wallet-token-flow/` follow
+the same shape without `analysis.js`: `index.js` (CLI, chain I/O,
+orchestration) plus `render.js` (console output only) —
 the split that makes a report layer assertable by capturing stdout
 instead of leaving it dark. Tests do not move with the tool: every
 `util/` test lives in `util/test/`, whatever category the tool belongs
@@ -2598,8 +2624,8 @@ to, since `npm run test:util` globs `util/test/*.test.js`.
 #### Diagnostic Utilities
 
 `util/diagnostic/` holds Node.js tools for investigating on-chain state
-and bot data. End users run these when something looks wrong. All eight
-take CLI args and write to stdout (redirect to `tmp/` for logs). Seven
+and bot data. End users run these when something looks wrong. All nine
+take CLI args and write to stdout (redirect to `tmp/` for logs). Eight
 are read-only; `rescan-pool-history.js` changes saved state, and asks
 first.
 
@@ -2634,12 +2660,14 @@ What that buys, and what still needs care:
   can parse several argument lists without options accumulating between
   them.
 
-All eight tools here parse this way. The hand-written `USAGE` strings
+All nine tools here parse this way. The hand-written `USAGE` strings
 and each tool's own `argv` scanner are gone.
 
-- `inspect-pool.js` — Pretty-prints `app-config/user-configurable/bot-config.json` and
-  `app-data/scan-cache/pnl-epochs-cache.json` for a position or pool fragment: status,
-  hodlBaseline, residuals, lifetimeHodlAmounts, fresh deposits.
+- `inspect-pool.js` — Pretty-prints `app-config/user-configurable/bot-config.json`,
+  with each position's records from `app-data/position-records.json`
+  merged in, and `app-data/scan-cache/pnl-epochs-cache.json` for a position or pool
+  fragment: status, hodlBaseline, residuals, lifetimeHodlAmounts, fresh
+  deposits.
 - `show-rebalance-chain.js` — Walks position-manager `Transfer` events
   for a wallet over N years, listing every NFT mint/burn/move.
 - `reconcile-hodl/` — Sums on-chain `IncreaseLiquidity` /
@@ -2659,7 +2687,9 @@ and each tool's own `argv` scanner are gone.
   position's lifetime compound and deposit history from the pool's
   creation block, for when those saved figures are wrong. The lifetime
   scan keeps a saved figure rather than recompute it, so the tool
-  removes them from the position's config (`--clear-hodl` also drops the
+  removes them from the position's records in
+  `app-data/position-records.json`, and any left in `bot-config.json`
+  (`--clear-hodl` also drops the
   pool's lifetime HODL amounts from `app-data/scan-cache/pnl-epochs-cache.json`). It
   prints what will change, asks y/N, and writes a timestamped backup of
   each file first. The running bot keeps its in-memory copy, so restart
@@ -2736,12 +2766,16 @@ The figure matters beyond the alert text. `recordCompound` in
 collected to the position's `compoundedAmount0` / `compoundedAmount1`,
 and those coins priced at the current poll are half of the fee earnings
 the Lifetime panel's Profit adds (Current Fees plus Fees Compounded,
-`src/client/web/js/dashboard-data-kpi.js`). That total is only ever
-accumulated incrementally once disk holds a non-zero value — the
-on-chain rescan in
-`src/bot/bot-recorder-lifetime.js` is deliberately gated off by
-`_resolveDiskState`. A bad compound figure therefore persists in
-lifetime P&L until it is corrected by hand.
+`src/client/web/js/dashboard-data-kpi.js`). Once a total is saved, zero
+included, each compound adds to it, and the lifetime scan does not count
+the coins again from the chain unless a rebuild of the compound list is
+asked for (`lifetimeScanPlan`, `src/bot/bot-recorder-lifetime.js`). A
+wrong coin amount therefore stays in the Lifetime figures until such a
+rebuild replaces it; Re-scan Prices and Reload Current Position each
+lead to one ([Compound: Percent Gain for Position](#compound-percent-gain-for-position)).
+A wrong price does not stay there, since the coins are priced again at
+every poll. It stays in the compound's Activity Log $usd amount until a
+rebuild writes that amount again.
 
 What the tool does:
 
@@ -2776,8 +2810,9 @@ Reading the hypothesis block:
 - **uniform price scale** — the factor both prices would need. Near a
   round number (`10x`, `100x`) this points at a decimals or unit
   mix-up rather than a price feed.
-- **decimals shift** — every `(decimals0, decimals1)` pair within ±4
-  that reproduces the reported figure to within 5%. A hit means the
+- **decimals shift** — the `(decimals0, decimals1)` pairs within ±4 of
+  the chain's that reproduce the reported figure to within 5%, at most
+  three, the closest first. A hit means the
   amounts were divided by the wrong power of ten. Cross-check against
   the decimals heal / override path in `src/bot/bot-recorder-decimals-heal.js`
   and the `decimalsOverride0` / `decimalsOverride1` /
@@ -2793,27 +2828,31 @@ compounds that never happened.
 
 When a `compoundHistory` row is available the diagnosis is exact,
 because the row stores the `price0` / `price1` the bot actually used.
-Two discriminators, in order:
+Three cases, in order:
 
 - Recorded amounts differ from the chain's `IncreaseLiquidity` amounts
   → the bot recorded the wrong event. Rare.
 - Recorded amounts match, and chain amounts × recorded prices
-  reproduce the stored `usdValue` → the arithmetic was faithful and
-  the **prices** were wrong. Check whether `priceOverride0` /
-  `priceOverride1` / `priceOverrideForce` are set on the position
-  (`inspect-pool.js` prints them); otherwise the live cascade returned
-  a bad value and the per-source table says which provider to
-  distrust.
+  reproduce the stored `usdValue` → the arithmetic was faithful, so the
+  only possible fault is the recorded **prices** themselves. The tool
+  says no more than that: live prices are today's, so it leaves the
+  recorded prices to be judged by their ratios to the live ones. Check
+  whether `priceOverride0` / `priceOverride1` / `priceOverrideForce`
+  are set on the position, in its slot of
+  `app-config/user-configurable/bot-config.json` (no diagnostic tool
+  prints them); otherwise the live cascade returned a bad value and the
+  per-source table says which provider to distrust.
 - Recorded amounts match but the recorded prices do **not** reproduce
   the stored figure → the **decimals** were wrong. The tool then
   re-runs the decimals-shift search against the recorded prices, which
-  removes price drift and names the exact pair that was used.
+  removes price drift, and names up to three pairs that give the stored
+  figure, the closest first.
 
 Options:
 
 | Option | Effect |
 | ------ | ------ |
-| `--token-id <id>` | Verify a bare NFT id; skips the config lookup entirely. Use on a host that does not have the position's `bot-config.json`. |
+| `--token-id <id>` | Verify a bare NFT id. The config is still read when it is there, to find the position whose `compoundHistory` holds this NFT's rows, and a missing config is not an error, so it serves on a host that does not have the position's `bot-config.json`. |
 | `--usd <amount>` | A reported figure to explain. Runs the hypothesis checks against every in-window event even when no config row is available. |
 | `--days <n>` | Scan window in days (default 30). |
 | `--from-block <n>` | Explicit window start; overrides `--days`. |
@@ -2866,9 +2905,9 @@ The default is `https://rpc-pulsechain.g4mm4.io`, the first endpoint in
 `chains.json`; `--rpc-endpoint <url>` points it anywhere else. **One
 endpoint per run** — each of the three is a separate host, so a health
 answer only ever applies to one of them. The endpoint under test is
-printed above the table for that reason, and the UTC start time beside
-it, because the app logs in UTC and the point of a run is usually to
-line it up against a log line.
+printed above the table for that reason, and the start time below it, in
+UTC and then local time, because the app logs in UTC and the point of a
+run is usually to line it up against a log line.
 
 Seven checks, each timed: `web3_clientVersion` for reachability,
 `eth_chainId` + `net_version` against 369, `eth_blockNumber`,
@@ -2886,18 +2925,19 @@ providers overlaps the global request queue's release interval and a
 warm one does not.
 
 Unlike the other tools here it imports nothing from `src/lib/` — only
-`_helpers` — so it opens no log file and reads no operator settings, and
-is therefore safe to run against a live install. That is the whole point
-of it, and it is why the default endpoint is a literal here rather than
-being read from `config.RPC_URLS`.
+`_helpers`, `commander`, and the shipped `chains.json` and
+`app-runtime.json`, read as data — so it opens no log file and reads no
+operator settings, and is therefore safe to run against a live install.
+That is the whole point of it, and it is why the default endpoint is read
+from the shipped `chains.json` here rather than from `config.RPC_URLS`.
 
 ##### Scenario-Reproduction Scripts
 
 Companion shell scripts (also under `util/diagnostic/`) that
 **deliberately mutate local state** to put the app into a specific
 recovery path on demand, for testing that path. Each script backs the
-original up to a timestamped sibling first and prints the exact restore
-command.
+original up to a timestamped copy in `tmp/` first and prints the exact
+restore command.
 
 - `inject-stuck-lifetime-state.sh` — Sets every pool entry in
   `app-data/scan-cache/pnl-epochs-cache.json` to `freshDeposits: null` and
@@ -2957,8 +2997,11 @@ reports without changing anything. The steps share two modules, beside
 `index.js`: `settings-copies.js` for the operator's copies of the settings files,
 which keeps each old file in `tmp/` before changing it, and
 `env-file.js` for `.env`, which keeps each changed line as a comment and
-makes no copy, since the file holds the private key. Node built-ins
-only, like the copy. Its tests are in `util/test/migration.test.js`,
+makes no copy, since the file holds the private key. Like the copy, it
+loads nothing from `node_modules`, since it too runs before `npm ci`:
+Node's built-ins, and two of the app's own modules that load nothing
+themselves (`src/lib/composite-key.js`, `src/lib/bot-config-keys.js`).
+Its tests are in `util/test/migration.test.js`,
 `util/test/migration-099-settings.test.js`,
 `util/test/migration-from-0.9.10.test.js` and
 `util/test/migration-from-0.9.10-deposit-lists.test.js`.
@@ -3103,8 +3146,8 @@ One home for each kind of data:
   (`src/lib/scan-cache-dir.js`).
 - **`app-data/util/bookkeeping/`** — the csv reports the bookkeeping
   tools in `util/bookkeeping/` write, one per wallet, range of days and
-  time zone, and in `scan-cache/` the prices they fetched. A tool under
-  `util/` writes only its own folder, with one exception: when no Moralis
+  time zone, and in `scan-cache/` the prices they fetched. The
+  bookkeeping tools write nothing else, with one exception: when no Moralis
   api key is saved, the report saves the one typed in the app's own store
   in `app-config/`, since the app and the report share one key
   ([Bookkeeping Utilities](#bookkeeping-utilities)).
@@ -3129,7 +3172,8 @@ One home for each kind of data:
   for every user-editable Bot Configuration input, plus settings with no
   input and four nested groups (`throttleDoubling`, `lowGasThresholds`,
   `ilGuardRetry`, `residualCleanup`). See
-  [Bot Config Defaults](#bot-config-defaults) for the full key inventory.
+  [Bot Config Defaults](#bot-config-defaults) for the keys behind the
+  dashboard's inputs, some of the keys with none, and the four groups.
 - **`app-defaults-for-user-configurable/dust-threshold.json`** —
   Tracked shipped default. Universal dust threshold (in abstract
   units of an inflation-resistant reference asset) plus the list of
@@ -3145,8 +3189,10 @@ One home for each kind of data:
   Tracked shipped default. The base url of each price service's api
   (DexScreener, GeckoTerminal, Moralis), version included where the url
   carries one. Read once at module load by `src/lib/price-service-urls.js`,
-  which every price request is built through. Which tokens a service can price
-  on a chain is per chain instead, in `chains.json` → `priceServices`.
+  which every price request is built through. Whether a service is asked
+  on a chain is per chain instead: `chains.json` → `priceServices` gives
+  the chain's id at each service, or `""` for a service that does not
+  cover the chain, which is then not asked.
   `geckoTerminal.topPoolsConsidered`, read by `src/bot/gecko-pool-cache.js`,
   is how many of a token's pools are weighed when its historical price is
   looked up.
@@ -3240,8 +3286,10 @@ One home for each kind of data:
   of every rebalance event ever: timestamps, fees collected, gas cost,
   exit/entry USD values, token balances. Appended to by
   `src/bot/bot-recorder.js`. Read by `src/bot/position-history.js` for
-  closed-position P&L display. Configurable via the `LOG_FILE`
-  environment variable. Under `node --test` it is a file in the test
+  closed-position P&L display. Its path is `LOG_FILE` in `.env` when
+  set, else `log.file` in `app-runtime.json`
+  (`./app-data/rebalance_log.json` as shipped, an operator's copy
+  applied). Under `node --test` it is a file in the test
   process's own temp folder, unless `LOG_FILE` names another. Lives
   outside `app-config/` because it's per-install runtime DATA, not
   config.
@@ -3306,18 +3354,22 @@ page reads it through `uiSetting`.
    ONLY way for new operator-tunable values to ship — direct edits to
    the file in `app-defaults-for-user-configurable/` are clobbered on
    every tarball upgrade.
-2. **Runtime state** (written by the app, not meant for the user to
-   hand-edit) → `app-config/<name>.json` (covered by the
-   `app-config/*` gitignore glob).
-3. **Mixed static + dynamic** (the app also overwrites during normal
-   operation) → `app-config/<name>.json` (NOT
-   `app-defaults-for-user-configurable/`).  The shipped-defaults dir
-   is reserved for files that are read-only at runtime — if the app
-   can rewrite the file, it doesn't belong there.
+2. **What the operator chooses that the app also writes** (a setting
+   saved from the dashboard, the encrypted wallet or api keys) →
+   `app-config/user-configurable/<name>.json`, whose contents git
+   ignores (`app-config/user-configurable/*` in `.gitignore`).  Never
+   `app-defaults-for-user-configurable/`: that folder holds only files
+   the app never rewrites.
+3. **What the bot records about a position** (a figure it worked out
+   or logged) → a key in `RECORD_POSITION_KEYS`
+   (`src/lib/bot-config-keys.js`), which `app-data/position-records.json`
+   holds (`src/lib/util/position-records.js`).  Never a file under
+   `app-config/`: `test/data-homes.test.js` fails the build.
 4. **Format template** documenting a runtime file →
-   `app-config/<name>.example.json` (tracked; add an explicit
-   un-ignore rule to `.gitignore`).  Pre-dates the user-configurable
-   pattern; new tunables should use rule 1 instead.
+   `app-config/app-defaults-for-user-configurable/<name>.example.json`,
+   beside the shipped defaults, as `api-keys.example.json` is (that
+   folder is tracked whole), named in `NOT_SETTINGS_FILES`
+   (`src/lib/settings-file-rules.js`) so the schema check passes it by.
 5. **Scan cache** (can be deleted with no loss of data; rebuilt on
    demand from the blockchain or an API) →
    `app-data/scan-cache/<name>.json`, its path from `scanCachePath`
@@ -3326,18 +3378,24 @@ page reads it through `uiSetting`.
 
 ### One-Time Migration from the Legacy Layout
 
-Existing installations prior to this refactor kept runtime files at the
-project root (`.bot-config.json`, `.wallet.json`, `api-keys.json`, etc.).
-On every startup, `src/lib/migrate-app-config.js` runs `migrateAppConfig()`
-which moves any surviving legacy root file into `app-config/`. The
-migration is fully idempotent:
+As the server, the headless bot and `scripts/import-wallet.js` load,
+`migrateAppConfig()` (`src/lib/migrate-app-config.js`) looks at the
+project root for the runtime files of the old layout. It moves
+`.bot-config.json`, `.wallet.json` and `api-keys.json` into
+`app-config/user-configurable/` (as `bot-config.json`, `wallet.json`
+and `api-keys.json`), and `rebalance_log.json` into `app-data/`. It
+deletes `.bot-config.backup.json` and `.bot-config.v1.json`, which
+nothing reads. Running it again changes nothing:
 
-- **Fresh install** → creates `app-config/`, moves nothing.
-- **Upgrade** → `fs.renameSync` each legacy file into place, logs each move.
-- **Conflict** (both root AND `app-config/` exist) → refuses, logs a
-  warning, leaves both files untouched so the operator can resolve manually.
-- **After a successful migration** → subsequent restarts are completely
-  silent (source files no longer exist at root).
+- **Fresh install** (no such file at the root) → does nothing, and
+  creates no folder.
+- **Upgrade** → `fs.renameSync` each root file into place, logging each
+  move.
+- **Conflict** (a root file and the file at its destination both exist)
+  → refuses that file, logs a warning, and leaves both untouched so the
+  operator can resolve it by hand.
+- **After a successful move** → later starts say nothing, since the
+  root files are gone.
 
 `fs.renameSync` is atomic within a single filesystem, so there is no window
 where a file could be lost to an interrupted move.
@@ -3382,13 +3440,13 @@ position's own values live in `app-config/user-configurable/bot-config.json`.
 | --- | --- | --- |
 | `approvalMultiple` | `20` | ERC-20 approval multiplier for swap allowances |
 | `rebalanceOutOfRangeThresholdPercent` | `5` | % move past the position boundary before a rebalance triggers |
-| `rebalanceTimeoutMin` | `180` | Minutes continuously OOR before forcing a rebalance (`0` = disabled) |
+| `rebalanceTimeoutMin` | `180` | Minutes continuously OOR before a rebalance is due; it still passes every gate an automatic rebalance passes, the throttle and the daily cap included (`0` = disabled) |
 | `slippagePct` | `0.75` | The default for both Slippage rows (`slippagePctToken0`, `slippagePctToken1`): a token with no figure of its own uses it. Not saved per position |
 | `minRebalanceIntervalMin` | `10` | Minimum gap between back-to-back rebalances on the same pool |
 | `maxRebalancesPerDay` | `5` | Per-pool daily rebalance cap (UTC reset; every successful rebalance counts) |
 | `offsetToken0Pct` | `50` | Position offset bias toward token0 (50 = balanced) |
 | `impermanentLossGuardPct` | `15` | Most a position may have lost before the bot stops rebalancing it — see [Impermanent Loss Guard](#impermanent-loss-guard) |
-| `gasFeePct` | `1` | A swap, in a rebalance or a compound, is skipped when its gas would cost more than this percent of its value |
+| `gasFeePct` | `1` | A swap, in a rebalance or a compound, is skipped when its gas would cost more than this percent of its value. Its input is the Settings menu's Gas Fee Threshold dialog, not this panel |
 | `rangeOverrideEnabled` | `false` | Bot Configuration → Range "No Override" toggle. `false` re-uses the position's existing on-chain range |
 | `rebalanceRangeWidthPct` | `80` | Value the Price Range Extension row's "Default" button applies. Not auto-populated into the input |
 | `fullRangeRebalanceEnabled` | `false` | Mint the next rebalance across the full tick range, for a position with no Full-Range choice saved, while its Range settings apply. `GET /api/status` publishes it for the checkbox (`fullRangeSetting`, [`src/bot/range-override.js`](../src/bot/range-override.js)) |
@@ -3402,7 +3460,8 @@ Whether they can be changed at runtime at all depends on membership of
 `GLOBAL_KEYS` in [`src/lib/bot-config-keys.js`](../src/lib/bot-config-keys.js): a key
 in that list is accepted by `POST /api/config`, and one that is not can
 only be changed by editing
-`app-config/user-configurable/bot-config-defaults.json` and restarting.
+`app-config/user-configurable/bot-config-defaults.json` (or, for
+`checkIntervalSec`, `CHECK_INTERVAL_SEC` in `.env`) and restarting.
 
 | Key | Default | Changed by | Description |
 | --- | --- | --- | --- |
@@ -3417,8 +3476,9 @@ only be changed by editing
 | `getLogsChunkSize` | `9000` | the JSON file, then restart | Widest block span any `eth_getLogs` call may request, up to 10,000 — see [RPC Request Pacing and Log Chunking](configuration.md#rpc-request-pacing-and-log-chunking) |
 | `globalRPCRequestRateIntervalMS` | `222` | the JSON file, then restart | Minimum milliseconds between any two JSON-RPC requests leaving the process, 5 to 2000; the low end only against a node of your own |
 
-**`lowGasThresholds`** — drives the Mission Control "Gas Running Low" /
-"Gas Critical" badge in [`src/bot/gas-monitor.js`](../src/bot/gas-monitor.js).
+**`lowGasThresholds`** — drives Mission Control's gas badge,
+`Gas Running Low` or `GAS CRITICAL — Top Up Now`, through
+[`src/bot/gas-monitor.js`](../src/bot/gas-monitor.js).
 Not exposed in the UI.
 
 | Key | Default | Description |
@@ -3597,8 +3657,9 @@ test/report-artifacts/
 ### The shipped config values are tested first
 
 The gate first runs the tests of the shipped config files,
-`test/shipped-config-values.test.js` and `test/setting-bounds.test.js`
-(`configValueTests()` in `scripts/check.js`). A bad value breaks
+`test/setting-bounds.test.js`, `test/shipped-config-values.test.js` and
+`test/shipped-env-example-values.test.js` (`configValueTests()` in
+`scripts/check.js`). A bad value breaks
 whatever reads it, and the suite reports each breakage as its own
 failure; run first, these tests name the cause in their own Config
 values row, at the head of every failure list. The rest of the suite
@@ -3776,7 +3837,7 @@ Typical workflow when you add, rename, or change an API route:
      drift before it reaches CI. It enforces that every registered
      route is documented, every documented route still exists, every
      key `POST /api/config` accepts appears in its schema (read from
-     the real `POSITION_KEYS` / `GLOBAL_KEYS` allowlists), every
+     the real `SETTING_POSITION_KEYS` / `GLOBAL_KEYS` allowlists), every
      dashboard setting `GET /api/ui-defaults` sends appears in its
      response schema and no other (read from `UI_SETTING_KEYS` in
      `src/lib/ui-defaults.js`), every operation has a summary and at least
@@ -3847,12 +3908,13 @@ What happens when the process starts, in order:
    `CHAIN_NAME`, and runs the startup checks that stop the process on a
    setting outside its range (see
    [Reading Configuration Values](#reading-configuration-values)).
-4. **Legacy config migration runs once.** `migrateAppConfig()` moves
-   any surviving legacy root-level config files (`.bot-config.json`,
-   `.wallet.json`, `api-keys.json`, `rebalance_log.json`) into
-   `app-config/`. Idempotent — a no-op after the first successful run.
-   See the [The `app-config` Directory](#the-app-config-directory)
-   section for details.
+4. **Legacy config migration runs.** `migrateAppConfig()` moves any
+   root-level file of the old layout to its home: `.bot-config.json`,
+   `.wallet.json` and `api-keys.json` into `app-config/user-configurable/`,
+   `rebalance_log.json` into `app-data/`; it deletes
+   `.bot-config.backup.json` and `.bot-config.v1.json`. Idempotent — a
+   no-op once the root holds none. See
+   [One-Time Migration from the Legacy Layout](#one-time-migration-from-the-legacy-layout).
 5. **On-disk bot config is loaded.** `loadConfig()` reads
    `app-config/user-configurable/bot-config.json`. A successful load
    also writes the sibling
@@ -3885,7 +3947,8 @@ What happens when the process starts, in order:
       (`backUpSettings`, src/lib/bot-config-v2.js; it loaded both without
       them). A second start, which fails on the port, never gets this far, so it changes
       none of these files under the server already running. Then it writes `tmp/lp-ranger.pid` (removed
-      by an `exit` hook however the process ends) and installs the
+      by an `exit` hook on any exit the process makes itself; only a
+      process killed outright leaves it) and installs the
       `SIGINT` and `SIGTERM` handler. Both come before the wallet key is
       resolved, which can wait on a prompt, so a signal during a slow
       start still shuts down cleanly. The handler marks the app
@@ -3898,8 +3961,9 @@ What happens when the process starts, in order:
       scan under way.
    3. `_tryResolveKey()` (src/server/server-routes.js) tries to obtain
       the wallet private key — either from `PRIVATE_KEY` in `.env`, from a
-      `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or from
-      an interactive prompt.
+      `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or,
+      only when the server was started with `--headless`, from a password
+      typed at the terminal prompt.
       - On success: it hands the bot the key (`setPrivateKey`) and asks
         it to start the positions saved as managed
         (`startManagedPositions`), one bot loop per position whose v2
@@ -3909,11 +3973,15 @@ What happens when the process starts, in order:
         number of positions (150 seconds apart for two at the default
         300), so they don't all poll the RPC on the same tick. The
         start-up ends early once a stop begins.
-      - If the wallet is locked: logs
+      - If the wallet is locked and the server was not started with
+        `--headless`: logs
         `Wallet locked — unlock via dashboard to start bot.` and
         enters dashboard-only mode until the user unlocks via
         `POST /api/wallet/unlock`.
-      - If no wallet exists: logs `No wallet key — dashboard-only mode`.
+      - If no wallet exists and the server was not started with
+        `--headless`: logs `No wallet key — dashboard-only mode`.
+      - With `--headless` and no key, the terminal is the only way in:
+        it logs an error and the process exits with status 1.
       - It stands aside, taking no key and starting nothing, while a
         wallet import is under way, and once the bot holds a key, as
         when the dashboard was unlocked while the launch waited on the
@@ -3987,8 +4055,8 @@ shipped file and stops there.
 
 The difference only shows when a value is wrong, which is exactly when
 it matters. `checkIntervalSec` must be 10 to 3600 seconds. Read raw, a
-hand-edited `0` or `"soon"` travels on as a live setting; read after
-startup through its reader, it leaves the shipped 300 standing.
+hand-edited `0` or `"soon"` travels on as a live setting; read through
+its reader, it stops the app at startup, naming the setting.
 
 Five rules follow.
 
@@ -4002,8 +4070,10 @@ short, a timer asked for more than about 24.8 days does not wait longer,
 it fires after a millisecond, and `NaN` behaves the same way.
 
 **Where the app cannot run on a wrong value, throw rather than fall
-back.** `src/lib/config.js` does this for the three settings that become
-timer delays, for the five Bot Configuration settings `.env` can set, for any setting
+back.** `src/lib/config.js` does this for each timer setting it reads
+(`TX_SPEEDUP_SEC`, `TX_CANCEL_SEC` and `CHECK_INTERVAL_SEC`, which `.env`
+can set, `app-runtime.json`'s timers and the active chain's aggregator
+timers), for the five Bot Configuration settings `.env` can set, for any setting
 an operator's `bot-config-defaults.json` puts outside its
 range, and for an unresolvable chain name; the startup check
 (`src/lib/settings-check.js`) does it, earlier still, for every settings
@@ -4019,13 +4089,16 @@ why `bot-config-defaults.js` has two readers.
 its range, judged by the timer rule for a timer and by
 `setting-bounds.json` for the rest, group members and list entries
 included, and names them in one message. It is called once, by
-`src/lib/config.js`, at startup.
-`readBotConfigDefaults()` never throws over a value, and is what
-everything else calls — and those calls include a poll cycle, a price
-lookup, the all-endpoints-down pause, and `GET /api/bot-config-defaults`. A throw from there would turn
-an edit made while the bot is running into a broken poll and a 500, and
-the route's own contract is that it never 500s. The same edit is still
-refused: at the next start, which is when the operator can act on it.
+`src/lib/config.js`, at startup, and its answer is kept for the life of
+the process. `readBotConfigDefaults()` is what everything else calls —
+a poll cycle, a price lookup, the all-endpoints-down pause and
+`GET /api/bot-config-defaults` among them — and it returns that kept
+answer, so none of those callers reads the file, or can be made to
+throw by it. An edit made while the bot runs is read at the next start,
+and refused there if it is out of range, which is when the operator can
+act on it. Where nothing has read the file yet, as in a test,
+`readBotConfigDefaults()` reads it itself, and stands the shipped
+default in place of a value outside its range rather than throwing.
 
 **Where the app can carry on, answer rather than throw.** A bad value
 arriving at `POST /api/config` gets a 400 naming the problem; the server
@@ -4064,8 +4137,10 @@ and for the startup check.
 The price-cache settings (`priceCacheTtlMs`,
 `dustUnitPriceCacheMultiplier`, `moveCacheTtlMs` and
 `pricePauseExceptionPollWindowMultiple`) have no dashboard field, but
-`POST /api/config` saves them, so they are checked here too; the price
-code reads the saved value at its next start. `test/config-bounds.test.js`
+`POST /api/config` saves them, so they are checked here too. The price
+library reads the first three at its next start; the balanced-band
+notifier reads `pricePauseExceptionPollWindowMultiple` at each poll, so
+a saved value applies from the next one. `test/config-bounds.test.js`
 fails for any key the route saves that has a range in
 setting-bounds.json and no check here.
 
@@ -4094,10 +4169,14 @@ either would strand a setting the operator could set but never undo.
 
 All TX-sending paths route through
 [`src/bot/send-transaction.js`](../src/bot/send-transaction.js), which owns the
-single active-endpoint selection over the ordered list in
-`chains.json` → `rpc.urls`. On `estimateGas` failure it probes the
+single active-endpoint selection over the ordered endpoint list:
+`chains.json` → `rpc.urls`, with `.env` and the endpoints added in Bot
+Configuration → Network on top ([RPC endpoints](configuration.md#rpc-endpoints)).
+On `estimateGas` failure it probes the
 remaining endpoints and commits only to one that answers; on success it
-engages a sticky one-hour window so subsequent broadcasts, receipts and
+engages a sticky window, `rpcFailoverStickyMs` in
+`bot-config-defaults.json` (one hour as shipped), so subsequent
+broadcasts, receipts and
 nonce lookups follow. The window self-heals — `getCurrentRPC()` returns
 to the first endpoint once it lapses. Broadcast failover requires the
 signer to be a `FailoverNonceManager`, which rebinds on change. No-op
@@ -4143,8 +4222,10 @@ endpoint honours and any success clears.
 
 **Every read in the process reaches the managed proxy.**
 `getManagedReadProvider()` returns a Proxy that resolves selection on
-each property access and retries a failover-eligible error on the next
-endpoint. `FailoverNonceManager` returns it from `.provider` and routes
+each property access and retries a failover-eligible error on whichever
+endpoint selection names at each attempt: the same one until its
+failure rate moves selection on. `FailoverNonceManager` returns it from
+`.provider` and routes
 `.call()` through it, so the reads ethers takes from a signer — a
 signer-bound contract's view functions, and `queryFilter` via
 `runner.provider` — retry and report like any other. No reader keeps an
@@ -4159,9 +4240,10 @@ are both waiting on an answer rather than on an eventual one.
 
 Before a position's loop begins, `ensureReachable()`
 (`src/bot/send-transaction.js`) proves that at least one configured endpoint
-answers. It calls `getBlockNumber` against each endpoint in the order
-`chains.json` → `rpc.urls` lists them and stops at the first that
-replies. When that is not the first in the list, the sticky failover
+answers. It calls `getBlockNumber` against each endpoint in the order of
+the endpoint list ([RPC endpoints](configuration.md#rpc-endpoints)) and
+stops at the first that replies. When that is not the first in the list,
+the sticky failover
 window is engaged, so reads and writes both start where the probe
 succeeded instead of retrying the dead one on the first real call.
 
@@ -4360,8 +4442,9 @@ value range**. Validation logic lives in `src/bot/pool-state-validate.js`
 - `poolAddress` &mdash; non-null 40-hex string AND not `ZeroAddress`
 - `tickSpacing` &mdash; finite positive integer
 - `tick` &mdash; any integer (signed int24)
-- `decimals0` / `decimals1` &mdash; integer in `[0, 77]` (ERC-20 spec
-  cap)
+- `decimals0` / `decimals1` &mdash; integer in `tokenDecimals`'s range
+  in `setting-bounds.json`, `[0, 77]`: 77 is the most decimals for which
+  one whole token (10 to that power) fits in a uint256
 - `sqrtPriceX96` &mdash; coerces cleanly to BigInt `> 0n`
 - `price` &mdash; finite number `> 0`
 
@@ -4440,8 +4523,9 @@ restart is needed.
 
 ## Closed-position Re-open Flow
 
-When a position auto-retires (drained for ≥ 30 min, see
-`src/bot/bot-cycle-drain.js`), its `cfg.positions[key].status` flips to
+When a position auto-retires (drained for at least
+`retire.drainedAfterMs` in `app-runtime.json`, 30 minutes as shipped;
+see `src/bot/bot-cycle-drain.js`), its `cfg.positions[key].status` flips to
 `stopped`, the bot loop stops, and the NFT is left intact (not
 burned). To bring such a position back to life, the user clicks
 **Manage** on its row in the dashboard. For closed positions, the
@@ -4491,8 +4575,7 @@ bot loop directly:
    `posBotState` BEFORE starting the bot loop (via
    `_stampReopenFlags`), so the bot's first `pollCycle` sees the flag
    and `bot-cycle-drain.js`'s drain guard lets the rebalance pipeline
-   run on the drained NFT in lieu of arming a new 30-min retire
-   timer.
+   run on the drained NFT in lieu of arming a new retire timer.
    If the position is ALREADY running (e.g. the user comes back to
    Manage after a prior re-open's swap aborted on slippage),
    Manage's "already running, skipping" short-circuit (`manage`) instead
@@ -4585,8 +4668,11 @@ token-decimals heal writes a `[token-decimals] scope=<token0_token1_fee>`
 entry when a token's decimals are unreadable on-chain and no manual override
 is set, then clears every entry for that pool scope the moment the decimals
 resolve (on-chain read succeeds, or the operator supplies a **Pool Details**
-decimals override). Net invariant: `error.log` never carries a stale or
-already-fixed error.
+decimals override). A lifetime-scan failure has no such clear: its entry
+stays after a later scan succeeds, a Reload Current Position included,
+until the next start deletes the file. So a token-decimals entry never
+outlives its fix, while a lifetime-scan entry can, until the next
+restart.
 
 ### `_catastrophicScanError` bot-state flag
 
@@ -4785,23 +4871,23 @@ Current Position scan all get the same protection.
    - `lifetimeScanComplete === true` on the target position &rarr;
      `outcome = "complete"`.
    - `rebalanceInProgress` or `compoundInProgress` becomes truthy on
-     the target position &rarr; `outcome = "raced"`. This is the
-     ~500 ms race between the reload endpoint returning 200 and
-     `_triggerScan` starting the scan; a poll
-     cycle that lands in that window can start an auto-rebalance /
-     auto-compound before the gate engages. The reload dismisses the blocking
+     the target position &rarr; `outcome = "raced"`. Each tick checks
+     this before `lifetimeScanComplete`. The reload's scan was running
+     before the endpoint answered 200 (step 6 of the route's steps
+     above), and no move starts while it runs, so a move seen here began
+     after that scan ended, before a tick saw `lifetimeScanComplete` true.
+     The reset was done either way. The reload dismisses the blocking
      overlay and shows a yellow caution modal
      (`_showReloadRaceModal`) telling the user to wait for the
-     operation to finish and click Reload again. No page reload &mdash;
-     the refused Reload left the position untouched (the racing operation
-     owns its own writes) and a refresh would show the same state.
+     operation to finish and click Reload again. No page reload.
    - A brand-new `_catastrophicScanError` with `at > startedAt` on
      the target position &rarr; `outcome = "failed-again"`. Falls
      through to the page reload so the user sees the fresh red modal.
    - `reloadMaxWaitMs` elapses (four hours as shipped) &rarr;
      `outcome = "timeout"`. Falls through anyway; the fresh page shows
-     the Syncing badge and the 30 min recovery loop takes over from
-     there.
+     the Syncing badge, and the rescan check, every
+     `poll.lifetimeRescanCheckMs` in `app-runtime.json` (30 minutes as
+     shipped), takes over from there.
 6. `window.location.reload()` for every outcome EXCEPT `raced`
    (which dismisses to the retry modal and leaves the tab alone).
 
@@ -4879,7 +4965,8 @@ Current-price reads run inside `withFreshPricesAllowed` for the length
 of the re-value, so neither the idle pause nor the price cache can
 answer with the figure being replaced.
 
-The 30-minute rescan loop also fires on an unanswered request
+The rescan check, every `poll.lifetimeRescanCheckMs` (30 minutes as
+shipped), also fires on an unanswered request
 (`_needsLifetimeRescan`), since the route's own trigger can fail, and a
 scan is the only thing that reads it. A scan clears only the requests it
 carried in: one that arrives mid-scan describes a chain that scan never
@@ -4887,8 +4974,9 @@ read, so it waits for the next one.
 
 Body: `{ positionKey }`.
 
-Rejects with 409 `not-managed` unless the position's **disk config**
-says `status: "running"` — `status` lives on the config, not the
+Rejects with 404 `missing` a position with no bot state, as an
+unmanaged one has, and with 409 `not-managed` one whose **disk config**
+does not say `status: "running"` — `status` lives on the config, not the
 bot-state object, and `src/bot/build-status-positions.js` merges the two for
 the API response. Also rejects mid-rebalance, mid-compound, and while a
 scan is already running.
@@ -4943,8 +5031,7 @@ Registered as URL strings in the `ACT_ICONS` map in
 
 **Why `<img>`.** These icons render once per Activity Log entry, so an
 inline `<svg>` would put dozens of clones of the same markup in one
-document, and every `id=""` inside it — for example the
-`<defs><path id="rope">` in `act-lasso.svg` — would be duplicated.
+document, and every `id=""` inside it would be duplicated.
 `<img>` renders each instance in its own document context, so ids stay
 per-file and cannot collide.
 
@@ -4952,8 +5039,8 @@ per-file and cannot collide.
 page's `color`, so every stroke and fill in `act-*.svg` uses an
 explicit hex value. Outline icons hard-code `stroke="#e0eaf4"` (the
 resolved value of `--text` on the dark chip background); the two
-colour icons (`act-acorn.svg`, `act-lasso.svg`) hard-code their
-whites and dark green. Don't casually re-introduce `currentColor` on
+colour icons hard-code their own: `act-acorn.svg` its whites and dark
+green, `act-lasso.svg` its white and greys. Don't casually re-introduce `currentColor` on
 these files — the log renders them via `<img>` and it won't cascade.
 
 ### Category 2 — UI icons (`ui-*.svg`)
@@ -5104,9 +5191,10 @@ spelling is correct CSS and the stylesheet is full of it. So the
 six-digit form is needed only where a selector would exceed Prettier's
 `printWidth`, and the rule tells you exactly when that happens.
 
-The upstream cause is a Prettier bug (present in 3.9.5); the isolated
-repro lives in
-`../bug-reports-on-dependencies/prettier-css-hex-escape-linewrap/`.
+The upstream cause is a Prettier bug (present in 3.9.5). Its isolated
+repro is kept outside this repository, in
+`bug-reports-on-dependencies/prettier-css-hex-escape-linewrap/` beside
+the repository's own folder, so a clone does not have it.
 
 ---
 
@@ -5163,7 +5251,7 @@ OS process:
 | -------- | -------------- | --------------------------- |
 | `npm start` | One Node process &mdash; `src/server.js` serves the dashboard AND auto-starts the bot **in the same V8 isolate** | `npm run debug-attach` (only). The single `src/server.js` target in `chrome://inspect` already exposes every bot module &mdash; set a breakpoint in `src/bot/bot-loop.js`, `src/bot/bot-cycle.js`, etc. on that target and it hits as the in-process bot polls. `debug-attach-bot` will correctly report "no node bot.js process via pgrep" because there is no separate bot process. |
 | `npm run bot` | One Node process &mdash; `src/bot.js`, headless, no dashboard | `npm run debug-attach-bot` (only). |
-| `npm start` AND `npm run bot` simultaneously (rare &mdash; two terminals) | Two Node processes that would both try to bind inspector port `9229` &mdash; the second one's inspector start fails silently and stays invisible in `chrome://inspect` | Start one of them with `INSPECTOR_PORT=9230` baked in (`INSPECTOR_PORT=9230 node --inspect-port=9230 src/bot.js`) so the two inspectors don't collide; then attach each on its own port. |
+| `npm start` AND `npm run bot` simultaneously (rare &mdash; two terminals) | Two Node processes that would both try to bind inspector port `9229` &mdash; the second one's inspector start fails silently and stays invisible in `chrome://inspect` | Start the bot with its own inspector port (`node --inspect-port=9230 src/bot.js`), then attach with `INSPECTOR_PORT=9230 npm run debug-attach-bot`, so the attach script prints that port. Only the attach scripts read `INSPECTOR_PORT`, from the environment or `.env`. |
 
 #### Connecting from `chrome://inspect`
 
@@ -5227,17 +5315,18 @@ bot process, including signing transactions with the loaded wallet.
 
 ## Dependency Management
 
-LP Ranger's npm dependencies flow through three distinct install modes,
-each with a different posture on version pinning. Understanding which
-mode you're in matters because one of them (production release) is a
-**security boundary** — end-users install exactly the versions the
-maintainer tested, with zero resolution latitude.
+LP Ranger's npm dependencies are installed in three modes, which
+differ in whether the committed lockfile binds the install.
+Understanding which mode you're in matters because one of them
+(production release) is a **security boundary** — end-users install
+exactly the versions the committed lockfile records, which CI tested,
+with zero resolution latitude.
 
 | Mode | Command | `package.json` ranges | Lockfile used? | Audience |
 | ---- | ------- | --------------------- | -------------- | -------- |
 | Development (feature work on `main`) | `npm install` | Caret `^` (e.g. `"csrf": "^3.1.0"`) | Updated opportunistically | Contributors |
 | CI (every PR and push) | `npm ci` | Caret `^` | Yes, exact | GitHub Actions matrix |
-| Production release (user install) | `npm ci` | **Exact** (e.g. `"csrf": "3.1.0"`) | Yes, exact + regenerated from pinned `package.json` | End users |
+| Production release (user install) | `npm ci` | Caret `^`, as on `main` | Yes, exact: the committed lockfile, shipped in the tarball | End users |
 
 ### Philosophy
 
@@ -5267,7 +5356,8 @@ copy-pasting, so dependency-bot updates apply.
 ### The Main Branch (Caret Ranges + Committed Lockfile)
 
 During day-to-day development, `package.json` uses caret (`^`) ranges
-for every entry. Caret ranges allow npm to pick any minor/patch version
+for every entry but `@uniswap/v3-sdk`, whose tilde range (`~3.28.0`)
+takes patch releases only. Caret ranges allow npm to pick any minor/patch version
 compatible with the range at install time — so a contributor running
 `npm install` on a fresh clone might get a slightly newer patch than
 the last committed lockfile specifies.
@@ -5319,65 +5409,52 @@ lockfile, do so — fewer overrides means fewer surprises.
 
 ### Production Releases
 
-This is where the pinning discipline becomes a **security feature**.
+This is where the lockfile becomes a **security feature**.
 
 #### The Release Workflow
 
-`.github/workflows/release.yml` is the sole path for cutting a release.
-It's `workflow_dispatch`-only (manual, no push triggers) and takes a
-semver string as input. Summary of its steps:
+`.github/workflows/release.yml` builds a release's assets. It runs
+when a release is published on GitHub (`release: published`, however it
+is published: `gh release create`, the api or the repository's web
+page), and takes no input: the release's tag names the version. Its
+steps:
 
-1. **Checkout `main`** (never modified — release branches are siblings).
-2. **Set up Node.js 24**, then **`npm ci`** (exact install from the
-   committed lockfile — no range drift).
-3. **`npm run check`** — full lint + test + coverage + security
-   audit must pass. A failing main blocks the release.
-4. **Create `release-x.y.z` branch** off main.
-5. **Pin every dependency version** — an inline Node script walks
-   `package.json`'s `dependencies` and `devDependencies`, reads the
-   exact resolved version from `package-lock.json`, and rewrites each
-   entry to a bare version string (no `^`, no `~`, no range).
-6. **Add `.npmrc` with `save-exact=true`** — if the user ever runs
-   `npm install <pkg>` after the fact, they get an exact pin rather
-   than a caret range.
-7. **Regenerate `package-lock.json`** via
-   `npm install --package-lock-only --ignore-scripts` — so the
-   lockfile's top-level ranges now match the pinned `package.json`.
-   `--ignore-scripts` prevents lifecycle scripts from running during
-   lockfile regeneration (relevant for supply-chain safety).
-8. **Build the bundles** — `npm run build` produces `src/client/web/dist/bundle.js`
-   and the User Manual's `src/client/web/dist/manual-figures.js`.
-9. **Bump `package.json` version** via `npm version --no-git-tag-version`.
-10. **Commit** the pinned `package.json`, regenerated lockfile, the
-    new `.npmrc`, and the built bundle to the release branch.
-11. **Tag** `v<version>` and push tag + release branch.
-12. **Create GitHub Release** from the release branch via
-    `softprops/action-gh-release`; the generated source tarball is
-    what end-users download.
+1. **Check out the release's tag**, with `persist-credentials: false`,
+   since the job pushes nothing to git.
+2. **Set up Node.js 24**, then **`npm ci`**: exactly the tree the
+   committed `package-lock.json` records.
+3. **`npm run build`** — `src/client/web/dist/bundle.js` and the User
+   Manual's `src/client/web/dist/manual-figures.js`.
+4. **Make the tarball**, `lp-ranger-<tag>.tar.gz`, of the checked-out
+   tree, leaving out `.git`, `node_modules`, `tmp`, `.github`, `logs`,
+   `app-data/scan-cache` and the operator's files
+   (`app-config/user-configurable/*.json`, `app-data/*.json`), and its
+   SHA-256 checksum beside it, `lp-ranger-<tag>.tar.gz.sha256`, for
+   `sha256sum -c`.
+5. **Upload both to the release** with `softprops/action-gh-release`,
+   which replaces an asset of the same name, so publishing a release
+   again replaces them.
 
-The release branch exists **only** to carry the pinned artifacts —
-`main` never sees the edit to `package.json`. This means:
-
-- `main` keeps the caret-range ergonomics for contributors.
-- Every release is reproducible from its exact tagged branch.
-- If a release needs a hotfix, the `release-x.y.z` branch is
-  modified directly and a new tag is cut; `main` is only touched for
-  the underlying source fix.
+Each third-party action is pinned to a full commit SHA. The workflow
+runs no lint, test or audit of its own, and changes nothing in git: no
+branch, commit or tag. A release is reproducible from its tag, since
+`npm ci` installs exactly what that tag's lockfile records.
 
 #### What Ships in a Release Tarball
 
-A user who downloads `lp-ranger-X.Y.Z.tar.gz` gets:
+A user who downloads `lp-ranger-X.Y.Z.tar.gz` gets the tree at the
+release's tag, less what step 4 leaves out:
 
-- `package.json` — every dependency version **exact**, not `^X.Y.Z`.
-- `package-lock.json` — regenerated against that pinned
-  `package.json`, so the entire transitive graph is also frozen.
-- `.npmrc` — `save-exact=true`, so any subsequent local
-  `npm install` also produces exact pins.
+- `package.json`, with the ranges the tagged commit has: caret, and a
+  tilde for `@uniswap/v3-sdk`.
+- `package-lock.json`, the committed lockfile, which records the exact
+  version and integrity hash of every package in the tree, transitive
+  ones included.
 - `src/client/web/dist/` — **prebuilt** browser bundles, the dashboard's and
   the User Manual's, so the user's machine never runs esbuild on
   potentially compromised source.
-- All `src/`, `src/client/web/`, `docs/`, config — as committed to the
-  release branch.
+- All `src/`, `docs/`, `test/`, the shipped settings, and the rest of
+  the tracked tree.
 
 #### End-User Install Path
 
@@ -5397,8 +5474,9 @@ machines who install the same tagged release get byte-identical
 `node_modules` trees.
 
 `npm install` (the loose cousin) is explicitly discouraged in the
-production path — a caret-range leak into a hypothetical `package.json`
-could otherwise pull a newer patch that the maintainer never tested.
+production path: unlike `npm ci`, it may rewrite `package-lock.json`,
+and anything it resolves afresh it resolves from `package.json`'s caret
+ranges, which can pull a newer version the maintainer never tested.
 
 ### Why This Is a Security Feature
 
@@ -5421,20 +5499,26 @@ Three distinct supply-chain attack classes that pinning closes off:
   mysteries. Pinning eliminates the gap so the tested graph equals
   the installed graph.
 
-Combined with `npm audit --audit-level=high` running on every merge
-(documented in [Security § Supply Chain & Dependencies](security.md#supply-chain--dependencies))
-and the `--ignore-scripts` flag during lockfile regeneration, the
-end-user install is about as tight as npm's own tooling allows.
+Combined with `npm audit --audit-level=high --omit=dev`, which gates
+every CI run and runs daily against the newest release
+(`.github/workflows/security-audit-production.yml`; documented in
+[Security § Supply Chain & Dependencies](security.md#supply-chain--dependencies)),
+the end-user install is about as tight as npm's own tooling allows.
 
 ### Security Audits
 
-`npm run audit:deps` (part of `npm run check`) runs
-`npm audit --audit-level=high --json` and writes the full report to
-`test/report-artifacts/raw-data/npm-audit.json`. The threshold is
-`high` so pre-existing moderate advisories don't fail CI, but the
-full severity breakdown (critical / high / moderate / low / info)
-appears in the check-report summary and PDF so nothing at the
-moderate tier sits unnoticed for long. See
+`npm run check` gates on `npm audit --audit-level=high --omit=dev --json`,
+and runs a second `npm audit --json`, devDependencies included and no
+threshold, whose report it writes to
+`test/report-artifacts/raw-data/npm-audit.json` (`scripts/check.js`).
+`npm run audit:deps` runs the gate's audit alone,
+`npm audit --audit-level=high --omit=dev`, and writes nothing. The
+threshold is `high`, so a moderate advisory does not fail CI, and
+`--omit=dev` keeps the gate to the tree that ships, so an advisory in a
+devDependency does not fail it either. The full severity breakdown
+(critical / high / moderate / low / info), devDependencies included,
+appears in the check-report summary and PDF, so nothing below the gate
+sits unnoticed for long. See
 [Security § `npm audit`](security.md#npm-audit) for the detailed rationale on
 the one currently-accepted ecosystem-wide advisory
 (`elliptic` reachable transitively through `@uniswap/v3-sdk`).
@@ -5458,14 +5542,11 @@ required in branch protection.
   This is developer tooling; end-user tarball installs run it
   harmlessly (no-op if `.husky/` is absent).
 
-The release workflow regenerates the lockfile with
-`npm install --package-lock-only --ignore-scripts` because that step
-is purely metadata-shaping — actually executing `postinstall` during
-lockfile regeneration would waste a minute and, more importantly,
-would run third-party install scripts against a half-pinned graph.
-The GitHub Pages workflow uses `npm ci --ignore-scripts` for the same
-reason: it only needs `node_modules/@fontsource/*` as filesystem
-inputs for the site assembly, not any script execution.
+The GitHub Pages workflow installs with `npm ci --ignore-scripts`, so
+no install script of any dependency runs: it needs
+`node_modules/@fontsource/*` only as files for the site assembly,
+which its own `npm run copy-fonts` then copies. The release workflow's
+`npm ci` runs the lifecycle scripts, as a user's does.
 
 ### Node.js Engine Requirement
 
@@ -5484,6 +5565,8 @@ Philosophy section above:
 - `@uniswap/v3-periphery` — V3 reference contract ABIs.
 - `@uniswap/v3-sdk` — exact 160-bit sqrtPrice math
   (`maxLiquidityForAmounts`, `SqrtPriceMath`).
+- `ajv` — JSON Schema validation, which checks every settings file at
+  startup (`src/lib/value-kinds.js`).
 - `async-mutex` — rebalance lock.
 - `commander` — argument parsing and `--help` for the `util/` tools.
 - `csrf` — CSRF token generation/verification (pillarjs).

@@ -21,7 +21,8 @@
  *
  * Exports:
  *  - `saveRangeWidth` — Save button: persist the row (the typed value if
- *    it's a legal number in [0.1, 200], plus the Full-Range boolean).
+ *    it's a number, plus the Full-Range boolean); whether the width is in
+ *    range is the server's answer (`src/lib/config-bounds.js`).
  *  - `setDefaultRangeWidth` — Default button: inject the shipped
  *    default into the input (user still has to click Save to persist).
  *  - `onFullRangeToggle` — Change handler on the Full-Range checkbox:

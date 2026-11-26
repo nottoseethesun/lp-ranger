@@ -109,7 +109,7 @@ const _isoTime = _of(KINDS.isoTime);
 const _tokenId = _either(_digits, _of(KINDS.count), "a token id");
 
 /*-
- *  Each record, keyed as the route receives it, with where the bot
+ *  Each record, keyed as the records file holds it, with where the bot
  *  writes it.
  */
 const RECORD_CHECKS = Object.freeze({

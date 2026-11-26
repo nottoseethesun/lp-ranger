@@ -16,7 +16,12 @@
  *                               cause is usually persistent saturation
  *                               or a bad param.
  *   - "terminal-nonce-consumed" The nonce is already used on-chain.
- *                               Abort without touching the NonceManager.
+ *                               Abort without touching the NonceManager,
+ *                               with one exception: `_retrySend`
+ *                               (src/bot/tx-retry.js) reads a "nonce too
+ *                               low" on a fresh send as the NonceManager
+ *                               having drifted behind the chain, resets
+ *                               it and sends once more.
  *   - "already-known"           The endpoint already holds this exact
  *                               transaction: an earlier submission
  *                               arrived though its reply was lost. Not a

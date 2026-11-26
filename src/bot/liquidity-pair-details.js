@@ -255,8 +255,10 @@ async function _fetchInitialPrices({
  * Return the cached `initialResidualData` for a scope; if missing, fetch the
  * wallet's token0/token1 balances at `firstMintBlock` (end-of-block — i.e.
  * what the wallet held immediately after the first IncreaseLiquidity TX
- * consumed its inputs), fetch their USD prices at the same block via
- * GeckoTerminal, persist, and return.
+ * consumed its inputs), fetch their USD prices for that moment
+ * (`fetchHistoricalPriceGecko`, src/bot/price-fetcher.js: the price
+ * cache, then Moralis at the block when a key is stored and switched on,
+ * then GeckoTerminal), persist, and return.
  *
  * Idempotent: a populated cache entry is returned untouched.
  *

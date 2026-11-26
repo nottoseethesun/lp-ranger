@@ -15,8 +15,9 @@
  * `amount x price`. Amounts come from chain and are reliable; prices
  * come from a feed cascade with no plausibility check, so one bad
  * response can be recorded permanently. Reload fixes that but re-walks
- * the pool's whole history. This clears only the price-derived figures
- * and re-values them at fresh prices.
+ * the pool's whole history. This re-values only the price-derived figures
+ * at fresh prices, overwriting each once its replacement exists, so it
+ * deletes nothing (`src/bot/rescan-prices.js`).
  *
  * Managed-state gate: read from the published position state
  * (`posState.status`), never from the badge's CSS class — see
@@ -35,7 +36,8 @@
  * importing `getLastStatus` from dashboard-data.js.  That import would
  * close an import cycle (dashboard-data -> … -> dashboard-events ->
  * this module -> dashboard-data); both callers already hold the
- * payload, so injecting it keeps this module dependency-free.
+ * payload, or a getter for it, so passing it in keeps this module from
+ * importing dashboard-data.js.
  *
  * External callers import from THIS module — no re-export shims
  * (per feedback-no-reexports).
@@ -289,7 +291,11 @@ function _awaitCompletion(overlay, go, key, getStatus) {
   setTimeout(tick, timing.every);
 }
 
-/** POST the request and report the outcome in-dialog. */
+/**
+ * POST the request.  A refusal is reported in the dialog; the server
+ * taking it starts the wait for the scan, and a request that reaches no
+ * server only hands the button back.
+ */
 async function _submit(overlay, go, getStatus) {
   const key = _activeKey();
   /*-

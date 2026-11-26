@@ -21,8 +21,8 @@ const { formatToken } = require("./price-source-cascade");
 const config = require("../lib/config");
 
 /**
- * In-flight Promise map.  Keys mirror the price cache
- * (`{chain}:{tokenAddress}` lower-cased).
+ * In-flight Promise map.  Keys are the price cache's: `cacheKey(chain,
+ * token)`, the chain and the token address, dash-joined and lower-cased.
  * @type {Map<string, Promise<number>>}
  */
 const _inflight = new Map();

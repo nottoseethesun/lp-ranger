@@ -1,9 +1,12 @@
 /**
  * @file dashboard-reopen-flow.js
- * @description Closed-position re-open flow: dust-check + two-step
- *   dialog sequence + handoff to the existing rebalance modal in
- *   `reopenContext` mode.  Extracted from `dashboard-events-manage.js`
- *   so that file stays under the 500-line cap.
+ * @description Closed-position re-open flow: the can-reopen check (the
+ *   wallet's two coins against the dust threshold), then the one dialog
+ *   its answer calls for.  The intro dialog's Re-open Position button
+ *   sends Manage with `forceRebalance: true` through `_postRebalance`
+ *   (`dashboard-rebalance-confirm.js`).  Extracted from
+ *   `dashboard-events-manage.js` so that file stays under the 500-line
+ *   cap.
  *
  *   Entry point: `runReopenFlow(active, opts)`.  Opts carry the
  *   handful of helpers the flow needs from the events module so this

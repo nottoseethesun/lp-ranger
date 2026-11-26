@@ -143,7 +143,8 @@ const _SAVED_RPC_URLS = (() => {
  *
  * `RPC_URLS` mixes the two, so recomposing from it would re-seed the
  * saved entries on every save and make them impossible to remove. The
- * server recomposes from this base plus the freshly saved list.
+ * bot's settings save (`_applyRpcUrls`, src/bot/settings-save.js)
+ * recomposes from this base plus the freshly saved list.
  * @type {string[]}
  */
 const RPC_URLS_BASE = composeRpcUrls({
@@ -324,7 +325,7 @@ const MIN_REBALANCE_INTERVAL_MIN = parseBoundedSetting(
   "minRebalanceIntervalMin",
 );
 
-/** Maximum rebalances per liquidity pool within a single 24-hour window. */
+/** Maximum rebalances per liquidity pool in one UTC day; the count resets at 00:00 UTC. */
 const MAX_REBALANCES_PER_DAY = parseBoundedSetting(
   "MAX_REBALANCES_PER_DAY",
   _BOT_DEFAULTS.maxRebalancesPerDay,

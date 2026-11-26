@@ -80,8 +80,9 @@ function _sdkTargetAmounts(currentTick, tickLower, tickUpper, avail0, avail1) {
  *
  *  Swap direction is decided by *ratio imbalance* (`f0` vs `R*f1`), not by
  *  mutually-exclusive sign checks on `excess0`/`excess1`. The SDK's
- *  `getAmount{0,1}Delta` rounds up, so the non-binding side often carries
- *  tiny positive dust (`excess > 0` but effectively nothing). The previous
+ *  `getAmount{0,1}Delta` rounds up, so the coin that limits the liquidity
+ *  (the one the mint takes in full) often carries tiny positive dust
+ *  (`excess > 0` but effectively nothing). The previous
  *  strict `excess <= 0n` guards skipped the swap in that case, leaving
  *  meaningful residuals in the wallet on every rebalance. Ratio-direction
  *  selection uses the residual to maximize minted liquidity instead.
@@ -527,12 +528,12 @@ function _addExchange(sum, more) {
  * `nonceUnsettled` means its swap is neither confirmed nor cancelled and may
  * still mine, and one carrying `swapLanded` means its swap mined though what
  * it delivered could not be read, so each propagates rather than being
- * treated as "no swap happened". A partial or abandoned swap leaves the mint to proceed on the
+ * treated as "no swap happened". A partial swap leaves the mint to proceed on the
  * balances it finds, which is what a tripped swap-gate already does, and the
  * corrective and residual-cleanup paths recover the remainder.
  *
  * One consequence worth knowing rather than mistaking for a hole: the
- * "raise slippage to N" message `_bestAttemptError` synthesises fires only
+ * "Increase to at least N%" message `_bestAttemptError` synthesises fires only
  * on the router's own failure, so returning a partial skips it for that
  * cycle. A genuinely too-tight slippage still surfaces — the cleanup
  * rebalance retries the remainder at full size, aborts on impact, and

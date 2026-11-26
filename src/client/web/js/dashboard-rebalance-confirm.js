@@ -13,7 +13,8 @@
  *  - `openRebalanceConfirm()`    — Mission-Control-button handler
  *  - `closeRebalanceConfirm()`   — Cancel button + Escape wire
  *  - `confirmRebalance()`        — Rebalance Anyway button
- *  - `_postRebalance(url, body)` — shared POST helper reused by
+ *  - `_postRebalance(url, body, active, triggerActLabel)` — shared POST
+ *    helper reused by
  *    `dashboard-reopen-flow.js` for the closed-position re-open path
  *
  * The server refuses a Rebalance Now while a scan is running on the
@@ -107,7 +108,8 @@ export function _computePreservedWidthPct(tickLower, tickUpper, offset) {
 
 /**
  * Compact "X%" range-width value for the modal's position-context
- * data-list line.  Pulls from getLastStatus() — the same source the
+ * data-list line.  Reads the status answer it is given (the caller
+ * passes getLastStatus()) — the same source the
  * Bot Configuration row's `syncRangeWidth` reads on every poll, so the
  * preview matches what a subsequent rebalance will actually apply.
  * A pre-populated but unsaved input value does NOT influence this —
@@ -156,10 +158,11 @@ export function _rangeWidthPreviewText(status, active) {
 }
 
 /** Open the mild-IL confirmation modal for a manual rebalance.  The
- *  Range Width line is appended to the position-context paragraph as
- *  a fourth data-list row (below "chain · wallet") so all identifying
- *  data lives in one block; textContent (not innerHTML) is used for
- *  the width value so the assembled string can't inject markup. */
+ *  Price Range Extension line is appended to the position-context
+ *  paragraph as a fourth data-list row (below "chain · wallet") so all
+ *  identifying data lives in one block; a text node (not innerHTML) is
+ *  used for the width value so the assembled string can't inject
+ *  markup. */
 export function openRebalanceConfirm() {
   const modal = g("rebalanceIlWarningModal");
   if (!modal) return;
@@ -275,8 +278,8 @@ function _handleRebalanceOk(active, inFlight, url, triggerActLabel, onScreen) {
  *
  *  Consolidates the setManageInFlight + fetch + optimistic-action +
  *  queued-action + error-modal + activity-log dance so both paths
- *  behave identically on success/failure.  Returns nothing; side
- *  effects only.
+ *  behave identically on success/failure.  Returns the server's
+ *  answer, which `confirmRebalance` reads.
  *
  *  Never sends `customRangeWidthPct` in the body — range width is a
  *  persistent per-position config value read by the bot loop.
@@ -345,7 +348,10 @@ export async function _postRebalance(url, body, active, triggerActLabel) {
 /**
  * What the answer to a rebalance or re-open request does: the dialog
  * and the optimistic badge while the position it was for is on screen,
- * and the Activity Log entry, naming that position, either way.
+ * and the Activity Log entry, naming that position, either way. A
+ * refusal because a scan is running (`scanInProgress`) on the position
+ * on screen does none of these: the Rebalance Now dialog waits for the
+ * scan (`confirmRebalance`).
  *
  * Exported so a test can drive it with an answer of its own: the request
  * goes through the global `fetch`, which a test must not replace.

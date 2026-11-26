@@ -8,13 +8,18 @@
  *  (a) **Price-ratio IL multiplier** — the classic v2 formula using the pool
  *      price ratio (currentPrice / entryPrice).  Returns a multiplier in
  *      [−1, 0] where 0 = no IL, −1 = total loss.
- *  (b) **HODL-comparison IL** — compares the current LP value against what
- *      holding the original deposited tokens would be worth at current prices.
- *      `IL = lpValue − hodlValue`.  Negative = loss vs holding.
+ *  (b) **HODL-comparison IL** — compares the current LP value, with any
+ *      wallet residual the caller credits to it, against what holding the
+ *      deposited tokens would be worth at current prices.
+ *      `IL = (lpValue + residualValueUsd) − hodlValue`.  Negative = loss vs
+ *      holding.
  *
- * The HODL comparison uses **only current prices** for valuation.  The original
- * deposited token amounts (from the IncreaseLiquidity event) determine the
- * HODL portfolio — no historical USD prices are needed.
+ * The HODL comparison uses **only current prices** for valuation.  The
+ * caller supplies the deposited token amounts, so no historical USD
+ * prices are needed: for the Current IL/G, the coins the NFT was minted
+ * with (from its mint's IncreaseLiquidity event) and the wallet's coins
+ * its compounds took in since; for the Lifetime IL/G, the deposits of the
+ * whole rebalance chain.
  *
  * @example
  * const { calcIlMultiplier, computeHodlIL } = require('./il-calculator');
@@ -75,22 +80,24 @@ function estimateLiveValue(entryValue, priceRatio, ilFactor = 0.38) {
  *
  * `residualValueUsd` is the current pool-scoped wallet residual in USD
  * (the "Wallet Residual (Pool)" figure surfaced in the dashboard's
- * Lifetime panel) — coins the LP gave back to the wallet during prior
- * rebalances and is about to fold back in on the next one.  Crediting
- * it to the LP-side closes the omission where the LP didn't get credit
- * for coins it has or has gained — visible on low-liquidity pairs whose
- * rebalance swaps leave material residuals, invisible on high-liquidity
- * pairs whose swaps absorb everything cleanly. The Lifetime IL/G passes
- * it; the Current IL/G and the Impermanent Loss Guard pass none, since
- * they compare only the coins the NFT was minted with and those put into
- * it since (src/bot/bot-pnl-il.js).
+ * Lifetime panel): the position's part of the wallet's balance of its
+ * pool's two coins (src/bot/wallet-coin-share.js), such as a rebalance's
+ * leftovers or a deposit still waiting, which the next rebalance mints
+ * into the position.  Crediting it to the LP side counts the coins the
+ * position has in the wallet, which matters on low-liquidity pairs whose
+ * rebalance swaps leave material residuals, and little on high-liquidity
+ * pairs whose swaps absorb everything. The Lifetime IL/G passes it; the
+ * Current IL/G passes none, and the Impermanent Loss Guard reads the
+ * Current IL/G, since they compare only the coins the NFT was minted with
+ * and those put into it since (src/bot/bot-pnl-il.js).
  *
  * Per the user's "simple a vs b" mandate, the initial-mint residual is
- * NOT subtracted here.  Accepted edge case: a freshly minted LP that
- * has not yet rebalanced will show +$X of IL/G equal to its initial-
- * mint leftover residual until the first rebalance folds that leftover
- * into the position.  The dashboard surfaces the initial residual as a
- * separate Lifetime panel line item so users can see it.
+ * NOT subtracted here.  Accepted edge case: the coins the first mint left
+ * in the wallet are never counted as put in, so the Lifetime IL/G shows
+ * about +$X, their value at today's prices: first as Wallet Residual
+ * credit, and, once a rebalance mints them into the position, inside its
+ * LP value.  The dashboard surfaces the initial residual as a separate
+ * Lifetime panel line item so users can see it.
  *
  * @param {object} opts
  * @param {number} opts.lpValue        Current LP position value (USD).

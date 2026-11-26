@@ -2,8 +2,8 @@
  * @file src/bot/position-lifecycle.js
  * @module position-lifecycle
  * @description
- * Starting and stopping the positions the bot manages, one request at a
- * time: Manage (start a bot loop for a position, or re-open a closed
+ * Starting and stopping the positions the bot manages, one position per
+ * request: Manage (start a bot loop for a position, or re-open a closed
  * one), Stop Managing, the re-open check, and the list of managed
  * positions. Each returns a result the server answers with
  * (src/server/bot-result.js); none knows anything of HTTP.
@@ -62,8 +62,9 @@ const _starting = new Map();
  * The re-open of a closed position: when the dashboard calls Manage on a
  * drained (liquidity=0) position, it sends `forceRebalance: true`. The
  * flag is stamped on the freshly built posBotState BEFORE startPosition,
- * so the bot loop's first poll sees it; `bot-cycle-drain.js`'s
- * `if (drained && !state.forceRebalance && !midwayFail)` guard then
+ * so the bot loop's first poll sees it; `checkZeroLiquidity`
+ * (`bot-cycle-drain.js`) then skips its
+ * `if (drained && !state.forceRebalance && !midwayFail)` branch and
  * returns null, and the rebalance runs on the drained NFT, minting fresh
  * liquidity and bringing the position back in one user-driven cycle. A
  * healthy position's request carries no flag, and nothing changes.
@@ -214,7 +215,9 @@ function _startFailure(err, key, tokenId) {
  * @param {Function} [deps.readProvider]  The provider that check reads
  *   through.
  * @param {Function} [deps.loadScanCache]  The wallet scan's cache reader,
- *   for the re-open check; the real one unless a test passes its own.
+ *   for Manage's refusal of a re-open while the wallet holds an open
+ *   position in the pool (src/bot/open-in-pool.js); the real one unless a
+ *   test passes its own.
  * @param {Function} [deps.startBotLoop]  The loop a Manage starts
  *   (src/bot/bot-loop.js); the real one unless a test passes its own.
  * @returns {{manage: Function, stopManaging: Function,
@@ -342,8 +345,8 @@ function createPositionLifecycle(deps) {
      *  pool hold indistinguishable tokens in the same wallet, so gains
      *  moving between them cannot be attributed to either and residual
      *  coins cannot be allocated — the rule the README and User Manual
-     *  state.  `key` is passed as selfKey so a rebalance, which mints a
-     *  new tokenId within the same pool, cannot reject itself. */
+     *  state.  `key` is passed as selfKey so a position is never refused
+     *  against its own bot state or its own claim. */
     const provider = readProvider();
     /*- The canonical pool-key builder, bound to this wallet.  Reused
      *  rather than re-derived so the gate cannot disagree with the

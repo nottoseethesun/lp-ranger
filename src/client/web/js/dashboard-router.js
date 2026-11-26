@@ -34,15 +34,20 @@
  * not fire for bfcache restores, and its "already" hook blocks re-resolution
  * of the same URL.  A `pageshow` listener clears Navigo's `lastResolved`
  * state via `_setCurrent(null)` and calls `resolve()` to re-fire the route
- * handler, which re-syncs the server's active position via activateByTokenId.
+ * handler, which puts the position the url names back on screen via
+ * activateByTokenId.  That happens in the browser only: the server keeps
+ * no position on screen.
  *
  * ## URL update contract
  *
  * The router is the single authority on URL state.  Other modules call
- * updateRouteForPosition/updateRouteForWallet only for explicit user actions
- * (position selection, wallet import/clear).  Automatic flows (scan, wallet
- * status restore) use syncRouteToState, which refuses to overwrite an
- * existing deep-link URL (4+ path segments).  The router handles deep-link
+ * updateRouteForPosition when a position is put on screen (position
+ * selection, deep link, the position restored at page load) and
+ * updateRouteForWallet when the wallet changes (import, clear, restore).
+ * syncRouteToState, called when the wallet strip shows a wallet and when a
+ * rebalance moves the position on screen to its new NFT, leaves a position
+ * url (4+ path segments) alone while it names the position's own token id,
+ * and replaces it when it names another.  The router handles deep-link
  * resolution via pending route targets, and a link to a position the store
  * lacks scans the wallet and looks again once the scan finishes.
  *
@@ -64,8 +69,9 @@ import { activeChainId } from "./dashboard-chain.js";
  * bot-config.json) are built from on-chain reads that always return
  * EIP-55 checksum form, so a segment used as-is could miss every
  * server-side lookup. Normalize on entry through `ethers.getAddress`
- * (EIP-55 checksum), and log a clear line on invalid input rather than
- * propagating garbage downstream. See
+ * (EIP-55 checksum); a segment that is not an address is logged as a
+ * warning and returned as written, so the lookups built from it find
+ * nothing. See
  * [[feedback_eip55_checksum_url_segments]].
  */
 function _toChecksum(addr) {
@@ -313,8 +319,9 @@ function _buildPositionPath(active) {
 /**
  * Update the URL bar to reflect the active position.
  * Uses pushState (creates a history entry).
- * Called only from explicit user actions (position browser selection,
- * router deep-link activation).
+ * Called for every position put on screen through `_activateCore`
+ * (position browser selection, deep-link activation, the position
+ * restored at page load).
  * @param {object|null} active  Active position entry from posStore.
  */
 export function updateRouteForPosition(active) {
@@ -348,8 +355,10 @@ export function updateRouteForWallet(address) {
 
 /**
  * Set the URL to reflect the current app state without creating a history entry.
- * Used by automatic flows (scan completion, wallet status restore) that should
- * reflect state in the URL but must NOT overwrite an existing deep-link URL.
+ * Used by flows the operator did not click (the wallet strip showing a wallet,
+ * a rebalance moving the position on screen to its new NFT).  A position url
+ * naming the position's own token id is left alone; one naming another is
+ * replaced, as after that rebalance.
  * @param {object|null} active  Active position entry from posStore.
  */
 export function syncRouteToState(active) {

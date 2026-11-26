@@ -67,13 +67,15 @@ export function isSoundsEnabled() {
 
 /**
  * Play a sound file, gated on the master Sounds toggle AND on browser
- * idle state.  Idle-gating prevents a backlog of rebalance/compound
- * jingles from greeting a user who returns to a long-untouched tab —
- * the polling-driven trackers in this module call `playSound` whenever
- * the per-position `lastRebalanceAt` / `lastCompoundAt` timestamps tick
- * forward, including events that fired hours ago while the dashboard
- * was paused.  Activity events unpause synchronously in
- * `dashboard-idle.js` (focus/click/key/touch/wheel/pointer), so a
+ * idle state.  Idle-gating keeps rebalance and compound jingles from
+ * playing while nobody is at the tab — the polling-driven trackers in
+ * this module call `playSound` whenever a position's `lastRebalanceAt` /
+ * `lastCompoundAt` moves forward after the first poll, unless the event
+ * fired before the tab last woke from idle (`isStaleForUiPurposes`,
+ * `dashboard-idle.js`), so the polls that go on while the dashboard is
+ * idle-paused would otherwise play them.  Activity events unpause
+ * synchronously in `dashboard-idle.js`
+ * (focus/click/key/touch/wheel/pointer), so a
  * click-driven `playSound` reaches this gate after the flag has flipped
  * back to `false`.  See docs/architecture.md "Idle-Driven Price-Lookup
  * Pause" for the full state machine.
@@ -85,10 +87,10 @@ export function isSoundsEnabled() {
  */
 /**
  * Pure gate decision for `playSound`.  Returns true when the sound
- * should actually reach `playSoundAlways`.  Ordering matters — the
- * master Sounds toggle is checked BEFORE the idle-paused gate so a
- * disabled toggle short-circuits and the idle check is only consulted
- * when it matters.  Extracted so tests can drive the gate directly
+ * should actually reach `playSoundAlways`.  It is false when the master
+ * Sounds toggle is off or the browser is idle-paused, and true
+ * otherwise; `playSound` reads both flags before it asks.  Extracted so
+ * tests can drive the gate directly
  * without needing to control cross-module singleton state
  * (`_browserHasPaused` in `dashboard-idle.js` etc.).
  * @param {boolean} soundsEnabled  Master Sounds toggle (via `isSoundsEnabled`).
@@ -198,8 +200,11 @@ export function _toMs(v) {
  * gate, and the wake-staleness filter into a single decision so tests
  * can pin the boundary semantics without needing to mutate the
  * per-key seen-Maps.  Callers still own the seen-Map update.
- * @param {string|null|undefined} eventAt   Server-side event timestamp.
- * @param {string|null|undefined} seenAt    Previously-seen value for this key.
+ * @param {number|string|null|undefined} eventAt  Server-side event
+ *   timestamp: ms since the epoch for a rebalance, an ISO 8601 string for
+ *   a compound (see `_toMs`).
+ * @param {number|string|null|undefined} seenAt   The value last seen for
+ *   this key, in the same form.
  * @param {boolean} trackersPrimed          First-poll-primed flag.
  * @param {boolean} isStale                 `isStaleForUiPurposes(eventMs)`.
  * @returns {boolean}                       true → caller should invoke playSound.

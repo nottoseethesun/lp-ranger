@@ -5,9 +5,12 @@
  * Server-side wallet state for the LP Ranger dashboard.
  * Stores the wallet's private key and optional mnemonic encrypted using
  * AES-256-GCM with a user-supplied session password.  The encrypted state
- * is persisted to `wallet.json` so it survives server restarts.  The
- * plaintext key is never held in server memory except during the brief
- * encrypt/decrypt window, and never appears in the persisted file.
+ * is persisted to `wallet.json` so it survives server restarts.  This
+ * module keeps no plaintext key: it holds the encrypted state and the
+ * address, and decrypts only when asked (`revealWallet`).  Once a wallet
+ * unlocks, the decrypted key is handed to the bot, which keeps it in
+ * memory to sign with (`setPrivateKey`, src/bot/bot-interface.js).  The
+ * plaintext key never appears in the persisted file.
  *
  * A save is all or nothing: the whole file goes to `wallet.json.tmp`,
  * flushed to disk, given `wallet.json`'s file mode, and is then renamed
@@ -32,7 +35,8 @@
  *     via PBKDF2 and then discarded.
  *   - The wallet address (public) is stored in the clear for position scanning.
  *   - To reveal the private key, the user must re-enter their password.
- *   - On clearWallet(), all encrypted material is zeroed.
+ *   - clearWallet() drops the wallet from memory and deletes wallet.json
+ *     and its .tmp copy.
  *
  * Note on seed phrases (BIP-39 mnemonics)
  * ────────────────────────────────────────

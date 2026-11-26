@@ -13,9 +13,8 @@ Chain-neutral; lift directly:
   best-practices, testing, security, disclosures). Only
   chain-specific examples inside get swapped.
 - Tooling: ESLint flat config (complexity ≤17, max-lines ≤500, no
-  disables, `--max-warnings 0`), stylelint, Prettier, husky +
-  lint-staged, knip, secretlint, `scripts/check.js`, security-lint
-  runner.
+  disables, `--max-warnings 0`), stylelint, Prettier, husky, knip,
+  secretlint, `scripts/check.js`, security-lint runner.
 - CI: GitHub Actions lint → test matrix; merge protocol;
   `npm run check` gate; `--merge` (no squash).
 - Dashboard scaffold: esbuild IIFE bundle, modular
@@ -121,8 +120,9 @@ them.
    `WalletStore`. Stub with LP-Ranger-shaped method signatures.
 4. Implement one AMM end-to-end before generalizing.
 5. Keep the app stateless — caches are pure perf.
-6. Port tests with implementation. Use `solana-test-validator` as
-   the ganache analog.
+6. Port tests with implementation. LP Ranger's tests run no local
+   chain: they stand in for the provider with stubs. Use
+   `solana-test-validator` only where a test needs a real chain.
 7. Mirror the memory/feedback rule system; reuse rules verbatim.
 
 ## Blocker questions before starting
