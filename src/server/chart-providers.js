@@ -17,7 +17,7 @@
  *     scheme:       string        // "https" (always, for now)
  *     domain:       string        // "dexscreener.com"
  *     blockchain:   string        // "pulsechain" or "pulse" — slug used in path
- *     pathSegments: string[]      // ["{blockchain}", "pools", "{poolId}"]
+ *     pathSegments: string[]      // ["{blockchain}", "{poolId}"]
  *   }
  *
  * The handler joins scheme + domain + path segments into a URL

@@ -144,7 +144,7 @@ export function positionRangeVisual() {
       rsym2 +
       " (" +
       botConfig.oorThreshold +
-      "% below lower)";
+      "% of the range's width below its lower bound)";
   }
   if (lnR) {
     lnR.style.left = pct(previewHi);
@@ -155,7 +155,7 @@ export function positionRangeVisual() {
       rsym2 +
       " (" +
       botConfig.oorThreshold +
-      "% above upper)";
+      "% of the range's width above its upper bound)";
   }
 }
 

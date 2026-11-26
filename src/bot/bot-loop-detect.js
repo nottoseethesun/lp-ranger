@@ -44,8 +44,9 @@ const { withFreshPricesAllowed } = require("./price-fetcher-gate");
  *  Four attempts with doubling backoff (750/1500/3000 ms = 5.25 s
  *  total) converts a blip — or even a sustained primary-RPC outage —
  *  into a brief pause.  Between attempts we also call
- *  `opts.onRpcFailure()` (wired to `sendTx.failoverToNextRPC()` in
- *  production) so the next attempt is routed through the fallback RPC.
+ *  `opts.onRpcFailure()`, when the caller passes one (the bot loop
+ *  passes none: its provider follows failover itself), so the next
+ *  attempt can be routed through the fallback RPC.
  *  Sticky failover is idempotent and self-healing (1 h window then
  *  auto-reverts), so erroneous engagement on a truly empty wallet is
  *  cheap.  See PR fix-no-nft-found-error. */
@@ -77,12 +78,12 @@ function _pickBestNft(valid) {
  * @param {string} address    Wallet address.
  * @param {string} [targetId] Specific NFT token ID to select.
  * @param {object} [opts]
- * @param {() => object} [opts.getProvider]  Per-attempt provider getter
- *   (production wires this to `sendTx.getCurrentRPC` so failover
- *   re-routes reads).  Defaults to the static `provider` arg.
+ * @param {() => object} [opts.getProvider]  Per-attempt provider getter,
+ *   so a failover re-routes the next attempt.  Defaults to the static
+ *   `provider` arg; its one caller passes none.
  * @param {() => void} [opts.onRpcFailure]   Called between attempts when
- *   the detector returns no usable result (production wires this to
- *   `sendTx.failoverToNextRPC`).  Defaults to no-op.
+ *   the detector returns no usable result.  Defaults to no-op; its one
+ *   caller passes none.
  * @returns {Promise<object>} Selected position data.
  */
 /**
@@ -294,13 +295,14 @@ async function _tryInitPnlTracker(
     }
     log.warn("[bot] Could not fetch token prices — P&L tracking disabled");
   } catch (err) {
-    /*- The pool-state errors are user-actionable (manage fails, dialog
-     *  shown).  Re-throw so they propagate up to Manage's catch, `_start`
-     *  in `position-lifecycle.js`, which answers `pool-info-unavailable`.
-     *  Other errors (price-fetch failures,
-     *  generic RPC hiccups) keep the historical swallow-and-return-null
-     *  behaviour so the bot can run with PnL tracking disabled rather
-     *  than refusing to manage. */
+    /*-
+     *  The pool-state errors are the operator's to act on (Manage fails,
+     *  a dialog shows), so they are thrown again, up to Manage's catch,
+     *  `_start` in `position-lifecycle.js`, which answers
+     *  `pool-info-unavailable`. Any other error (a failed price fetch, an
+     *  rpc hiccup) is swallowed and null returned, so the bot runs with
+     *  P&L tracking off rather than refusing to manage.
+     */
     if (
       err instanceof PoolStateInvalidError ||
       err instanceof PoolStateUnavailableError

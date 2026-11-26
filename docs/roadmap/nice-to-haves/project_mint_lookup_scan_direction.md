@@ -17,15 +17,17 @@ a recent mint almost at once, and an old NFT is no worse off.
 
 ## What changed
 
-Two call sites do this lookup:
+Three call sites do this lookup:
 
 | Call site | Looks up | Walks |
 | --- | --- | --- |
 | `_findMintEvent`, `src/bot/hodl-baseline.js` | the mint of the position's current NFT, for its HODL baseline | newest-first (`direction: "desc"`), since a managed position mints a new NFT at every rebalance |
 | `findOriginalMintOnChain`, `src/bot/event-scanner-mint-lookup.js` | the mint of a chain's first NFT | oldest-first, the default, since that mint is the oldest in the chain |
+| `supplementMintFromChain`, `src/bot/position-history-mint.js` | the mint of a closed NFT whose history lacks the mint's date or hash | oldest-first, the default: the mint's block alone when that is known, else from the pool's creation block or the history lookback's floor, whichever is later, to the chain head |
 
-Both stop at the first window that returns anything
-(`onChunk: (found) => found.length > 0`).
+The first two stop at the first window that returns anything
+(`onChunk: (found) => found.length > 0`); the third reads every window
+of its span.
 
 Token ids are global to the position manager rather than per pool, so a
 high id means a recent mint regardless of which pool the NFT belongs to.

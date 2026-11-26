@@ -6,16 +6,17 @@
  *
  *   The matcher searches across token addresses, token symbols, token ID,
  *   contract address, wallet address, and position type. The token-symbol
- *   coverage is the regression-relevant part — without it, typing the
- *   pair name (e.g. "CRO/dwb") in the browser filter matches nothing.
+ *   coverage is the regression-relevant part — without it, typing a
+ *   token symbol (e.g. "dwb") in the browser filter matches nothing.
  */
 
 /**
  * Test whether a position-store entry matches a filter string.
  *
  * @param {object} e         Position-store entry.
- * @param {string} filter    Lowercased query string (already trimmed).
- * @returns {boolean}        True if any indexed field includes the filter.
+ * @param {string} filter    Lowercased query string (not trimmed).
+ * @returns {boolean}        True if the filter is empty or occurs in the
+ *                           indexed fields joined with spaces.
  */
 export function matchesPosFilter(e, filter) {
   if (!filter) return true;

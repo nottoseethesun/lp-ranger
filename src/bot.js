@@ -77,6 +77,7 @@ const { createBot } = require("./bot/bot-interface");
 const { startBotLoop } = require("./bot/bot-loop");
 const { resetErrorLog } = require("./lib/error-log");
 const { resolvePrivateKey } = require("./bot/bot-private-key");
+const walletManager = require("./lib/wallet-manager");
 const { loadConfig, managedKeys } = require("./lib/bot-config-v2");
 const { createPerPositionBotState } = require("./bot/position-states");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
@@ -92,6 +93,15 @@ migrateAppConfig();
 async function main() {
   // Read before anything starts, so an unusable value stops startup.
   const { exitTimeoutMs } = readShutdownTimings();
+  /*-
+   *  Put the wallet's files right: the copy a save cut short left is put
+   *  back as wallet.json, or removed (src/lib/wallet-manager.js), as the
+   *  server does as it starts. The wallet itself was read as the module
+   *  loaded, and nothing here changes what the key read takes; this comes
+   *  first so the files are put right even when that read fails and the
+   *  bot exits.
+   */
+  walletManager.settleWalletFile();
   const dryRun = config.DRY_RUN;
   if (!dryRun) config.assertLiveModeReady();
 
@@ -100,8 +110,13 @@ async function main() {
   });
   if (!privateKey && !dryRun) {
     log.error(
-      "[bot] No private key available. Set PRIVATE_KEY in .env, or import" +
-        " a wallet via `node scripts/import-wallet.js` (or the dashboard).",
+      walletManager.hasWallet()
+        ? "[bot] The wallet is locked: no password was given. Set" +
+            " WALLET_PASSWORD in .env, or start the bot from a terminal" +
+            " to type it."
+        : "[bot] No private key available. Set PRIVATE_KEY in .env, or" +
+            " import a wallet via `node scripts/import-wallet.js` (or the" +
+            " dashboard).",
     );
     process.exit(1);
   }

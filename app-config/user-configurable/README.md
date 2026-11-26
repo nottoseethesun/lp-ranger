@@ -2,7 +2,7 @@
 
 Most LP Ranger operators don't need anything in this directory &mdash; the app's user interface guides you through every common setting. Read on only if you want to override one of the shipped operator-tunable defaults for your install.
 
-Drop your override files here using the same names as the shipped defaults in the sibling [`../app-defaults-for-user-configurable/`](../app-defaults-for-user-configurable/) directory. The app deep-merges your file on top of the shipped default at read time, with your values winning on every key you set.
+Drop your override files here using the same names as the shipped defaults in the sibling [`../app-defaults-for-user-configurable/`](../app-defaults-for-user-configurable/) directory. The app deep-merges your file on top of the shipped default at read time, with your values winning on every key you set. Three of the shipped files take no copy: `setting-bounds.json`, `api-keys.example.json` and `ui-defaults_non-layout_for-server-down-scenario.json`. A copy of one of them here stops the app at startup.
 
 Files placed in this directory are gitignored and survive tarball upgrades. The shipped defaults next door are overwritten on every upgrade; your copies here are not.
 

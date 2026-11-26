@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: fbb9ad2b-bfb6-4113-a2f4-fcb15a7900da
-  modified: 2026-10-24T04:55:01.208Z
+  modified: 2026-11-25T08:04:35.152Z
 ---
 
 # Running tests
@@ -15,9 +15,9 @@ separate files; search this one.
 
 ## never node test directly
 
-NEVER run `node --test` AND NEVER run `npm test` directly on this project. Always use `npm run check` (or at minimum `bash scripts/check.sh`). If you must run tests outside check, wrap them in `npm run wipe-settings` / `npm run restore-settings`.
+NEVER run `node --test` AND NEVER run `npm test` directly on this project. Always use `npm run check`. If you must run tests outside check, wrap them in `npm run wipe-settings` / `npm run restore-settings`.
 
-**Why:** Several test files use `fs.unlinkSync(_CACHE_PATH)` against production cache file paths in their `beforeEach`. The production-file protection is implemented in `scripts/check.sh`: it backs up the full `app-config/` set (.wallet.json, .bot-config.json, .bot-config.backup.json, api-keys.json, rebalance_log.json), `tmp/pnl-epochs-cache.json`, and other state files before tests run and restores them via an EXIT trap. Running `node --test` OR `npm test` bypasses this protection entirely and **destroys real user data**.
+**Why:** Several test files use `fs.unlinkSync(_CACHE_PATH)` against production cache file paths in their `beforeEach`. The production-file protection is implemented in `scripts/check.js`: it backs up `app-config/user-configurable/` and `app-data/` (wallet.json, bot-config.json, api-keys.json, the rebalance log, the scan caches) before tests run and restores them in a `finally`, and on SIGINT, SIGTERM or SIGHUP. Running `node --test` OR `npm test` bypasses this protection entirely and **destroys real user data**.
 
 **What I broke (latest, 2026-04-26):** During the lazy-require refactor I tried to be clever — backed up only `.bot-config.json` + `.bot-config.backup.json` before `npm test`, then restored. This was insufficient — the test run still wiped the user's settings (wallet.json, api-keys, etc.). User noticed: "you blew away my settings again."
 
@@ -141,9 +141,9 @@ or inside a wipe.
 
 ## no check in agents
 
-NEVER run `npm run check` (or any command that touches production files via check.sh) inside an Agent subprocess. Always run it directly in the main session.
+NEVER run `npm run check` (or any command that touches production files via scripts/check.js) inside an Agent subprocess. Always run it directly in the main session.
 
-**Why:** The check.sh script backs up production files (.bot-config.json, etc.) before tests and restores them via an EXIT trap. If an agent is killed (timeout, SIGKILL), the trap doesn't fire and production config is destroyed. This happened — the user's managed positions were wiped because an agent ran `npm run check` and the restore didn't complete.
+**Why:** scripts/check.js backs up production files (bot-config.json, wallet.json and the rest) before tests and restores them in a `finally`, and on SIGINT, SIGTERM or SIGHUP. If an agent is killed outright (SIGKILL, or a timeout that kills it), neither runs, and the live files stay wiped. This happened — the user's managed positions were wiped because an agent ran `npm run check` and the restore didn't complete.
 
 **How to apply:** When delegating work to agents, tell them to make code changes only. Run `npm run check` yourself in the main session after the agent returns.
 

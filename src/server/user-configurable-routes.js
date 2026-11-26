@@ -2,14 +2,23 @@
  * @file src/server/user-configurable-routes.js
  * @module userConfigurableRoutes
  * @description
- * Bundles the HTTP route handlers that serve JSON payloads from the
- * layered defaults+user-override loader (shipped defaults in
+ * Bundles the HTTP route handlers that serve the install's settings as
+ * JSON, so each individual tunable module (ui-defaults, lp-providers,
+ * etc.) does not need its own dedicated require + route-table entry in
+ * `server.js`.  Four read their data through the layered
+ * defaults+user-override loader (shipped defaults in
  * `app-config/app-defaults-for-user-configurable/` merged with the
- * matching files under `app-config/user-configurable/`) so each
- * individual tunable module (ui-defaults, lp-providers, etc.) does
- * not need its own dedicated require + route-table entry in
- * `server.js`.  Keeps the server route table compact while preserving
- * the per-module isolation of read/parse logic and fallbacks.
+ * matching files under `app-config/user-configurable/`):
+ * `GET /api/ui-defaults`, `GET /api/lp-providers`,
+ * `GET /api/chart-providers` and `GET /api/setting-labels`.  The others
+ * put more on top: `GET /api/bot-config-defaults` and
+ * `GET /api/help-figures` take `.env` for the settings it can set
+ * (src/server/resolved-settings.js); `GET /api/rpc-endpoints` lists
+ * `config.RPC_URLS`, the operator's saved urls and `.env`'s ahead of
+ * chains.json's (src/server/rpc-endpoints.js); and `GET /api/chain`
+ * reports the chain itself, which `CHAIN_NAME` in `.env` picks.  Keeps
+ * the server route table compact while preserving the per-module
+ * isolation of read/parse logic and fallbacks.
  */
 
 "use strict";

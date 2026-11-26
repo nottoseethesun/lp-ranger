@@ -130,13 +130,19 @@ describe("the IL/G popover's sections and the Wallet Residual", () => {
     assert.equal(tpl(root, "residualRow").hidden, true);
     assert.equal(tpl(root, "lpPlusResidual").textContent, "$96.00");
     assert.equal(tpl(root, "lblLpSide").textContent, "LP Value − Compounded");
-    assert.match(tpl(root, "formula").textContent, /^IL = LP Value − \(/);
+    assert.match(
+      tpl(root, "formula").textContent,
+      /^IL = \(LP Value − Compounded\) − \(/,
+    );
   });
 
   it("credits it in the Lifetime IL/G, as before", () => {
     const root = open("lt");
     assert.equal(tpl(root, "residualRow").hidden, false);
     assert.equal(tpl(root, "lpPlusResidual").textContent, "$108.00");
-    assert.match(tpl(root, "formula").textContent, /Wallet Residual/);
+    assert.match(
+      tpl(root, "formula").textContent,
+      /^IL = \(LP Value − Compounded \+ Wallet Residual\) − \(/,
+    );
   });
 });

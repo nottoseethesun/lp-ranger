@@ -1,6 +1,7 @@
 /**
  * @file dashboard-data.js
- * @description Polls /api/status, updates live UI elements.
+ * @description Updates live UI elements from each answer to the
+ * /api/status poll, which dashboard-data-poll.js makes.
  */
 import { log } from "./dashboard-log.js";
 import { g, botConfig } from "./dashboard-helpers.js";
@@ -17,6 +18,7 @@ import {
   updateHistorySyncLabels,
 } from "./dashboard-history.js";
 import { wallet } from "./dashboard-wallet.js";
+import { reloadIfOnPriorWallet } from "./dashboard-wallet-change.js";
 import {
   updateManageBadge,
   reapplyPrivacyBlur,
@@ -181,8 +183,9 @@ export function applySyncBlur(force) {
  * circuits in phase 1 (drained detected → closed view, phase 2 skipped)
  * so the server never writes rebalanceScanComplete for them.  Treat the
  * closed view itself as the synced signal: once isViewingClosedPos()
- * returns true, the one-shot closed-pos history fetch has landed and
- * there is nothing else to sync.
+ * returns true there is nothing else to sync.  Its history request may
+ * still be out; the figures stay stale until it answers
+ * (dashboard-stale-data.js).
  */
 function _syncStatus(d) {
   const active = posStore.getActive();
@@ -217,26 +220,25 @@ function _updateSyncBadge(d) {
   badge.title = tip || "";
   badge.style.background = "";
   badge.classList.toggle("done", c);
-  /*- LP Browser stays enabled even during sync: it only opens a modal
+  /*-
+   *  LP Browser stays enabled even during sync: it only opens a modal
    *  over posStore.entries (localStorage-backed, zero on-chain calls),
-   *  and "Select" flows through _activateCore which is the canonical
-   *  safe switch path.  Critically, this lets the user open the browser
-   *  and Remove a position that is stuck retrying a force-rebalance the
-   *  gas guard keeps deferring — the only graceful halt path for that
-   *  scenario short of a server restart.
+   *  and "Select" flows through _activateCore, the safe way to switch.
+   *  This lets the user open the browser and Remove a position that is
+   *  stuck retrying a forced rebalance the gas guard keeps deferring —
+   *  the only graceful halt for that short of a server restart.
    *
-   *  Manage button's sync gate moved to dashboard-manage-ui.js's
-   *  computeManageUI() — paintManageUI() runs every poll and reads
-   *  syncBadge.done as one of its inputs, so this loop no longer needs
-   *  to write #manageToggleBtn directly.  Rebalance button (custom
-   *  range) is still handled here because its decision tree is
-   *  simpler and lives nowhere else. */
-  const t = !c ? 'Wait until Syncing badge reads "Synced".' : "";
-  const rb = g("rebalanceWithRangeBtn");
-  if (rb) {
-    rb.disabled = !c;
-    rb.title = t;
-  }
+   *  The Manage button's sync gate is computeManageUI()'s
+   *  (dashboard-manage-ui.js), which paintManageUI() runs every poll. The
+   *  Rebalance button is set by `_updateRebalanceButtons` on each poll
+   *  that names this tab's wallet, or no wallet, and its decision tree does not ask
+   *  about Syncing: Rebalance Now stays enabled during Syncing, and the
+   *  server refuses one it cannot make. A submit disables it until the
+   *  next such poll (`_disableRebalanceButtonForInFlight`,
+   *  dashboard-rebalance-confirm.js). A tab left on a wallet another tab
+   *  replaced gets no such poll; it reloads once the import has finished
+   *  (dashboard-wallet-change.js).
+   */
   if (c && !_scanWasComplete) _onScanFinished(d);
   _scanWasComplete = c;
   applySyncBlur();
@@ -334,10 +336,12 @@ function _setBtn(el, disabled, title) {
 function _updateRebalanceButtons(d) {
   const on = !!d.rebalanceInProgress;
   const rb = g("rebalanceWithRangeBtn");
-  /*- Rebalance-with-range button decision tree.  Manage button is
-   *  no longer touched here — it's owned entirely by paintManageUI()
-   *  in dashboard-manage-ui.js (called once per poll from
-   *  updateDashboardFromStatus).  Each branch below sets ONLY rb. */
+  /*-
+   *  The Rebalance button's decision tree. The Manage button is not
+   *  touched here: paintManageUI() (dashboard-manage-ui.js) owns it, and
+   *  updateDashboardFromStatus paints it twice a poll while a position is
+   *  on screen. Each branch below sets ONLY rb.
+   */
   const active = posStore.getActive();
   if (!active) {
     _setBtn(rb, true, "Select a position first");
@@ -374,7 +378,7 @@ export function resetPollingState() {
   const dd = g("lifetimeDepositDisplay");
   if (dd) dd.textContent = "\u2014";
   const dl = g("initialDepositLabel");
-  if (dl) dl.textContent = "Edit Initial Deposit";
+  if (dl) dl.textContent = "Edit Total Lifetime Deposit for This Pool";
 }
 function _resolveManagedTid(a, mp, states) {
   const { migrateTo } = _computeRebalanceFollow(a, mp, states);
@@ -427,9 +431,9 @@ function _syncManagedAndGlobals(data) {
     botConfig.compoundDefaultThreshold = data.compoundDefaultThresholdUsd;
   _syncOorThreshold(data);
   /*- Per-poll so it retries on the "Manage on unmanaged position"
-   *  flow.  Each sync inside `syncBotSettingsConfigInputs`
-   *  self-throttles internally against dirty inputs and the
-   *  last-seen posKey — cadence rationale in
+   *  flow.  Each sync inside `syncBotSettingsConfigInputs`, but
+   *  `syncRangeOverride`, self-throttles internally against dirty
+   *  inputs and the last-seen posKey — cadence rationale in
    *  `dashboard-data-range-width.js`'s file header. */
   syncBotSettingsConfigInputs(data);
 }
@@ -466,12 +470,18 @@ function updateDashboardFromStatus(data) {
   _lastStatus = data;
   // Read for the position on screen, it replaces any other position's.
   noteStatusAnswerFor(posStore.getActive());
-  /*- Single Manage-UI paint per poll.  Runs BEFORE any branch that
-   *  may early-return (e.g. cross-wallet skip below), so the button
-   *  always reflects current server state every 3 s regardless of
-   *  whether the rest of the dashboard updates this cycle.  Reads
-   *  state via injected getLastStatus + posStore from
-   *  dashboard-manage-ui.js — no need to thread `data` through. */
+  /*-
+   *  The first of a poll's Manage-UI paints; `_syncManagedAndGlobals`
+   *  paints again below, once the managed list is updated, while a
+   *  position is on screen. This one runs
+   *  BEFORE any branch that may return early (the cross-wallet skip
+   *  below, say), so the button follows the server every poll, even when
+   *  the rest of the dashboard skips this one. Both read `isSyncComplete()`,
+   *  which `_updateSyncBadge` sets further down, so that input is one
+   *  poll behind the badge. It reads the state through the injected
+   *  getLastStatus and posStore (dashboard-manage-ui.js), so `data` need
+   *  not be threaded through.
+   */
   paintManageUI();
   /*- Reload Current Position: reflect the active position's live
    *  rebalance/compound-in-progress flags so the button in Settings
@@ -548,7 +558,19 @@ import {
 } from "./dashboard-sync-decisions.js";
 import { initDataPoll, pollNow } from "./dashboard-data-poll.js";
 import { announceRefill } from "./dashboard-config-save.js";
-initDataPoll(updateDashboardFromStatus);
+
+/**
+ * Each status answer: a tab left on a wallet the server no longer holds
+ * reloads and does nothing more with it (dashboard-wallet-change.js);
+ * any other tab shows it.
+ * @param {object} data  The status answer, flattened.
+ */
+function _statusAnswered(data) {
+  if (reloadIfOnPriorWallet(data, wallet.address)) return;
+  updateDashboardFromStatus(data);
+}
+
+initDataPoll(_statusAnswered);
 
 /**
  * Ask the server about the position on screen and fill the Bot Settings
@@ -557,7 +579,10 @@ initDataPoll(updateDashboardFromStatus);
  * dashboard-config-save.js, which empties a box whose value the server
  * refused and has it filled this way.
  *
- * @returns {Promise<void>}  Settled once the answer is applied.
+ * @returns {Promise<void>}  Settled once the answer is applied; at once,
+ *   with nothing applied yet, when a status poll is already out, whose
+ *   answer then fills the boxes; with nothing applied when the request
+ *   gets no answer.
  */
 function _refillFromServer() {
   _configSynced = false;

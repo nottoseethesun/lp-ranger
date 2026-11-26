@@ -1,8 +1,8 @@
 /**
  * @file dashboard-idle.js
  * @description Browser-side idle detection for the idle-driven price-
- *   lookup pause (component 4 of 4 — see docs/architecture.md
- *   "Idle-Driven Price-Lookup Pause").
+ *   lookup pause (one of its sources, which docs/architecture.md lists
+ *   in "Idle-Driven Price-Lookup Pause").
  *
  * One timer:
  *   - 15-min window of no input/activity → POST /api/pause-price-lookups
@@ -18,10 +18,16 @@
  * may have already moved the long-deferred callback into the task queue,
  * and `clearTimeout` no longer cancels what's queued.
  *
- * The 3-second `/api/status` polling loop in dashboard-data.js is
- * intentionally orthogonal — it keeps polling whether paused or not,
+ * The `/api/status` polling loop in dashboard-data-poll.js (every
+ * `dashboardPollIntervalMs`, 3 seconds as shipped) is intentionally
+ * orthogonal — it keeps polling whether paused or not,
  * and the server happily serves it from cached / last-known prices
  * without unpausing.
+ *
+ * It also answers whether the browser loaded this page on its own
+ * (`pageReloadedByBrowser`): a tab it unloaded to save memory and loads
+ * again as the operator returns. Such a page goes on as if it had stayed
+ * open, which the wallet restore asks (dashboard-wallet.js).
  */
 
 import { log } from "./dashboard-log.js";
@@ -186,8 +192,8 @@ export function startBrowserIdleTracker() {
  * returning to a long-untouched tab is not greeted with a backlog of
  * rebalance/compound jingles.
  *
- * Item 4 of the four pause sources (move-scope `withFreshPricesAllowed`)
- * lives entirely server-side in `src/bot/price-fetcher-gate.js` — it never
+ * The move-scope pause source (`withFreshPricesAllowed`) lives entirely
+ * server-side in `src/bot/price-fetcher-gate.js` — it never
  * touches this flag, so an auto-rebalance/compound that fires while the
  * user is away leaves the browser still believing itself paused.
  *
@@ -213,4 +219,38 @@ export function isBrowserPaused() {
  */
 export function isStaleForUiPurposes(eventMs) {
   return eventMs < _uiLastWokeUpAtMS;
+}
+
+/*-
+ *  How this page was loaded, as the browser reports it: whether it
+ *  reloaded a tab it had unloaded to save memory (`document.wasDiscarded`,
+ *  which Chrome sets).
+ */
+let _pageLoad = () => ({ discarded: document.wasDiscarded === true });
+
+/**
+ * TEST-ONLY seam: give how the page was loaded, as jsdom reports nothing.
+ * @param {() => {discarded: boolean}} fn
+ * @returns {() => void}  Puts the browser's report back.
+ */
+export function _setPageLoadForTests(fn) {
+  const prior = _pageLoad;
+  _pageLoad = fn;
+  return () => {
+    _pageLoad = prior;
+  };
+}
+
+/**
+ * Whether the browser loaded this page on its own: it reloaded a tab it
+ * had unloaded to save memory, as the operator came back to it. Such a
+ * page goes on as if it had stayed open, and a tab that stays open
+ * follows the server's wallet (dashboard-wallet-change.js). An address
+ * the browser came to any other way takes priority instead, typed,
+ * from a bookmark or a link, or by Back or Forward (the user's ruling,
+ * 2026-11-25).
+ * @returns {boolean}
+ */
+export function pageReloadedByBrowser() {
+  return _pageLoad().discarded;
 }

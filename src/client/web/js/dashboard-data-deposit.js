@@ -59,13 +59,14 @@ export function _posKeyFrom(prefix, walletAddress, contractAddress, tokenId) {
 /**
  * Per-pool localStorage key builder, on the active chain.  Takes every
  * other identity field explicitly so callers iterating positions other
- * than posStore.getActive() can reuse the same key layout.  Requires
- * every identity slot to be a string (or a number for `fee`, since
- * that's how the bot-state exposes it) — no implicit coercion, so a
- * malformed input, or a chain not yet learned, returns null rather than
- * silently producing a partial-match key.  All addresses are lower-cased
- * to preserve backwards compatibility with existing localStorage entries
- * written by the single-arg helpers below.
+ * than posStore.getActive() can reuse the same key layout.  The wallet
+ * and the two coins must each be a non-empty string — no implicit
+ * coercion, so a malformed one, or a chain not yet learned, returns null
+ * rather than silently producing a partial-match key.  A missing
+ * contract leaves its segment empty, and a `fee` that is not a finite
+ * number (the bot-state exposes it as one) is written as `0`.  All
+ * addresses are lower-cased to preserve backwards compatibility with
+ * existing localStorage entries written by the single-arg helpers below.
  */
 export function _poolKeyFrom(
   prefix,
@@ -451,9 +452,9 @@ export function toggleLifetimeDays() {
 /** Save the Lifetime Days input as a per-pool override.  Converts the
  *  user-entered days to `today − days` (YYYY-MM-DD UTC), writes to
  *  localStorage, and POSTs to `/api/config` under
- *  `lifetimeStartDateOverrideUtc` so the server payload's `ltStartDate`
- *  picks it up on the next poll.  Empty input / 0 clears the override
- *  (POST `null`, delete localStorage). */
+ *  `lifetimeStartDateOverrideUtc`, which `ltStartDate`
+ *  (dashboard-date-utils.js) reads from the next poll's payload.  Empty
+ *  input / 0 clears the override (POST `null`, delete localStorage). */
 export function saveLifetimeDays() {
   const inp = g("lifetimeDaysInput");
   const key = _poolKey(_LT_DAYS_START_PREFIX);

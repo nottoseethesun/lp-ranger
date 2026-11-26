@@ -25,9 +25,10 @@ const { readGlobalSetting } = require("../lib/bot-config-v2");
 /**
  * Shape one endpoint for display.
  *
- * The label is the bare host — the scheme is noise in a menu, and the
- * ordinal ("primary", "2nd choice") tells the operator what the bot
- * will actually do with it, which the raw URL does not.
+ * The label is the bare host — the scheme is noise in a menu — and its
+ * place in the failover order ("(primary)", then "(fallback 1)",
+ * "(fallback 2)" and on), which tells the operator what the bot will
+ * actually do with it, which the raw URL does not.
  * @param {string} url    Full endpoint URL.
  * @param {number} index  Position in the ordered failover list.
  * @returns {{url: string, host: string, label: string, primary: boolean}}

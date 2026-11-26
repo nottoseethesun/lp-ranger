@@ -54,8 +54,9 @@ function _residualWarningHtml(rw) {
     rw.iterations +
     " times and gave up to avoid endless looping. " +
     "Your tokens are safe in your wallet. " +
-    "The bot sweeps residuals automatically 10 minutes after each rebalance when they exceed 5% of the position\u2019s value, " +
-    "or you can click <strong>Rebalance</strong> to try again sooner." +
+    "The bot sweeps residuals automatically after each rebalance once they exceed a share of the position\u2019s value " +
+    "(10 minutes after, at 5%, as shipped), " +
+    "or you can click <strong>Rebalance Now</strong> to try again sooner." +
     "</p>"
   );
 }
@@ -130,7 +131,9 @@ export function _resetPostRebalanceModalState() {
  * Pure dispatch decision for the post-rebalance rangeRounded /
  * residualWarning alerts.  Given the flattened states map and a
  * snapshot of the dedup state, returns which alerts should fire this
- * poll — caller performs modal creation and dedup mutation.
+ * poll.  Only the tests call it: `showPostRebalanceWarnings` decides
+ * through `_showForKey`, which applies the same rule, so a change to one
+ * is made in both.
  *
  * @param {Record<string, object>} allStates
  * @param {{ rrShown: Set<string>, rwShownAt: Map<string, number|null> }} dedup

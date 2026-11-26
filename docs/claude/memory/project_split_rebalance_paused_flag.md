@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
-  modified: 2026-11-24T19:18:35.544Z
+  modified: 2026-11-25T05:18:24.343Z
 ---
 
 **Status: DEFERRED to a future cleanup PR.** User picked option C in the 2026-06-18 closed-position-reopen-via-manage review: leave the flag as-is for now, discipline the user-facing prose via [[feedback_paused_vs_aborted]]. Tackle the rename when there's appetite for a small, focused cleanup PR.
@@ -14,10 +14,10 @@ metadata:
 
 The `botState.rebalancePaused` flag is written from two structurally different places with different semantics:
 
-1. **Swap-abort on slippage** — `src/bot/bot-loop.js:194-202` `_handleError`. When the swap quote's price impact exceeds the user's `SLIPPAGE_PCT`, the entire rebalance effort halts instantly. The bot will NOT retry — slippage problems require manual user action 99.9% of the time. "Aborted" fits.
+1. **Swap-abort on slippage** — `_handleError` in `src/bot/bot-loop.js`. When the swap quote's price impact exceeds the user's `SLIPPAGE_PCT`, the entire rebalance effort halts instantly. The bot will NOT retry — slippage problems require manual user action 99.9% of the time. "Aborted" fits.
 2. **A rebalance the price outran** — `src/bot/price-moved-stop.js` `holdAfterPriceMove`. When the price leaves the new range before the mint, with the old position emptied, the bot holds the position at once for the owner to weigh the impermanent loss and click Rebalance Now (the user's ruling, 2026-10-23). Until then it backed off and retried, up to `REBALANCE_RETRY_SWAP_LIMIT` stops, and paused only once those ran out; that ladder and its three settings are gone, so this case no longer earns a pause by exhaustion, and "Aborted" fits it too.
 
-Both paths share the same downstream consumer (`checkStateGates` in `bot-cycle-gates.js`, asked by `_checkRebalanceGates` in `bot-cycle.js`, returns early when paused) and the same UI treatment (the "RETRYING" pill in `dashboard-data-status.js`, plus the alerts in `dashboard-alerts.js`). They converge enough that splitting downstream isn't worth it — but the flag NAME needs splitting for prose clarity.
+Both paths share the same downstream consumer (`checkStateGates` in `bot-cycle-gates.js`, asked by `_checkRebalanceGates` in `bot-cycle.js`, returns early when paused) and the same UI treatment (the "ABORTED" pill in `dashboard-data-status.js`, plus the alerts in `dashboard-alerts.js`). They converge enough that splitting downstream isn't worth it — but the flag NAME needs splitting for prose clarity.
 
 ## Proposed split
 

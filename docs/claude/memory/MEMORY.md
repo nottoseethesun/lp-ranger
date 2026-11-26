@@ -58,6 +58,7 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [general to specific](feedback_general_to_specific.md) — Name the thing in operator terms first
 - [explain behavior, not call sites](feedback_explain_behavior_not_call_sites.md) — Say what happens; function names last
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, lowercase tech initials
+- [audit English by the hand-off](feedback_audit_english_by_the_handoff.md) — Docs, help and JSDoc audits follow docs/claude/CLAUDE-ENGLISH-AUDIT.md
 - [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Cut points, never steps
 - [distinct terms for distinct things](feedback_distinct_terms_for_distinct_things.md) — One word per entity; the user's names; no coined metaphors
 - [release notes style](feedback_release_notes_style.md) — Old West gunslinger + one-line summary; consequences, not changes

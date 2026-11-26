@@ -5,10 +5,14 @@
  * Tracks token residuals left in the wallet after rebalances.  When a
  * position is rebalanced the mint may deposit slightly less than what was
  * collected (rounding, tick alignment, ratio rebalancing).  The difference
- * stays in the wallet and has real USD value that should count toward P&L.
+ * stays in the wallet.
  *
  * Residuals are accumulated per pool address and capped to the actual
  * wallet balance so that tokens the user withdrew are not double-counted.
+ * Their one reader is the figure the "Residual Above Threshold" dialog
+ * shows after a rebalance (`computeWalletResidualUsd`,
+ * src/bot/bot-cycle-residual.js); the P&L's wallet residual credit is
+ * read from the wallet's balances instead (src/bot/bot-pnl-updater.js).
  */
 
 "use strict";

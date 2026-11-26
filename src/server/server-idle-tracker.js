@@ -5,7 +5,10 @@
  * Server-side idle detection for the idle-driven price-lookup pause
  * (component 1 of 4 — see docs/architecture.md "Idle-Driven Price-Lookup
  * Pause").  Catches the "dashboard fully closed" case: when no `/api/*`
- * traffic has hit the server for `thresholdMs`, fires `onIdle()` once.
+ * traffic has hit the server for `thresholdMs`, fires `onIdle()`.  It
+ * fires once in the tracker's life: the flag it sets on firing is cleared
+ * only by `_resetForTest`, so a later idle spell, after the browser has
+ * unpaused, fires nothing.
  *
  * `markActivity()` is called on every `/api/*` request and resets the
  * idle countdown.  It does NOT clear an existing pause flag — unpausing
@@ -109,10 +112,9 @@ function createIdleTracker({
     };
   }
 
-  /*- Test-only: reset the internal `_paused` flag.  Production never
-   *  needs to clear this — once idle, the tracker stays "paused" until
-   *  the next `start()`/`stop()` cycle (which itself only happens at
-   *  server lifecycle boundaries). */
+  /*- Test-only: reset the internal `_paused` flag.  Nothing in
+   *  production clears it — once idle, the tracker stays "paused" for the
+   *  life of the process: neither `start()` nor `stop()` resets it. */
   function _resetForTest() {
     _paused = false;
     _lastActivityTs = nowFn();

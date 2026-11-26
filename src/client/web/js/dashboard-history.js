@@ -1,10 +1,11 @@
 /**
  * @file dashboard-history.js
- * @description Renders the Per-Day P&L table (up to 31 days) and the
- * Rebalance Events table (up to 5-year lookback) on the dashboard.
- * Data is fetched from /api/status.
+ * @description Renders the Per-Day P&L table (every day with activity,
+ * newest first) and the Rebalance Events table (up to 5-year lookback)
+ * on the dashboard.  Data is fetched from /api/status.
  *
- * Depends on: dashboard-helpers.js (g, fmtDateTime).
+ * Depends on: dashboard-helpers.js (g, tzCode, cloneTpl),
+ * dashboard-positions-store.js (posStore), dashboard-log.js.
  */
 
 import { log } from "./dashboard-log.js";
@@ -13,9 +14,11 @@ import { posStore } from "./dashboard-positions-store.js";
 
 /**
  * Format a number as a USD table cell value.
- * Zero shows without sign; negative puts sign before currency symbol.
+ * Zero shows without sign; negative puts a minus sign before the figure.
+ * The card's title says "($USD)", so the cell carries no currency text.
  * @param {number} val  Numeric value.
- * @returns {string}  Formatted string, e.g. "$usd 1.23" or "\u2212$usd 1.23".
+ * @returns {string}  Formatted string, e.g. "1.23"; a negative figure starts
+ *   with the minus sign U+2212.
  */
 function _tblUsd(val) {
   if (Math.round(val * 100) === 0) return "0.00";
@@ -170,7 +173,7 @@ function _eventTs(e) {
 /** Format an event timestamp into a [utc, local] pair. */
 function _fmtEventTs(ts) {
   if (!ts) return [_EMDASH, ""];
-  const utc = ts.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  const utc = ts.toISOString().slice(0, 16).replace("T", " ") + "Z";
   const local =
     ts.toLocaleDateString() +
     " " +

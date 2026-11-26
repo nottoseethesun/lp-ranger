@@ -45,7 +45,8 @@
  * ROUTES
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- *   GET  /                          → src/client/web/index.html (dashboard)
+ *   GET  /                          → the dashboard: src/client/web/dist/index.html,
+ *                                     or src/client/web/index.html before a build
  *   GET  /public/*                  → static files from src/client/web/
  *   GET  /health                    → 200 OK (load-balancers / pm2)
  *
@@ -96,7 +97,9 @@
  * // start dashboard:
  * node src/server.js          // → http://localhost:5555
  *
- * // start bot (requires PRIVATE_KEY):
+ * // start the headless bot (PRIVATE_KEY, or the imported wallet unlocked
+ * // by WALLET_PASSWORD or a password typed at the terminal; no key in a
+ * // dry run):
  * node src/bot.js
  *
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -167,7 +170,11 @@ const { handleCors } = require("./server/server-cors");
 const { handleCsrf } = require("./server/server-csrf");
 const walletManager = require("./lib/wallet-manager");
 const { bigIntReplacer } = require("./lib/bigint-json");
-const { loadConfig, managedKeys } = require("./lib/bot-config-v2");
+const {
+  loadConfig,
+  backUpSettings,
+  managedKeys,
+} = require("./lib/bot-config-v2");
 const { parseCompositeKey } = require("./lib/composite-key");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
 const { userConfigurableRoutes } = require("./server/user-configurable-routes");
@@ -183,9 +190,12 @@ const { createBot } = require("./bot/bot-interface");
 logVersionBanner("[server]");
 
 // ── app-config migration ─────────────────────────────
-// One-time move of legacy root-level config files into app-config/.
-// Idempotent: a no-op after the first successful run. See
-// src/lib/migrate-app-config.js and the app-config/ section of this file.
+/*-
+ *  One-time move of legacy root-level config files into app-config/.
+ *  Idempotent: a no-op after the first successful run. See
+ *  src/lib/migrate-app-config.js and "The app-config Directory" in
+ *  docs/engineering.md.
+ */
 migrateAppConfig();
 
 // ── MIME type map ────────────────────────────────────
@@ -204,8 +214,11 @@ const MIME = {
 
 // ── Bot config persistence (v2) ─────────────────────
 
-/** Bot config loaded from disk. */
-const _diskConfig = loadConfig();
+/*-
+ *  Bot config loaded from disk. Loaded without the safety copies, which
+ *  the server makes once it holds its port (`backUpSettings`, below).
+ */
+const _diskConfig = loadConfig(undefined, true);
 
 // ── The bot ─────────────────────────────────────────
 /*-
@@ -216,7 +229,11 @@ const _diskConfig = loadConfig();
  *  Every route below asks it for what it needs, through the same
  *  interface, and the server holds none of its state.
  */
-const _bot = createBot({ diskConfig: _diskConfig, walletManager });
+const _bot = createBot({
+  diskConfig: _diskConfig,
+  walletManager,
+  skipBackups: true,
+});
 
 const _managedAtStartup = managedKeys(_diskConfig);
 if (_managedAtStartup.length > 0)
@@ -260,12 +277,13 @@ for (const [k, v] of Object.entries(_diskConfig.positions || {})) {
 /**
  * Resolve a URL path to a file under `src/client/web/`,
  * read it, and write it to `res`.
- * Returns false if the file does not exist
- * (caller should 404).
+ * Returns false, with nothing written, if the file does not exist
+ * (the caller then sends the dashboard for a path with no extension,
+ * else a 404).
  * @param {string}              urlPath
  * @param {http.ServerResponse} res
  * @returns {boolean}
- *   true if the file was found and served
+ *   true if it answered: with the file, or with a 400, 403 or 500
  */
 function serveStatic(urlPath, res) {
   // Normalise: strip query string, percent-decode (so filenames with
@@ -628,11 +646,27 @@ if (require.main === module) {
   installServerErrorGuard();
   // Read before anything starts, so an unusable value stops startup.
   const { exitTimeoutMs } = readShutdownTimings();
-  /*- Fresh start: delete the previous run's error.log so no stale entry
-   *  lingers (current problems are re-logged by the scans). See src/lib/error-log.js. */
-  resetErrorLog();
   start()
     .then(() => {
+      /*-
+       *  The server holds its port and has read no request: none is read
+       *  before this chain first waits, and these three come first. A
+       *  second start, which fails on the port, gets no further, so it
+       *  changes none of these files under the server already running:
+       *  - the previous run's error log is deleted, so no stale entry
+       *    lingers; current problems are logged again by the scans
+       *    (src/lib/error-log.js);
+       *  - the wallet's files are put right: the copy a save cut short
+       *    left is put back as wallet.json, or removed
+       *    (src/lib/wallet-manager.js). Only the programs that own the
+       *    wallet do this, as they start; a util tool that loads the
+       *    module only reads;
+       *  - the safety copies of bot-config.json and the records file are
+       *    made, before anything has saved either (src/lib/bot-config-v2.js).
+       */
+      resetErrorLog();
+      walletManager.settleWalletFile();
+      backUpSettings();
       /*-
        *  Server is up: record the PID so `npm stop` (scripts/stop.js) can send
        *  SIGTERM for the same clean shutdown as Ctrl+C. The file is removed

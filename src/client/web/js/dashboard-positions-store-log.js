@@ -5,9 +5,10 @@
  * cap and dashboard-positions-store.js stays under the 500-line cap.
  *
  * These logs trace the "tokenId correct, pool name stale" mixed-state
- * render bug — every renderer that paints token symbols on the page
- * announces what entry it's rendering from, so a mismatched render is
- * visible in the browser console without DOM inspection.
+ * render bug — the store's two renderers that paint token symbols
+ * (`_updateActiveStripDetails`, `_applyLocalPositionData`) announce what
+ * entry they're rendering from, so a mismatched render is visible in the
+ * browser console without DOM inspection.
  */
 "use strict";
 

@@ -1,6 +1,8 @@
 /**
  * @file scripts/stop.js
- * @description Gracefully stop the LP Ranger server (`npm stop`).
+ * @description Stop the LP Ranger server (`npm stop`). `--help` prints
+ *   what it does, and an argument it does not take is refused, both
+ *   before anything is signalled (scripts/_script-args.js).
  *
  *   This is a force-stop: the server exits within its exit timeout
  *   whether or not a rebalance or compound is under way, so one may be
@@ -46,6 +48,21 @@ const {
   serverProcessState,
   sortServerPids,
 } = require("./_find-process");
+const { readScriptArgs, answeredWithoutWork } = require("./_script-args");
+
+const HELP_TEXT = `
+stop — force-stop LP Ranger
+
+USAGE
+  npm stop                 Signal the running server to stop, as Ctrl+C
+                           does: it exits within a few seconds, cutting
+                           off a rebalance or compound under way. To stop
+                           once nothing is under way, use
+                           npm run gentle-stop.
+  npm stop -- --help       Show this text.
+
+Anything else is refused before anything is signalled.
+`.trim();
 
 const { killAfterMs, checkIntervalMs } = readShutdownTimings();
 
@@ -178,6 +195,18 @@ async function stopServer() {
   await stopByPort();
 }
 
-if (require.main === module) stopServer();
+/** Read the arguments, then stop the server unless one was answered. */
+function main() {
+  const args = readScriptArgs(process.argv.slice(2));
+  const text = {
+    tag: "stop",
+    help: HELP_TEXT,
+    nothing: "Nothing was signalled.",
+  };
+  if (answeredWithoutWork(args, text)) return;
+  stopServer();
+}
 
-module.exports = { stopServer, isAlive };
+if (require.main === module) main();
+
+module.exports = { stopServer, isAlive, HELP_TEXT };

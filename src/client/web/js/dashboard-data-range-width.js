@@ -8,8 +8,8 @@
  *
  *   1. **Input** (`#inRangeWidth`):
  *        - If `data.rebalanceRangeWidthPct` has a saved value, populate
- *          the input verbatim (unless the user is mid-typing on the same
- *          position — dirty-flag gate).
+ *          the input with it to two decimals (unless the user is
+ *          mid-typing on the same position — dirty-flag gate).
  *        - If NO saved value, LEAVE THE INPUT EMPTY.  We do NOT display
  *          a fallback computed from the position's on-chain tick spread
  *          any more (that was misleading — it looked like a saved value
@@ -44,7 +44,7 @@
  * Related:
  *  - `saveRangeWidth` in `dashboard-price-range-extension.js` is the
  *    ONLY writer of either key — one POST for the whole row.
- *  - `POSITION_KEYS` in `src/lib/bot-config-v2.js` lists
+ *  - `POSITION_KEYS` in `src/lib/bot-config-keys.js` lists
  *    `rebalanceRangeWidthPct` and `fullRangeRebalanceEnabled`.
  *  - `bot-cycle-opts.js` reads both via `deps._getConfig` so every
  *    rebalance (manual OR automatic) honors them — but only when the
@@ -73,9 +73,8 @@ let _lastFullRangePosKey = null;
 
 /**
  * Compute whether an activePosition + posStore-active pair is
- * on-chain full-range.  Pure decision extracted from
- * `_isActivePositionFullRange` so tests can drive it without setting
- * up posStore state.
+ * on-chain full-range.  Pure decision, so tests can drive it without
+ * setting up posStore state.
  * @param {{tickLower?:number, tickUpper?:number}|null|undefined} activeFromPayload
  * @param {{tickLower?:number, tickUpper?:number}|null|undefined} activeFromStore
  * @returns {boolean}
@@ -148,8 +147,9 @@ export function computeFullRangeChecked(data, activeFromStore) {
 /**
  * Populate the "Price Range Extension" input from
  * `data.rebalanceRangeWidthPct` on every poll.
- *   (a) Saved override present → display verbatim (on position switch OR
- *       when input is empty; otherwise skip so mid-typing isn't clobbered).
+ *   (a) Saved override present → display it to two decimals (on position
+ *       switch OR when input is empty; otherwise skip so mid-typing isn't
+ *       clobbered).
  *   (b) No override → LEAVE INPUT EMPTY.  No fallback computation.
  *
  * @param {object} data  Flattened poll payload (from `flattenV2Status`).
@@ -180,9 +180,9 @@ export function syncRangeWidth(data) {
  * not registering.  Hence: write only when the position changed.
  *
  * That mirrors `computeRangeWidthDecision`, which likewise only writes
- * the width input on a position switch or when it is empty.  The saved
- * value cannot change behind the dashboard's back anyway — this tab is
- * the only thing that writes it.
+ * the width input on a position switch or when it is empty.  A save made
+ * elsewhere, in another tab or by another client of the server, shows
+ * here at the next switch to this position or the next page load.
  *
  * The dirty gate covers the same poll the user clicked in, before
  * `_lastFullRangePosKey` has caught up.

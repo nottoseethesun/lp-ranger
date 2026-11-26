@@ -35,11 +35,15 @@ const path = require("path");
 const { liquidityPairScopeKey } = require("../lib/cache-store");
 const { fetchHistoricalPriceGecko } = require("./price-fetcher");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { readEnv } = require("../lib/env-settings");
 
-// Path can be overridden via env var so tests cannot ever clobber the
-// production file, regardless of how the test is invoked.
+/*-
+ *  `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` moves the file, read through
+ *  `readEnv`, so a blank value names none. Under `node --test` the cache
+ *  folder is the test process's own anyway (`scanCachePath`).
+ */
 const _CACHE_PATH =
-  process.env.LIQUIDITY_PAIR_DETAILS_CACHE_PATH ||
+  readEnv("LIQUIDITY_PAIR_DETAILS_CACHE_PATH") ??
   scanCachePath("liquidity-pair-details-cache.json");
 
 /** Minimal ERC-20 ABI fragment — only what we need for historical balances. */
@@ -251,8 +255,10 @@ async function _fetchInitialPrices({
  * Return the cached `initialResidualData` for a scope; if missing, fetch the
  * wallet's token0/token1 balances at `firstMintBlock` (end-of-block — i.e.
  * what the wallet held immediately after the first IncreaseLiquidity TX
- * consumed its inputs), fetch their USD prices at the same block via
- * GeckoTerminal, persist, and return.
+ * consumed its inputs), fetch their USD prices for that moment
+ * (`fetchHistoricalPriceGecko`, src/bot/price-fetcher.js: the price
+ * cache, then Moralis at the block when a key is stored and switched on,
+ * then GeckoTerminal), persist, and return.
  *
  * Idempotent: a populated cache entry is returned untouched.
  *
@@ -307,7 +313,8 @@ async function ensureInitialResidualData(args) {
     fee,
   });
 
-  /*- Stored once and reused ever after, because the leftover and the day
+  /*-
+   *  Stored once and reused ever after, because the leftover and the day
    *  it was left on never change. The price it was valued at can still be
    *  wrong — or missing, which is stored as zero — and the subtraction
    *  that keeps this leftover out of lifetime profit is built on it, so
@@ -315,10 +322,11 @@ async function ensureInitialResidualData(args) {
    *
    *  `refresh` is that way: it reads again and overwrites below. It is
    *  deliberately not a delete. A figure cleared to force a rebuild is
-   *  absent while the rebuild runs, and this file's sibling route
+   *  absent while the rebuild runs, and Re-scan Prices
    *  (`rescan-prices.js`) explains what that costs — a figure read
    *  as settled mid-gap. Overwriting leaves the old value standing until
-   *  its replacement exists, so a failed re-read costs nothing. */
+   *  its replacement exists, so a failed re-read costs nothing.
+   */
   const cached = refresh === true ? null : loadInitialResidualData(scopeKey);
   if (cached) {
     log.info(

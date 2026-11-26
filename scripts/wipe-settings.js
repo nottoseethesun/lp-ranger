@@ -4,8 +4,8 @@
  * and remove them, simulating a fresh install. Restore with
  * `npm run restore-settings`.
  *
- * Runtime config lives under `app-config/`; see the `app-config/` section
- * of server.js for the layout.
+ * Runtime config lives under `app-config/`; see "The app-config
+ * Directory" in docs/engineering.md for the layout.
  */
 
 "use strict";

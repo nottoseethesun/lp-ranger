@@ -5,8 +5,8 @@
  * Optional Telegram notifier that fires when a managed LP position's USD
  * value split between token0 and token1 falls inside the balanced band:
  * within `positionBalancedBandPct` points of 50/50 (±2.5 as shipped, so
- * ratio0 ∈ [0.475, 0.525]).  Pure logic module — no module-level
- * mutable state; per-position transient state lives on `botState` (set
+ * ratio0 ∈ [0.475, 0.525]).  No module-level mutable state;
+ * per-position transient state lives on `botState` (set
  * up in `src/bot/position-states.js`).  Lives under
  * `src/bot/telegram-notifications/`, the bot's only Telegram module of
  * its own; the bot's alerts are sent through the parts both programs
@@ -16,10 +16,12 @@
  *   - Edge-trigger: notify only on FALSE→TRUE entry into the band.
  *   - Cooldown: `positionBalancedCooldownMs` between notifications
  *     (30 minutes as shipped), which suppresses oscillation.
- *   - Per-poll cadence guard: callers must throttle the fresh-price
- *     fetch via the `pricePauseExceptionPollWindowMultiple` global
- *     (read in `bot-pnl-updater.js`); this module only deals with the
- *     band/cooldown logic given an evaluated `(v0, v1)` pair.
+ *   - Fetch window: `maybeNotifyBalanced` reads fresh prices at most once
+ *     per `checkIntervalSec × multiplier` seconds, the multiplier being
+ *     `pricePauseExceptionPollWindowMultiple`, which the caller resolves
+ *     (`_resolveBalancedMultiplier`, src/bot/bot-pnl-updater.js; 10 as
+ *     shipped). `isBalanced` and `evaluateBalance` hold the band and
+ *     cooldown logic for an evaluated `(v0, v1)` pair.
  *
  * Cost trade-off: when this notifier is enabled the per-position price
  * lookups bypass the idle-driven price-lookup pause, so price-source
@@ -42,10 +44,10 @@ const rangeMath = require("../range-math");
 const { readBotConfigDefaults } = require("../../lib/bot-config-defaults");
 
 /** Max characters per token symbol in the Holdings section, where the
- *  symbol gets a full line of its own and the amount sits on the next
- *  indented line — a wider budget keeps long names readable.  The header
- *  pair (sym0 / sym1) is rendered by `buildHeader` in `telegram.js` and
- *  uses its own compact 12-char width. */
+ *  symbol gets a line of its own and the amount sits on the next indented
+ *  line.  The header pair (sym0 / sym1) is rendered by `buildHeader` in
+ *  `src/lib/telegram-notifications/telegram.js`, cut at its own width,
+ *  22 characters (`_SYM_TRUNC_HEADER`). */
 const _SYM_TRUNC_HOLDINGS = 16;
 
 /*-
@@ -177,7 +179,9 @@ function _fmtUsd(n) {
   );
 }
 
-/** Format a token amount with sensible precision (max 6 sig figs). */
+/** Format a token amount: two decimals with thousands separators from 1
+ *  up, four decimals from 0.01, four significant figures below that; "0"
+ *  for zero and "?" when not finite. */
 function _fmtAmt(n) {
   if (!Number.isFinite(n)) return "?";
   if (n === 0) return "0";
@@ -191,9 +195,9 @@ function _fmtAmt(n) {
   return n.toPrecision(4);
 }
 
-/** Truncate a token symbol to the Holdings-section width (own line, so
- *  wider budget is fine).  The compact header pair lives in
- *  `telegram.js:buildHeader`. */
+/** Truncate a token symbol to the Holdings-section width,
+ *  `_SYM_TRUNC_HOLDINGS` characters; `?` for a missing symbol.  The header
+ *  pair is cut in `telegram.js:buildHeader`, at its own width. */
 function _truncHoldingsSym(s) {
   const v = s || "?";
   return v.length > _SYM_TRUNC_HOLDINGS ? v.slice(0, _SYM_TRUNC_HOLDINGS) : v;

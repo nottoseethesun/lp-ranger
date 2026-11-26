@@ -1,7 +1,7 @@
 /**
  * @file dashboard-throttle.js
- * @description Trigger configuration, throttle state / UI, and the
- * Apply All function for the LP Ranger dashboard.
+ * @description Trigger configuration and throttle state / UI for the LP
+ * Ranger dashboard.
  *
  * Throttle state tracks daily rebalance counts and an optional
  * doubling-mode wait that activates when too many rebalances fire in
@@ -151,11 +151,11 @@ function _isUnmanagedActive() {
  *
  * @param {HTMLElement|null} el
  * @param {string} [className]
- * @param {string} [tooltip]  Title to attach; pass `""` where the help
- *   lives on a neighbouring circle-i instead.  A tooltip on the figure
- *   itself is invisible on touch and unadvertised on desktop, so it is
- *   only right for elements that have no icon beside them — currently
- *   just the Bot Settings throttle badge.
+ * @param {string} [tooltip]  Title to attach ("Only for Managed
+ *   Positions" when omitted, as the Bot Settings throttle badge takes
+ *   it); pass `""` where the help lives on a neighbouring circle-i
+ *   instead, as for the Rebalance Interval figure.  A tooltip on the
+ *   figure itself is invisible on touch and unadvertised on desktop.
  */
 function _renderNa(el, className, tooltip) {
   if (!el) return;
@@ -468,7 +468,8 @@ export function saveOorTimeout() {
  * Save the Impermanent Loss Guard percent.
  *
  * Sends what was typed. The server decides whether it is acceptable and
- * says so; the badge under Trigger Type follows on the next poll via
+ * says so; the badge under Trigger Type shows the typed figure at once,
+ * and the next poll writes the server's value back into it via
  * `updateTriggerDisplay`.
  */
 export function saveIlGuard() {

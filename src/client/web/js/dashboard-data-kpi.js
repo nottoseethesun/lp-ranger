@@ -3,16 +3,18 @@
  *
  * Deposit Resolution: Both panels have user-editable deposit fields
  * persisted to localStorage (per-position for Current, per-pool for
- * Lifetime) + synced to .bot-config.json.  User values always win.
+ * Lifetime).  Only the Lifetime one is also saved to the server
+ * (`initialDepositUsd` in bot-config.json).  The figures use the value
+ * the user entered.  The Total Lifetime Deposit line is the exception:
+ * it shows the scan total whenever there is one (`_setDepositDisplay`).
  *
- * Lifetime Deposit Fallback Chain (_resolveLifetimeDeposit):
+ * Lifetime Deposit Resolution (_resolveLifetimeDeposit):
+ *  ● The value the user entered for the pool.
  *  ● Scan total (totalLifetimeDeposit) — Lifetime panel only, never
  *    Current.  HODL scan sums fresh deposits at historical prices.
- *  ● First closed epoch entry (closedEpochs[0].entryValue) — original
- *    position's value when the bot first started tracking.
- *  ● Current baseline (hodlBaseline.entryValue) — current NFT's entry
- *    value at most recent rebalance.  Always available but not the
- *    original deposit.
+ *  ● Otherwise null.  There is no fallback to the first closed epoch's
+ *    entry value (closedEpochs[0].entryValue) or the current NFT's
+ *    baseline (hodlBaseline.entryValue): each counts a single deposit.
  */
 import { _fmtUsd } from "./dashboard-fmt-usd.js";
 import { g, fmtDateTime, fmtDuration } from "./dashboard-helpers.js";
@@ -30,10 +32,10 @@ import { setLeadingText as _setLeadingText } from "./dashboard-kpi-dom.js";
 import { ltStartDate, toMintTsSeconds } from "./dashboard-date-utils.js";
 
 /** Cached P&L breakdowns for the info dialogs.
- *  `currentFees` is the live unclaimed-fee figure (snap.currentFeesUsd);
- *  `compounded` is the historical lifetime-compounded total.  Both are
- *  surfaced additively in the new Net P&L math (no more "Lifetime Fees"
- *  row that mixed the two with the imprecise per-epoch tracker total). */
+ *  `currentFees` is the live unclaimed-fee figure (snap.currentFeesUsd),
+ *  which the Lifetime Net P&L adds; `compounded` is the historical
+ *  lifetime-compounded total, shown for reference and not added, since
+ *  those fees are already inside the current value. */
 const _ltBreakdown = {
   currentFees: 0,
   compounded: 0,
@@ -267,9 +269,11 @@ export function _applySnapshotKpis(d, deposit, curRealized) {
   });
   _updateCurIL(d, deposit);
   _updatePosDuration(d);
-  /*- Compounded fees are added, not subtracted: they are real earnings
-   *  and `totalIL` no longer carries them (see _computeIL in
-   *  src/bot/bot-pnl-updater.js).  Same shape as the Lifetime figure. */
+  /*-
+   *  Compounded fees are added, not subtracted: they are real earnings,
+   *  and `totalIL` does not carry them (see `_computeIL` in
+   *  src/bot/bot-pnl-il.js). Same shape as the Lifetime figure.
+   */
   _setProfitKpi(
     "curProfit",
     curFees + curCompounded + curLeft,
@@ -289,11 +293,12 @@ export function _botDetectedDeposit(d) {
  *
  * Returns null when the bot has not yet produced a valid scan total
  * (totalLifetimeDeposit missing or zero) AND no user override is set.
- * The renderer then surfaces "Pending Re-scan…" instead of falling back
- * to closedEpochs[0].entryValue or hodlBaseline.entryValue — both of
- * which only capture a single deposit (the first one), so they
- * systematically under-report Total Lifetime Deposit for positions
- * with multiple fresh deposits and silently inflate Lifetime P&L.
+ * The Total Lifetime Deposit line then shows a dash, and Price Change
+ * counts 0, instead of falling back to closedEpochs[0].entryValue or
+ * hodlBaseline.entryValue — both of which only capture a single deposit
+ * (the first one), so they systematically under-report Total Lifetime
+ * Deposit for positions with multiple fresh deposits and silently inflate
+ * Lifetime P&L.
  *
  * The bot's 30-min auto-rescan in bot-loop.js handles recovery: when
  * this returns null, the bot retries the scan until it succeeds and

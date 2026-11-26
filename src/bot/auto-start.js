@@ -14,7 +14,7 @@
  * one active position per pool, so a pool's open position keeps it, and
  * any other saved position in that pool comes off the list. While the
  * start-up runs, src/bot/app-phase.js records its progress, which the
- * dashboard shows as Syncing and the server reads to refuse a request
+ * dashboard shows as Syncing and the bot reads to refuse a request
  * that would start positions. The server and the headless bot (bot.js)
  * both start their saved positions this way, through the bot's
  * interface (src/bot/bot-interface.js).
@@ -81,7 +81,8 @@ function _nftOf(key) {
  * @param {Function} [deps.readProvider]  The provider those reads go
  *   through. A thunk, since the managed read provider is not built until
  *   `sendTx.init()` has run.
- * @returns {Function} Async function that auto-starts all running positions.
+ * @returns {Function} Async function that auto-starts all running
+ *   positions, given `{ forImport }` by the wallet import's own start-up.
  */
 function createAutoStartManagedPositions(deps) {
   const {
@@ -98,11 +99,25 @@ function createAutoStartManagedPositions(deps) {
     readProvider = () => sendTx.getManagedReadProvider(),
   } = deps;
 
-  /** Initialise the app-wide shared NonceManager signer (best-effort). */
+  /**
+   * The app-wide shared signer, whose one NonceManager every position
+   * signs through, or null when there is none: no key outside a dry run,
+   * or a build that failed. The start-up then starts no position, since
+   * one started without it would keep a nonce counter of its own, and
+   * two counters for one wallet pick the same nonce; each stays on the
+   * list for the next launch.
+   * @param {object} eth  ethers.
+   * @returns {Promise<{provider: object, signer: object, address: string}|null>}
+   */
   async function _initSharedSigner(eth) {
     const noKey =
       privateKeyRef.current === null || privateKeyRef.current === undefined;
-    if (noKey && !config.DRY_RUN) return null;
+    if (noKey && !config.DRY_RUN) {
+      log.warn(
+        "[bot] Not starting the managed positions: there is no key to sign with",
+      );
+      return null;
+    }
     try {
       return await positionMgr.getSharedSigner({
         privateKey: privateKeyRef.current,
@@ -111,8 +126,7 @@ function createAutoStartManagedPositions(deps) {
       });
     } catch (err) {
       log.warn(
-        "[bot] Shared signer init failed: %s —" +
-          " positions will start without injected signer",
+        "[bot] Not starting the managed positions: the shared signer could not be made (%s); they stay on the list for the next launch",
         err.message,
       );
       return null;
@@ -184,9 +198,9 @@ function createAutoStartManagedPositions(deps) {
         startLoop: () =>
           startBotLoop({
             privateKey: privateKeyRef.current,
-            provider: shared?.provider,
-            signer: shared?.signer,
-            address: shared?.address,
+            provider: shared.provider,
+            signer: shared.signer,
+            address: shared.address,
             dryRun: config.DRY_RUN,
             eagerScan: false,
             updateBotState: (patch) =>
@@ -321,25 +335,30 @@ function createAutoStartManagedPositions(deps) {
     });
   }
 
-  /*-
-   *  The start-up: each position saved as managed, started one at a
-   *  time and spread over a poll interval. While it runs, src/bot/app-phase.js
-   *  says so, which refuses a request that would start positions and
-   *  holds the dashboard's badge at Syncing. It ends early once the app
-   *  starts stopping for good, at its next turn.
+  /**
+   * The start-up: each position saved as managed, started one at a time
+   * and spread over a poll interval. While it runs, src/bot/app-phase.js
+   * says so, which refuses a request that would start positions and
+   * holds the dashboard's badge at Syncing. It ends early once the app
+   * starts stopping for good, at its next turn. During a wallet import,
+   * only the import's own start-up begins.
+   * @param {object} [opts]
+   * @param {boolean} [opts.forImport=false]  Whether this is the wallet
+   *   import's own closing start-up.
    */
-  return async function _autoStartManagedPositions() {
+  return async function _autoStartManagedPositions({ forImport = false } = {}) {
     const wAddr = walletManager.getAddress();
     const keys = _keysForThisLaunch(wAddr);
-    if (!beginStartUp(keys.length)) {
+    if (!beginStartUp(keys.length, { forImport })) {
       log.info(
-        "[bot] Not starting the managed positions: a start-up is under way, or LP Ranger is stopping",
+        "[bot] Not starting the managed positions: a start-up or a wallet import is under way, or LP Ranger is stopping",
       );
       return;
     }
     try {
       const provider = readProvider();
       const shared = await _initSharedSigner(ethersLib);
+      if (shared === null) return;
       const ctx = {
         provider,
         pmC: new ethersLib.Contract(

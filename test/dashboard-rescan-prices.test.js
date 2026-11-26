@@ -41,6 +41,7 @@ const SYNCED = () => true;
 
 let dialog;
 let requests;
+let savedFetch;
 
 /** Copy the real dialog template from src/client/web/index.html into the page. */
 function installTemplate() {
@@ -88,6 +89,16 @@ before(async () => {
 beforeEach(() => {
   installTemplate();
   requests = [];
+  /*-
+   *  TEST-ONLY global swap: the dialog sends its request through `fetch`
+   *  (`fetchWithCsrf`, src/client/web/js/dashboard-helpers.js) and times
+   *  its steps on `setTimeout`, and takes no seam for either: what it
+   *  sends, and when, is what these cases check. The stand-in records
+   *  each request and agrees, unless a case puts its own answer in its
+   *  place; on mock time a step waits for a case to move the clock. Both
+   *  restored pristine after each case (`afterEach`).
+   */
+  savedFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     requests.push({ url, init });
     return { ok: true, status: 200, json: async () => ({ ok: true }) };
@@ -97,6 +108,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.timers.reset();
+  globalThis.fetch = savedFetch;
   const open = overlay();
   if (open !== null) open.remove();
 });

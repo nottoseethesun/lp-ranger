@@ -36,11 +36,14 @@ class PoolStateInvalidError extends Error {
 }
 
 /**
- * Error thrown after every configured RPC has been exhausted (each
- * attempted twice, with a delay between retries) and the call still
- * produced either an invalid response or an RPC error.  `cause` is
- * the most recent underlying error; `attempts` is the total attempts
- * made across all RPCs.
+ * Error thrown when `getPoolState` has spent its attempt budget
+ * (`boundedReadAttemptsPerEndpoint` times the endpoints in service, and at
+ * least one) and the last attempt still produced either an invalid
+ * response or an RPC error.  Each attempt goes to the endpoint selection
+ * holds, so the attempts need not reach every endpoint, and the read
+ * waits `boundedReadRetryDelayMs` before asking the same one again.
+ * `cause` is the most recent underlying error; `attempts` is how many
+ * were made.
  */
 class PoolStateUnavailableError extends Error {
   constructor(attempts, lastError) {

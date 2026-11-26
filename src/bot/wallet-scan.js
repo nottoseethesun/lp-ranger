@@ -3,8 +3,9 @@
  * @description
  * The wallet scan: the LP positions a wallet holds, enumerated with the
  * LP position cache, their liquidity refreshed in the background, and
- * their tokens' symbols resolved. Also the scan's progress, which the
- * status report publishes, and the cancel of a pool's event scan
+ * their tokens' names resolved (a token with no name, its symbol). Also
+ * the scan's progress, which the status report publishes, and the cancel
+ * of a pool's event scan
  * (`POST /api/position/scan-cancel`), an operator's escape hatch that no
  * dashboard control sends. Each operation returns a result the server
  * answers with (src/server/bot-result.js).
@@ -76,8 +77,9 @@ async function _readTokenName(prov, addr) {
 }
 
 /**
- * Resolve the on-chain symbol for a token, or its abbreviated address
- * when the chain answers with neither a name nor a symbol.
+ * Resolve the label a token is shown by: its on-chain name, its symbol
+ * when it has no name, or its abbreviated address (`0x1234…abcd`) when
+ * the chain answers with neither.
  * @param {object} prov  ethers provider.
  * @param {string} addr  Token address.
  * @returns {Promise<string>}
@@ -87,7 +89,9 @@ async function resolveTokenSymbol(prov, addr) {
 }
 
 /**
- * Resolve token symbols for a set of addresses.
+ * Resolve the label each token of a set is shown by, as
+ * `resolveTokenSymbol` does: its name, else its symbol, else its
+ * abbreviated address.
  *
  * Only a name the chain gave is cached. The abbreviated address stands in
  * for this scan's list and the next scan asks again. Cached, it would be
@@ -505,8 +509,9 @@ function createWalletScan(deps) {
 
   /**
    * POST /api/position/scan-cancel — abort any in-flight event scan for
-   * the pool of the caller's position and clear its sync flag so the
-   * badge re-syncs on the next restart. An operator's escape hatch from
+   * the pool of the caller's position, and mark the position's scan
+   * unfinished (`rebalanceScanComplete` false) until a pass sets the flag
+   * again as it ends; the pass the cancel ends does, as it fails. An operator's escape hatch from
    * a stuck sync: no dashboard control sends it, since Reload Current
    * Position cancels the pool's scan itself (src/bot/reload-position.js).
    * @param {object} body  `token0`, `token1`, `fee`, and optionally

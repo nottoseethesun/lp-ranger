@@ -101,9 +101,12 @@ function _isNonceTooLow(err) {
 }
 
 /**
- * Handle a "terminal-nonce-consumed" or "unknown" error.  Returns
- * `"recover"` if the caller should reset the NonceManager and retry once
- * (one-shot recovery for local nonce drift), otherwise throws.
+ * Handle a "terminal-nonce-consumed" or "unknown" error.  For a first
+ * "nonce too low" on a send that does not reuse a nonce, it resets the
+ * NonceManager and returns `"recover"`, telling the caller to retry
+ * once (one-shot recovery for local nonce drift). Otherwise it throws
+ * `err`: logged as terminal, or, for a same-nonce send, logged as
+ * likely already mined.
  * @param {object} ctx
  * @param {string} ctx.label
  * @param {string} ctx.bucket
@@ -210,9 +213,11 @@ function _sleep(ms, useUnref) {
  *         retry once (one-shot recovery for local nonce drift).
  *       * If `retryingTxWithSameNonce` is true: do NOT recover.  The
  *         caller deliberately reused a nonce (speedup/cancel TX), so
- *         "nonce too low" means the original TX mined — the objective
- *         was already achieved.  Throw and let the caller fall through
- *         to its success path (e.g. waiting for the original receipt).
+ *         "nonce too low" means a transaction at that nonce has already
+ *         mined: the original, its speed-up, or an earlier copy of this
+ *         very transaction whose reply was lost. Throw, and let the
+ *         caller wait on the transactions that compete for the nonce to
+ *         learn which one mined.
  *       * Otherwise: log + throw without resetting.
  *   - "already-known":           the endpoint holds this exact
  *                                transaction already. Recover it from

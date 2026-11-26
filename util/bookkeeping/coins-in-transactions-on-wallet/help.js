@@ -112,8 +112,10 @@ Which transactions:
   as it starts, and releases it as it ends, Ctrl+C included. A day with eight
   rebalances and compounds takes about 40 seconds to read from the chain.
   Prices CoinGecko gives take longer: its free api answers only a few
-  requests a minute, and the run waits and asks again whenever it is
-  refused for asking too often. Priced by CoinGecko alone, that day took
+  requests a minute, and when it refuses a request for asking too often,
+  the run waits and asks again, up to three times, after 10, 30 and 60
+  seconds; a request still refused then gets no answer. Priced by
+  CoinGecko alone, that day took
   about seven minutes more the first time. A later run of the same days
   takes its prices from the cache.
 
@@ -124,7 +126,7 @@ What stops a run:
   how to release it.
   The run asks one endpoint, and moves to no other; for prices it asks
   Moralis, then CoinGecko, and no third. When the endpoint fails, or
-  neither oracle has a price for a coin, it stops with the error and writes
+  neither oracle gives a price for a coin, it stops with the error and writes
   no csv. It says what to try: a different rpc node with --rpc-endpoint,
   or a different price oracle. An endpoint with no receipt for a transaction
   it must hold, one LP Ranger recorded or one the endpoint lists in a

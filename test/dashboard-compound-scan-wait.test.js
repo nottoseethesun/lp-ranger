@@ -41,6 +41,7 @@ let pollMs;
 let scanning;
 let answer;
 let requests;
+let savedFetch;
 
 before(async () => {
   await learnActiveChain();
@@ -73,6 +74,15 @@ beforeEach(() => {
   scanning = true;
   answer = { ok: false, scanInProgress: true, error: WORDS, positionKey: KEY };
   requests = 0;
+  /*-
+   *  TEST-ONLY global swap: the dialog asks the server through `fetch`
+   *  (`fetchWithCsrf`, src/client/web/js/dashboard-helpers.js) and waits
+   *  on `setTimeout`, and takes no seam for either: what it asks, and
+   *  when, is what these cases check. The stand-in answers `answer`; on
+   *  mock time a wait ends only when a case moves the clock. Both
+   *  restored pristine after each case (`afterEach`).
+   */
+  savedFetch = globalThis.fetch;
   globalThis.fetch = async () => {
     requests++;
     return { ok: answer.ok, status: 200, json: async () => answer };
@@ -83,6 +93,7 @@ beforeEach(() => {
 afterEach(() => {
   compound.closeCompoundScanWait();
   mock.timers.reset();
+  globalThis.fetch = savedFetch;
 });
 
 const modal = () => document.getElementById("compoundScanWaitModal");

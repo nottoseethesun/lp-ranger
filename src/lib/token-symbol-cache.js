@@ -3,10 +3,11 @@
  * @module token-symbol-cache
  * @description
  * Disk-backed cache mapping ERC-20 token addresses to their human-readable
- * symbols.  Extracted from `wallet-scan.js` so dependency-light modules
- * (e.g. `price-fetcher.js`) can resolve symbols for log lines without
- * pulling in wallet-scan's heavy transitive deps (pool-scanner, rebalancer,
- * etc.) and risking a circular import.
+ * symbols. It is kept apart from `src/bot/wallet-scan.js`, which fills it,
+ * so dependency-light modules (e.g. `price-fetcher.js`) can resolve
+ * symbols for log lines without pulling in the wallet scan's heavy
+ * dependencies (pool-scanner, rebalancer, etc.) and risking a circular
+ * import.
  *
  * The cache is populated by `wallet-scan.resolveSymbolMap()` during LP
  * position scans; readers fall back to `null` when the address has not
@@ -25,15 +26,17 @@ const path = require("path");
 const config = require("./config");
 const { cacheKey } = require("./cache-store");
 const { scanCachePath } = require("./scan-cache-dir");
+const { readEnv } = require("./env-settings");
 
 /*-
- *  `TOKEN_SYMBOL_CACHE_PATH` moves the file, so a test that resolves
- *  symbols through the real path writes its fixture tokens somewhere of
- *  its own. Nothing expires an entry here, so a fixture written into the
- *  operator's file would stay.
+ *  `TOKEN_SYMBOL_CACHE_PATH` moves the file, read through `readEnv`, so a
+ *  blank value names none; a test that resolves symbols through the real
+ *  path writes its fixture tokens somewhere of its own. Nothing expires
+ *  an entry here, so a fixture written into the operator's file would
+ *  stay.
  */
 const _SYM_CACHE_PATH =
-  process.env.TOKEN_SYMBOL_CACHE_PATH ||
+  readEnv("TOKEN_SYMBOL_CACHE_PATH") ??
   scanCachePath("token-symbol-cache.json");
 
 /** Lazy-loaded in-memory mirror of the JSON file on disk. */

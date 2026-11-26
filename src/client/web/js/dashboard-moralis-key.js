@@ -3,8 +3,10 @@
  * @description Save + verify the Moralis API key from the Settings gear
  * menu.  Extracted from `dashboard-events.js` (which is right at its
  * `max-lines: 500` cap) so future events wiring can grow without paying
- * the line-budget tax.  All UI feedback goes through the `act()` toast
- * channel — no direct DOM writes.
+ * the line-budget tax.  Feedback is logged in the Activity Log through
+ * `act()`.  The module also writes the dialog's own controls: it clears
+ * the key field after a save and sets the switch's checked, disabled and
+ * title.
  */
 
 import {
@@ -16,7 +18,8 @@ import {
 import { getLastStatus } from "./dashboard-data.js";
 
 /**
- * POST the Moralis key to /api/api-keys and toast success/failure.
+ * POST the Moralis key to /api/api-keys and log success/failure in the
+ * Activity Log.
  * Exposed for direct callers (wallet-setup dialog, Settings menu).
  * @param {string} key  The API key to persist.
  * @param {string|null} pw  Optional wallet password (used when the

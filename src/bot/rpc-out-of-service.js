@@ -4,14 +4,17 @@
  * @description
  * Whether an RPC endpoint is currently out of service.
  *
- * Every RPC outcome in the process reports here — reads, writes, gas
- * estimates, the pool-state walk, the wallet-balance walk, successes as
- * well as failures. `decideIfCurrentRPCIsOutOfService` answers from the
- * share of failures inside a recent window, so reporting a failure is
- * not the same act as deciding one. That separation is the point:
- * a reader that legitimately fails often can report honestly without
- * retiring an endpoint on everyone's behalf, and an endpoint is retired
- * only when it is failing most of what it is asked.
+ * RPC outcomes report here — reads, writes, gas estimates, the pool-state
+ * walk, the wallet-balance walk, successes as well as failures — but a
+ * failure only when the endpoint is to blame: a read or gas estimate that
+ * failed on the request (a malformed one, say) is left out, and a
+ * broadcast reports only a transient failure.
+ * `decideIfCurrentRPCIsOutOfService` answers from the share of failures
+ * inside a recent window, so reporting a failure is not the same act as
+ * deciding one. That separation is the point: a reader that legitimately
+ * fails often can report honestly without retiring an endpoint on
+ * everyone's behalf, and an endpoint is retired only when it is failing
+ * most of what it is asked.
  *
  * Successes are counted for the same reason a percentage needs a
  * denominator. Ten failures mean one thing among twelve requests and
@@ -20,11 +23,13 @@
  * Outcomes are tallied per second rather than kept one by one, which
  * is what keeps this bounded: a window holds at most one small record
  * per second per endpoint however fast requests arrive, and recording
- * one costs the same at ten requests a second as at ten thousand. One
- * record per request would grow both with the rate, and pacing can be
- * turned off against a local node. The cost is that the window's edge
- * moves in whole seconds, which a five-minute health judgement does
- * not notice.
+ * one costs the same at ten requests a second as at two hundred. One
+ * record per request would grow with the request rate, which the global
+ * queue sets (`globalRPCRequestRateIntervalMS` in
+ * `bot-config-defaults.json`: one request every 222 ms as shipped, and
+ * up to 200 a second at its floor of 5 ms). The cost is that the
+ * window's edge moves in whole seconds, which a judgement over minutes
+ * does not notice.
  *
  * State is per endpoint URL. One endpoint refusing says nothing about
  * the others, and the whole purpose of the list is that they fail
@@ -36,11 +41,10 @@
 const { readBotConfigDefaults } = require("../lib/bot-config-defaults");
 
 /*- Read once at load, as `rpc-request-manager.js` reads its pacing
- *  interval: `readBotConfigDefaults()` re-reads and merges the JSON
- *  from disk on every call, and these two are consulted on paths that
- *  run per request. The group they belong to is documented as needing
- *  a restart to take effect, which is what makes reading once correct
- *  rather than merely cheap. */
+ *  interval: these two are consulted on paths that run per request.
+ *  The group they belong to is documented as needing a restart to take
+ *  effect, which is what makes reading once correct rather than merely
+ *  cheap. */
 const _WINDOW_SEC = readBotConfigDefaults().rpcFailoverRateDurationMinutes * 60;
 const _THRESHOLD_PCT = readBotConfigDefaults().rpcFailoverRatePercentage;
 
@@ -62,11 +66,13 @@ let _tallies = new Map();
  * Hard ceiling on seconds kept per endpoint: one hour, which is the
  * longest window the config can ask for.
  *
- * The clamp on `rpcFailoverRateDurationMinutes` already bounds this in
- * the ordinary case. The ceiling is here for the case the clamp cannot
- * cover: a system clock that jumps forward writes a tally far in the
- * future, and a future second never ages out of a window that ends at
- * the present. Keeping only the newest hour's worth bounds that too.
+ * The range on `rpcFailoverRateDurationMinutes` (1 to 60 minutes, in
+ * setting-bounds.json) already bounds this in the ordinary case: a value
+ * outside it is refused at startup and never used. The ceiling is here
+ * for the case the range cannot cover: a system clock that jumps
+ * forward writes a tally far in the future, and a future second never
+ * ages out of a window that ends at the present. Keeping only the
+ * newest hour's worth bounds that too.
  */
 const _MAX_SECONDS_KEPT = 60 * 60;
 
@@ -96,7 +102,9 @@ function _survivors(bySecond, oldest) {
  * Drop every second that has aged out, across every endpoint, by
  * building a fresh store and replacing the old one.
  *
- * Runs once per second at most — see `_forRecording`.
+ * Runs on every decision (`decideIfCurrentRPCIsOutOfService`), and on the
+ * recording path at most once per endpoint per second — see
+ * `_forRecording`.
  * @returns {void}
  */
 function _pruneAll() {
@@ -137,9 +145,10 @@ function _live(url) {
  *
  * Recording happens once per request and pruning changes nothing until
  * the clock crosses a second, so the scan belongs where a new second
- * starts rather than on every call. At ten thousand requests a second
- * — pacing off, against a local node — the difference is a scan of the
- * whole window per request against one per second.
+ * starts rather than on every call. At 200 requests a second, the most
+ * the global queue releases at the floor of
+ * `globalRPCRequestRateIntervalMS`, the difference is a scan of every
+ * endpoint's window per request against one per endpoint per second.
  *
  * @param {string} url
  * @returns {Map<number, object>}

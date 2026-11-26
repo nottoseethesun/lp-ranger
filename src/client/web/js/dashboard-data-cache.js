@@ -166,7 +166,9 @@ export function loadCachedRebalanceEvents() {
  * Dirty-flag cache for form inputs being edited by the user.
  * Key: fully-qualified string (blockchain-wallet-contract-tokenId-elementId).
  * Value: "EDITED" while the user has changed the input.
- * Cleared at the end of each poll cycle so future polls resume writing.
+ * Cleared at the end of each status answer that paints the position's
+ * figures, and at a switch to another position, so future polls resume
+ * writing.
  */
 const _dirtyInputs = new Map();
 
@@ -194,7 +196,7 @@ export function isInputDirty(elementId) {
   return key !== null && _dirtyInputs.has(key);
 }
 
-/** Clear all dirty flags (called at end of each poll cycle). */
+/** Clear all dirty flags (called at the end of each status answer that paints the position's figures, and at a switch). */
 export function clearDirtyInputs() {
   _dirtyInputs.clear();
 }
@@ -278,7 +280,8 @@ function _findRebalanceTargetPosData(active, positions) {
 /**
  * Flatten the V2 status response into a single object for the active position.
  * Merges global + per-position data, with tokenId reconciliation when the
- * server's active position differs from the browser's.
+ * response has no state under the active position's key (as after a
+ * rebalance minted a new NFT).
  */
 export function flattenV2Status(v2) {
   const global = v2.global || {},

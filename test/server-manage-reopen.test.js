@@ -88,6 +88,8 @@ describe("Manage's re-open flag propagation", () => {
     const dc = _makeDiskConfig();
     const deps = _makeRouteDeps({
       diskConfig: dc,
+      // A closed position: its NFT holds no liquidity.
+      ...poolReadStandIn({ liquidity: 0n }),
       readJsonBody: async () => ({
         tokenId: "158970",
         forceRebalance: true,
@@ -160,14 +162,15 @@ describe("Manage's re-open flag propagation", () => {
   });
 
   it("stamps forceRebalance + clears paused state on already-running position (retry path)", async () => {
-    /*- User clicks Manage on a closed-but-running position to retry
-     *  after the previous re-open's swap aborted on slippage.
-     *  Manage's "already running — skipping" short-circuit must
-     *  route through `_stampReopenFlagsOnLive` so the flag is wired
-     *  through to the live posBotState AND the paused/midway state
-     *  cleared, otherwise the bot would keep returning early at the
-     *  rebalancePaused gate in `_checkRebalanceGates` and the retry
-     *  would never fire. */
+    /*-
+     *  The user clicks Manage on a closed but running position to retry
+     *  after the previous re-open's swap aborted on slippage. Manage's
+     *  "already running — skipping" short-circuit must go through
+     *  `_stampReopenFlagsOnLive`, so the flag reaches the live
+     *  posBotState AND the paused and midway state is cleared; otherwise
+     *  the bot would keep returning early at the rebalancePaused gate in
+     *  `_checkRebalanceGates`, and the retry would never fire.
+     */
     const dc = _makeDiskConfig();
     const liveKey = compositeKey(
       "pulsechain",
@@ -175,17 +178,17 @@ describe("Manage's re-open flag propagation", () => {
       config.POSITION_MANAGER,
       "99999",
     );
-    /*- Pre-populate _positionBotStates with a paused live state,
-     *  including `_retireImmediately: true` (set by bot-loop.js's
-     *  re-open-failure path).  All these flags must be cleared by
-     *  `_stampReopenFlagsOnLive` so the retry can actually run on
-     *  the next poll instead of being preempted by drain.js's
-     *  immediate-retire branch. */
+    /*-
+     *  A paused live state, as the failed re-open left it. Every flag
+     *  must be cleared by `_stampReopenFlagsOnLive`, so the retry runs on
+     *  the next poll.
+     */
     const liveState = {
+      // Its last poll read the NFT empty, as the aborted re-open left it.
+      activePosition: { tokenId: "99999", liquidity: "0" },
       rebalancePaused: true,
       rebalanceFailedMidway: true,
       rebalanceError: "Swap aborted: price impact 2.4% exceeds slippage 0.75%",
-      _retireImmediately: true,
     };
     getAllPositionBotStates().set(liveKey, liveState);
     let startPositionCalled = false;
@@ -194,10 +197,11 @@ describe("Manage's re-open flag propagation", () => {
       readJsonBody: async () => ({
         tokenId: "99999",
         forceRebalance: true,
-        /*- Stale legacy field: must not leak onto state.  Range width
-         *  comes from the persistent `rebalanceRangeWidthPct`
-         *  POSITION_KEY, read by `bot-cycle-opts.js` via
-         *  `deps._getConfig`. */
+        /*-
+         *  A field Manage does not take, which must not reach the state:
+         *  the range follows the position's Range settings
+         *  (`buildRebalanceOpts`, src/bot/bot-cycle-opts.js).
+         */
         customRangeWidthPct: 12,
       }),
       positionMgr: _makePositionMgr({
@@ -235,12 +239,6 @@ describe("Manage's re-open flag propagation", () => {
     assert.strictEqual(liveState.rebalancePaused, false);
     assert.strictEqual(liveState.rebalanceFailedMidway, false);
     assert.strictEqual(liveState.rebalanceError, null);
-    /*- Regression: _retireImmediately must be cleared too.  If the
-     *  prior re-open failure set it (bot-loop.js's `_handleError`),
-     *  drain.js would fire retire on the next poll BEFORE the
-     *  forceRebalance can take effect, silently losing the user's
-     *  retry click. */
-    assert.strictEqual(liveState._retireImmediately, false);
     getAllPositionBotStates().delete(liveKey);
   });
 
@@ -317,5 +315,86 @@ describe("Manage's re-open flag propagation", () => {
     assert.strictEqual(res._body.reopenStamped, false);
     assert.strictEqual(liveState.forceRebalance, undefined);
     getAllPositionBotStates().delete(liveKey);
+  });
+});
+
+describe("a re-open of a position that still holds liquidity", () => {
+  /*-
+   *  The user's ruling, 2026-11-25: a position whose NFT holds liquidity
+   *  is managed with no re-open rebalance, its Bot Settings deciding when
+   *  it rebalances. The page sends a re-open only for a position its list
+   *  shows closed, which can be out of date.
+   */
+  const WORDS =
+    "still holds liquidity, so LP Ranger manages it without a re-open " +
+    "rebalance. Its Bot Settings decide when it rebalances.";
+
+  it("starts the position with no rebalance asked of its first check, and says so", async () => {
+    let stateAtStartPosition = null;
+    const dc = _makeDiskConfig();
+    const deps = _makeRouteDeps({
+      diskConfig: dc,
+      // The chain reads the NFT holding liquidity.
+      readJsonBody: async () => ({ tokenId: "158971", forceRebalance: true }),
+      positionMgr: _makePositionMgr({
+        get: () => null,
+        startPosition: async (key) => {
+          stateAtStartPosition = { ...getAllPositionBotStates().get(key) };
+        },
+      }),
+    });
+    const routes = createPositionRoutes(deps);
+    const res = makeRes();
+    await routes["POST /api/position/manage"]({}, res);
+    try {
+      assert.strictEqual(res._status, 200);
+      assert.ok(stateAtStartPosition, "the position starts");
+      assert.strictEqual(stateAtStartPosition.forceRebalance, undefined);
+      assert.strictEqual(res._body.reopenRebalanceSkipped, true);
+      assert.ok(
+        res._body.message.startsWith(`NFT #158971 ${WORDS}`),
+        res._body.message,
+      );
+    } finally {
+      const key = Object.keys(dc.positions).find((k) => k.endsWith("-158971"));
+      if (key) getAllPositionBotStates().delete(key);
+    }
+  });
+
+  it("leaves a running one as it is, and says so", async () => {
+    const liveKey = compositeKey(
+      "pulsechain",
+      WALLET,
+      config.POSITION_MANAGER,
+      "66666",
+    );
+    const liveState = {
+      activePosition: { tokenId: "66666", liquidity: "5000" },
+      rebalancePaused: true,
+      rebalanceError: "Swap aborted",
+    };
+    getAllPositionBotStates().set(liveKey, liveState);
+    const deps = _makeRouteDeps({
+      readJsonBody: async () => ({ tokenId: "66666", forceRebalance: true }),
+      positionMgr: _makePositionMgr({
+        get: (k) => (k === liveKey ? { status: "running" } : null),
+      }),
+    });
+    const routes = createPositionRoutes(deps);
+    const res = makeRes();
+    try {
+      await routes["POST /api/position/manage"]({}, res);
+      assert.strictEqual(res._status, 200);
+      assert.strictEqual(res._body.alreadyRunning, true);
+      assert.strictEqual(res._body.reopenStamped, false);
+      assert.strictEqual(res._body.reopenRebalanceSkipped, true);
+      assert.ok(res._body.message.startsWith(`NFT #66666 ${WORDS}`));
+      assert.strictEqual(liveState.forceRebalance, undefined);
+      // Its hold stays until a Slippage save or a Rebalance Now lifts it.
+      assert.strictEqual(liveState.rebalancePaused, true);
+      assert.strictEqual(liveState.rebalanceError, "Swap aborted");
+    } finally {
+      getAllPositionBotStates().delete(liveKey);
+    }
   });
 });

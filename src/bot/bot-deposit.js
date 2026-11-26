@@ -97,7 +97,9 @@ async function _priceOneDeposit(dep, d0, d1, fetchPrices, opts, idx) {
  * @param {boolean} [opts.refresh]  Price every deposit again instead of
  *   reusing the figure memoized on it. Set by Re-scan Prices, whose whole
  *   purpose is to replace a figure a bad price produced.
- * @returns {Promise<number>} Total deposit USD.
+ * @returns {Promise<{total: number, usedFallback: boolean}>}  The total
+ *   deposit in dollars, and whether any entry in it is valued at today's
+ *   price.
  */
 async function totalLifetimeDeposit(deposits, d0, d1, fetchPrices, opts) {
   if (!deposits || !deposits.length || !fetchPrices)

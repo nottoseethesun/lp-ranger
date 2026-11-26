@@ -1,14 +1,24 @@
 ---
 name: project_tests_write_operator_error_log
-description: "FIXED 2026-10-16 by the user's design: npm run check deletes logs/error.log and logs/error-npm-run-check.log before it runs, then renames what the tests wrote to logs/error-npm-run-check.log. The test that writes the fake 'simulated scan abort' entry is unchanged"
+description: "REPLACED 2026-11-25 at the user's word: under node --test the error log is a file of the test process's own (src/lib/error-log.js), and npm run check no longer deletes or renames the operator's. The 2026-10-16 design below is history"
 metadata:
   node_type: memory
   type: project
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-24T04:54:55.452Z
+  modified: 2026-11-25T20:32:55.966Z
 ---
 
 # Tests write the operator's error log
+
+**REPLACED 2026-11-25, at the user's word** ("a18-27: Of course, do
+that task", after "tests should never write into any real log!"): under
+`node --test` the error log is a file in a temp folder of the test
+process's own, made the first time it is asked for (`_defaultPath`,
+`src/lib/error-log.js`), so no test writes the operator's
+`logs/error.log`. `npm run check` no longer deletes it or renames what
+the tests wrote; `scripts/_check-error-log.js` and
+`logs/error-npm-run-check.log` are gone. The design below was the
+first fix, and is kept as the record.
 
 **FIXED 2026-10-16, by the user's design** (committed in 8d1f562 on
 branch `migrate-to-new-9mm-data-api`, not merged). `scripts/check.js`

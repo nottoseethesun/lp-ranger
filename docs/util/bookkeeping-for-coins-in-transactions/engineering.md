@@ -191,8 +191,9 @@ What each tool does, in the order it does it.
 3. The tool asks one endpoint for the transaction's receipt: the one
    `--rpc-endpoint` names, else the first LP Ranger tries.
 4. It reads the receipt's events into a json object: the kind, the
-   position manager's liquidity events, the NFTs minted or burned, a
-   drain's fees, the wallet's coin transfers and approvals, and the gas.
+   position manager's liquidity events, every NFT it moved (a mint
+   comes from the zero address, a burn goes to it), a drain's fees, the
+   wallet's coin transfers and approvals, and the gas.
 5. It prints the object on stdout and exits 0. Every other line goes to
    stderr, so the json can be redirected to a file whole. No receipt, or
    an endpoint that failed, exits 1 with the reason.
@@ -372,8 +373,16 @@ number in the wallet's count of transactions.
 - **Failure part way.** A rebalance or compound can fail after some of
   its transactions were mined. Those transactions happened: a drain
   that was mined left the coins in the wallet, and a swap that was mined
-  traded them. LP Ranger tries an unfinished rebalance again later,
-  starting from what the wallet then holds.
+  traded them. LP Ranger tries again, on its own, a rebalance that left
+  the old NFT empty, starting from what the wallet then holds, up to
+  `tx.midwayRetryLimit` times (four as shipped, in `app-runtime.json`).
+  It does not try again on its own after an aborted swap (one refused
+  for its price impact, say), after the price left the new range before
+  the mint, or once those tries are spent; the owner then raises
+  Slippage or clicks Rebalance Now. A position left empty for
+  `retire.drainedAfterMs` after that (30 minutes as shipped, in
+  `app-runtime.json`) is no longer managed, so no rebalance finishes the
+  failed one until the owner manages it again.
 
 Transactions of different positions can sit in the same blocks. Match
 each transaction to its position by the NFT id in its events, or by the
@@ -392,7 +401,10 @@ while LP Ranger runs.
 
 `app-data/rebalance_log.json` is a list with one entry per successful
 rebalance, in the order they happened. LP Ranger writes an entry once
-the new NFT's mint has been mined. A failed attempt gets no entry.
+the new NFT's mint has been mined. A failed attempt gets no entry. The
+report reads the log where LP Ranger keeps it: there, unless LOG_FILE in
+`.env` or `log.file` in `app-runtime.json` moves it (`rebalanceLogPath`,
+`src/lib/config.js`).
 
 | Field                                  | What it holds                                                                                                                        |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -466,7 +478,7 @@ files, so treat them as copies of chain data. Three of them help here:
 | File | What it holds |
 | --- | --- |
 | `event-cache-*.json` | One file per pool and wallet, named for the chain, position manager, wallet, coins and fee tier. Under its one entry's `value`, `events` lists the pool's rebalances, each new NFT paired with the one it replaced (`oldTokenId`, `newTokenId`), with the new NFT's mint as `txHash`, `blockNumber` and `timestamp`. Beside `events`, `chainFirstTokenId` and `chainFirstMintBlock` give the chain's first NFT and the block it was minted in. [Rebalance Event Caches](../../engineering.md#rebalance-event-caches) describes the file in full. |
-| `pnl-epochs-cache.json` | One entry per pool, keyed by the chain, position manager, wallet, coins and fee tier, joined by dots. Under `lifetimeHodlAmounts`, `deposits` lists the coins that came into the pool's chain of NFTs from outside it, as raw amounts (`raw0`, `raw1`), with the block of the mint or deposit that took them in. The first entry is the first NFT's mint. |
+| `pnl-epochs-cache.json` | One entry per pool, keyed by the chain, position manager, wallet, coins and fee tier, joined by dots. Under `lifetimeHodlAmounts`, `deposits` lists the coins that came into the pool's chain of NFTs from outside it, as raw amounts (`raw0`, `raw1`) at a `block`. The first entry is the first NFT's mint, at its block. Each later entry names its transaction (`txHash`): coins sent to the wallet from outside, at the block of that transfer, or, with `kind` `"external"`, liquidity another wallet added to one of the NFTs, at the block it was added in. |
 | `lp-position-cache-*.json` | One file per position manager and wallet. Under `positions`, every NFT the wallet holds at that position manager, drained ones included, with its two coins, their symbols and its fee tier. A `liquidity` of `"0"` means drained. |
 
 The event cache can name a rebalance's mint when the rebalance log
@@ -520,8 +532,12 @@ asks for at most 9,000 blocks at a time (`getLogsChunkSize` in
 `bot-config-defaults.json`), and so should you. Search backward from a
 block you know, one span at a time, and stop at the first match:
 
-- **A compound's collect** is the latest `Collect` for the NFT at or
-  before its deposit's block.
+- **A compound's collect** is the latest `Collect` or
+  `IncreaseLiquidity` of the NFT before its deposit, when that is a
+  `Collect` within one span of the deposit's block. When the latest is
+  another deposit, or there is none in that span, the deposit collected
+  nothing: it was coins the owner added. One search finds both kinds of
+  event, with both signature hashes as a list in the first topic.
 - **A failed attempt's drain** is the latest `DecreaseLiquidity` for the
   old NFT before the block of the rebalance's first listed transaction.
 - **The first NFT's mint** is the `IncreaseLiquidity` for
@@ -621,9 +637,10 @@ of days at once ([The Wallet Report](#the-wallet-report)).
 2. **The deposit.** Record `amount0Deposited` and `amount1Deposited` as
    coins out. This step needs no rpc call.
 3. **The collect.** Read the deposit's receipt, for its gas and its
-   block. Then find the latest `Collect` for the same NFT at or before
-   that block ([Searching by NFT](#searching-by-nft)). That is the
-   compound's collect. Read its receipt. It holds no
+   block. Then find the compound's collect, as
+   [Searching by NFT](#searching-by-nft) describes. If there is none,
+   the deposit was coins the owner added: record its gas, and skip
+   step 4. Otherwise read the collect's receipt. It holds no
    `DecreaseLiquidity`, so its whole `Collect` amounts are fees: record
    them as coins in.
 4. **The swap and approvals.** List the wallet's transactions from the
@@ -672,7 +689,9 @@ them:
   `deposits` in `pnl-epochs-cache.json` gives its amounts. Its hash
   comes from a search for its `IncreaseLiquidity` in that one block.
 - **A deposit into an existing NFT.** It has an entry in
-  `compoundHistory`, like a compound.
+  `compoundHistory`, like a compound, unless it was made within about
+  5.8 days after liquidity was taken out of the same NFT
+  ([The Position Records](#the-position-records)).
 - **Anything else**, such as taking liquidity out by hand or burning an
   NFT. Nothing records it; find it with
   [Searching by NFT](#searching-by-nft).
@@ -772,12 +791,16 @@ store (`src/lib/api-key-store.js`): one key, in
 `app-config/user-configurable/api-keys.json`, encrypted with the
 wallet's password by AES-256-GCM, with the encryption key made from the
 password by PBKDF2-SHA512 at 600,000 rounds. Git ignores the file. The
-report never opens the wallet file; it asks for the wallet's password
-only because the store encrypts every api key with it. The prompt is
-LP Ranger's own (`src/lib/ask-password.js`), which shows nothing of what is
-typed. The password is never an argument, which shell history and `ps`
-would keep, and it is kept nowhere. The plain key is only in memory, in
-`src/lib/api-key-holder.js`, where the price library reads it.
+report never unlocks the wallet: it asks for the wallet's password only
+because the store encrypts every api key with it, and the password opens
+only the key. The wallet file is read, still encrypted, as LP Ranger's
+configuration loads (`src/lib/config.js` loads `src/lib/wallet-manager.js`,
+which reads the file as it loads), and nothing in the tools uses it.
+The prompt is LP Ranger's own (`src/lib/ask-password.js`), which shows
+nothing of what is typed. The password is never an argument, which shell
+history and `ps` would keep, and it is kept nowhere. The plain key is
+only in memory, in `src/lib/api-key-holder.js`, where the price library
+reads it.
 
 Every run asks Moralis about the key once, before it prices anything
 (`pingMoralis`, `src/lib/moralis-key.js`). The library answers a refused
@@ -790,10 +813,9 @@ A new key is saved only once Moralis takes it. The store reads its
 file, adds the key and writes the file back, so a key the dashboard
 saved in between could be lost; that is why the run first warns not to
 save one there. The password typed for a new key is not checked against
-the wallet's: LP Ranger's wallet module (`src/lib/wallet-manager.js`) reads
-the wallet file as it loads, which would have the report, and each of
-its tests, read that file. Each prompt and answer, and what to do once
-the wallet is imported again under a new password, are in
+the wallet's: a check would mean decrypting the wallet's private key
+with it, which the report never does. Each prompt and answer, and what
+to do once the wallet is imported again under a new password, are in
 [The Moralis Key](user-manual.md#the-moralis-key).
 
 ### The Last Whole Day
@@ -835,8 +857,9 @@ to do about it, is in [Troubleshooting](user-manual.md#troubleshooting).
 each coin's decimals exactly, as strings, so no amount is rounded. A USD
 value is written with two to six decimals, and a price to twelve
 significant digits, never with an exponent. `coinsToPrice` names only
-the coins a row needs priced, so a swap of one coin asks no price of the
-other. The gas and value columns are named for the chain's own coin
+the coins a row shows an amount of, so an approval or a cancel asks no
+price of either pool coin; every row prices the chain's own coin, for
+its gas. The gas and value columns are named for the chain's own coin
 (`nativeCurrencySymbol` in `chains.json`), and coins outside the pool go
 into one cell, `other_coins`. The rows are sorted by block, and within a
 block by nonce. What each column holds is in
@@ -890,10 +913,11 @@ Each module in `util/bookkeeping/`, in full.
   transaction's receipt, and nothing else. The object names the
   transaction's kind (drain, swap, approval, mint, collect, deposit,
   cancel, reverted and others), and holds the position manager's
-  `IncreaseLiquidity`, `DecreaseLiquidity` and `Collect` events, its NFT
-  mints and burns, the wallet's coin `Transfer` and `Approval` events,
-  and the gas paid; for a drain, also the fees, the `Collect` amounts
-  less the `DecreaseLiquidity` ones. Every amount is a string of raw
+  `IncreaseLiquidity`, `DecreaseLiquidity` and `Collect` events, each
+  NFT it moved (a mint from the zero address, a burn to it), the
+  wallet's coin `Transfer` and `Approval` events, and the gas paid; for
+  a drain, also the fees, the `Collect` amounts less the
+  `DecreaseLiquidity` ones. Every amount is a string of raw
   digits. The endpoint and the position manager are the app's
   (`config.RPC_URLS[0]`, `config.POSITION_MANAGER`) unless an option
   names others ([`commands.md`](commands.md)). A `--blockchain` passed

@@ -310,6 +310,7 @@ async function run(extra = [], stage = {}) {
   const deps = {
     makeProvider: () => provider,
     appDataDir: dir,
+    rebalanceLog: path.join(dir, "rebalance_log.json"),
     spacingMs: 0,
     usdPriceOn: stage.prices === undefined ? priceOn : stage.prices,
     nowMs: stage.nowMs === undefined ? RUN_AT : stage.nowMs,

@@ -2,8 +2,9 @@
  * @file server-unlock-log.js
  * @description Diagnostic logging helpers for `POST /api/wallet/unlock`.
  *
- * Extracted so the server.js route handler stays concise (server.js
- * is close to its 500-line cap). These helpers log every field that
+ * The unlock route, src/server/server-unlock.js, calls them, so the route
+ * reads as its steps while the log's wording lives here. These helpers
+ * log every field that
  * could identify WHO submitted the unlock request: client IP,
  * Origin/Referer (which page or iframe dispatched the fetch),
  * User-Agent (browser vs curl/script), the Sec-Fetch-* headers
@@ -73,10 +74,22 @@ function logUnlockFail(err) {
   );
 }
 
+/** Log the 409 path (a wallet import under way), with the bot's reason. */
+function logUnlockRefused(reason) {
+  log.warn(`${NS} POST /api/wallet/unlock refused — %s`, reason);
+}
+
+/** Log the 404 path: no wallet is saved, so there is nothing to unlock. */
+function logUnlockNoWallet() {
+  log.warn(`${NS} POST /api/wallet/unlock refused — no wallet is saved`);
+}
+
 module.exports = {
   logUnlockRequest,
   logUnlockMissing,
   logUnlockAttempt,
   logUnlockSuccess,
   logUnlockFail,
+  logUnlockRefused,
+  logUnlockNoWallet,
 };

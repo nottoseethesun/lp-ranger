@@ -22,9 +22,13 @@
  * is a hole through which the rate escapes.  If something needs to go
  * sooner, the answer is a shorter interval, not a bypass.
  *
- * **What it does not do.**  It is not a retry mechanism, not a failover
- * mechanism, and not a circuit breaker.  Those live in
- * `src/bot/send-transaction.js` and `src/bot/rpc-error-classifier.js`.  This
+ * **What it does not do.**  It neither retries a request nor chooses an
+ * endpoint, and it does not decide when to hold every request during an
+ * outage (`halt`, below).  Those are its callers' work: the read retry
+ * loop (`src/bot/rpc-read-retry.js`), the send retry
+ * (`src/bot/tx-retry.js`), endpoint selection
+ * (`src/bot/send-transaction.js`) and the call to `halt` when failover
+ * runs out of endpoints (`src/bot/rpc-endpoints-exhausted.js`).  This
  * module only answers "may I send now?".
  *
  * Wired in by `buildProvider` (`src/bot/bot-provider.js`), which wraps the
@@ -132,10 +136,11 @@ function _drain() {
 /**
  * Wait for permission to send one JSON-RPC request.
  *
- * Resolves immediately when the queue is empty and enough time has
- * already passed since the last release —
- * so an idle bot polling every five minutes never pays a penalty.
- * Otherwise joins the queue and resolves when its turn comes.
+ * Resolves immediately when no outage hold is running (`halt`), the
+ * queue is empty and enough time has already passed since the last
+ * release — so an idle bot polling every five minutes never pays a
+ * penalty. Otherwise joins the queue and resolves when its turn comes,
+ * which during a hold is not before the hold has run out.
  *
  * @returns {Promise<void>}  Resolves when the caller may send.
  */

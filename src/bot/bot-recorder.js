@@ -10,11 +10,13 @@
 "use strict";
 
 const { log } = require("../lib/log");
-// Loading any bot module signals the bot subsystem is active — bot-banner
-// prints on first require (cached, so exactly once per process). The bot's
-// interface (bot-interface.js), the one bot module the server loads, pulls
-// in bot-recorder unconditionally, so this is where the bot announces
-// itself in server mode.
+/*-
+ *  Loading any bot module signals the bot subsystem is active —
+ *  bot-banner prints on first require (cached, so exactly once per
+ *  process). The bot's interface (bot-interface.js), the one bot module
+ *  the server loads, pulls in bot-recorder unconditionally, so this is
+ *  where the bot announces itself in server mode.
+ */
 require("./bot-banner");
 
 const fs = require("fs");
@@ -60,7 +62,8 @@ const { finishPassRebalanceFigures } = require("./bot-rebalance-figures");
  */
 function readLog() {
   try {
-    const raw = fs.readFileSync(path.resolve(config.LOG_FILE), "utf8");
+    const logPath = path.resolve(config.rebalanceLogPath());
+    const raw = fs.readFileSync(logPath, "utf8");
     const entries = JSON.parse(raw);
     return Array.isArray(entries) ? entries : [];
   } catch (_) {
@@ -74,7 +77,7 @@ function readLog() {
  * @param {object} result  The rebalance result object.
  */
 function appendLog(result) {
-  const logPath = path.resolve(config.LOG_FILE);
+  const logPath = path.resolve(config.rebalanceLogPath());
   let entries = [];
   try {
     const raw = fs.readFileSync(logPath, "utf8");
@@ -264,7 +267,8 @@ async function _attachInitialResidual(stPatch, ctx) {
 }
 
 /**
- * Resolve pool address and scan on-chain rebalance history (fire-and-forget).
+ * Resolve pool address and scan on-chain rebalance history. The scan pass
+ * (`_scanAndReconstruct`) awaits it.
  *
  * @returns {Promise<boolean>}  False when the scan failed. `events` then
  *   still holds what it held before the pass, which on a cold start is
@@ -548,11 +552,12 @@ function _activePosSummary(p) {
 }
 
 function _notifyRebalance(deps, throttle, position, events) {
-  /*- `lastRebalanceAt` is a ms-since-epoch number (matches what
-   *  `bot-cycle-residual._updateCleanupState` writes and what callers
-   *  compare against `Date.now()`).  Previously this wrote an ISO
-   *  string via `Object.assign` which stomped the numeric value and
-   *  produced NaN arithmetic in the residual-cleanup cooldown gate. */
+  /*-
+   *  `lastRebalanceAt` is a ms-since-epoch number, as
+   *  `updateCleanupState` (src/bot/bot-cycle-residual.js) writes it and as
+   *  its readers compare it against `Date.now()`: an ISO string here
+   *  would make the residual-cleanup cooldown's arithmetic NaN.
+   */
   deps.updateBotState({
     rebalanceCount: (deps._rebalanceCount || 0) + 1,
     lastRebalanceAt: Date.now(),

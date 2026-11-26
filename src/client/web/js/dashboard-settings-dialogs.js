@@ -8,8 +8,11 @@
  *   of their behaviour still lives where it always did
  *   (dashboard-events.js wires the Save buttons, dashboard-events-manage.js
  *   the privacy switches, dashboard-moralis-key.js and
- *   dashboard-gas-fee-settings.js the persistence). This module only moves
- *   visibility, which is why it holds no state of its own.
+ *   dashboard-gas-fee-settings.js the persistence). This module moves
+ *   visibility, which is why it holds no state of its own; it also
+ *   refreshes the Moralis switch as its dialog opens, and confirms the
+ *   menu's Clear Local Storage & Cookies before that wipes what the site
+ *   keeps in the browser (`confirmClearStorage`).
  *
  *   Opening any of them closes the Settings popover first: the popover is
  *   anchored to the gear and would otherwise hover over the dialog it just
@@ -28,10 +31,10 @@ const _GAS_FEE = "gasFeeModal";
 /**
  * Hide the Settings popover if it is showing.
  *
- * Imported lazily through a DOM lookup rather than by importing
- * `toggleSettingsPopover` from dashboard-events-manage.js: that module
- * already imports this one's callers, and reaching back into it would
- * close an import cycle.
+ * Removes the popover's visible class itself rather than calling
+ * `toggleSettingsPopover` (dashboard-helpers.js): that one toggles, so it
+ * would show a popover already hidden, and it checks the Moralis key
+ * whenever it shows it.
  * @returns {void}
  */
 function _closeSettingsPopover() {
@@ -118,7 +121,7 @@ export async function confirmClearStorage() {
  * Wire each menu item to its dialog and each dialog's Close button.
  *
  * Lives here rather than in dashboard-events.js so this module owns its
- * three dialogs end to end — and because folding six more `_click` calls
+ * three dialogs end to end — and because folding seven more `_click` calls
  * into that file pushed it past the 500-line ceiling. Extracted, not
  * compacted.
  *

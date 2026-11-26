@@ -55,9 +55,11 @@ transactions to re-center them. It also tracks profit and loss, collects and
 compounds trading fees, and maintains a complete history of every rebalance
 going back up to five years.
 
-All blockchain interaction flows through the bot: RPC calls to read pool state,
-transaction signing and submission, gas price management, and on-chain event
-scanning. The bot holds the wallet's private key in memory (never written to
+All blockchain interaction but one read flows through the bot: RPC calls to
+read pool state, transaction signing and submission, gas price management, and
+on-chain event scanning. The one read is the browser's, when a wallet is
+imported (see [Frontend: The Web App](#frontend-the-web-app)). The bot holds
+the wallet's private key in memory (never written to
 disk in plaintext) and serializes all transactions through a single async mutex
 to prevent nonce collisions when managing multiple positions from the same
 wallet.
@@ -102,10 +104,13 @@ Navigo provides bookmarkable deep links to specific positions.
 Nearly everything the dashboard displays comes from the bot via the HTTP
 API, and every action the user takes (start or stop managing a position,
 trigger a rebalance, change settings) is a POST or DELETE to an API
-endpoint. Two reads go elsewhere. When a wallet is imported, the browser asks
+endpoint. Three reads go elsewhere. When a wallet is imported, the browser asks
 the primary rpc endpoint how many transactions the address has sent, to tell
-a used wallet from a new one. And opening Check for Updates & About asks
-GitHub's api for the latest release.
+a used wallet from a new one. Opening Check for Updates & About asks
+GitHub's api for the latest release. And once the disclosure is accepted on
+each page load, the browser reads the chain's token list from its url
+(`tokenList.url` in `chains.json`; for PulseChain, a file on GitHub), then
+loads each token's logo from the address the list gives for it.
 
 ---
 
@@ -121,7 +126,7 @@ The endpoints fall into these groups, which are the reference's tags:
   `dashboardPollIntervalMs` (three seconds as shipped), returns the full
   state of all managed positions: pool prices, P&L snapshots, throttle
   state and scan progress. `GET /api/csrf-token` hands out the token every
-  request but a GET carries.
+  request but a GET carries (a browser's preflight, OPTIONS, needs none).
 - **Config** — `POST /api/config` saves per-position settings (slippage,
   threshold, timeout, auto-compound) and global ones (rpc list, gas fee
   limit, approval multiple).
@@ -159,8 +164,9 @@ builds from this map, and returns the full state for all positions.
 
 The dashboard flattens the response, matches it to the currently-viewed
 position by composite key (`blockchain-wallet-contract-tokenId`), and updates
-the DOM. This polling architecture means the dashboard is stateless — a page
-refresh picks up exactly where it left off.
+the DOM. This polling architecture means a page refresh picks up exactly where
+it left off: the figures come from the server, and what the dashboard keeps
+itself is in the browser's `localStorage` (see [Persistence](#persistence)).
 
 ### Dashboard → Bot
 
@@ -412,7 +418,8 @@ Three figures from the lifetime scan feed the Lifetime panel's P&L:
   change.
 
 - **Lifetime compounded amount** (`compoundedAmount0` / `compoundedAmount1`,
-  saved with the position's config) — the **coins** each NFT earned in fees
+  saved with the position's records in `app-data/position-records.json`) —
+  the **coins** each NFT earned in fees
   and re-deposited, whether by a compound or by the rebalance that closed
   it. Each NFT's figure is its Collect amounts less the principal its
   DecreaseLiquidity events released (`lifetimeFeeAmounts`). The per-event
@@ -514,7 +521,8 @@ epochs, because it renders no Per-Day P&L.
 The scan reads the chain only when it has something to compute. Once the
 HODL amounts, the compound total and the lifetime deposit are all on disk
 (`lifetimeFiguresSaved`), it reads nothing, so after the first complete scan
-a restart reads nothing for them. Two requests make it read again:
+a restart reads nothing for them. These make it read again
+(`lifetimeScanPlan`, `src/bot/bot-recorder-lifetime.js`):
 
 - **A rebalance flags a full rescan.** That rebalance minted with the
   wallet's whole balance, so coins that arrived since the previous mint are
@@ -523,13 +531,22 @@ a restart reads nothing for them. Two requests make it read again:
 - **Re-scan Prices asks for a re-pricing.** The amounts stand, and every
   dollar figure built on them is fetched again at fresh prices. See
   docs/engineering.md § `POST /api/position/rescan-prices`.
+- **The counted deposits stop short of the current NFT's mint.** A
+  rebalance's request lives in memory, so a stop before its scan finished
+  drops it; the next start finds the gap and counts again.
+- **A compound found no compound total to add to.** A compound, or a
+  rebalance's fee credit, made while no total was saved left its coins
+  unrecorded, so the compound list is classified again from the chain.
+- **The open NFT holds a compound whose record names no fees put back**,
+  such as one made outside LP Ranger. The compound list is rebuilt once,
+  working those fees out from the chain.
 
 A read starts at the pool's creation block, lifted to the chain's first mint
 and taken from the pool when the read runs, because a figure computed from
 scratch needs the whole chain. The compound total and the lifetime deposit
-are saved and restored with the position's config (`PERSISTED_STATE_KEYS` in
-`src/bot/position-states.js`), and compounds and rebalances add to the compound
-total as they happen. The HODL amounts are kept in the pool's epoch cache.
+are saved with the position's records in `app-data/position-records.json` and
+restored from them (`PERSISTED_STATE_KEYS` in `src/bot/position-states.js`),
+and compounds and rebalances add to the compound total as they happen. The HODL amounts are kept in the pool's epoch cache.
 
 A pass whose event scan fails computes none of these figures. The chain the
 bot holds would be whatever it held before the pass — nothing, on a cold
@@ -556,8 +573,12 @@ starting the positions saved as managed, one at a time, it reports that
 start-up's progress in `GET /api/status` (`startingManagedPositions`).
 While a wallet is imported, from its first step until the start-up of the
 new wallet's saved positions has finished, it reports `importingWallet`,
-and refuses a Manage. The Syncing state keeps Manage and Stop Managing
-disabled until each ends.
+and refuses a Manage and an unlock. The Syncing state keeps Manage and
+Stop Managing disabled until each ends. Once the import has replaced a
+wallet, every status answer also names the new one (`walletJustChanged`),
+and every other tab still holding the old wallet reloads once the import
+has finished ([`docs/engineering.md` § Re-start from Initialized Installation (Has Completed Blockchain Scan)](engineering.md#re-start-from-initialized-installation-has-completed-blockchain-scan),
+after the wallet import).
 
 ---
 
@@ -570,15 +591,20 @@ nobody reads. The idle-driven pause stops the cascade in those windows
 while keeping it instantly available for any move.
 
 All gating happens at the public API of `src/bot/price-fetcher.js`, before the
-source cascade. Every price lookup goes through it: the rebalance /
-compound hot path, and the view-only answers for unmanaged-position
-detail and closed-position history, which the server asks the bot for
-through its interface. Adding or removing a price source later requires
-zero changes here. The one other request of a price service is the
-server's check of the stored Moralis key (`pingMoralis`,
+source cascade, and covers current prices. Every current price the bot
+looks up goes through `fetchTokenPriceUsd` or `fetchDustUnitPriceUsd`:
+the rebalance / compound hot path, and the view-only answers for
+unmanaged-position detail and closed-position history, which the server
+asks the bot for through its interface. Adding or removing a price
+source later requires zero changes here. Two kinds of request go to a
+price service without the gate. Historical prices are one:
+`fetchHistoricalPriceGecko` and the lookups in
+`src/bot/historical-token-price.js` ask the price services while the
+pause is on as well.
+The server's check of the stored Moralis key is the other (`pingMoralis`,
 `src/lib/moralis-key.js`): it asks Moralis one price to prove the key,
 on a key save, the key dialog's status check and the check after the
-wallet unlock, and the pause does not gate it.
+wallet unlock.
 
 These set the pause flag, or bypass it:
 
@@ -649,8 +675,9 @@ LP Ranger is deliberately minimal in its dependency footprint:
   framework churn.
 - **No frontend framework.** The dashboard is vanilla JS with direct DOM
   manipulation. esbuild bundles it from ES modules into a single file.
-- **No database.** All state is JSON files on disk. The app remains stateless
-  — caches are pure optimization, rebuilt from the blockchain if deleted.
+- **No database.** All state is json files on disk (see
+  [Persistence](#persistence)). The caches among them only save work:
+  deleted, they are rebuilt from the blockchain and the price services.
 - **Exact math where it matters.** Token ratio calculations use the Uniswap
   V3 SDK's 160-bit sqrtPrice math (via JSBI) to avoid floating-point errors
   that could cause failed mints.

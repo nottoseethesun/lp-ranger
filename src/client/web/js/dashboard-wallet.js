@@ -1,8 +1,8 @@
 /**
  * @file dashboard-wallet.js
  * @description Core wallet state, generate flow, unlock,
- * tab switching, and utility functions for the 9mm v3
- * Position Manager dashboard.
+ * tab switching, and utility functions for the LP Ranger
+ * dashboard.
  *
  * The import flows (seed, private key), the key-reveal modal and the
  * wallet clear live in dashboard-wallet-import.js, and are imported from
@@ -11,10 +11,10 @@
  * Depends on: dashboard-helpers.js (g, act, ACT_ICONS),
  * ethers-adapter.js (ethers).
  *
- * NOTE: Imports from positions (updatePosStripUI,
- * scanPositions, posStore) are resolved at call time, not
- * at parse time, so the circular reference between wallet
- * and positions is safe.
+ * NOTE: Positions (updatePosStripUI, scanPositions, posStore) are not
+ * imported: dashboard-init.js hands them in through `injectWalletDeps`
+ * once every module has loaded, which keeps wallet and positions from
+ * importing each other in a circle.
  */
 
 import { g, act, ACT_ICONS, fetchWithCsrf } from "./dashboard-helpers.js";
@@ -25,6 +25,11 @@ import { ethers } from "./ethers-adapter.js";
 import * as unlockLog from "./dashboard-unlock-log.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
 import { withUiSettings } from "./dashboard-ui-settings.js";
+import { pageReloadedByBrowser } from "./dashboard-idle.js";
+import {
+  noteWalletImportStarted,
+  noteWalletImportEnded,
+} from "./dashboard-wallet-change.js";
 
 // ── Late-bound deps ───────────────────────────────────────
 
@@ -39,6 +44,7 @@ let _clearPositionDisplay = null;
 let _resetPollingState = null;
 let _clearHistory = null;
 let _getPendingRouteWallet = null;
+let _dropPendingRoute = null;
 let _flushPendingUnmanagedFetch = null;
 
 /**
@@ -59,6 +65,7 @@ export function injectWalletDeps(deps) {
   if (deps.clearHistory) _clearHistory = deps.clearHistory;
   if (deps.getPendingRouteWallet)
     _getPendingRouteWallet = deps.getPendingRouteWallet;
+  if (deps.dropPendingRoute) _dropPendingRoute = deps.dropPendingRoute;
   if (deps.flushPendingUnmanagedFetch)
     _flushPendingUnmanagedFetch = deps.flushPendingUnmanagedFetch;
 }
@@ -151,15 +158,16 @@ export function getUpdateRouteForWallet() {
 // ── RPC URL ───────────────────────────────────────────────
 
 /**
- * Get the RPC URL the operator typed, or the server's configured
- * primary when the field is blank.
+ * Get the server's configured primary rpc endpoint, waiting for the
+ * endpoint list if it is still loading (`rpcUrlReady`,
+ * dashboard-rpc-endpoints.js).
  *
  * Async on purpose.  There is no hardcoded URL here any more — the
  * shipped list in chains.json is the only place that value exists — so
- * when the field is blank the answer has to come from the server, and
- * early in page load it has not arrived yet.  A synchronous version
- * returned "" during that window, and the one caller built an ethers
- * provider from it, whose every call then threw.
+ * the answer has to come from the server, and early in page load it has
+ * not arrived yet.  A synchronous version returned "" during that window,
+ * and the one caller built an ethers provider from it, whose every call
+ * then threw.
  *
  * Returns "" only if the endpoint request itself failed. Callers must
  * treat that as "unknown", never as an answer.
@@ -359,14 +367,28 @@ export async function confirmWallet() {
     return;
   }
 
-  const ok = await sendWalletToServer(p, password);
+  /*-
+   *  The server takes this wallet before it answers, so a status answer
+   *  naming it can come first. It is this tab's own import, not another
+   *  tab's change to reload for (dashboard-wallet-change.js), until the
+   *  answer is in and the tab holds the wallet.
+   */
+  noteWalletImportStarted();
+  let ok;
+  try {
+    ok = await sendWalletToServer(p, password);
+    if (ok) {
+      wallet.address = p.address;
+      wallet.source = p.source;
+    }
+  } finally {
+    noteWalletImportEnded();
+  }
   if (!ok) {
     alert("Failed to sync wallet to server. " + "Check the activity log.");
     return;
   }
 
-  wallet.address = p.address;
-  wallet.source = p.source;
   _walletUnlocked = true;
   delete wallet._pending;
 
@@ -490,20 +512,32 @@ export function copyText(id) {
 // ── Init: check server wallet status on load ──────────────
 
 /**
- * Restore a server-persisted wallet. Checks URL/server
- * wallet mismatch.
+ * Restore a server-persisted wallet, unless the page's address names
+ * another wallet that takes priority.
+ *
+ * The page's address takes priority, however the browser came to it:
+ * typed, from a bookmark or a link, or by Back or Forward (the user's
+ * ruling, 2026-11-25). The server's wallet is not loaded, and the wallet
+ * dialog asks for the address's, after whose import the server holds it
+ * and other tabs follow (dashboard-wallet-change.js). Only a page the
+ * browser reloaded on its own, after unloading the tab to save memory
+ * (`pageReloadedByBrowser`, dashboard-idle.js), goes on as if it had
+ * stayed open instead: it forgets the address and takes the server's
+ * wallet, as a tab that stayed open does.
+ * @param {{address: string, source: string}} data  The server's wallet.
  */
 function _restoreServerWallet(data) {
-  // If the URL requests a different wallet, don't load
-  // the server's wallet.
   const pendingWallet = _getPendingRouteWallet
     ? _getPendingRouteWallet()
     : null;
   if (pendingWallet && pendingWallet !== data.address.toLowerCase()) {
-    clearAllPositionState();
-    applyWalletUI();
-    openWalletModal();
-    return;
+    if (!pageReloadedByBrowser()) {
+      clearAllPositionState();
+      applyWalletUI();
+      openWalletModal();
+      return;
+    }
+    if (_dropPendingRoute) _dropPendingRoute();
   }
 
   wallet.address = data.address;
@@ -574,6 +608,18 @@ export function isWalletUnlocked() {
   return _walletUnlocked;
 }
 
+/**
+ * Show the unlock dialog, with no error left from an earlier try: an
+ * error shown when the dialog was dismissed would otherwise greet the
+ * next unlock.
+ */
+export function showUnlockDialog() {
+  const m = g("walletUnlockModal");
+  if (m) m.classList.remove("hidden");
+  const errEl = g("unlockError");
+  if (errEl) errEl.classList.add("hidden");
+}
+
 /** Check if the wallet is locked and show unlock modal. */
 export async function checkWalletLocked() {
   unlockLog.logInfo("checkWalletLocked: fetching status");
@@ -584,7 +630,7 @@ export async function checkWalletLocked() {
       const m = g("walletUnlockModal");
       const pw = g("unlockPassword");
       unlockLog.logLockedBranch(m, pw);
-      if (m) m.classList.remove("hidden");
+      showUnlockDialog();
       if (pw) pw.focus();
       const ub = g("unlockWalletBtn");
       if (ub) {

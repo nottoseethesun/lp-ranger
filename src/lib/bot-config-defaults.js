@@ -3,17 +3,21 @@
  * @module botConfigDefaults
  * @description
  * Reads `bot-config-defaults.json` (via the layered defaults+user-
- * override loader — see `src/lib/load-merged-defaults.js`). These are
- * *defaults* for user-editable Bot Config settings: the bot falls back
- * to them for a key that isn't present in `bot-config.json`, and the
- * dashboard shows them as the initial input value when the user hasn't
- * saved an override yet. The dashboard receives them through
- * `src/server/resolved-settings.js` (`GET /api/bot-config-defaults`), which
- * puts `.env`'s value on top for the settings `.env` can set.
+ * override loader — see `src/lib/load-merged-defaults.js`). It holds two
+ * kinds of setting. Some are *defaults* for user-editable Bot Config
+ * settings: the bot falls back to them for a key that isn't present in
+ * `bot-config.json`, and the dashboard shows them as the initial input
+ * value when the user hasn't saved an override yet. The rest are
+ * tunables this file alone sets, such as `getLogsChunkSize`,
+ * `globalRPCRequestRateIntervalMS` and the `throttleDoubling` group,
+ * which no dashboard field sets and bot-config.json refuses. The
+ * dashboard receives the file's values through
+ * `src/server/resolved-settings.js` (`GET /api/bot-config-defaults`),
+ * which puts `.env`'s value on top for the settings `.env` can set.
  *
- * Keys match the bot-config-v2 POSITION_KEYS / GLOBAL_KEYS naming so
- * the same string flows end-to-end (defaults file → dashboard input →
- * saved config → bot reader).
+ * The keys of the first kind match the POSITION_KEYS / GLOBAL_KEYS naming
+ * in `src/lib/bot-config-keys.js` so the same string flows end-to-end
+ * (defaults file → dashboard input → saved config → bot reader).
  *
  * New user-setting defaults should be added here (and wired through
  * the normal config save path) rather than each getting its own
@@ -22,8 +26,9 @@
  * picked up on restart.  When `src/lib/config.js` reads it at startup, a
  * value outside its range stops the app with a message naming it; a
  * reader that does not ask for that check keeps the shipped default in
- * its place instead.  Read or parse failures fall back to the built-in
- * defaults below so the endpoint never 500s.
+ * its place instead.  Read or parse failures fall back to the shipped
+ * file's values (`_FALLBACK`, read as the module loads) so the endpoint
+ * never 500s.
  */
 
 "use strict";
@@ -79,8 +84,8 @@ function _timerOrNull(v, key) {
  * Refuse a timer setting the operator has written out of range.
  *
  * Separate from the normalizer above because the two have different
- * jobs. The normalizer runs on every read — a poll cycle and an HTTP
- * route among them — so it must never throw. This runs once, at
+ * jobs. The normalizer serves a caller that did not ask for this check,
+ * so it keeps the shipped default rather than throw. This runs once, at
  * startup, from `src/lib/config.js`, where refusing means the app does not
  * come up on a schedule nobody chose.
  *
@@ -117,8 +122,8 @@ function _assertTimerKeys(parsed) {
  * The companion of the timer check above, for the settings whose range is
  * in setting-bounds.json: every top-level key that has one, each member
  * of a group, and each entry of a list. The normalizers keep the shipped
- * default in place of such a value, because they run on every read and
- * must not throw. At startup a value the bot would never use is refused
+ * default in place of such a value, for a caller that did not ask for the
+ * check. At startup a value the bot would never use is refused
  * instead, so the operator hears of it rather than running on a figure
  * they did not choose.
  *
@@ -339,10 +344,9 @@ const _NORMALIZERS = {
    *  same question.
    *
    *  Lenient HERE, and refused at startup by
-   *  `readBotConfigDefaultsStrict` instead. This function runs on every
-   *  read, and those include a poll cycle and an HTTP route; throwing
-   *  from it would turn an edit made while the bot is running into a
-   *  broken poll and a 500.
+   *  `readBotConfigDefaultsStrict` instead. This function serves a
+   *  caller that did not ask for that check, so it keeps the shipped
+   *  default rather than throw.
    */
   checkIntervalSec: (v) => _timerOrNull(v, "checkIntervalSec"),
   minRebalanceIntervalMin: (v) => _inRange(v, "minRebalanceIntervalMin"),
@@ -392,10 +396,10 @@ function readBotConfigDefaults() {
  * up on settings nobody chose, which is the whole point — a silently
  * corrected value is the last thing anyone would think to check.
  *
- * The lenient reader is what every other caller wants, because several
- * of them are a poll cycle or an HTTP route. Throwing from those would
- * turn an edit made while the bot is running into a broken poll and a
- * 500.
+ * Every other caller takes `readBotConfigDefaults`, which returns the
+ * answer this read keeps. The file is not read again, so an edit made
+ * while the bot runs waits for the next start, where this read refuses a
+ * bad value.
  *
  * Reads the file itself rather than taking the memo, because the memo
  * may have been filled by a lenient caller that accepted a value this
@@ -441,7 +445,7 @@ function _read({ strict }) {
      */
     if (err.badTimerValue || err.badSettingValue) throw err;
     log.warn(
-      "[bot-config-defaults] Falling back to built-in defaults: %s",
+      "[bot-config-defaults] Falling back to the shipped file's values: %s",
       err.message,
     );
     return { ..._FALLBACK };

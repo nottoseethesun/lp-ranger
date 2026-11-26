@@ -80,11 +80,13 @@ function _balanceStats(amounts) {
  * elements nobody sees, and the figures behind them cost a walk of every
  * NFT in the rebalance chain.
  *
- * What remains visible: the Rebalance Events table, and the Current
- * panel's Fees Compounded and Gas, which come from a single-NFT scan
- * rather than the chain.
+ * What remains visible: the Rebalance Events table, which this paints,
+ * and the Current panel's Fees Compounded and Gas, which come from a
+ * single-NFT scan rather than the chain and are painted from each status
+ * answer (`_applyUnmanagedSnapshotOverlay`, dashboard-data-kpi.js).
  *
- * @param {object} d  The `/api/position/lifetime` response.
+ * @param {object} d  The `/api/position/lifetime` response, or the
+ *   details answer when `_apply` calls it.
  */
 export function _applyLifetime(d) {
   log.info(

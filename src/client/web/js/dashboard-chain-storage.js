@@ -1,7 +1,8 @@
 /**
  * @file dashboard-chain-storage.js
- * @description The browser's per-chain copies of what the server
- *   scanned, kept in localStorage.
+ * @description The browser's per-chain copies, kept in localStorage: the
+ *   position list from the wallet scan, the managed set, and the last
+ *   position viewed.
  *
  *   The server runs one chain for its life, but it can be restarted on
  *   another at the same address, and the browser's copies outlive it. A

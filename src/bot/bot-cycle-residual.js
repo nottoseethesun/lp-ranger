@@ -8,18 +8,18 @@
  * `state.lastRebalanceAt` and clears `state.residualCleanupUsed`.  On
  * subsequent poll cycles, once `delayMs` has elapsed, this module checks
  * whether the wallet still holds a meaningful residual share of the pool
- * batch — `residual / (LP + residual) > thresholdPct` — and if so arms
- * `forceRebalance` + `residualCleanupInProgress` so the normal rebalance
- * path executes with the cleanup label.
+ * batch — `residual / (LP + residual) × 100 > thresholdPct` — and if so
+ * arms `forceRebalance` + `residualCleanupInProgress` so the normal
+ * rebalance path executes with the cleanup label.
  *
  * Back-to-back cleanups are prevented by `residualCleanupUsed`, which is
- * set after a cleanup fires and only cleared when the next *normal*
- * rebalance succeeds.  A cleanup's own success does NOT refresh
+ * set when a cleanup succeeds and cleared only when the next normal or
+ * manual rebalance succeeds.  A cleanup's own success does NOT refresh
  * `lastRebalanceAt`, so the flag stays true and no second cleanup can
  * arm against the same baseline.
  *
- * All standard rebalance gates (throttle, daily cap, doubling, swap
- * backoff, paused state, dry-run) still apply — this module only decides
+ * All standard rebalance gates (throttle, daily cap, doubling, paused
+ * state, dry-run) still apply — this module only decides
  * *whether to ask for a rebalance*; it never bypasses downstream gates.
  */
 

@@ -34,24 +34,35 @@ const path = require("node:path");
 
 const SRC = path.join(__dirname, "..", "src", "lib");
 
-/*- The folders whose modules can scan: the ones the programs share, in
- *  src/lib/, and the server's and the bot's own. */
+/*-
+ *  The folders whose modules can scan, with their subfolders: the ones
+ *  the programs share, in src/lib/, and the server's and the bot's own.
+ */
 const SCAN_DIRS = [
   SRC,
   ...["server", "bot"].map((d) => path.join(__dirname, "..", "src", d)),
 ];
 
-/** Every module directly in those folders, by file name, with its source. */
+/**
+ * Every module in those folders and their subfolders, with its source,
+ * named by its path within its folder: a file name for one at the top.
+ * @returns {{name: string, src: string}[]}
+ */
 function _modules() {
-  return SCAN_DIRS.flatMap((dir) =>
-    fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith(".js"))
-      .map((f) => ({
-        name: f,
-        src: fs.readFileSync(path.join(dir, f), "utf8"),
-      })),
-  );
+  const modules = [];
+  const walk = (root, dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(root, p);
+      else if (e.name.endsWith(".js"))
+        modules.push({
+          name: path.relative(root, p).split(path.sep).join("/"),
+          src: fs.readFileSync(p, "utf8"),
+        });
+    }
+  };
+  for (const dir of SCAN_DIRS) walk(dir, dir);
+  return modules;
 }
 
 /*-
@@ -98,17 +109,22 @@ function scanSites() {
     .map((m) => m.name);
 }
 
+/*-
+ *  A load of the shared helper, src/bot/nft-mint-blocks.js. Only a bot
+ *  module may load it: one at the top of src/bot/ names it
+ *  `./nft-mint-blocks`, one in a subfolder `../nft-mint-blocks`, with a
+ *  `../` more for each level deeper.
+ */
+const LOADS_HELPER = /require\(["'](?:\.\/|(?:\.\.\/)+)nft-mint-blocks["']\)/;
+
 /**
- * Whether a module routes its floor through the shared helper,
- * src/bot/nft-mint-blocks.js. Only a bot module may load it, and every
- * module this test reads beside it (the top of src/bot/) names it
- * `./nft-mint-blocks`.
- * @param {string} file  The module's file name.
+ * Whether a module routes its floor through the shared helper.
+ * @param {string} file  The module's name, as `_modules` gives it.
  * @returns {boolean}
  */
 function isBounded(file) {
   const { src } = _modules().find((m) => m.name === file);
-  return /require\(["']\.\/nft-mint-blocks["']\)/.test(src);
+  return LOADS_HELPER.test(src);
 }
 
 describe("per-NFT scan floors", () => {
@@ -119,6 +135,21 @@ describe("per-NFT scan floors", () => {
       scanSites().length >= 4,
       `expected several NFT scan sites, found ${scanSites().join(", ")}`,
     );
+  });
+
+  it("reads the modules in subfolders, and takes their load of the helper", () => {
+    /*-
+     *  A scan site in a subfolder of src/bot/ is read like any other, and
+     *  its `../nft-mint-blocks` counts as the floor.
+     */
+    const names = _modules().map((m) => m.name);
+    assert.ok(
+      names.includes("telegram-notifications/balanced-notifier.js"),
+      "the walk does not reach src/bot/telegram-notifications/",
+    );
+    assert.ok(LOADS_HELPER.test('require("./nft-mint-blocks")'));
+    assert.ok(LOADS_HELPER.test("require('../nft-mint-blocks')"));
+    assert.ok(LOADS_HELPER.test('require("../../nft-mint-blocks")'));
   });
 
   it("finds sites by label as well as by call name", () => {

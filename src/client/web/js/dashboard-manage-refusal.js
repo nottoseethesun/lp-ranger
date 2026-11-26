@@ -3,12 +3,16 @@
  * @description What the page says when the server refuses to start
  * managing a position under the one-active-position-per-pool rule:
  * which position holds the pool and what to do about it, in place of the
- * code the server answers with. The page's own Manage check refuses the
- * same cases before it asks, so these words show only when its view lags
+ * code the server answers with. The page's own Manage check refuses
+ * those cases before it asks, so these words show only when its view lags
  * the server's: a second tab started a position in the pool a moment
  * ago, say. A Manage and a re-open ask the same route, so both show
  * them; the server logs the same refusal in its own words
- * (src/bot/pool-already-managed.js).
+ * (src/bot/pool-already-managed.js). The same words also cover
+ * `pool-info-unavailable`, where the server could not read the
+ * position's pool from the chain: no check in the page can foresee that,
+ * and only a re-open shows them, since a plain Manage opens a warning
+ * dialog of its own (`_handleManageFailure`, dashboard-events-manage.js).
  */
 
 "use strict";

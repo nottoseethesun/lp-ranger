@@ -117,16 +117,19 @@ Each layer assumes the previous one might fail. That's what
 **defense in depth** means — and it's the organizing principle for
 everything in this section.
 
-All cryptography uses Node's built-in `crypto` module and the vetted
-`csrf` package. Nothing is rolled in-house.
+LP Ranger's encryption uses Node's built-in `crypto` module and its CSRF
+tokens the vetted `csrf` package; its transaction signing, address
+checksums and wallet and seed-phrase handling use the `ethers` library.
+Nothing is rolled in-house.
 
 ## Summary of Primary Controls
 
 - **Your private key is encrypted on disk** — it's never saved in
   readable form, and only your password can unlock it. Once
-  unlocked, the key is held in the server's memory, in the signer
-  every managed position shares, until the server stops; protecting
-  the machine it runs on protects the key. (Encryption: AES-256-GCM
+  unlocked, the key is held in the server's memory, as the key itself
+  and in the signer every managed position shares, until the server
+  stops or a wallet import replaces the wallet; protecting the
+  machine it runs on protects the key. (Encryption: AES-256-GCM
   (Advanced Encryption Standard, 256-bit key, Galois/Counter Mode)
   with PBKDF2 (Password-Based Key Derivation Function 2) SHA-512
   key derivation.)
@@ -200,10 +203,13 @@ aggregator, DexScreener, GeckoTerminal, Moralis — use the `https://`
 urls the app ships, and the shipped rpc endpoints enforce TLS. An rpc
 endpoint you add yourself may be plain `http://`, which suits a node on
 your own machine only: anything else would carry your transactions in
-the clear. The dashboard page itself makes two more kinds of outbound
-call, both https as shipped. It reads the chain's token list
-(`chains.json` → `tokenList.url`) as it loads, and then loads each token
-logo from the address the list gives, skipping any that is not https.
+the clear. The dashboard page itself makes outbound calls of its own,
+all https as shipped. When a wallet is imported, it asks the primary rpc
+endpoint how many transactions the address has sent. Opening Check for
+Updates & About asks GitHub's api for the latest release. On each page
+load, once the Disclosure is accepted, it reads the chain's token list
+(`chains.json` → `tokenList.url`), and then loads each token logo from
+the address the list gives, skipping any that is not https.
 The host of each logo, which the list chooses, sees the browser's ip
 address and which logos it asks for. Inbound dashboard traffic uses
 plain HTTP because it never leaves the loopback interface; adding TLS
@@ -246,8 +252,9 @@ accept-localhost and reject-foreign-origin paths.
 [`src/server/server-csrf.js`](../src/server/server-csrf.js) uses the `csrf` package
 (pillarjs) to issue cryptographically random tokens bound to a
 server-generated secret. Every mutating request must carry a valid,
-non-expired token in an `x-csrf-token` header. Tokens are pruned from
-an in-memory issued-set when the set exceeds 500 entries.
+non-expired token in an `x-csrf-token` header. Once the in-memory issued
+set holds 500 tokens or more, each new token prunes from it the ones past
+`tokenTtlMs`; a live token is never pruned.
 
 **Lifetime and refresh cadence are tunables.**
 [`app-config/app-defaults-for-user-configurable/csrf.json`](../app-config/app-defaults-for-user-configurable/csrf.json)
@@ -261,8 +268,9 @@ defines two values:
 **Dashboard refresh mechanism.** The dashboard fetches a token at
 startup (`src/client/web/js/dashboard-init.js`), then again every
 `refreshIntervalMs`, and whenever its tab becomes visible or its window
-gains focus. Until the first token arrives it uses the `refreshIntervalMs`
-built into the page from the shipped `csrf.json`. The timer is
+gains focus. The repeating timer is set once, after the first fetch: at
+the server's `refreshIntervalMs` when that fetch succeeded, else at the
+figure built into the page from the shipped `csrf.json`. The timer is
 independent of the `/api/status` poll loop, which is the point: during a
 long scan the status poll can skip ticks for long stretches, and a refresh
 tied to it would let the token expire, so the background POSTs the dashboard
@@ -271,8 +279,10 @@ position's lifetime fetch) would be refused 403 with no user action
 involved.
 
 To change either value, put it in an override copy at
-`app-config/user-configurable/csrf.json` and restart the server; the
-dashboard takes the new `refreshIntervalMs` with its next token.
+`app-config/user-configurable/csrf.json` and restart the server. A
+dashboard tab loaded after the restart refreshes at the new
+`refreshIntervalMs`; a tab already open keeps the interval it started
+with until it is reloaded.
 
 **Silent retry on a refused token.** `fetchWithCsrf` in
 `src/client/web/js/dashboard-helpers.js` answers a `403` that refuses its token by
@@ -300,24 +310,26 @@ mirroring the existing
 confirm from the log that the silent recovery worked. The buffer entry
 is cleared on match; a second valid verify is silent.
 
-**Lint enforcement:** The custom ESLint rule
+**Lint enforcement:** every mutating request the dashboard sends goes
+through `fetchWithCsrf`, which attaches the token. The custom ESLint rule
 [`9mm/no-fetch-without-csrf`](../eslint-rules/no-fetch-without-csrf.js)
-flags any `fetch()` call with a mutating HTTP method (POST, DELETE,
-PUT, PATCH) whose `headers` object doesn't contain a
-`...csrfHeaders()` spread or an equivalent direct `csrfHeaders()`
-assignment. This prevents a developer from adding a new mutating
-endpoint that forgets to attach the token — the lint fails the PR before
-the code can ship. `eslint-plugin-security`'s
+catches a bare `fetch()` that bypasses it: a call whose options are
+written in place, with a literal mutating `method` (POST, DELETE, PUT,
+PATCH) and no `csrfHeaders()` in its `headers`. A method held in a
+variable, or options built elsewhere, escape it. The rule's message asks
+for `...csrfHeaders()`, which no dashboard module defines; the fix is to
+send the request with `fetchWithCsrf`. `eslint-plugin-security`'s
 `detect-no-csrf-before-method-override` additionally warns if Express-style
 method overriding is ever introduced.
 
 ### HTTP Method Allowlist
 
-`src/server.js` dispatches only `GET`, `POST`, `DELETE`, and `OPTIONS`.
-Any other verb (`PUT`, `PATCH`, `TRACE`, etc.) returns a `405 Method
-Not Allowed`. The CORS and CSRF checks are written against the four
-dispatched verbs, so a verb that reaches a handler without passing
-through them would bypass both.
+`src/server.js` routes only `GET`, `POST`, `DELETE`, and `OPTIONS`.
+Its origin and CSRF checks run first, for every verb but `GET` and
+`OPTIONS`, so a request with any other verb (`PUT`, `PATCH`, `TRACE`,
+etc.) is refused `403` by them unless it carries a valid token and no
+foreign `Origin`; one that passes them finds no route and gets `405
+Method Not Allowed`.
 
 ### Path Traversal in Static Serving
 
@@ -417,7 +429,12 @@ recommended*) → the encrypted wallet, unlocked by the `WALLET_PASSWORD`
 env var, else by the terminal prompt under `--headless`, else by the
 dashboard's Unlock Wallet dialog
 ([`src/server/server-unlock.js`](../src/server/server-unlock.js)).
-The headless bot (`npm run bot`) has no dashboard. It picks its key
+The launch takes no key once the bot holds one, as when the dialog was
+answered while the launch waited on the prompt or the decrypt, and none
+while a wallet
+import is under way, which takes its own wallet's key; nor does an
+unlock during an import. The headless bot (`npm run bot`) has no
+dashboard. It picks its key
 the same way, with the terminal prompt in place of the dialog
 ([`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js)'s
 `resolvePrivateKey()`).
@@ -427,7 +444,14 @@ server; the encrypted files, the decryption and the in-memory handling
 are the same. In `--headless` mode, if the wallet can't be unlocked (no password
 provided, no `WALLET_PASSWORD` in env, no wallet imported), the
 server **exits with an error** rather than falling through to
-dashboard-only mode — there is no browser to fall back to.
+dashboard-only mode — there is no browser to fall back to. With no
+terminal to type into, as when a service manager starts it, the prompt
+closes at once and says so (`src/lib/ask-password.js`), and the server
+exits with that error. The headless bot (`npm run bot`) exits the same
+way, but not in a dry run (`DRY_RUN=true`): with no key it goes on
+reading the chain and sends nothing. Ctrl+C at the prompt ends the
+program as Ctrl+C does anywhere, and a password piped in with no final
+newline is read as typed.
 
 **Operator responsibilities when using `WALLET_PASSWORD`:**
 
@@ -440,8 +464,9 @@ dashboard-only mode — there is no browser to fall back to.
   rotated.
 - When rotating a password, run `npm run reset-wallet` rather than
   editing `.env` by hand — the script scrubs the `WALLET_PASSWORD=`
-  line and deletes `app-config/user-configurable/wallet.json` in one
-  step, so the next restart forces a fresh import. Have the wallet's
+  line and deletes `app-config/user-configurable/wallet.json`, and the
+  copy a save writes first, in one step, so the next restart forces a
+  fresh import. Have the wallet's
   seed phrase or private key at hand before you run it: the import
   needs one of them. The third-party API keys stay encrypted under the
   old password, which the new one cannot open, so enter them again in
@@ -450,7 +475,9 @@ dashboard-only mode — there is no browser to fall back to.
 **How `reset-wallet` works:** `scripts/reset-wallet.js` (invoked via
 `npm run reset-wallet`) performs two idempotent actions:
 
-1. Delete `app-config/user-configurable/wallet.json`.
+1. Delete `app-config/user-configurable/wallet.json`, and
+   `wallet.json.tmp` beside it, the copy a save writes first, from which
+   the app would otherwise recover the wallet at its next start.
 2. Remove every line matching `^WALLET_PASSWORD=` from `.env` by
    reading the file, filtering out the matching lines, writing to a
    `.tmp` sibling, and atomically renaming. File permissions are
@@ -458,9 +485,9 @@ dashboard-only mode — there is no browser to fall back to.
 
 Both steps tolerate missing targets (no error if `.env` is absent or
 the line never existed), so the script is safe to run on any system
-state. `npm run clean` and `npm run dev-clean` both invoke
-`reset-wallet` as their first step, so they also scrub the password
-line.
+state. `npm run clean` and `npm run dev-clean` run it too, once they have
+force-stopped a running server (`npm run stop`) and seen it exit, and
+before they delete anything else; so they also scrub the password line.
 
 Each service gets its own entry (`{service}Encrypted`) in
 `app-config/user-configurable/api-keys.json` with an independently generated salt and
@@ -476,11 +503,16 @@ format stability.
 
 ### In-Memory Handling
 
-Once the wallet is unlocked, its plaintext key lives in the shared
-signer (an ethers `Wallet`, built in
-[`src/bot/position-manager.js`](../src/bot/position-manager.js)) for as long as
-the server runs, and the wallet password in `_sessionPassword` for the
-session. Neither is ever written to disk unencrypted, returned by
+Once the wallet is unlocked, its plaintext key lives in two places in the
+server's memory: the key the bot holds (`privateKeyRef`, in
+[`src/bot/bot-interface.js`](../src/bot/bot-interface.js)), and the shared
+signer built from it (an ethers `Wallet`, built in
+[`src/bot/position-manager.js`](../src/bot/position-manager.js)). Both stay
+for as long as the server runs, until a wallet import replaces the wallet:
+the import stops every position and drops both (`forgetWallet`). The wallet
+password is in `_sessionPassword` for the session, and a wallet import
+drops it too. Neither the key nor the password is ever written to disk
+unencrypted, returned by
 `GET /api/status`, or included in any log line. The key leaves the
 server only through `POST /api/wallet/reveal`, which decrypts it again
 from the password sent with that request.
@@ -501,10 +533,14 @@ and runs under `npm run audit:security`.
 
 ### Secret Scanning
 
-- **`secretlint`** (`npm run audit:secrets`) scans `src/**/*.js`,
-  `.env*`, and `*.json` with the
+- **`secretlint`** (`npm run audit:secrets`) scans the files
+  `SECRET_TARGETS` in `scripts/lint-targets.js` names: the app's Node code
+  (`src/*.js`, `src/lib/`, `src/server/`, `src/bot/`), `scripts/`,
+  `util/`, the `.env*` files and the json files at the repo's top level,
+  but not the web client's `src/client/web/js/`. It uses the
   `@secretlint/secretlint-rule-preset-recommend` preset, which covers
-  AWS, GCP, GitHub, Slack, and generic private-key patterns.
+  AWS, GCP, GitHub, Slack and other service tokens, and private keys in
+  PEM form; it has no rule for a wallet's hex key or a seed phrase.
 - **`eslint-plugin-no-secrets`** (wired into
   `eslint-security.config.js`) adds entropy-based detection
   (`tolerance: 4.5`, `additionalDelimiters: ['0x']`) so novel-format
@@ -531,12 +567,13 @@ primitives and never inventing its own.
 
 ### No Custom Crypto
 
-All cryptographic operations call Node's built-in `crypto` module —
+The app's own encryption calls Node's built-in `crypto` module —
 `pbkdf2`, `createCipheriv('aes-256-gcm')`, `randomBytes`. The app
 never implements its own hash, cipher, or MAC (message authentication
-code). The external `csrf`
-package (pillarjs, widely deployed behind Express) is the single
-dependency chosen to compose cryptographic tokens.
+code). Two dependencies do the rest: the external `csrf` package
+(pillarjs, widely deployed behind Express) composes the CSRF tokens,
+and `ethers` signs transactions, checksums addresses, and generates a
+wallet or derives its key from a seed phrase in the browser.
 
 ### Authenticated Encryption
 
@@ -557,7 +594,8 @@ complexity.
 
 **Lint enforcement:** `eslint.config.js` registers a
 `no-restricted-syntax` pattern that bans
-`Math.random()` calls project-wide with the message *"Use
+`Math.random()` calls everywhere but the tests, which use it for
+fuzzing, with the message *"Use
 crypto.randomBytes() instead of Math.random() — not cryptographically
 secure."* The security lint's `security/detect-pseudoRandomBytes` rule
 is also enabled as a second line of defense, catching calls to the
@@ -590,12 +628,17 @@ at all.
 [`src/lib/composite-key.js`](../src/lib/composite-key.js) validates the
 format. Right to left, its dash-separated parts are the token ID, a
 `0x`-prefixed contract and wallet, and the chain's name, which must be
-present, without a `0x` part, and may hold a dash. If the key is
-missing or doesn't match, the
-route handler returns `400` immediately. This applies to every
-position-specific route, such as `POST /api/config`,
-`DELETE /api/position/manage`, `POST /api/rebalance` and
-`POST /api/compound`.
+present, without a `0x` part, and may hold a dash. Four routes parse the
+key and answer `400` at once when it is missing or does not match:
+`POST /api/config` (when its body holds a position's setting; a key
+naming another chain is refused too), `POST /api/position/reload`,
+`POST /api/position/rescan-prices` and `GET /api/is-position-managed`.
+The routes that act on a running position look the key up as given
+instead. `POST /api/rebalance` and `POST /api/compound` answer `400` for
+a missing key and `409` for one that names no running position.
+`DELETE /api/position/manage` answers `400` for a missing key; any other
+key changes only the position that has it, and none when no position
+does.
 
 ### Config Key Allowlist
 
@@ -638,11 +681,13 @@ in `eslint-security.config.js`.
 
 ### Checksummed Addresses
 
-Every wallet and contract address is normalized through ethers'
-`getAddress()` (EIP-55 (Ethereum Improvement Proposal 55)
-checksumming) before it becomes part of a
-composite key or cache filename. Case-variant addresses therefore
-cannot produce duplicate state entries or cache poisoning.
+Every wallet and contract address in a composite key goes through
+ethers' `getAddress()` (EIP-55 (Ethereum Improvement Proposal 55)
+checksumming), and every address in a cache key or cache file name is
+lower-cased (for example `cacheKey` and `liquidityPairScopeKey` in
+`src/lib/cache-store.js`). Either way two spellings of one address name
+one entry, so case-variant addresses cannot produce duplicate state
+entries or cache poisoning.
 
 ### BIP-39 Seed Validation
 
@@ -669,18 +714,26 @@ input.
 `detect-eval-with-expression`, `detect-child-process`, and
 `detect-new-buffer`. `detect-child-process` exists because spawning
 subprocesses with attacker-controlled arguments is a classic
-command-injection vector. The stop path's `child_process` use is the
-`lsof` / `ps` port-lookup in `scripts/_find-process.js` (reached from
-`scripts/stop.js`'s no-PID-file fallback); its command and arguments are
-hardcoded constants with no user input reaching them. The rule stays on
-so that any future `spawn` / `exec` call is flagged for review.
+command-injection vector. The rule flags only two forms: a
+`require("child_process")` whose result is not kept in a variable, and an
+`exec()` call whose first argument is not a literal. It does not flag
+`execSync`, `spawn` or `spawnSync`, which are what the app's scripts and
+server use, so each of those is held by review. The stop path's
+`child_process` use is `scripts/_find-process.js`: `ps` (and `lsof`, where
+`/proc` gives no working directory) to confirm that the PID from the PID
+file, or each listener on the port, is this install's server, and `lsof`
+to find the listeners on the port when there is no PID file or it is
+stale. Its commands are shell strings holding a port and a PID: the port
+comes from the `PORT` setting, and the PIDs from the PID file, read as a
+positive integer, and from `lsof`'s own answer; nothing a request carries
+reaches them.
 
 Two `eslint-plugin-security` rules are disabled in
 `eslint-security.config.js`:
 
 | Rule | Why disabled |
 | ---- | ------------ |
-| `detect-object-injection` | Bracket access on config objects is intentional; keys come from server-owned `GLOBAL_KEYS` / `POSITION_KEYS` arrays, never from the request body. Any key not in these allowlists is silently dropped before the bracket write. |
+| `detect-object-injection` | Bracket access on config objects is intentional; keys come from server-owned `GLOBAL_KEYS` / `SETTING_POSITION_KEYS` arrays, never from the request body. Any key not in these allowlists is silently dropped before the bracket write. |
 | `detect-non-literal-fs-filename` | See detailed explanation below. |
 
 All other `eslint-plugin-security` rules — including
@@ -751,11 +804,16 @@ so it's important that an attacker can't trick it into reading or
 writing files outside its own directory (for example, reading
 `/etc/passwd` or overwriting a system file).
 
-Every `fs.readFileSync` / `fs.writeFileSync` call in `src/lib/` resolves
-its path via `path.join(process.cwd(), CONSTANT)` — no user-controlled
-path component ever reaches the filesystem layer. Atomic writes
+The paths `src/lib/` hands to `fs` are each a constant joined to the
+working directory or to the app's own folder (`__dirname`), a path the
+operator sets (the path variables in `.env`, such as `WALLET_FILE_PATH`,
+and `logging.json`'s paths), or, under `node --test`, a test's temporary
+folder. Nothing an http request carries reaches one of them. Atomic writes
 (`.tmp` + `rename`) prevent partial-file corruption from an interrupted
-shutdown. The static-file serving guard (described in **Path Traversal
+shutdown. A save of `wallet.json` keeps an operator's `chmod 600`; how
+it is saved, and put back from its save's copy after a crash, is in
+docs/engineering.md, under `wallet.json` in "The app-config
+Directory". The static-file serving guard (described in **Path Traversal
 in Static Serving** above) provides the equivalent protection on the
 inbound side.
 
@@ -880,11 +938,10 @@ helper, `shouldSkipSwap()` in [`src/bot/swap-gates.js`](../src/bot/swap-gates.js
 Two gates run in a fixed order:
 
 1. **Dust gate (first).** Skip when the swap value (in USD) is below the
-   gold-pegged dust threshold. It runs first because it is cheaper and
-   more reliable to evaluate than the gas gate, and a dust-skip
-   short-circuits the gas estimate. It also keeps the gas-price read
-   close to the broadcast: when dust skips the swap no gas read happens,
-   and when it passes the gas read is the very next step.
+   gold-pegged dust threshold. Each caller reads the gas price
+   (`estimateSwapGasUsd`) before it asks the gates, so a swap skipped as
+   dust has still made that read; running first means a swap below the
+   threshold is reported as dust, whatever its gas would cost.
 2. **Gas gate.** Skip when the swap's estimated gas would cost more than
    `gasFeePct` of its value: the global setting in Settings → Gas Fee
    Threshold, 1% as shipped. Every swap passes it as a ratio, from
@@ -948,9 +1005,10 @@ only convert at the very end, after scaling down with
 `ethers.formatUnits(bigint, decimals)` (which returns a decimal
 string) and then calling `parseFloat` on that string. Per-line
 `eslint-disable-next-line` directives are allowed only with a
-`-- Safe: <reason>` comment documenting why float math is acceptable
-at that call site (currently: three sites doing approximate
-sqrtPrice display math).
+`-- Safe: <reason>` comment documenting why the cast is acceptable at
+that call site; the current ones, two sites doing approximate sqrtPrice
+math and one zero check, are listed in
+[Code Review Controls](#code-review-controls).
 
 ## Supply Chain & Dependencies
 
@@ -986,20 +1044,23 @@ excludes the patched version (e.g. an exact pin like `"1.0.0"`).
 
 ### Pinned Production Releases
 
-End-user installs are a **supply-chain security boundary**. The
-release workflow in `.github/workflows/release.yml` rewrites every
-entry in `package.json` from a caret range (e.g. `"csrf": "^3.1.0"`)
-to an exact version (`"csrf": "3.1.0"`), reading the version to pin
-from the resolved entries in `package-lock.json` — so the pinned
-`package.json` captures the exact tree that `main` was tested
-against, not whatever the caret range might newly resolve to at
-release time. The workflow then regenerates
-`package-lock.json` against the pinned `package.json` with
-`--ignore-scripts`, writes an `.npmrc` with `save-exact=true`, and
-ships the prebuilt bundles in `src/client/web/dist/` so the end user's machine
-never runs esbuild on potentially-compromised source. The tarball
-users download from GitHub Releases is therefore byte-identical
-across installs on the same tag.
+End-user installs are a **supply-chain security boundary**. When a
+release is published, the workflow in `.github/workflows/release.yml`
+checks out the release's tag, installs from its committed lockfile
+(`npm ci`), builds the bundles (`npm run build`), and uploads one
+tarball of the tree, with a SHA-256 checksum file beside it. The
+tarball carries `package-lock.json`, which names the exact version and
+integrity hash of every package in the tree that `main` was tested
+against, so the end user's `npm ci` installs that tree and no newer
+one; `package.json` itself keeps its caret ranges. It also carries the
+prebuilt bundles in `src/client/web/dist/`, so the end user's machine
+never runs esbuild on potentially-compromised source. It leaves out
+`.git`, `node_modules`, `tmp`, `.github`, `logs`, the json files in
+`app-config/user-configurable/` and `app-data/`, and
+`app-data/scan-cache/`. Each outside action the workflow uses is pinned
+to a full commit SHA, and its checkout keeps no credentials
+(`persist-credentials: false`). The tarball users download from GitHub
+Releases is therefore byte-identical across installs on the same tag.
 
 The install instructions in [`README.md`](../README.md) mandate
 `npm ci` (not `npm install`) — `npm ci` verifies the lockfile's
@@ -1017,13 +1078,18 @@ packages.
 
 ### `npm audit`
 
-`npm run audit:deps` runs `npm audit --audit-level=high --json` and
-writes the full report to
-`test/report-artifacts/raw-data/npm-audit.json`. The threshold is
-`high` so pre-existing moderate advisories don't fail CI, but the
-severity breakdown (critical / high / moderate / low / info) is
-displayed in the check-report summary and PDF on every run so nothing
-moderate sits unnoticed for long.
+`npm run audit:deps` runs `npm audit --audit-level=high --omit=dev`: it
+fails on a high or critical advisory in the tree that ships, the
+dependencies without the development tools (why:
+[CLAUDE-SECURITY.md § Advisories with no fix available](claude/CLAUDE-SECURITY.md#advisories-with-no-fix-available)).
+`npm run check` runs the same gate, and writes a full `npm audit --json`
+report, development tools included, to
+`test/report-artifacts/raw-data/npm-audit.json`; `npm run audit:deps:all`
+audits that full tree by itself. The threshold is `high` so moderate
+advisories don't fail CI, but the full tree's severity breakdown
+(critical / high / moderate / low) is displayed in the check-report
+summary and PDF on every run, so nothing moderate sits unnoticed for
+long.
 
 One known ecosystem-wide advisory is accepted rather than patched: the
 `elliptic` package (reachable transitively through `@uniswap/v3-sdk`)
@@ -1111,14 +1177,14 @@ documenting why the deviation is intentional. Current exceptions:
 
 | File | Line | Rule | Reason |
 | ---- | ---- | ---- | ------ |
-| `src/bot/hodl-baseline.js` | 41 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/bot/range-math.js` | 305 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
-| `src/bot/position-detector.js` | 188 | `9mm/no-number-from-bigint` | Zero-check only |
+| `src/bot/hodl-baseline.js` | 49 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/bot/range-math.js` | 309 | `9mm/no-number-from-bigint` | Approximate float math for sqrtPrice display |
+| `src/bot/position-detector.js` | 190 | `9mm/no-number-from-bigint` | Zero-check only |
 | `scripts/cache-bust.js` | 25 | `security/detect-unsafe-regex` | Input is the app's own `src/client/web/*.html` pages, not user-supplied |
 | `scripts/cache-bust.js` | 51 | `security/detect-non-literal-regexp` | `layer` is one of three hard-coded string literals |
 | `scripts/check-report-parse.js` | 283 | `security/detect-unsafe-regex` | Input is deterministic TAP v14 from `node --test` |
-| `scripts/import-wallet.js` | 88 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
-| `util/bookkeeping/moralis-key.js` | 164 | `security/detect-possible-timing-attacks` | Comparing two strings the user typed, to confirm one, not verifying a secret |
+| `scripts/import-wallet.js` | 96 | `security/detect-possible-timing-attacks` | Comparing two user-entered password strings for confirmation, not verifying a secret |
+| `util/bookkeeping/moralis-key.js` | 190 | `security/detect-possible-timing-attacks` | Comparing two strings the user typed, to confirm one, not verifying a secret |
 
 Whole files are never excluded from linting. Every exception is a
 single `eslint-disable-next-line` comment. It sits on the exact line
@@ -1127,11 +1193,12 @@ why.
 
 A few paths do bypass ESLint. Generated and third-party output is
 skipped: `node_modules/`, `coverage/`, `src/client/web/dist/`, and
-`*.min.js`. The two hand-authored HTML files — `src/client/web/index.html`
-(the dashboard) and `src/client/web/help-and-user-manual.html` (the user manual) — are also
-outside ESLint's scope, but that's because they're markup, not
-JavaScript. They aren't left unchecked. Both are linted by
-`html-validate` as part of `npm run lint`.
+`*.min.js`. The four hand-authored pages in `src/client/web/` —
+`index.html` (the dashboard), `help-and-user-manual.html` (the user
+manual), `disclosure.html` (the Disclosure) and `screenshot-gallery.html` —
+are also outside ESLint's scope, but that's because they're markup, not
+JavaScript. They aren't left unchecked: `npm run lint` and `npm run check`
+run `html-validate` on every `src/client/web/*.html`.
 
 **Two ESLint passes.** ESLint runs twice over the same sources, each
 time with its own config. (stylelint, html-validate, markdownlint-cli2
@@ -1139,7 +1206,7 @@ and secretlint are separate programs.)
 
 - The **main pass** (`npm run lint`, `eslint.config.js`) enforces code
   quality. Among its rules: `complexity <= 17`, `max-lines <= 500`,
-  `max-len <= 80`, `no-unused-vars`, `no-var`, `prefer-const`,
+  `no-unused-vars`, `no-var`, `prefer-const`,
   `eqeqeq`, `strict`, `no-extend-native`, a `no-restricted-syntax` ban
   on `window.*` assignment and `Math.random`, and the custom rules
   `9mm/no-separate-contract-calls`, `9mm/no-fetch-without-csrf` and
@@ -1248,6 +1315,9 @@ are caught, so an interrupt still restores the files before the process
 exits. A test that creates a stub config or keyfile therefore never
 clobbers live user state: one that believed it had written to
 `app-config/user-configurable/wallet.json` was writing where the live file
-had been wiped, and the original comes back afterwards. Tests that need explicit paths instead use
-the `WALLET_FILE_PATH` / `API_KEYS_FILE_PATH` environment variables or
-pass a `dir` argument to `loadConfig` / `saveConfig` directly.
+had been wiped, and the original comes back afterwards. Outside the gate,
+under `node --test`, most of the operator's files a test could write are
+the test process's own, and no `.env` is read; docs/claude/CLAUDE-TESTING.md
+§ "Temp folders" lists them, those that are not redirected, and how a
+test names paths of its own. The gate fails a run whose tests changed
+`app-config/user-configurable/`, `app-data/` or the shipped settings.

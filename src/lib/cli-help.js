@@ -41,8 +41,10 @@ Options:
 
 Environment:
   Runtime flags and secrets are configured via the .env file.
-  Bot tunables (slippage, poll interval, OOR threshold, daily cap, …)
-  live in the dashboard's Bot Settings panel — not the .env file.
+  Most bot tunables (slippage, OOR threshold, daily cap, …) are set in
+  the dashboard's Bot Settings panel; a value saved there outranks the
+  .env file. The poll interval has no dashboard field: set
+  CHECK_INTERVAL_SEC in the .env file.
 
   PORT              Dashboard port (default: ${port})
   PRIVATE_KEY       Wallet private key (or import via dashboard / CLI)

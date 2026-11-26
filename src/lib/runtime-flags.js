@@ -2,15 +2,20 @@
  * @file src/lib/runtime-flags.js
  * @module runtime-flags
  * @description
- * Runtime, environment-derived flags and helpers for LP Ranger. Anything
- * sourced from `process.env`, `process.argv`, or computed by selecting
- * a row out of `chains.json` (loaded via the layered defaults+user-
- * override loader; operators override at
- * `app-config/user-configurable/chains.json`) lives here. Pure tracked
- * data (ports, timeouts, aggregator URL, etc.) lives in
+ * Runtime, environment-derived flags and helpers for LP Ranger. The
+ * flags it exports are sourced from `process.env`, `process.argv`, or
+ * computed by selecting a row out of `chains.json` (loaded via the
+ * layered defaults+user-override loader; operators override at
+ * `app-config/user-configurable/chains.json`). The rest of `.env` is read
+ * where it is used, through `readEnv` (src/lib/env-settings.js): by
+ * `src/lib/config.js`, and by each module whose file a variable moves,
+ * except the two settings folders, which the layered loader reads
+ * itself. Pure tracked data (ports, timeouts, etc.) lives in
  * `app-config/app-defaults-for-user-configurable/app-runtime.json`,
  * loaded through the same layered loader by `src/lib/config.js` and — for
- * `defaults.chain`, the shipped fallback behind `CHAIN_NAME` — here.
+ * `defaults.chain`, the shipped fallback behind `CHAIN_NAME` — here. A
+ * chain's own figures, its aggregator url among them, live in its entry
+ * in `chains.json`.
  *
  * `src/lib/config.js` re-exports the flags its callers use, so they keep
  * working; new code can import directly from this module when it only
@@ -20,21 +25,22 @@
 
 "use strict";
 
-const dotenv = require("dotenv");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const { assertTimerSec } = require("./timer-bounds");
 const { boundAt } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
-const { readEnv } = require("./env-settings");
+const { readEnv, loadEnvFile } = require("./env-settings");
 const { serverPort, serverHost } = require("./server-address");
 
 const CHAINS = loadMergedDefaults("chains.json");
 const APP_RUNTIME = loadMergedDefaults("app-runtime.json");
 
-/*- Load .env if present; dotenv.config() returns `{ error }` (without
-    throwing) when no file exists, so production environments where env
-    vars are injected by the platform fall back to process.env as-is. */
-dotenv.config();
+/*-
+ *  Load .env if present (`loadEnvFile`, src/lib/env-settings.js): with no
+ *  file, environments where the platform injects the variables fall back
+ *  to process.env as it is. Under `node --test` none is read.
+ */
+loadEnvFile();
 
 /**
  * Read a whole number of seconds that becomes a timer delay: the
@@ -70,8 +76,9 @@ function parseTimerSec(envName, fallbackSec, key, env = process.env) {
       defaultSec: fallbackSec,
       label: envName,
       remedy:
-        `Set ${envName} in .env within range, or correct the ` +
-        `app-runtime.json values it defaults from, and restart.`,
+        `Set ${envName} in .env within range, or correct the settings ` +
+        `file value it defaults from (app-runtime.json, or ` +
+        `bot-config-defaults.json for CHECK_INTERVAL_SEC), and restart.`,
     });
   } catch (err) {
     /*- Re-thrown only to carry the `[config]` tag the rest of this

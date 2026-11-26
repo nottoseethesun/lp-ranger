@@ -59,11 +59,14 @@ through a first report.
    its folder, and they use its settings and what it has recorded.
 2. Make sure LP Ranger has recorded the rebalances and compounds you
    want reported. A report lists those LP Ranger recorded for the
-   wallet: the positions it manages, or has shown you. A rebalance or
-   compound made outside LP Ranger, on the 9mm website or by another
-   tool, may not be recorded yet. Open the position in LP Ranger and
-   use Reload Current Position first (LP Ranger's User Manual,
-   "Rebalancing or Compounding Outside LP Ranger").
+   wallet. LP Ranger records a position's compounds only while it
+   manages the position, so a position it has only shown you has no
+   compounds in a report. A rebalance or compound made outside LP
+   Ranger, on the 9mm website or by another tool, may not be recorded
+   yet: use Reload Current Position on the position first (LP Ranger's
+   User Manual, "Rebalancing or Compounding Outside LP Ranger"). Reload
+   Current Position works only on a position LP Ranger manages, once it
+   has finished syncing.
 3. Have a Moralis api key. The report needs one, and the free tier is
    enough. Save it in LP Ranger (the gear icon at top right → Moralis
    API Key), or enter it when the report first asks for it.
@@ -145,10 +148,11 @@ has the rule and examples.
 **Q: Why is a rebalance missing from my report?**
 
 A: Most often, it was made outside LP Ranger and LP Ranger has not
-recorded it yet: open the position in LP Ranger, use Reload Current
-Position, then run the report again. A rebalance also belongs to the
-day its last transaction, the mint, falls on, so one that finished just
-after midnight is in the next day's report.
+recorded it yet: use Reload Current Position on the position, which
+works once LP Ranger manages it and has finished syncing it, then run
+the report again. A rebalance also belongs to the day its last
+transaction, the mint, falls on, so one that finished just after
+midnight is in the next day's report.
 [Which Transactions a Report Lists](#which-transactions-a-report-lists)
 has the details.
 
@@ -249,12 +253,14 @@ Some ways to use it:
 
 ## Which Transactions a Report Lists
 
-A report starts from what LP Ranger has recorded about your wallet: the
-rebalances it recorded, and the compounds in each position's records.
-So it covers the positions LP Ranger manages, or has shown you, on that
-computer. A rebalance or compound made outside LP Ranger is in the
-report once LP Ranger has recorded it; use Reload Current Position in
-LP Ranger to make sure.
+A report starts from what LP Ranger has recorded about your wallet on
+that computer: the rebalances it recorded, and the compounds in each
+position's records. LP Ranger records a position's compounds only while
+it manages the position, so a position it has only shown you has no
+compounds in a report. A rebalance or compound made outside LP Ranger
+is in the report once LP Ranger has recorded it. To make sure, use
+Reload Current Position on the position, which works once LP Ranger
+manages it and has finished syncing it.
 
 For each rebalance or compound, the report lists every transaction your
 wallet sent from its first to its last: approvals, swaps, cancels and
@@ -288,9 +294,11 @@ LP Ranger does, so a day's transactions cost one request per coin.
 
 CoinGecko's free service has two limits. It reaches back only 180 days,
 so an older day's prices must come from Moralis. It also answers only a
-few requests a minute. The report waits and asks again whenever it is
-refused for asking too often, which is why prices CoinGecko gives take
-minutes the first time.
+few requests a minute. When it refuses a request for asking too often,
+the report waits and asks again, up to three times, after 10, 30 and 60
+seconds; this is why prices CoinGecko gives take minutes the first
+time. A request still refused after that gets no answer, and a coin
+left with no price stops the run.
 
 Each price is kept as it arrives. A later run asks only for the coins
 and days not yet kept, even after a run that stopped. These prices are
@@ -441,11 +449,23 @@ be reached. Try again later.
 `The two passwords differ, so the key was not saved.` — Run again, and
 type the same password twice.
 
+`No Moralis api key was entered, so none was saved.` — Run again, and
+enter the key exactly as Moralis shows it.
+
+`No password was entered, so the key was not saved.` — Run again, and
+type LP Ranger's wallet password.
+
+`Nothing was typed: the prompt closed first.` — The report could not
+ask you anything: Ctrl+D was pressed, or it ran with no terminal to type
+into, as when a script or a service starts it. Run it again in a
+terminal window, and type each answer when it asks.
+
 `Neither Moralis nor CoinGecko (GeckoTerminal) gave a USD price for …`
-— Neither source has a price for that coin on that day, and the report
+— Neither source gave a price for that coin on that day, and the report
 writes no csv without every price. CoinGecko reaches back only 180
 days, so for an older day the price must come from Moralis: check that
-your key works and has quota left. Otherwise, try again later.
+your key works and has quota left. CoinGecko may also have kept
+refusing the report for asking too often: try again later.
 
 `https://… failed: …` — Your blockchain endpoint failed, or had no
 record of a transaction it should hold. Run again with `--rpc-endpoint`
@@ -459,8 +479,9 @@ you asked for is still too recent. Run again after the time it names.
 `--time-zone`, with the time zone it suggests if that is yours.
 
 **A rebalance or compound is missing.** LP Ranger has not recorded it.
-Open the position in LP Ranger, use Reload Current Position, wait for
-it to finish, and run the report again.
+Make sure LP Ranger manages the position (Manage starts its automatic
+rebalancing), wait for it to finish syncing, use Reload Current
+Position, wait for that to finish, and run the report again.
 
 **The report is slow.** Prices that CoinGecko gives come slowly the
 first time, because CoinGecko answers only a few requests a minute. A

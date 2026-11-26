@@ -27,7 +27,7 @@
  * check can show that pool free of another position. The rest is
  * injectable end to end: callers supply the bot-state map and the
  * canonical pool-key builder, so no decision here reads global state and
- * the comparison rule stays owned by `position-manager.js`. Only its logs
+ * the comparison rule stays owned by `src/lib/pool-key.js`. Only its logs
  * read more: a refusal names the pool's coins from the symbol cache.
  */
 
@@ -101,10 +101,8 @@ function _runningHolder(botStates, selfKey, poolKeyFn, wanted) {
  * @param {Map<string, object>|object} opts.botStates  Per-position bot
  *   states, keyed by composite key — `getAllPositionBotStates()`.
  * @param {string} [opts.selfKey]  Composite key of the position being
- *   started, excluded from the comparison. Required for correctness on
- *   the rebalance path: a rebalance mints a new tokenId and migrates the
- *   key within the same pool, so without this the position would be
- *   rejected against itself.
+ *   started, excluded from the comparison, so a position is never refused
+ *   against its own bot state or its own claim.
  * @param {(t0: string, t1: string, fee: *) => string} opts.poolKeyFn
  *   Canonical key builder, bound to chain/contract/wallet by the caller.
  * @param {Map<string, string|null>} [opts.startingPools]  Composite key
@@ -146,8 +144,10 @@ function findPoolConflict({
  * could route around the rule. The same answer carries the position's
  * liquidity, zero once it is closed.
  *
- * Returns null rather than throwing when the read fails, and each caller
- * then declines to start the position. Every caller passes the managed
+ * Returns null rather than throwing when the read fails. Manage then
+ * refuses the position (`pool-info-unavailable`) and the start-up leaves
+ * it unstarted; the re-open check (src/bot/open-in-pool.js) takes null as
+ * no answer and goes on to ask the owner. Every caller passes the managed
  * read provider, which carries a read to the next endpoint while the
  * endpoint is what failed, so a null is mostly the contract's own
  * refusal, such as the revert for an NFT that does not exist.
@@ -299,6 +299,9 @@ function _refuse(o, pool, r) {
  * @param {Function} [o.openInPool]  `(pool) => Promise<string|null>`:
  *   the token id of an open position the wallet holds in `pool`, other
  *   than this one, or null (src/bot/open-in-pool.js).
+ * @param {Function} [o.onPoolRead]  `(pool) => void`: hands the caller
+ *   the position as read, its liquidity included, once the read
+ *   succeeds; Manage takes from it whether the position is closed.
  * @returns {Promise<object|null>}  The refusal (`ok: false`, a `reason`
  *   and the answer's fields), or null when the request may go on.
  */
@@ -328,6 +331,7 @@ async function rejectIfPoolManaged(o) {
         "so LP Ranger cannot check that no other position is managed in that pool",
       remedy: `Nothing was started for ${self} ${selfEmoji}; click Manage again in a moment`,
     });
+  if (typeof o.onPoolRead === "function") o.onPoolRead(pool);
   const reopening = pool.liquidity === 0n;
   const openSibling =
     reopening && typeof o.openInPool === "function"
@@ -386,11 +390,11 @@ async function rejectIfPoolManaged(o) {
  *
  * bot-config.json can name two saved positions in one pool, since only a
  * Manage request is checked against the rule. Each pool keeps one: the
- * open one, since the rule is one ACTIVE position per pool; with none
- * open, the first listed. Every other saved position in that pool cannot
- * be managed. This function only answers: the start-up takes those off
- * the list (src/bot/auto-start.js). A position whose pool could not be
- * read is not passed in, since the start-up does not start it.
+ * first open one listed, since the rule is one ACTIVE position per pool;
+ * with none open, the first listed. Every other saved position in that
+ * pool cannot be managed. This function only answers: the start-up takes
+ * those off the list (src/bot/auto-start.js). A position whose pool could
+ * not be read is not passed in, since the start-up does not start it.
  *
  * Each position comes with its pool key, built with that position's own
  * wallet, so two wallets' positions in one pool are in two pools here, as

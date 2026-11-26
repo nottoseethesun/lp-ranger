@@ -206,10 +206,12 @@ describe("updatePositionState", () => {
   it("persists hodlBaseline to disk config", () => {
     const key = "pulsechain-0xW-0xC-501";
     const keyRef = { current: key };
-    /*- Pre-seed an existing entry — _persistPositionConfig now refuses
-     *  to lazy-create a slot under a missing key (would resurrect the
-     *  phantom).  In production this entry exists because Manage
-     *  (`_start`) created it before starting the bot loop. */
+    /*-
+     *  An entry seeded first: _persistPositionConfig refuses to create a
+     *  slot under a missing key, which would leave a phantom managed
+     *  entry. In production the entry exists because Manage (`_start`)
+     *  created it before starting the bot loop.
+     */
     const diskConfig = makeDiskConfig({
       positions: { [key]: { status: "running" } },
     });

@@ -26,7 +26,7 @@
  * The NFT's mint value does not move, and is already resolved on disk
  * as `hodlBaseline.entryValue` (from the `IncreaseLiquidity` on the mint
  * transaction, see `hodl-baseline.js`). Preferring it makes every
- * re-open identical, which is what lets the epoch stay unpersisted.
+ * re-open identical.
  */
 
 "use strict";
@@ -38,8 +38,9 @@ const { log } = require("../lib/log");
  *
  * Falls back to the position's present value only when no baseline has
  * resolved yet — a brand-new NFT whose mint receipt has not been read.
- * That case still drifts across restarts, but it corrects itself as
- * soon as the baseline lands.
+ * An epoch opened on that fallback keeps its entry value until the
+ * period closes: the live epoch is saved with the closed epochs and
+ * restored at startup, and nothing re-anchors it when the baseline lands.
  *
  * @param {object|null} botState  Live bot state; may carry `hodlBaseline`.
  * @param {number} currentValue   The position's value right now (USD).

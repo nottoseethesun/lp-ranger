@@ -96,6 +96,7 @@ function startUp({
   failStart = [],
   onStart = () => {},
   loaded = WALLET,
+  signerFails = false,
 }) {
   const diskConfig = { global: {}, positions: {} };
   const ownerOf = { ...owners };
@@ -115,11 +116,16 @@ function startUp({
     },
     runningCount: () => started.length,
     poolKey: (_c, _pm, w, t0, t1, fee) => `${w}-${t0}-${t1}-${fee}`,
+    // The one signer every position signs through.
+    getSharedSigner: async () => {
+      if (signerFails) throw new Error("invalid private key");
+      return { provider: {}, signer: {}, address: WALLET };
+    },
   };
   const bot = botOperations({
     diskConfig,
     positionMgr,
-    privateKeyRef: { current: null },
+    privateKeyRef: { current: "0x" + "1".repeat(64) },
     walletManager: { getAddress: () => loaded },
     getAllPositionBotStates: () => new Map(),
     createPerPositionBotState: () => ({}),
@@ -167,6 +173,26 @@ describe("the start-up", () => {
       { done: 1, total: 3 },
       { done: 2, total: 3 },
     ]);
+    assert.equal(appPhase.startUpProgress(), null, "over once it ends");
+  });
+
+  it("starts no position without the shared signer, and leaves each on the list", async (t) => {
+    /*-
+     *  A position started without it would keep a nonce counter of its
+     *  own, and two counters for one wallet pick the same nonce (the
+     *  user's ruling, 2026-11-25).
+     */
+    const keys = [keyOf(101), keyOf(102)];
+    const s = startUp({ keys, signerFails: true });
+    const warned = captureWarnings();
+    try {
+      await runToEnd(t, s.run);
+    } finally {
+      warned.restore();
+    }
+    assert.deepEqual(s.started, []);
+    for (const key of keys) assert.equal(statusOf(s, key), "running");
+    assert.match(warned.lines.join("\n"), /shared signer could not be made/);
     assert.equal(appPhase.startUpProgress(), null, "over once it ends");
   });
 

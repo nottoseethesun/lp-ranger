@@ -17,7 +17,7 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const config = require("../src/lib/config");
+const { useRebalanceLog } = require("./helpers/rebalance-log");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { poolKey } = require("../src/lib/pool-key");
 const { buildBotParts, createBot } = require("../src/bot/bot-interface");
@@ -42,19 +42,18 @@ const keyOf = (pool) =>
 const TODAY = { [keyOf(A)]: 2, [keyOf(B)]: 1 };
 
 /**
- * Fix the clock at noon on the log's day, for the case `t`.
- *
- * TEST-ONLY global swap: the parts count today's rebalances by the
- * clock, read from `Date`, which takes no stand-in, and a fixed day keeps
- * a run from crossing midnight between writing the log and reading it.
- * The test runner puts `Date` back pristine as the case ends.
+ * TEST-ONLY global swap: the parts count today's rebalances by the clock,
+ * read from `Date`, which takes no stand-in. The log below is dated
+ * 2026-11-22 and 2026-11-23, so the case `t` runs at noon on the 23rd:
+ * one entry is yesterday's, three are today's. The test runner puts
+ * `Date` back pristine as the case ends.
  * @param {object} t  The test case's context.
  */
 const atNoonOnTheLogsDay = (t) =>
   t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 10, 23, 12) });
 
 describe("the bot's parts", () => {
-  const savedLogFile = config.LOG_FILE;
+  let restoreLog = null;
   before(() => {
     const logFile = path.join(makeTestTempFolder("bot-parts"), "log.json");
     fs.writeFileSync(
@@ -66,10 +65,10 @@ describe("the bot's parts", () => {
         entry(B, "2026-11-23T11:00:00.000Z"),
       ]),
     );
-    config.LOG_FILE = logFile;
+    restoreLog = useRebalanceLog(logFile);
   });
   after(() => {
-    config.LOG_FILE = savedLogFile;
+    restoreLog();
   });
 
   it("count each pool's rebalances today from the rebalance log", (t) => {

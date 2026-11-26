@@ -6,8 +6,9 @@
  * @description
  * The one definition of a log line's timestamp.
  *
- * Two loggers print them — `src/lib/log.js` for the server and
- * `src/client/web/js/dashboard-log.js` for the browser console — and an operator
+ * Two loggers print them — `src/lib/log.js` in Node (the bot, the server,
+ * the scripts and tools) and `src/client/web/js/dashboard-log.js` in the
+ * browser console — and an operator
  * reads both side by side when tracing something through the app. They
  * have to agree on the format down to the character, which two copies
  * of the same function cannot promise.

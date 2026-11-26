@@ -53,10 +53,11 @@ async function _walletBalances(ethersLib, provider, token0, token1, owner) {
 
 /**
  * Apply the dust + gas swap-gates to the initial Rebalance swap.
- * Dust runs first (cheaper / more reliable to detect than gas).  When
- * either gate trips we skip the swap and proceed straight to mint —
- * the corrective-swap loop (Step 6d) will mop up any imbalance later
- * if it's worth doing.  Returns null when the gate passes.
+ * `shouldSkipSwap` checks dust first.  When either gate trips we skip
+ * the swap, and the rebalance goes on to the post-swap range check
+ * (Step 6b), the pre-mint tick check (Step 6c) and the corrective-swap
+ * loop (Step 6d), which swaps before the mint if the imbalance is then
+ * worth it.  Returns null when the gate passes.
  */
 async function _gateInitialSwap(signer, p, ps, desired, is0to1, gasFeePct) {
   const provider = signer.provider;
@@ -133,7 +134,7 @@ async function _swapAndAdjust(signer, ethersLib, ctx) {
     symbolIn: is0to1 ? symbol0 : symbol1,
     symbolOut: is0to1 ? symbol1 : symbol0,
     approvalMultiple,
-    /*- 6-field log context per feedback-log-full-context.  Built here
+    /*- 6-field log context per the logging rule (docs/claude/memory/feedback_logging.md).  Built here
      *  once and threaded down to every swap entry-point logger so a
      *  single line is self-describing under concurrent multi-position
      *  operation. */
@@ -252,8 +253,9 @@ function _sumGas(...steps) {
  * (same algorithm as the tick containment guard in range-math.js).
  * Width is preserved so the position geometry stays consistent.
  *
- * A second check (Step 6c) runs right before mint to catch the case
- * where the price keeps moving even after this adjustment.
+ * A second check (Step 6c) runs after this one, before the corrective
+ * swaps (Step 6d) and the mint, to catch the case where the price keeps
+ * moving even after this adjustment.
  *
  * When an offset is active (≠ 50), the tick may intentionally be
  * outside the range.  Skip the adjustment to preserve offset intent.
@@ -300,8 +302,9 @@ async function _adjustRangeAfterSwap(
  *    2. `crw` truthy → `rangeMath.computeNewRange(crw/2, ...)` — the
  *       user-specified Price Range Extension (% of current price).
  *    3. Otherwise → `rangeMath.preserveRange(...)` — keep the position's
- *       existing tick spread and re-centre it on the current tick.  This
- *       is what the app documents as "preserve the current Range Width."
+ *       existing tick spread and place it around the current tick, centred
+ *       when the offset is 50.  The User Manual calls this keeping the
+ *       position's existing tick spread.
  */
 function _computeRange(ps, pos, crw, offset, fullRange) {
   /*-

@@ -71,11 +71,15 @@ function _recordedOf(deps) {
 }
 
 /*-
- *  One-shot per-NFT scan that fills both per-NFT caches on miss.  Cheap
- *  (~one filtered Transfer query per NFT, not the full chain scan) and
- *  runs at most once per NFT until invalidated by `recordCompound` or a
- *  rebalance (new tokenId → no cache entry → scan again).  Returns
- *  the freshly-computed { gasWei, compoundedUsd } so the caller doesn't
+ *  One-shot per-NFT scan that fills both per-NFT caches on miss: this
+ *  NFT's IncreaseLiquidity, Collect and DecreaseLiquidity events, three
+ *  chunked scans from its own mint block, or, when the rebalance events
+ *  name none, from the chain's first mint (`detectCompoundsOnChain`,
+ *  src/bot/compounder.js), not the whole chain's.  It runs once per NFT
+ *  until invalidated by `recordCompound` or a rebalance (new tokenId → no
+ *  cache entry → scan again); when a receipt in the NFT's set is
+ *  unreadable, nothing is cached and the next poll scans again.  Returns
+ *  the freshly-computed { gasWei, amounts } so the caller doesn't
  *  re-read the cache it just wrote.
  */
 async function _scanNftTotals(deps, position, poolState) {
@@ -211,12 +215,14 @@ function _priced(amounts, deps) {
 
 /**
  * Populate `snap.currentFeesLeftUsd`, `snap.currentDepositAddedUsd` with
- * `snap.currentDepositAddedFallback`, `snap.currentGasUsd` and (when the
- * cache is fresher than the history-derived value)
- * `snap.currentCompoundedUsd` for the Current panel.
+ * `snap.currentDepositAddedFallback`, `snap.currentCompoundedUsd` and,
+ * when this NFT's gas is known, `snap.currentGasUsd`, for the Current
+ * panel.  Gas and the compounded coins come from the per-NFT caches, or,
+ * with no gas cached, from one scan of the NFT (`_scanNftTotals`).
  * Match Unmanaged's `currentGasUsd` / `current` so both views agree on the
- * same NFT.  Best-effort — never throws; on any failure leaves snap fields
- * untouched so the dashboard's existing `?? liveEpoch.gas` fallback kicks in.
+ * same NFT.  Best-effort — never throws; when the gas cannot be read,
+ * `snap.currentGasUsd` is left unset, so the dashboard's existing
+ * `?? liveEpoch.gas` fallback kicks in.
  */
 async function applyCurrentNftFigures(snap, deps, position, poolState) {
   if (!snap || !position?.tokenId || !poolState) return;

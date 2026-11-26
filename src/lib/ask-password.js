@@ -21,6 +21,7 @@
 
 const readline = require("readline");
 const { Writable } = require("stream");
+const { log } = require("./log");
 
 /**
  * A stream that takes whatever is written to it and shows none of it.
@@ -34,14 +35,54 @@ function _showsNothing() {
   });
 }
 
+// What the prompt says when its input ends before anything is typed.
+const _CLOSED =
+  "[password] The prompt closed before anything was typed: Ctrl+D was " +
+  "pressed, or there is no terminal to type into (started by a service " +
+  "manager or a script, or with its input cut off).";
+
+/*-
+ *  How Ctrl+C reaches the program. The prompt holds the terminal in raw
+ *  mode, so Ctrl+C arrives as a key, not a signal; it is passed on as
+ *  the signal Ctrl+C sends anywhere else, and the program ends as it
+ *  does on Ctrl+C, through its own handlers when it has them.
+ */
+let _interrupt = () => process.kill(process.pid, "SIGINT");
+
+/**
+ * TEST-ONLY seam: take Ctrl+C in place of the signal, which would end
+ * the test process.
+ * @param {() => void} fn
+ * @returns {() => void}  Puts the signal back.
+ */
+function _setInterruptForTests(fn) {
+  const prior = _interrupt;
+  _interrupt = fn;
+  return () => {
+    _interrupt = prior;
+  };
+}
+
 /**
  * Ask for a secret on the terminal, showing nothing of what is typed.
+ *
+ * The answer is the line typed before Enter. When the input ends after
+ * text with no Enter, as a password piped in without a final newline
+ * does, that text is the answer. When it ends before anything is
+ * typed (Ctrl+D, or no terminal at all, as when a service manager starts
+ * LP Ranger with its input on /dev/null), readline would never answer,
+ * so the prompt says why (`_CLOSED`, a warning) and answers null; the
+ * caller decides what follows, rather than waiting for ever. Ctrl+C is
+ * no answer: the terminal is given back and Ctrl+C goes to the program
+ * as a signal, as it does anywhere else.
  * @param {string} prompt  Text written before the answer is typed.
  * @param {{input?: import("stream").Readable,
  *   output?: import("stream").Writable}} [streams]  Where the answer is
  *   typed and where the prompt goes: stdin and stderr, unless a test
  *   passes its own.
- * @returns {Promise<string>}  What was typed, without the line end.
+ * @returns {Promise<string|null>}  What was typed, without the line end;
+ *   null when the input ended before anything was typed. On Ctrl+C it
+ *   does not settle: the program is ending.
  */
 function askPassword(prompt, streams = {}) {
   const input = streams.input === undefined ? process.stdin : streams.input;
@@ -52,13 +93,33 @@ function askPassword(prompt, streams = {}) {
       output: _showsNothing(),
       terminal: true,
     });
+    let answered = false;
+    let interrupted = false;
     output.write(prompt);
     rl.question("", (answer) => {
+      answered = true;
       rl.close();
       output.write("\n");
       resolve(answer);
     });
+    rl.on("SIGINT", () => {
+      interrupted = true;
+      rl.close();
+      output.write("\n");
+      _interrupt();
+    });
+    rl.on("close", () => {
+      if (answered || interrupted) return;
+      output.write("\n");
+      // Text the input ended on, with no Enter after it, is the answer.
+      if (rl.line !== "") {
+        resolve(rl.line);
+        return;
+      }
+      log.warn(_CLOSED);
+      resolve(null);
+    });
   });
 }
 
-module.exports = { askPassword };
+module.exports = { askPassword, _setInterruptForTests };

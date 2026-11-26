@@ -9,10 +9,10 @@
  *
  *   While the start-up runs, a request that would start positions is
  *   refused, naming its progress, and a second start-up does not begin.
- *   While a wallet import runs, a Manage and a second import are refused,
- *   and the import's own closing start-up still begins. Once the app is
- *   stopping, nothing starts and no start-up begins, and nothing clears
- *   it.
+ *   While a wallet import runs, a Manage, a second import and an unlock
+ *   are refused, and only the import's own closing start-up begins. Once
+ *   the app is stopping, nothing starts and no start-up begins, and
+ *   nothing clears it.
  */
 
 const { describe, it, beforeEach } = require("node:test");
@@ -109,10 +109,48 @@ describe("a wallet import", () => {
 
   it("lets its own closing start-up begin, naming that start-up's progress", () => {
     phase.beginWalletImport();
-    assert.equal(phase.beginStartUp(2), true);
+    assert.equal(phase.beginStartUp(2, { forImport: true }), true);
     phase.noteStartUpProgress(1);
     assert.match(phase.refusalToStart(), /still starting .*\(1 of 2\)/);
     phase.endStartUp();
     assert.match(phase.refusalToStart(), /importing a wallet/);
+  });
+
+  it("keeps any other start-up from beginning, as an unlock's would", () => {
+    phase.beginWalletImport();
+    assert.equal(phase.beginStartUp(2), false);
+    assert.equal(phase.startUpProgress(), null);
+    phase.endWalletImport();
+    assert.equal(phase.beginStartUp(2), true);
+  });
+
+  it("refuses a key while it is under way, and only then", () => {
+    assert.equal(phase.refusalToTakeKey(), null);
+    phase.beginWalletImport();
+    assert.match(phase.refusalToTakeKey(), /importing a wallet/);
+    phase.beginStartUp(1, { forImport: true });
+    assert.match(phase.refusalToTakeKey(), /importing a wallet/);
+    phase.endStartUp();
+    phase.endWalletImport();
+    assert.equal(phase.refusalToTakeKey(), null);
+  });
+
+  it("tells an unlock there is nothing to unlock, not to try again", () => {
+    phase.beginWalletImport();
+    const words = phase.refusalToTakeKey();
+    phase.endWalletImport();
+    assert.match(words, /the import unlocks it/);
+    assert.match(words, /nothing to unlock/);
+    assert.doesNotMatch(words, /Try again/);
+  });
+});
+
+describe("taking a key", () => {
+  it("is not refused for a start-up or a stop, which take no key", () => {
+    phase.beginStartUp(2);
+    assert.equal(phase.refusalToTakeKey(), null);
+    phase.endStartUp();
+    phase.markStopping();
+    assert.equal(phase.refusalToTakeKey(), null);
   });
 });

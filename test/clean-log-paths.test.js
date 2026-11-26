@@ -58,7 +58,6 @@ describe("the log files npm run clean removes", () => {
     assert.deepEqual(LOG_FILES, [
       "logs/moved/run.log",
       "logs/moved/errors.log",
-      path.join("logs/moved", "error-npm-run-check.log"),
     ]);
   });
 
@@ -66,16 +65,12 @@ describe("the log files npm run clean removes", () => {
     for (const empty of [null, "", "  "])
       assert.deepEqual(
         logFilesFrom({ path: empty, errorLogPath: "logs/error.log" }),
-        ["logs/error.log", path.join("logs", "error-npm-run-check.log")],
+        ["logs/error.log"],
       );
   });
 
-  it("are each deleted, the check's error log among them", () => {
-    const abs = [
-      "logs/run.log",
-      "logs/error.log",
-      "logs/error-npm-run-check.log",
-    ].map((f) => put(f, "x"));
+  it("are each deleted", () => {
+    const abs = ["logs/run.log", "logs/error.log"].map((f) => put(f, "x"));
     const files = logFilesFrom({
       path: "logs/run.log",
       errorLogPath: "logs/error.log",

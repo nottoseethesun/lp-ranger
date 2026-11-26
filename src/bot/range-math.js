@@ -9,7 +9,7 @@
  * corresponds to a 0.01% price move (tick spacing varies by fee tier).
  *
  * This module provides:
- *  - Conversion between sqrtPriceX96 ↔ human price
+ *  - Conversion from sqrtPriceX96 to a human price
  *  - Conversion between price ↔ tick
  *  - Tick rounding to valid spacings
  *  - Range width calculation (new lower/upper given current price ± pct)
@@ -38,7 +38,10 @@ const _DEFAULTS = readBotConfigDefaults();
 /** 2^96 — the fixed-point denominator used by Uniswap v3. */
 const Q96 = BigInt("0x1000000000000000000000000");
 
-/** V3 tick bounds (int24 range). */
+/**
+ * V3 tick bounds: the lowest and highest tick Uniswap v3 accepts (its
+ * TickMath limits), well inside the int24 a tick is stored in.
+ */
 const MIN_TICK = -887272;
 const MAX_TICK = 887272;
 
@@ -74,7 +77,8 @@ function sqrtPriceX96ToPrice(sqrtPriceX96, decimals0, decimals1) {
 }
 
 /**
- * Convert a human-readable price to the nearest Uniswap v3 tick.
+ * Convert a human-readable price to the Uniswap v3 tick whose price is at
+ * or below it.
  * tick = floor( log(price × 10^(decimals1−decimals0)) / log(1.0001) )
  *
  * @param {number} price
@@ -109,9 +113,9 @@ function tickToPrice(tick, decimals0, decimals1) {
 
 /**
  * Round a raw tick to the nearest valid (usable) tick for the given pool
- * tick spacing.  Delegates to @uniswap/v3-sdk's nearestUsableTick which
- * also clamps to [MIN_TICK, MAX_TICK] — an extra safety net beyond our
- * callers' bounds checks.
+ * tick spacing.  Delegates to @uniswap/v3-sdk's nearestUsableTick, which
+ * moves the result one spacing inward when the nearest multiple falls
+ * outside [MIN_TICK, MAX_TICK] and throws for a tick outside those bounds.
  * @param {number} tick
  * @param {number} tickSpacing  Pool tick spacing (from factory.feeAmountTickSpacing).
  * @returns {number}
@@ -336,7 +340,6 @@ function isInRange(price, lower, upper) {
 
 /**
  * Check whether a price is within a buffer distance of either range edge.
- * Used by the "near edge" trigger.
  * @param {number} price
  * @param {number} lower
  * @param {number} upper
@@ -349,9 +352,11 @@ function isNearEdge(price, lower, upper, edgePct) {
 }
 
 /**
- * Re-centre the existing position's tick spread on the current tick,
- * preserving the original width.  Used during rebalance so the new
- * position keeps the same range width rather than applying rangeWidthPct.
+ * Place the existing position's tick spread around the current tick,
+ * preserving the original width: centred at an offset of 50, else split
+ * above and below the current tick by the offset.  Used during rebalance
+ * so the new position keeps the same range width rather than applying a
+ * Price Range Extension.
  *
  * @param {number} currentTick  Current pool tick.
  * @param {number} tickLower    Existing position lower tick.
@@ -421,12 +426,11 @@ function preserveRange(
 
 /**
  * Return a V3 full-range position: `[MIN_TICK, MAX_TICK]` rounded to
- * `tickSpacing` multiples.  Used by the rebalancer when the user's
- * saved `rebalanceRangeWidthPct` is `100` (the full-range sentinel;
- * see `_computeRange` in `rebalancer-execute.js` and the CLAUDE.md
- * "Full-range sentinel" note).  The dashboard's Range Width input is
- * capped at 100 so this is the only way an override can reach the
- * rebalancer as a full-range request.
+ * `tickSpacing` multiples.  Used by the rebalancer when the position's
+ * Full-Range flag (`fullRangeRebalanceEnabled`, the Full-Range checkbox
+ * beside the Price Range Extension) is on and its Range settings are in
+ * force; `_computeRange` in `rebalancer-execute.js` asks for it before
+ * any width, so a saved Price Range Extension is then ignored.
  *
  * @param {number} tickSpacing  Pool tick spacing.
  * @param {number} decimals0    Token0 decimals (for the returned price).

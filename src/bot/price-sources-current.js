@@ -72,7 +72,9 @@ function _moralisSource(fn) {
  * @param {string} tokenAddress - ERC-20 contract address.
  * @param {string} chain - DexScreener's id for the token's chain, which
  *   the pairs are filtered to.
- * @returns {Promise<number>} USD price (0 if unavailable or on error).
+ * @returns {Promise<number>} USD price; 0 when the service answers an error
+ *   status or has no pair on the chain. A network or parse failure rejects,
+ *   and the cascade (`tryPriceSources`) catches and logs it.
  */
 async function _fetchDexScreener(tokenAddress, chain) {
   const url = `${DEXSCREENER_API}/latest/dex/tokens/${tokenAddress}`;
@@ -117,7 +119,9 @@ async function _fetchDexScreener(tokenAddress, chain) {
  * Fetch current USD price for a token from the GeckoTerminal simple price API.
  *
  * Uses the same rate limiter as the OHLCV endpoint to share the 30 calls/min
- * budget.  Returns 0 if the token is not found or on error.
+ * budget.  Returns 0 when the service answers an error status or has no
+ * price for the token.  A network or parse failure rejects, and the
+ * cascade catches it.
  *
  * @param {string} tokenAddress - ERC-20 contract address.
  * @param {string} network - GeckoTerminal's id for the token's chain.

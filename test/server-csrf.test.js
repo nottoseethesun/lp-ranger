@@ -19,6 +19,37 @@ const { CSRF_REFUSALS } = require("../src/server/csrf-refusals");
 const { _setSinkForTests } = require("../src/lib/log");
 const { UTC_TIMESTAMP_PATTERN } = require("../src/lib/utc-timestamp");
 
+describe("GET /api/csrf-token", () => {
+  /** What `handleCsrf` answers a GET of `url`, and whether it answered. */
+  function getOf(url) {
+    const answers = [];
+    const handled = handleCsrf(
+      { method: "GET", url, headers: {} },
+      {},
+      (_res, status, body) => answers.push({ status, body }),
+    );
+    return { handled, answers };
+  }
+
+  it("serves a token", () => {
+    const { handled, answers } = getOf("/api/csrf-token");
+    assert.equal(handled, true);
+    assert.equal(answers[0].status, 200);
+    assert.equal(typeof answers[0].body.token, "string");
+  });
+
+  it("serves a token when the url carries a query string", () => {
+    const { handled, answers } = getOf("/api/csrf-token?t=1");
+    assert.equal(handled, true, "not passed on to the page");
+    assert.equal(answers[0].status, 200);
+    assert.equal(typeof answers[0].body.token, "string");
+  });
+
+  it("leaves any other GET to the routes after it", () => {
+    assert.equal(getOf("/api/csrf-token-not").handled, false);
+  });
+});
+
 describe("CSRF token module", () => {
   it("createToken returns a token, future expiry, and refreshIntervalMs", () => {
     const { token, expiresAt, refreshIntervalMs } = createToken();

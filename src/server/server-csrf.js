@@ -61,12 +61,17 @@ const _secret = _tokens.secretSync();
 
 /**
  * Issued tokens and their creation timestamps.
- * Pruned on each verify call to prevent unbounded growth.
+ * `createToken` removes the expired ones once the map holds `_MAX_ISSUED`
+ * tokens; a verify only reads it.
  * @type {Map<string, number>}
  */
 const _issued = new Map();
 
-/** Max issued tokens before forced prune (safety cap). */
+/**
+ * The size at which `createToken` starts removing expired tokens from
+ * `_issued`. Tokens still within their lifetime stay, so this is no cap:
+ * the map can hold more.
+ */
 const _MAX_ISSUED = 500;
 
 /**
@@ -131,10 +136,9 @@ function _pruneExpired(now, tokenTtlMs) {
 }
 
 /**
- * Drop entries older than the retry-log window.  Called from both the
- * 403-record path (so the buffer can't keep stale matches around) and
- * the success path (so a long-quiet path doesn't permanently mask a
- * future retry).
+ * Drop entries older than the retry-log window.  Called only as a 403 is
+ * recorded, so the buffer can't keep stale matches around; a verify that
+ * passes deletes its own entry and no other.
  * @param {number} now
  */
 function _prune403Buffer(now) {
@@ -160,7 +164,8 @@ function _prune403Buffer(now) {
  */
 function handleCsrf(req, res, jsonResponse) {
   const { method, url } = req;
-  if (method === "GET" && url === "/api/csrf-token") {
+  // Matched on the path alone, as the route table matches its routes.
+  if (method === "GET" && url.split("?")[0] === "/api/csrf-token") {
     jsonResponse(res, 200, createToken());
     return true;
   }

@@ -90,7 +90,8 @@
 const fs = require("fs");
 const path = require("path");
 
-process.chdir(path.resolve(__dirname, "..", ".."));
+// The project's folder, three up from util/diagnostic/reconcile-hodl/.
+process.chdir(path.resolve(__dirname, "..", "..", ".."));
 
 const { ethers } = require("ethers");
 const config = require("../../../src/lib/config");

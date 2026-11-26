@@ -3,21 +3,23 @@
  * @module epochReconstructor
  * @description
  * Reconstructs historical P&L epochs from on-chain rebalance events.
- * When the P&L tracker has no closed epochs (e.g. after wallet re-import),
- * this module queries each closed NFT in the rebalance chain via
- * `getPositionHistory()` and builds closed epoch objects that the tracker
- * can restore.  The on-chain Collect/DecreaseLiquidity history behind
- * those queries is read for the whole chain in one pass first, rather
- * than once per NFT — see `_readChainHistories`.  Results are cached in
- * the epoch cache (`src/bot/epoch-cache.js`), keyed by pool identity, for
- * fast restarts.
+ * When the P&L tracker holds fewer closed epochs than the rebalance chain
+ * has closed NFTs (after a wallet re-import, say), or Reload Current
+ * Position or Re-scan Prices has asked for a rebuild, this module queries
+ * each closed NFT in the rebalance chain via `getPositionHistory()` and
+ * builds closed epoch objects that the tracker can restore.  The
+ * on-chain Collect/DecreaseLiquidity history behind those queries is
+ * read for the whole chain in one pass first, rather than once per NFT —
+ * see `_readChainHistories`.  Results are cached in the epoch cache
+ * (`src/bot/epoch-cache.js`), keyed by pool identity, for fast restarts.
  *
  * Rate limiting
  * ─────────────
- * Each position lookup may trigger up to 4 GeckoTerminal API calls
- * (base+quote × open+close prices).  Rate limiting is handled centrally
- * by the sliding-window limiter in `gecko-rate-limit.js`, so no
- * per-position delay is needed here.
+ * Each position lookup can ask a price service for the pair's prices at
+ * its open and its close, and for the native token's price on its close
+ * day, to price its gas.  Every GeckoTerminal call waits on the
+ * sliding-window limiter in `gecko-rate-limit.js`, so no per-position
+ * delay is needed here.
  */
 
 "use strict";
@@ -130,14 +132,14 @@ function _assembleEpoch(h, index) {
 /**
  * Build a cache key from bot state, or null if insufficient metadata.
  *
- * The contract comes from `config.POSITION_MANAGER`, the same source the
- * other three builders use — `_persistEpochCache` (position-states.js),
- * the startup restore (bot-loop-detect.js) and the unmanaged-position
- * read (position-details.js).  All four must agree, because the key is
- * the only thing joining them: a key built from a different source —
- * `botState.positionManager`, say, which nothing sets — yields
- * `pulsechain..0x4e44…` instead of `pulsechain.0xcc05bf….0x4e44…`, and
- * that is a second, private history for the same pool.
+ * The contract comes from `config.POSITION_MANAGER`, the same source as
+ * the other builders of an epoch-cache key: `_persistEpochCache`
+ * (position-states.js), the startup restore (bot-loop-detect.js), the
+ * unmanaged-position read (position-details.js) and Reload Current
+ * Position's clear (`_cacheKeyOpts`, reload-position.js).  All of them
+ * must agree, because the key is the only thing joining them: a key
+ * built from a different address is a second, private history for the
+ * same pool.
  *
  * The visible symptom would be Reload Current Position failing to
  * reload: it clears the entry under the shared key, then reconstruction
@@ -162,12 +164,15 @@ function _cacheKeyFromState(botState) {
 /**
  * When an epoch's gas was spent, for pricing it.
  *
- * The gas charged to an epoch is the rebalance that closed it, so the
- * close is the moment to price at: the date for GeckoTerminal, whose
- * historical candles are per-day, and the block for Moralis, which is
- * exact. A record carrying neither returns `undefined`: the day the gas
- * was spent is not known, so neither is its dollar figure, and the
- * Per-Day table shows a dash for it.
+ * An epoch's gas is priced at its close: the date for GeckoTerminal,
+ * whose historical candles are per-day, and the block for Moralis,
+ * which is exact. The gas is the figure the rebalance log recorded for
+ * the rebalance that closed it or, when the log has none, the gas of
+ * the NFT's mint and close transactions, read from their receipts
+ * (src/bot/position-history.js). A record with no close date, or one
+ * that does not parse, returns `undefined`, whatever block it carries:
+ * the day the gas was spent is not known, so neither is its dollar
+ * figure, and the Per-Day table shows a dash for it.
  *
  * @param {object} h  History record for one NFT in the chain.
  * @param {boolean} [refresh]  Read past the price cache and replace what
@@ -323,8 +328,8 @@ async function _readHistory(tokenId, ctx) {
 
 /**
  * Fetch closed epoch data from chain for each closed NFT in the rebalance chain.
- * GeckoTerminal rate limiting is handled centrally in price-fetcher.js — no
- * per-position delay needed here.
+ * GeckoTerminal rate limiting is handled centrally in
+ * src/bot/gecko-rate-limit.js — no per-position delay needed here.
  * @param {string[]} closedIds      Old token IDs to query.
  * @param {Array}    events         Rebalance events for context.
  * @param {object|null} activePos   Active position for pool lookup.
@@ -500,7 +505,11 @@ async function _rebuildClosedEpochs(o) {
 }
 
 /**
- * Merge closed epochs into the P&L tracker and persist.
+ * Put these closed epochs in the P&L tracker in place of those it holds,
+ * sorted by opening time and numbered from 1, with the live epoch given
+ * (a null one leaves the tracker's own), and persist: publish the
+ * tracker's state through `updateBotState` when there is one, and save it
+ * in the epoch cache unless `cacheKey` is null.
  *
  * The live epoch goes to disk with the closed ones, so both writes below
  * say the same thing. `setCachedEpochs` reads a bare array as "no live
@@ -556,7 +565,7 @@ function _mergeAndPersist(
  *
  * Accepted cost of counting rather than marking: if reconstruction
  * cannot build an epoch for every closed NFT — a missing historical
- * price, say — the count stays short and the next start reconstructs
+ * price, say — the count stays short and the next scan pass reconstructs
  * again.  That is the correct answer to a genuinely short history (it
  * fills in once the price is available) and it is what a stored
  * "already reconstructed" marker would get wrong, at the price of
@@ -573,8 +582,9 @@ function isEpochHistoryComplete(closedEpochs, closedIds) {
 }
 
 /**
- * Whether this run must rebuild every epoch from chain, discarding what
- * the tracker holds.
+ * Whether this run must rebuild epochs from the chain whatever the
+ * tracker holds: the request Reload Current Position or Re-scan Prices
+ * left on the bot state, taken and cleared.
  *
  * `Reload Current Position` clears the epoch cache on disk, but the bot
  * loop keeps its epochs in memory.  Without this the completeness guard
@@ -591,10 +601,12 @@ function isEpochHistoryComplete(closedEpochs, closedIds) {
  * incomplete history and rebuilds again on its own.  The open epoch is
  * kept — it is the live position, not history.
  *
- * The request is consumed on the attempt rather than on success, since
- * an empty tracker already guarantees the retry.
+ * The request is consumed on the attempt rather than on success; after
+ * a Reload, the empty tracker already guarantees the retry.
  *
- * Set by `_resetBotState` in src/bot/reload-position.js.  Deliberately
+ * Set by `_resetBotState` in src/bot/reload-position.js
+ * (`_needsEpochRebuild`) and, for Re-scan Prices, by
+ * src/bot/rescan-prices.js (`_needsEpochPriceRevalue`).  Deliberately
  * NOT `_needsFullRescan`, which every rebalance sets — reusing that
  * would rebuild the whole chain from scratch after each one.
  *
@@ -758,8 +770,14 @@ function _markHistoryComplete(botState, complete) {
 /**
  * Reconstruct closed P&L epochs from historical rebalance events.
  * Queries on-chain data for each closed NFT to get fees, entry/exit values.
- * Skips only when the history already covers every closed position in the
- * chain — see `isEpochHistoryComplete`.
+ *
+ * Returns without reading when there is no tracker, no event, or no
+ * closed NFT among the events, and, unless Reload Current Position or
+ * Re-scan Prices asked for a rebuild (`_consumeRebuildRequest`), when the
+ * tracker's history already covers every closed NFT in the chain (see
+ * `isEpochHistoryComplete`). Without such a request it next tries the
+ * epoch cache, and takes a complete set from there instead of the chain.
+ * Each of these records the history as complete (`_markHistoryComplete`).
  *
  * @param {object} opts
  * @param {object}   opts.pnlTracker       P&L tracker instance.
@@ -865,11 +883,11 @@ async function reconstructEpochs({
    *  reconstruction across a failure and must not answer a later one,
    *  whose chain head has moved on. */
   /*- A forced rebuild discards it first. `forced` is Reload Current
-   *  Position, whose whole purpose is to re-read this chain from the
-   *  chain — answering it from a buffer would hand back the very data
-   *  the operator asked to replace, and Reload would appear to do
-   *  nothing. The same reasoning as `_consumeRebuildRequest` emptying
-   *  the tracker: a rebuild must start with nothing to inherit. */
+   *  Position or Re-scan Prices, whose whole purpose is to re-read this
+   *  chain from the chain — answering it from a buffer would hand back
+   *  the very data the operator asked to replace, and the rebuild would
+   *  appear to do nothing. The same reasoning as `_consumeRebuildRequest`
+   *  gives: a rebuild must start with nothing to inherit. */
   if (forced) botState._epochResumeBuffer = null;
   botState._epochResumeBuffer =
     botState._epochResumeBuffer instanceof Map

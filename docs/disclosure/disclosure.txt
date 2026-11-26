@@ -124,12 +124,16 @@ cancel timing (1200s), gas bump multiplier (1.5x), swap deadline (5 min).
 
 Server-side (local disk only):
 
-- app-config/.bot-config.json — position config, HODL baselines, residuals
-- app-config/.wallet.json — AES-256-GCM encrypted wallet state (gitignored)
-- app-config/rebalance_log.json — historical rebalance events with TX hashes,
+- app-config/user-configurable/bot-config.json — the managed positions and
+  their settings
+- app-config/user-configurable/wallet.json — AES-256-GCM encrypted wallet
+  state (gitignored)
+- app-data/position-records.json — each position's records: HODL baseline,
+  compounds, gas, deposits, residuals
+- app-data/rebalance_log.json — historical rebalance events with TX hashes,
   amounts, USD values
-- tmp/ — performance caches (event data, prices, epochs), rebuildable from
-  chain
+- app-data/scan-cache/ — performance caches (event data, prices, epochs),
+  rebuildable from chain
 
 Client-side (browser localStorage):
 

@@ -12,9 +12,10 @@
  * persisted to disk under the canonical key `chain-factory-pool`
  * (`cacheKey` in `src/lib/cache-store.js`).
  *
- * Failure returns `0`, which the callers' `creationBlock > fromBlock` test
- * discards in favour of their own floor.  That widens a scan rather than
- * narrowing it, so an unanswerable lookup costs time and never events.
+ * Failure returns `0`, the chain's first block.  That widens a scan rather
+ * than narrowing it, so an unanswerable lookup costs time and never
+ * events.  A caller with a floor of its own keeps it: the event scanner's
+ * `creationBlock > fromBlock` test discards the 0 in favour of its floor.
  */
 
 "use strict";
@@ -28,10 +29,14 @@ const config = require("../lib/config");
 const { findPoolCreationBlock } = require("./pool-creation-finder");
 const { cacheKey } = require("../lib/cache-store");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { readEnv } = require("../lib/env-settings");
 
-/** Disk-cache file path (overridable via env for tests). */
+/*-
+ *  The disk cache's file. `POOL_CREATION_BLOCK_CACHE_PATH` moves it, read
+ *  through `readEnv`, so a blank value names none.
+ */
 const _CACHE_PATH =
-  process.env.POOL_CREATION_BLOCK_CACHE_PATH ||
+  readEnv("POOL_CREATION_BLOCK_CACHE_PATH") ??
   scanCachePath("pool-creation-blocks-cache.json");
 
 /*-

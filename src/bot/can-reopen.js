@@ -1,8 +1,10 @@
 /**
  * @file src/bot/can-reopen.js
  * @description The re-open check behind `POST /api/position/can-reopen`.
- *   Reads on-chain wallet balances for both pair tokens, prices each via
- *   Moralis, compares each to the gold-pegged dust threshold, and reports
+ *   Reads on-chain wallet balances for both pair tokens, prices each
+ *   through `fetchTokenPriceUsd` (src/bot/price-fetcher.js, which asks
+ *   Moralis, GeckoTerminal and DexScreener in turn), compares each to the
+ *   gold-pegged dust threshold, and reports
  *   whether the wallet has enough of at least one token to seed a
  *   re-open rebalance for a previously-drained position.
  *

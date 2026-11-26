@@ -10,7 +10,7 @@
  *
  *   Modal: single sortable table across all currently-open managed
  *   positions.  Columns: Position (identity), Lifetime P&L, Profit,
- *   Impermanent Loss/Gain, and a per-row [Go to position] deep link.
+ *   Impermanent Loss/Gain, and a per-row [Position] deep link.
  *   Numeric columns sort DESC on first click, toggle ASC on repeat
  *   click; default sort is Lifetime P&L DESC.  Rows re-render on
  *   each /api/status poll while the modal is open, so numbers stay

@@ -9,9 +9,12 @@
  * Storage location: `app-config/user-configurable/api-keys.json`
  * (gitignored). A format template lives at
  * `app-config/app-defaults-for-user-configurable/api-keys.example.json`
- * (tracked). See the `app-config/` section of server.js for the full
- * layout. Tests can override the path via the `API_KEYS_FILE_PATH`
- * environment variable.
+ * (tracked). See "The app-config Directory" in docs/engineering.md for
+ * the full layout. A test can name the file in the `API_KEYS_FILE_PATH`
+ * environment variable; under `node --test` without one, the file is in
+ * a temp folder of the test process's own (src/lib/test-temp-folders.js),
+ * as the scan caches and bot-config.json are, so no test reads or writes
+ * the operator's keys.
  *
  * File format:
  *   {
@@ -35,15 +38,38 @@ const {
   _FORMAT_VERSION,
   _PBKDF2_ITERATIONS,
 } = require("./key-store");
+const { makeTestTempFolder } = require("./test-temp-folders");
+const { readEnv } = require("./env-settings");
 
-const _FILE =
-  process.env.API_KEYS_FILE_PATH ||
-  path.join(process.cwd(), "app-config", "user-configurable", "api-keys.json");
+/** This test process's file, made the first time one is asked for. */
+let _testFile = null;
+
+/**
+ * Where api-keys.json is: the file `API_KEYS_FILE_PATH` names, read
+ * through `readEnv`, else, under `node --test`, one in a temp folder of
+ * the test process's own, else `app-config/user-configurable/api-keys.json`.
+ * Asked on every read and write.
+ * @returns {string}
+ */
+function apiKeysPath() {
+  const named = readEnv("API_KEYS_FILE_PATH");
+  if (named !== undefined) return named;
+  if (process.env.NODE_TEST_CONTEXT === undefined)
+    return path.join(
+      process.cwd(),
+      "app-config",
+      "user-configurable",
+      "api-keys.json",
+    );
+  if (_testFile === null)
+    _testFile = path.join(makeTestTempFolder("api-keys"), "api-keys.json");
+  return _testFile;
+}
 
 /** Read the full api-keys.json from disk. */
 function _readStore() {
   try {
-    return JSON.parse(fs.readFileSync(_FILE, "utf8"));
+    return JSON.parse(fs.readFileSync(apiKeysPath(), "utf8"));
   } catch {
     return {};
   }
@@ -51,11 +77,12 @@ function _readStore() {
 
 /** Write the full store to disk (atomic). */
 function _writeStore(data) {
+  const file = apiKeysPath();
   // Ensure parent dir exists (e.g. app-config/user-configurable/ on first run).
-  fs.mkdirSync(path.dirname(_FILE), { recursive: true });
-  const tmp = _FILE + ".tmp";
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = file + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
-  fs.renameSync(tmp, _FILE);
+  fs.renameSync(tmp, file);
 }
 
 /**
@@ -110,4 +137,9 @@ function hasEncryptedKey(service) {
   return !!store[service + "Encrypted"];
 }
 
-module.exports = { saveEncryptedKey, loadEncryptedKey, hasEncryptedKey };
+module.exports = {
+  saveEncryptedKey,
+  loadEncryptedKey,
+  hasEncryptedKey,
+  apiKeysPath,
+};

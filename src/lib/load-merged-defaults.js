@@ -85,7 +85,8 @@ const USER_DIR = process.env.LP_RANGER_USER_CONFIG_DIR
  * in the data flow.  Exported for the settings check
  * (src/lib/settings-check.js), which reads each file as this module does.
  * @param {*} node
- * @returns {*} A fresh object; arrays and primitives pass through
+ * @returns {*} A fresh object; an array comes back as a fresh array of
+ *   its entries, each stripped the same way; primitives pass through
  *   unchanged.
  */
 function stripDocKeys(node) {

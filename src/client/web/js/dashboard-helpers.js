@@ -79,8 +79,10 @@ const _EMOJI = [
 ];
 /**
  * Convert a string to a 3-emoji fingerprint (browser-side).
- * Uses the same emoji set and algorithm as src/bot/logger.js emojiId
- * so server and browser logs show matching fingerprints.
+ * Uses the same emoji set as src/bot/logger.js emojiId, but picks from it
+ * with three rolling hashes of the string's characters (multipliers 31,
+ * 37 and 41), where the bot uses an md5 hash, so the bot's log and the
+ * browser console show different emoji for the same string.
  * @param {string} str  Input string (e.g. NFT token ID).
  * @returns {string}  3-emoji string.
  */
@@ -115,8 +117,9 @@ export function emojiId(str) {
  * Activity-log icon references.  Each value is a relative URL to the
  * standalone SVG file under `src/client/web/icons/`.  Every icon must have a
  * matching file (see test/icons-files.test.js) and the whole
- * directory is XML-well-formedness-validated via `npm run lint:svg`
- * (see docs/engineering.md § "SVG Assets" for the full policy).
+ * directory is XML-well-formedness-validated by `scripts/lint-svg.js`,
+ * which `npm run lint` runs (see docs/engineering.md § "SVG Assets" for
+ * the full policy).
  * @see docs/engineering.md#svg-assets
  */
 export const ACT_ICONS = {
@@ -212,7 +215,8 @@ function _appendTxAffordance(adt, txHash) {
 
 /**
  * Append an entry to the Activity Log.
- * @param {string} icon    SVG markup (ACT_ICONS.*) or plain text/emoji.
+ * @param {string} icon    An `ACT_ICONS` value (a path under `icons/`, shown
+ *   as an `<img>` of that SVG file) or plain text/emoji, shown as it is.
  * @param {string} type    CSS modifier class for the icon (e.g. "start", "alert").
  * @param {string} title   Plain-text title.
  * @param {string} detail  Plain-text detail; first line is main, remainder is ctx.
@@ -297,8 +301,10 @@ export function fmtCountdown(ms) {
 }
 
 /**
- * Get the local timezone 3-letter code (e.g. "EST", "PST", "CET").
- * Falls back to the IANA timezone name if no abbreviation is available.
+ * Get the local timezone's short name as `Intl.DateTimeFormat` gives it
+ * in en-US: an abbreviation where English has one (e.g. "EST", "PST"),
+ * otherwise an offset (e.g. "GMT+1" in Berlin).  Falls back to the IANA
+ * timezone name if no short name is available.
  * @returns {string}
  */
 export function tzCode() {
@@ -318,7 +324,7 @@ export function tzCode() {
  * @param {string|number|Date} input  ISO string, Unix ms, or Date object.
  * @param {object} [opts]
  * @param {boolean} [opts.dateOnly]  If true, show only the date (no time).
- * @returns {string}  e.g. "2026-03-15 14:30 UTC (3/15/2026 10:30 AM EST)"
+ * @returns {string}  e.g. "2026-03-15 14:30Z (3/15/2026 10:30 AM EST)"
  */
 export function fmtDateTime(input, opts) {
   if (!input) return "\u2014";
@@ -353,7 +359,7 @@ export function fmtDateTime(input, opts) {
   );
 }
 
-/** Format a daily-reset timestamp as "Resets HH:MM UTC (HH:MM TZ)". */
+/** Format a daily-reset timestamp as "Resets HH:MMZ (HH:MM TZ)". */
 export function fmtReset(r) {
   if (!r) return "";
   const d = new Date(r);
@@ -394,7 +400,9 @@ export function compositeKey(blockchain, wallet, contract, tokenId) {
  * ...)` lands.  No literal default lives here per
  * feedback_one_literal_per_shipped_default; consumers MUST handle
  * the undefined case (gracefully skip rendering until data arrives).
- * Price/range fields are placeholders until live on-chain data is wired.
+ * Price/range fields start at 0 and are written from each status answer
+ * (the pool price and the position's ticks) and from an unmanaged
+ * position's details.
  */
 export const botConfig = {
   oorThreshold: undefined,
@@ -480,9 +488,6 @@ export function isFullRangeSpread(spread) {
   return Number.isFinite(spread) && spread >= FULL_RANGE_TICK_SPREAD_THRESHOLD;
 }
 
-// ── Disclaimer cookie helpers ───────────────────────────────────────────────
-
-/** Cookie name for the "Don't show this again" preference. */
 // ── Per-position localStorage helpers ────────────────────────────────────────
 
 /** localStorage key prefix for per-position OOR threshold. */
@@ -722,7 +727,7 @@ let _csrfToken = null;
  *  60 min server-side TTL — survives Chrome tab discards, silent network
  *  failures, and main-thread stalls during long pool scans on hardware
  *  like Raspberry Pi 5 (recommended configuration: with Heat Sink and
- *  Fan, 5GB RAM, and Ethernet cable Internet connection instead of
+ *  Fan, 16GB RAM, and Ethernet cable Internet connection instead of
  *  Wi-Fi).
  */
 let _csrfRefreshIntervalMs = CSRF_DEFAULTS.refreshIntervalMs;

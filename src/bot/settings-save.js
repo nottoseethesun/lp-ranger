@@ -59,11 +59,6 @@ const { positionTag } = require("./position-answer-tag");
  * it would set that position rebalancing again or cancel its pending
  * retire.
  *
- * `_retireImmediately` is cleared alongside, for the case where
- * `bot-loop.js`'s re-open-failure path set it: without that, changing
- * Slippage on a stuck-aborted re-open would open the gates and the next
- * poll would still take `drain.js`'s retire branch instead of retrying.
- *
  * Keyed on the two per-token settings, because those are the keys the
  * Slippage rows save. A key no row sends would never fire: an aborted
  * position could then be freed only by a manual rebalance, while the app
@@ -83,7 +78,6 @@ function _clearSlippagePause(pPatch, state) {
   if (!state || !state.rebalancePaused) return;
   state.rebalancePaused = false;
   state.rebalanceError = null;
-  state._retireImmediately = false;
 }
 
 /**
@@ -184,9 +178,11 @@ function _refusal(body, gPatch, pPatch) {
  * `config.setRpcUrls` updates the live list as well as `sendTx`, and
  * both halves are load-bearing:
  *
- *   - `GET /api/rpc-endpoints`, `rebalancer-pools` and
- *     `can-reopen` read `config.RPC_URLS` directly, so without
- *     it they keep walking the endpoints the process started with;
+ *   - the server's endpoint list and status answer, and the bot as it
+ *     puts the endpoints into service, read `config.RPC_URLS` directly
+ *     (the readers are listed at `setRpcUrls`, src/lib/config.js), so
+ *     without it they keep walking the endpoints the process started
+ *     with;
  *   - `sendTx.init` THROWS when called again with a different list,
  *     and `bot-loop.js` / `position-manager.js` call it on every
  *     position start. Updating only `sendTx` would leave
@@ -195,9 +191,9 @@ function _refusal(body, gPatch, pPatch) {
  *
  * Neither is optional; do not "simplify" this to one call.
  *
- * Failures are logged, not thrown: the value is already saved, and a
- * bad URL must not take down the config endpoint. The next restart
- * picks it up regardless.
+ * Failures are logged, not thrown: the value is already in the config,
+ * which the save writes to the file right after, and a bad URL must not
+ * take down the config endpoint. The next restart picks it up regardless.
  * @param {string[]} saved  The operator-added endpoints just saved.
  */
 function _applyRpcUrls(saved) {

@@ -11,8 +11,10 @@
  * Trigger sources (see server.js / bot.js boot):
  *   1. CLI flag `--log-file [optional path]` (path optional — falls
  *      through to the static-tunable default when omitted).
- *   2. `app-config/app-defaults-for-user-configurable/logging.json` with `enabled: true`
- *      (operators set this once for a long-lived production tail).
+ *   2. `enabled: true` in the operator's copy of logging.json,
+ *      `app-config/user-configurable/logging.json` (operators set this
+ *      once for a long-lived production tail; the shipped copy is
+ *      overwritten by every upgrade).
  *
  * Why wrap process.stdout/stderr instead of the `log.*` helpers?
  * The user explicitly asked for "the entire log to disk as it is

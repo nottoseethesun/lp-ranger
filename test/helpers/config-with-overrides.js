@@ -9,10 +9,11 @@
  *   `LP_RANGER_USER_CONFIG_DIR` is read by `src/lib/load-merged-defaults.js`
  *   when it loads, so requiring this helper points it at a temp folder
  *   of its own (`makeTestTempFolder`, removed when the process exits);
- *   require it before anything under `src/lib/`. It also pins the `.env`
- *   keys that would override the settings under test, since dotenv
- *   leaves a key alone once it is set. Each load writes the overrides
- *   and loads afresh the modules that read the settings files.
+ *   require it before anything under `src/lib/`. It also pins the
+ *   variables that would override the settings under test, so a value the
+ *   shell exports cannot reach them (under `node --test` no `.env` is
+ *   read). Each load writes the overrides and loads afresh the modules
+ *   that read the settings files.
  */
 
 const fs = require("fs");

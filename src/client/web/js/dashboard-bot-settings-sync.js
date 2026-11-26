@@ -1,13 +1,16 @@
 /**
  * @file dashboard-bot-settings-sync.js
- * @description One-line orchestrator for the per-poll Bot Settings
+ * @description Orchestrator for the per-poll Bot Settings
  * config-input syncs.  Extracted from `dashboard-data.js` when the
  * per-token slippage sync brought that file over the 500-line cap.
  *
- * Every function called here is idempotent and self-throttled against
- * dirty inputs and last-seen posKey, so calling this on every poll
- * (which is what `_syncManagedAndGlobals` in dashboard-data.js does)
- * is cheap.
+ * Every function called here is idempotent, so calling this on every
+ * poll (which is what `_syncManagedAndGlobals` in dashboard-data.js
+ * does) is cheap.  Three are also self-throttled against dirty inputs
+ * and last-seen posKey (`syncRangeWidth`, `syncFullRangeCheckbox` and
+ * `syncPerTokenSlippage`).  `syncRangeOverride` is not: it repaints the
+ * "No Override" toggle, its badge and the Range section's `disabled`
+ * state from every answer.
  */
 
 "use strict";

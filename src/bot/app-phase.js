@@ -21,8 +21,11 @@
  * the new wallet's saved positions. From its first step until that
  * start-up has finished, a Manage is refused, and so is a second import:
  * a Manage then could start a loop signing with the old wallet's key, or
- * leave that key to the new wallet's positions. The dashboard's badge
- * reads Syncing meanwhile.
+ * leave that key to the new wallet's positions. An unlock and the
+ * launch's key step are refused too (`refusalToTakeKey`), and no start-up
+ * begins but the import's own: either could hand the bot the old
+ * wallet's key and start the old wallet's positions once the new wallet
+ * is in. The dashboard's badge reads Syncing meanwhile.
  *
  * The third phase is the stop for good: Ctrl+C or `npm stop`, which
  * signal the server, or the server's stop route, which
@@ -46,6 +49,16 @@ let _startUp = null;
 // Set while a wallet import is under way, its closing start-up included.
 let _importing = false;
 
+// Why a request that would start positions is refused during an import.
+const _IMPORTING =
+  "LP Ranger is importing a wallet. " +
+  "Try again once it has started that wallet's positions.";
+
+// Why an unlock is refused during an import, which takes its own key.
+const _IMPORTING_FOR_UNLOCK =
+  "LP Ranger is importing a wallet, and the import unlocks it. " +
+  "There is nothing to unlock now.";
+
 /** Record that the app is stopping for good. */
 function markStopping() {
   _stopping = true;
@@ -61,13 +74,19 @@ function isStopping() {
 
 /**
  * Begin the start-up of `total` saved positions, unless one is already
- * under way or the app is stopping.
+ * under way, the app is stopping, or a wallet import is under way and
+ * this is not the import's own closing start-up.
  * @param {number} total  How many positions are saved as managed.
+ * @param {object} [opts]
+ * @param {boolean} [opts.forImport=false]  Whether this is the wallet
+ *   import's own closing start-up, the one start-up that begins during
+ *   an import.
  * @returns {boolean} Whether this call began it. When false, the caller
  *   starts nothing.
  */
-function beginStartUp(total) {
+function beginStartUp(total, { forImport = false } = {}) {
   if (_stopping || _startUp !== null) return false;
+  if (_importing && !forImport) return false;
   _startUp = { done: 0, total };
   return true;
 }
@@ -97,8 +116,8 @@ function startUpProgress() {
 /**
  * Begin a wallet import, unless the app may start nothing now: while it
  * is stopping, while a start-up or another import is under way. The
- * import's own closing start-up still begins, since `beginStartUp` does
- * not ask about an import.
+ * import's own closing start-up still begins: it passes `forImport` to
+ * `beginStartUp`.
  * @returns {string|null} Why the import is refused, or null when this
  *   call began it, in which case the caller ends it with
  *   `endWalletImport` however the import goes.
@@ -136,12 +155,19 @@ function refusalToStart() {
       `(${_startUp.done} of ${_startUp.total}). ` +
       "Try again once it has started them."
     );
-  if (_importing)
-    return (
-      "LP Ranger is importing a wallet. " +
-      "Try again once it has started that wallet's positions."
-    );
+  if (_importing) return _IMPORTING;
   return null;
+}
+
+/**
+ * Why the bot must not take a key now, in the operator's words, or null
+ * when it may. While a wallet import is under way, which takes its own
+ * wallet's key, an unlock and the launch's key step are refused: either
+ * could hand the bot the old wallet's key.
+ * @returns {string|null}
+ */
+function refusalToTakeKey() {
+  return _importing ? _IMPORTING_FOR_UNLOCK : null;
 }
 
 /** Back to a process that has neither started up, imported, nor begun stopping. */
@@ -162,5 +188,6 @@ module.exports = {
   endWalletImport,
   walletImportUnderWay,
   refusalToStart,
+  refusalToTakeKey,
   _resetAppPhaseForTests,
 };

@@ -22,12 +22,14 @@
  *     the field is put back to the last accepted value.
  *
  * The per-poll sync populates the input with either the saved value
- * or the shipped `slippagePct` default, so the input is never empty.
+ * or the shipped `slippagePct` default (once `/api/bot-config-defaults`
+ * has answered), and fills a box left empty, unless the operator is
+ * editing it.
  *
  * These two fields are the whole of slippage.  The single
  * `slippagePct` the old row saved per position is retired and dropped
- * on load; `slippagePct` in bot-config-defaults.json survives as the
- * shipped DEFAULT both fields seed from and that a swap falls back to
+ * on the next save; `slippagePct` in bot-config-defaults.json survives
+ * as the shipped DEFAULT both fields seed from and that a swap falls back to
  * when a token has no setting of its own.  Rebalances and compounds
  * both resolve through src/bot/slippage-resolver.js, so what is shown here
  * is what both use.

@@ -2,10 +2,13 @@
  * @file position-history.js
  * @module positionHistory
  * @description
- * Looks up historical data for closed NFT positions.  Combines data from four
+ * Looks up historical data for closed NFT positions.  Combines data from five
  * sources: the local rebalance log, the on-chain event scanner, on-chain TX
- * receipts (IncreaseLiquidity / Collect events), and GeckoTerminal historical
- * prices.  Uses the canonical ABI from @uniswap/v3-periphery via pm-abi.js.
+ * receipts (the mint's IncreaseLiquidity event, and gas), a log scan of the
+ * NFT's Collect and DecreaseLiquidity events, and historical prices
+ * (`fetchHistoricalPriceGecko`: Moralis by block when a key and block are
+ * given, else GeckoTerminal).  Uses the canonical ABI from
+ * @uniswap/v3-periphery via pm-abi.js.
  */
 
 "use strict";
@@ -51,7 +54,8 @@ const _decimalsCache = new Map();
  */
 function _readRebalanceLog() {
   try {
-    const raw = fs.readFileSync(path.resolve(config.LOG_FILE), "utf8");
+    const logPath = path.resolve(config.rebalanceLogPath());
+    const raw = fs.readFileSync(logPath, "utf8");
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -632,12 +636,15 @@ async function _supplementHistoricalPrices(result, activePosition, refresh) {
 
 /**
  * Look up historical data for a closed NFT position.
- * Combines rebalance log, on-chain events, chain mint lookup, GeckoTerminal
- * prices, and TX receipt parsing (IncreaseLiquidity / Collect).
+ * Combines rebalance log, on-chain events, chain mint lookup, historical
+ * prices, TX receipt parsing (the mint's IncreaseLiquidity) and the NFT's
+ * Collect history.
  * @param {string}   tokenId         NFT token ID.
  * @param {object}   opts
- * @param {object[]} opts.rebalanceEvents  From the event scanner.
- * @param {object}   opts.activePosition   Bot's active position (for pool lookup).
+ * @param {object[]} [opts.rebalanceEvents]  From the event scanner; none for
+ *   a closed position looked at on its own.
+ * @param {object}   [opts.activePosition]   Bot's active position (for pool
+ *   lookup); absent, the pool is read from the NFT's `positions()`.
  * @param {object}   [opts.fallbackPrices] Current prices {price0, price1},
  *   used when a historical price is unavailable for a day that is today.
  * @param {{collectEvents: Array, dlEvents: Array}|null} [opts.collectAndDrain]

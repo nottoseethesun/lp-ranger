@@ -3,7 +3,7 @@
   "info": {
     "title": "LP Ranger API",
     "version": "2.0.0",
-    "description": "REST API for the LP Ranger auto-rebalancing concentrated liquidity manager. Manages V3 NFT positions on 9mm Pro (PulseChain). Every request but a GET must carry a valid csrf token in the `x-csrf-token` header, taken from `GET /api/csrf-token`; without one the server answers 403 with the reason (missing, invalid, unknown or expired)."
+    "description": "REST API for the LP Ranger auto-rebalancing concentrated liquidity manager. Manages V3 NFT positions on 9mm Pro (PulseChain). Every request but a GET must carry a valid csrf token in the `x-csrf-token` header, taken from `GET /api/csrf-token`; without one the server answers 403 with the reason (missing, invalid, unknown or expired). A browser's preflight (OPTIONS) needs none: the cors check answers it 204."
   },
   "servers": [
     {
@@ -108,7 +108,9 @@
                       "type": "object",
                       "properties": {
                         "walletAddress": {
-                          "type": "string"
+                          "type": "string",
+                          "nullable": true,
+                          "description": "The wallet the server holds; null while none is loaded (a fresh install, or after a clear)."
                         },
                         "port": {
                           "type": "integer"
@@ -126,7 +128,7 @@
                         "startingManagedPositions": {
                           "type": "object",
                           "nullable": true,
-                          "description": "While the server starts the positions saved as managed, one at a time after a launch: how many it has dealt with (`done`) and how many there are (`total`). Null at any other time. The dashboard's badge reads Syncing while it is set.",
+                          "description": "While the server starts the positions saved as managed, one at a time, once the wallet is unlocked after a launch or at the end of a wallet import: how many it has dealt with (`done`) and how many there are (`total`). Null at any other time. The dashboard's badge reads Syncing while it is set.",
                           "properties": {
                             "done": {
                               "type": "integer"
@@ -138,7 +140,22 @@
                         },
                         "importingWallet": {
                           "type": "boolean",
-                          "description": "Whether a wallet import is under way, from its first step until the start-up of the new wallet's saved positions has finished. A Manage is refused meanwhile, and the dashboard's badge reads Syncing."
+                          "description": "Whether a wallet import is under way, from its first step until the start-up of the new wallet's saved positions has finished. A Manage and an unlock are refused meanwhile, and the dashboard's badge reads Syncing."
+                        },
+                        "walletJustChanged": {
+                          "type": "object",
+                          "nullable": true,
+                          "description": "Null until the server's wallet is replaced by another while it runs, a clear followed by an import included; then, in every answer until the next change or the server's restart, the new wallet. A dashboard tab still holding another wallet reloads at the dashboard's start address once importingWallet is false.",
+                          "properties": {
+                            "reloadIfOnPriorWallet": {
+                              "type": "boolean",
+                              "description": "Whether a tab holding an earlier wallet reloads."
+                            },
+                            "currentWallet": {
+                              "type": "string",
+                              "description": "The new wallet's address."
+                            }
+                          }
                         }
                       }
                     },
@@ -333,7 +350,7 @@
       "get": {
         "tags": ["Status"],
         "summary": "Get a csrf token",
-        "description": "A token to send in the `x-csrf-token` header of every request but a GET. It expires at `expiresAt`; the dashboard asks for a fresh one every `refreshIntervalMs`.",
+        "description": "A token to send in the `x-csrf-token` header of every request but a GET or a browser's preflight. It expires at `expiresAt`; the dashboard asks for a fresh one every `refreshIntervalMs`.",
         "responses": {
           "200": {
             "description": "A fresh token",
@@ -383,7 +400,7 @@
                     "source": {
                       "type": "string",
                       "nullable": true,
-                      "description": "How the wallet was imported, such as `key` or `seed`."
+                      "description": "How the wallet was imported: `key`, `seed` or `generated`, as the dashboard sends them."
                     },
                     "hasMnemonic": {
                       "type": "boolean"
@@ -394,7 +411,7 @@
                     },
                     "locked": {
                       "type": "boolean",
-                      "description": "A wallet file is on disk and the bot holds no key: the dashboard asks for its password."
+                      "description": "A wallet is loaded (its address known) and the bot holds no key: the dashboard asks for its password. Whether the wallet file is on disk is `fileExists`."
                     }
                   }
                 }
@@ -408,7 +425,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Unlock encrypted wallet",
-        "description": "Decrypt the wallet file and the stored api keys with the provided password. The first unlock also starts the positions saved as managed; the request is idempotent, so entering the password again only confirms it.",
+        "description": "Decrypt the wallet file and the stored api keys with the provided password. The first unlock also starts the positions saved as managed; the request is idempotent, so entering the password again only confirms it. Refused while a wallet import is under way, and asked again once the decrypt is done.",
         "requestBody": {
           "required": true,
           "content": {
@@ -434,6 +451,12 @@
           },
           "401": {
             "description": "Invalid password"
+          },
+          "404": {
+            "description": "No wallet is saved, so there is nothing to unlock. Nothing changed; `error` says so."
+          },
+          "409": {
+            "description": "A wallet import is under way. Nothing changed; `error` says why."
           }
         }
       }
@@ -442,7 +465,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Import wallet",
-        "description": "Import a wallet from its address and private key; the dashboard derives both from a seed phrase, and sends the phrase as well. Encrypts and persists to app-config/user-configurable/wallet.json, then stops every position and starts the new wallet's saved ones. From its first step until that start-up has finished, a Manage is refused and `GET /api/status` reports `importingWallet`.",
+        "description": "Import a wallet from its address and private key. The dashboard sends both, from a private key typed in, a seed phrase, or a wallet it generated; with a seed phrase or a generated wallet it sends the phrase as well. Encrypts and persists to app-config/user-configurable/wallet.json, then stops every position and starts the new wallet's saved ones. From its first step until that start-up has finished, a Manage and an unlock are refused and `GET /api/status` reports `importingWallet`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -466,8 +489,7 @@
                   },
                   "source": {
                     "type": "string",
-                    "enum": ["key", "seed"],
-                    "description": "How the wallet was imported; `key` unless given"
+                    "description": "How the wallet was imported, stored with it and shown back: the dashboard sends `key` (a private key typed in), `seed` (a seed phrase) or `generated` (a wallet it generated). `key` unless given"
                   },
                   "password": {
                     "type": "string",
@@ -483,7 +505,7 @@
             "description": "Wallet imported and encrypted"
           },
           "400": {
-            "description": "No password, private key or address"
+            "description": "No password, private key or address, or the wallet file could not be written; `error` says which. A failed write leaves the saved wallet and the one in use as they were."
           },
           "409": {
             "description": "Refused, with nothing imported, while the app may start nothing: during the start-up of the positions saved as managed, during another import, and once the server is stopping. `error` says which, in the operator's words."
@@ -539,7 +561,7 @@
       "post": {
         "tags": ["Positions"],
         "summary": "Scan wallet for LP positions",
-        "description": "Enumerate up to 300 NFT and ERC-20 LP positions for the loaded wallet. Results are cached.",
+        "description": "Enumerate up to 300 NFT and ERC-20 LP positions for the loaded wallet. Results are cached. A request that arrives while a scan runs gets that scan's result, and none of its fields is read.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -556,7 +578,7 @@
                   },
                   "erc20Address": {
                     "type": "string",
-                    "description": "An ERC-20 LP token to check beside the wallet's NFTs"
+                    "description": "An ERC-20 LP token to check when the wallet holds no NFT position; a scan answered from the cache does not check it"
                   }
                 }
               }
@@ -566,6 +588,9 @@
         "responses": {
           "200": {
             "description": "Scan results with position list"
+          },
+          "400": {
+            "description": "No wallet is loaded, or the scan failed partway; `error` says why."
           }
         }
       }
@@ -578,6 +603,9 @@
         "responses": {
           "200": {
             "description": "Refreshed position data"
+          },
+          "400": {
+            "description": "No wallet is loaded, or the refresh failed; `error` says why."
           }
         }
       }
@@ -677,7 +705,19 @@
                 "properties": {
                   "tokenId": {
                     "type": "string",
-                    "description": "NFT token ID to manage"
+                    "description": "NFT token ID to manage: plain digits, sent as a string or as a number."
+                  },
+                  "liquidity": {
+                    "type": "string",
+                    "description": "The position's liquidity, in digits. When the position's settings hold no auto-compound choice yet, \"0\" (a closed position) sets auto-compound off, and any other value, or none, sets it on. The dashboard does not send it."
+                  },
+                  "contract": {
+                    "type": "string",
+                    "description": "The position manager the NFT belongs to: this server's own, in any letter case, which is also the default when none is named. Another is refused (400)."
+                  },
+                  "forceRebalance": {
+                    "type": "boolean",
+                    "description": "True for the re-open of a closed position: its first poll makes the rebalance that mints fresh liquidity, which the dashboard's re-open dialog asks for. Sent for a position already running whose NFT holds no liquidity, as when a re-open is tried again after a swap abort held it, it lifts that hold, and the position's next poll makes the rebalance; it is refused (409) while a scan runs on the position. Honored only while the NFT holds no liquidity, as Manage reads it from the chain, or a running position's last poll read it: a position that still holds liquidity is managed with no re-open rebalance, its Bot Settings deciding when it rebalances, and the answer says so (`reopenRebalanceSkipped`)."
                   }
                 }
               }
@@ -686,13 +726,13 @@
         },
         "responses": {
           "200": {
-            "description": "Position started. Names it by positionKey, and by livePositionKey too when a re-open's first rebalance minted it a new NFT before the answer; a refusal after the key is known names it by positionKey."
+            "description": "Position started. Names it by positionKey, and by livePositionKey too when a re-open's first rebalance minted it a new NFT before the answer; a refusal after the key is known names it by positionKey. A request with `forceRebalance: true` for a position whose NFT still holds liquidity starts it with no re-open rebalance, and the answer adds `reopenRebalanceSkipped: true` and a `message` saying so."
           },
           "400": {
-            "description": "Missing tokenId or no private key"
+            "description": "Nothing was started: no tokenId, or one not in plain digits; a `contract` other than this server's position manager; no wallet loaded; or no private key held. `error` says which."
           },
           "409": {
-            "description": "Nothing was started, for one of three reasons. LP Ranger manages one active position per liquidity pool, so that profit and loss stays attributable to it. `pool-already-managed`: another position already manages this pool, and the body names it. `pool-has-open-position`: the position is closed, so its Manage would re-open it, and the wallet already holds an open position in its pool, which the body names; the wallet's positions are those the last wallet scan saw open, each still open unless the chain answers otherwise. Or nothing may start now: the server is still starting the positions saved as managed, one of which may be in the same pool, or it is stopping; the body then carries only `ok` and `error`. A re-open retried on a running position (`forceRebalance: true`) while a scan is running on it is refused too, since its rebalance would be left out of the figures the scan rebuilds; `error` then asks for Manage again once the read finishes, and the body names the position by positionKey.",
+            "description": "Nothing was started, for one of these reasons. LP Ranger manages one active position per liquidity pool, so that profit and loss stays attributable to it. `pool-already-managed`: another position already manages this pool, and the body names it. `pool-has-open-position`: the position is closed, so its Manage would re-open it, and the wallet already holds an open position in its pool, which the body names; the wallet's positions are those the last wallet scan saw open, each still open unless the chain answers otherwise. Or nothing may start now: the server is still starting the positions saved as managed, one of which may be in the same pool, a wallet import is under way, or it is stopping; the body then carries only `ok` and `error`. Manage asks again after each of its two waits, the pool check and the shared signer, along with whether the wallet's key changed meanwhile; refused then, the body names the position by positionKey. A stop that begins while Manage waits is answered this way too. A re-open retried on a running position (`forceRebalance: true`) while a scan is running on it is refused too, since its rebalance would be left out of the figures the scan rebuilds; `error` then asks for Manage again once the read finishes, and the body names the position by positionKey.",
             "content": {
               "application/json": {
                 "schema": {
@@ -725,6 +765,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "The position's loop failed to start; `error` says why, and the body names the position by positionKey."
           },
           "503": {
             "description": "Nothing was started, since the chain could not be read: `pool-info-unavailable`. Either the position's pool, without which LP Ranger cannot check that no other position is managed in it, or the pool's state, which the bot reads as it starts. `message` says which. Try again in a moment.",
@@ -841,6 +884,9 @@
           },
           "400": {
             "description": "Missing required fields"
+          },
+          "500": {
+            "description": "The details could not be worked out, as when a chain read failed; `error` says why."
           }
         }
       }
@@ -890,6 +936,9 @@
           },
           "400": {
             "description": "Missing required fields"
+          },
+          "500": {
+            "description": "The lifetime figures could not be worked out, as when a chain read failed; `error` says why."
           }
         }
       }
@@ -1796,6 +1845,9 @@
               }
             }
           },
+          "500": {
+            "description": "The check itself failed; `error` says why."
+          },
           "503": {
             "description": "Wallet balance temporarily unreadable.",
             "content": {
@@ -2050,7 +2102,7 @@
       "post": {
         "summary": "Cancel an in-flight pool scan",
         "tags": ["Positions"],
-        "description": "Aborts the 5-year event scan for one pool: an operator's escape hatch from a stuck sync, which no dashboard control sends. aborted reports whether a scan was actually running; flagReset reports whether the position's live state was found and its scan marked unfinished (`rebalanceScanComplete` false), so its badge reads Syncing until the scan runs again. positionKey is resolved to the live key first, since a rebalance may have moved it.",
+        "description": "Aborts the 5-year event scan for one pool: an operator's escape hatch from a stuck sync, which no dashboard control sends. aborted reports whether a scan was actually running; flagReset reports whether the position's live state was found and its scan marked unfinished (`rebalanceScanComplete` false). A pass sets that flag again as it ends, failing or not, and the pass the cancel ends does so at once, as it fails. positionKey is resolved to the live key first, since a rebalance may have moved it.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2069,7 +2121,7 @@
                   },
                   "positionKey": {
                     "type": "string",
-                    "description": "Optional. Clears the scan-in-progress flag as well."
+                    "description": "Optional. Marks that position's scan unfinished as well (`rebalanceScanComplete` false), until a pass sets the flag again as it ends; the pass the cancel ends does, as it fails. It leaves `scanInProgress` to the scan's pass, which clears it as it ends."
                   },
                   "walletAddress": {
                     "type": "string",

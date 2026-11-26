@@ -2,7 +2,8 @@
  * @file dashboard-data-kpi-breakdown.js
  * @description Populates the pre-declared rows in the Lifetime Net P&L
  *   breakdown table (kpiNetBreakdown): Fees Compounded, Gas, Price
- *   Change, Wallet Residual, Realized Gains.
+ *   Change, Wallet Residual (Pool), Initial Wallet Residual (Pool),
+ *   Realized Gains.
  *
  *   The old aggregate "Lifetime Fees" row was removed (per-epoch tracker
  *   sum was imprecise — missed fees folded into rebalances).  Current
@@ -56,7 +57,7 @@ function _setRow(id, val) {
 /**
  * Write a row whose value is always subtracted from the total (gas).
  * Raw value is stored positive but is shown with a leading minus sign
- * and red colour so the breakdown reads as a true summation.
+ * and red colour, as a figure taken away.
  */
 function _setSubtracted(id, val) {
   const el = g(id);

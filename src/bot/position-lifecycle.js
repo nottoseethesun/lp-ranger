@@ -2,8 +2,8 @@
  * @file src/bot/position-lifecycle.js
  * @module position-lifecycle
  * @description
- * Starting and stopping the positions the bot manages, one request at a
- * time: Manage (start a bot loop for a position, or re-open a closed
+ * Starting and stopping the positions the bot manages, one position per
+ * request: Manage (start a bot loop for a position, or re-open a closed
  * one), Stop Managing, the re-open check, and the list of managed
  * positions. Each returns a result the server answers with
  * (src/server/bot-result.js); none knows anything of HTTP.
@@ -18,7 +18,7 @@
 const { log } = require("../lib/log");
 const ethers = require("ethers");
 const config = require("../lib/config");
-const { startBotLoop } = require("./bot-loop");
+const botLoop = require("./bot-loop");
 const {
   PoolStateInvalidError,
   PoolStateUnavailableError,
@@ -30,6 +30,8 @@ const { openInPool } = require("./open-in-pool");
 const { positionTag } = require("./position-answer-tag");
 const { isAscanRunningOnThisPosition } = require("./scan-state");
 const { scanRunningRefusal } = require("./scan-refusal");
+const { isThisPositionDrained } = require("./position-drained");
+const { emojiId } = require("./logger");
 const sendTx = require("./send-transaction");
 const {
   compositeKey,
@@ -56,57 +58,93 @@ const { createCanReopenCheck } = require("./can-reopen");
  *  window between is long enough to fit a second click. */
 const _starting = new Map();
 
-/*- Closed-position re-open path: when the dashboard calls Manage on a
- *  drained (liquidity=0) position, it sends `forceRebalance: true`.
- *  Stamp the flag on the freshly-built posBotState BEFORE startPosition
- *  so the bot loop's first poll sees the flag set; `bot-cycle-drain.js`'s
- *  `if (drained && !state.forceRebalance && !midwayFail)` guard then
- *  returns null and the rebalance pipeline runs on the drained NFT,
- *  minting fresh liquidity and bringing the position back to life in
- *  one user-driven cycle.  No-op for healthy positions (body.flag
- *  unset).
+/**
+ * The re-open of a closed position: when the dashboard calls Manage on a
+ * drained (liquidity=0) position, it sends `forceRebalance: true`. The
+ * flag is stamped on the freshly built posBotState BEFORE startPosition,
+ * so the bot loop's first poll sees it; `checkZeroLiquidity`
+ * (`bot-cycle-drain.js`) then skips its
+ * `if (drained && !state.forceRebalance && !midwayFail)` branch and
+ * returns null, and the rebalance runs on the drained NFT, minting fresh
+ * liquidity and bringing the position back in one user-driven cycle. A
+ * healthy position's request carries no flag, and nothing changes.
  *
- *  Range width for the re-open: read from persistent config
- *  (`rebalanceRangeWidthPct` POSITION_KEY) by the bot loop via
- *  `deps._getConfig` in src/bot/bot-cycle-opts.js.  Falls back to
- *  `rangeMath.preserveRange()` when not set.  No longer read from the
- *  request body — the range-width modal has been migrated into Bot
- *  Settings. */
-function _stampReopenFlags(posBotState, body) {
-  if (body.forceRebalance !== true) return;
+ * The re-open's range follows the position's Range settings, No Override
+ * toggle included, as any rebalance's does (`buildRebalanceOpts`,
+ * src/bot/bot-cycle-opts.js). The request carries none.
+ *
+ * Only a closed position is re-opened this way. A position whose NFT
+ * still holds liquidity is managed as any other, its Bot Settings
+ * deciding when it rebalances (the user's ruling, 2026-11-25), so a
+ * request that asks for the re-open's rebalance on it gets none
+ * (`_reopenSkipped` says so in the answer). The dashboard sends the flag
+ * only for a position its list shows closed, which an addition made
+ * outside LP Ranger can leave out of date.
+ * @param {object} posBotState  The position's bot state.
+ * @param {object} body  The Manage request's body.
+ * @param {boolean} closed  Whether the position's NFT holds no liquidity,
+ *   as read from the chain.
+ * @returns {boolean}  Whether the flag was stamped.
+ */
+function _stampReopenFlags(posBotState, body, closed) {
+  if (body.forceRebalance !== true || closed !== true) return false;
   posBotState.forceRebalance = true;
+  return true;
 }
 
-/*- Already-running re-open path: when the user comes back to Manage
- *  after a swap-abort aborted the first re-open attempt, the
- *  `existing.status === "running"` guard in `manage` would
- *  silently no-op the request.  This helper grabs the live posBotState
- *  from the per-position map and stamps `forceRebalance` (via
- *  `_stampReopenFlags`) AND clears the aborted/midway flags
- *  (`rebalancePaused`, `rebalanceFailedMidway`, `rebalanceError`) so
- *  the next poll runs a fresh rebalance.  Range width comes from
- *  persistent config (`rebalanceRangeWidthPct` POSITION_KEY) — not
- *  from the request body.
- *  Returns true if the live state was found and stamped, false
- *  otherwise (the caller logs accordingly). */
+/**
+ * The answer's words when a Manage asked for the re-open's rebalance on a
+ * position whose NFT still holds liquidity, so none is made.
+ * @param {string|number} tokenId
+ * @returns {{reopenRebalanceSkipped: true, message: string}}
+ */
+function _reopenSkipped(tokenId) {
+  const id = String(tokenId);
+  log.info(
+    "[pos-route] No re-open rebalance for NFT #%s %s: it still holds liquidity, so its Bot Settings decide when it rebalances",
+    id,
+    emojiId(id),
+  );
+  return {
+    reopenRebalanceSkipped: true,
+    message:
+      `NFT #${id} still holds liquidity, so LP Ranger manages it without a ` +
+      "re-open rebalance. Its Bot Settings decide when it rebalances.",
+  };
+}
+
+/**
+ * The re-open of a position already running: when the user comes back to
+ * Manage after a swap abort stopped the first re-open, the
+ * `existing.status === "running"` guard in `manage` would otherwise
+ * ignore the request. This takes the live posBotState from the
+ * per-position map, stamps `forceRebalance` (`_stampReopenFlags`), and
+ * clears the aborted and midway flags (`rebalancePaused`,
+ * `rebalanceFailedMidway`, `rebalanceError`), so the next poll runs a
+ * fresh rebalance. Its range follows the position's Range settings, as
+ * any re-open's does. Whether the position is closed comes from the
+ * liquidity its last poll read; a position no poll has read yet is left
+ * to the request that started it.
+ * @param {string} key  The position's composite key.
+ * @param {object} body  The Manage request's body.
+ * @returns {"stamped"|"holds-liquidity"|null}  "stamped" when the live
+ *   state was stamped; "holds-liquidity" when the request asked for the
+ *   re-open's rebalance and the position's NFT holds liquidity, so none
+ *   is made; null when it asked for none, or no poll has read the
+ *   position. The caller logs each.
+ */
 function _stampReopenFlagsOnLive(key, body) {
-  if (body.forceRebalance !== true) return false;
+  if (body.forceRebalance !== true) return null;
   const live = getAllPositionBotStates().get(key);
-  if (!live) return false;
-  _stampReopenFlags(live, body);
+  if (!live) return null;
+  const read = live.activePosition;
+  if (read === null || read === undefined) return null;
+  if (!_stampReopenFlags(live, body, isThisPositionDrained(read)))
+    return "holds-liquidity";
   live.rebalancePaused = false;
   live.rebalanceFailedMidway = false;
   live.rebalanceError = null;
-  /*- Critical: also clear `_retireImmediately`.  bot-loop.js's
-   *  `_handleError` sets it after a re-open failure to trigger an
-   *  immediate retire on the next bot poll.  If the user clicks
-   *  Manage to retry within the ~60 s window before that poll fires,
-   *  this code path (manage's already-running short-circuit)
-   *  must clear the flag — otherwise drain.js's `_retireImmediately`
-   *  branch fires retire BEFORE the forceRebalance can take effect,
-   *  and the user's retry click is silently lost. */
-  live._retireImmediately = false;
-  return true;
+  return "stamped";
 }
 
 /**
@@ -177,7 +215,11 @@ function _startFailure(err, key, tokenId) {
  * @param {Function} [deps.readProvider]  The provider that check reads
  *   through.
  * @param {Function} [deps.loadScanCache]  The wallet scan's cache reader,
- *   for the re-open check; the real one unless a test passes its own.
+ *   for Manage's refusal of a re-open while the wallet holds an open
+ *   position in the pool (src/bot/open-in-pool.js); the real one unless a
+ *   test passes its own.
+ * @param {Function} [deps.startBotLoop]  The loop a Manage starts
+ *   (src/bot/bot-loop.js); the real one unless a test passes its own.
  * @returns {{manage: Function, stopManaging: Function,
  *   canReopen: Function, managedList: Function}}
  */
@@ -196,6 +238,7 @@ function createPositionLifecycle(deps) {
     ethersLib = ethers,
     readProvider = () => sendTx.getManagedReadProvider(),
     loadScanCache,
+    startBotLoop = botLoop.startBotLoop,
   } = deps;
 
   /**
@@ -217,7 +260,7 @@ function createPositionLifecycle(deps) {
       now ??
       (getPrivateKey() === pk
         ? null
-        : "A wallet was imported while this Manage was under way. Try again.");
+        : "The wallet's key changed while this Manage was under way. Try again.");
     if (error === null) return null;
     log.warn(
       "[pos-route] Manage refused after its wait (key=%s): %s",
@@ -235,7 +278,8 @@ function createPositionLifecycle(deps) {
    * user has come back via Manage to retry after fixing slippage.
    * Without this, the second click is silently dropped and the re-open
    * never retries. Returns `reopenStamped: true` so the client can
-   * confirm the retry was wired through.
+   * confirm the retry was wired through, and the words of
+   * `_reopenSkipped` when the position still holds liquidity.
    * @param {string} key  The position's composite key.
    * @param {object} body  The Manage request.
    * @returns {object}  The result.
@@ -243,18 +287,19 @@ function createPositionLifecycle(deps) {
   function _alreadyRunning(key, body) {
     const scanRefusal = _reopenScanRefusal(key, body);
     if (scanRefusal !== null) return scanRefusal;
-    const stamped = _stampReopenFlagsOnLive(key, body);
+    const outcome = _stampReopenFlagsOnLive(key, body);
     log.info(
       "[pos-route] Position #%s already running or starting — skipping%s",
       body.tokenId,
-      stamped ? " (stamped reopen flags onto live state)" : "",
+      outcome === "stamped" ? " (stamped reopen flags onto live state)" : "",
     );
     return {
       ok: true,
       key,
       tokenId: String(body.tokenId),
       alreadyRunning: true,
-      reopenStamped: stamped,
+      reopenStamped: outcome === "stamped",
+      ...(outcome === "holds-liquidity" ? _reopenSkipped(body.tokenId) : {}),
       ...positionTag(key),
     };
   }
@@ -300,14 +345,16 @@ function createPositionLifecycle(deps) {
      *  pool hold indistinguishable tokens in the same wallet, so gains
      *  moving between them cannot be attributed to either and residual
      *  coins cannot be allocated — the rule the README and User Manual
-     *  state.  `key` is passed as selfKey so a rebalance, which mints a
-     *  new tokenId within the same pool, cannot reject itself. */
+     *  state.  `key` is passed as selfKey so a position is never refused
+     *  against its own bot state or its own claim. */
     const provider = readProvider();
     /*- The canonical pool-key builder, bound to this wallet.  Reused
      *  rather than re-derived so the gate cannot disagree with the
      *  pool keys the status payload and daily-cap counters use. */
     const poolKeyFn = (t0, t1, f) =>
       positionMgr.poolKey(blockchain, contract, wallet, t0, t1, f);
+    // Whether the position is closed, from the pool check's read of it.
+    let closed = false;
     const refused = await rejectIfPoolManaged({
       log: log.warn,
       key,
@@ -336,6 +383,9 @@ function createPositionLifecycle(deps) {
           blockchain,
           loadCache: loadScanCache,
         }),
+      onPoolRead: (pool) => {
+        closed = pool.liquidity === 0n;
+      },
     });
     if (refused !== null) return refused;
     const late = _lateRefusal(key, pk);
@@ -343,7 +393,7 @@ function createPositionLifecycle(deps) {
       _starting.delete(key);
       return late;
     }
-    return _start(key, body, pk);
+    return _start(key, body, pk, closed);
   }
 
   /**
@@ -351,9 +401,12 @@ function createPositionLifecycle(deps) {
    * @param {string} key  The position's composite key.
    * @param {object} body  The Manage request.
    * @param {string} pk  The key to sign with.
+   * @param {boolean} closed  Whether the position's NFT holds no
+   *   liquidity, as the pool check read it: only then is a re-open's
+   *   rebalance made (`_stampReopenFlags`).
    * @returns {Promise<object>}  The result.
    */
-  async function _start(key, body, pk) {
+  async function _start(key, body, pk, closed) {
     /*- Build the per-position config in memory only.  We DO NOT
      *  saveConfig() until startBotLoop succeeds: a failure here used to
      *  leave a phantom `status=running` entry on disk which made the
@@ -380,14 +433,16 @@ function createPositionLifecycle(deps) {
     }
     const posBotState = createPerPositionBotState(diskConfig.global, posConfig);
     attachMultiPosDeps(posBotState, positionMgr);
-    _stampReopenFlags(posBotState, body);
+    const reopenSkipped =
+      !_stampReopenFlags(posBotState, body, closed) &&
+      body.forceRebalance === true;
     getAllPositionBotStates().set(key, posBotState);
 
-    /*-
-     *  Roll back the in-memory state above, so a retry starts cleanly and
-     *  the status report shows no phantom managed entry. A slot that held
-     *  settings before keeps them, with its prior status (e.g. `stopped`):
-     *  never promoted to running.
+    /**
+     * Roll back the in-memory state above, so a retry starts cleanly and
+     * the status report shows no phantom managed entry. A slot that held
+     * settings before keeps them, with its prior status (e.g. `stopped`):
+     * never promoted to running.
      */
     const undo = () => {
       getAllPositionBotStates().delete(key);
@@ -446,21 +501,19 @@ function createPositionLifecycle(deps) {
     } finally {
       _starting.delete(key);
     }
-    /*- Bot loop is up; only NOW persist `status=running`.
-     *
-     *  Reads `keyRef.current`, NOT the captured local `key`.  When the
-     *  bot's first poll runs a force-rebalance (re-open flow), the mint
-     *  of a new NFT triggers `updatePositionState` to call
-     *  `migrateConfigKey` + `positionMgr.migrateKey` + mutate
-     *  `keyRef.current = newKey`.  By the time control returns here,
-     *  the disk slot lives under the NEW key.  Calling
-     *  `addManagedPosition(diskConfig, key)` with the STALE local
-     *  would lazy-create an empty `{ status: "running" }`-only stub
-     *  under the dead old key — the phantom that made the dashboard
-     *  stuck on "Syncing…" for the closed view of the old NFT.
-     *
-     *  This is symmetric with `_onRetire` (which reads `keyRef.current`)
-     *  and the rest of the closures threaded into `startPosition`. */
+    /*-
+     *  The bot loop is up; only now is `status: "running"` saved. It
+     *  reads `keyRef.current`, NOT the captured local `key`: when the
+     *  bot's first poll runs a forced rebalance (a re-open), the mint of
+     *  a new NFT makes `updatePositionState` call `migrateConfigKey` and
+     *  `positionMgr.migrateKey` and set `keyRef.current = newKey`, so by
+     *  the time control returns here the slot lives under the NEW key.
+     *  `addManagedPosition(diskConfig, key)` with the stale local would
+     *  create a slot holding only `{ status: "running" }` under the dead
+     *  old key, which the dashboard reads as a managed position stuck on
+     *  "Syncing…". This matches `_onRetire`, which reads `keyRef.current`,
+     *  and the other closures handed to `startPosition`.
+     */
     addManagedPosition(diskConfig, keyRef.current);
     saveConfig(diskConfig);
     log.info(
@@ -478,6 +531,7 @@ function createPositionLifecycle(deps) {
       ok: true,
       key,
       tokenId: String(body.tokenId),
+      ...(reopenSkipped ? _reopenSkipped(body.tokenId) : {}),
       ...positionTag(key, keyRef.current),
     };
   }

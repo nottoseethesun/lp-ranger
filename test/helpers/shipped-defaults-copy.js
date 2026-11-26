@@ -13,13 +13,23 @@
  *
  *   The loader reads the variable when it loads, so a test calls this
  *   before it requires anything under src/lib/ that reads a settings file.
+ *
+ *   The copy reads every file the folder lists, one at a time, so a file
+ *   listed but gone before it is read fails the copy, and the error names
+ *   it. A failed copy prints what the folders held at that moment, then
+ *   throws: docs/engineering.md, "A Test File That Fails as It Loads",
+ *   says how to read it.
  */
 
 "use strict";
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
-const { makeTestTempFolder } = require("../../src/lib/test-temp-folders");
+const {
+  makeTestTempFolder,
+  describeTestTempFolders,
+} = require("../../src/lib/test-temp-folders");
 
 const _SHIPPED = path.join(
   __dirname,
@@ -30,14 +40,71 @@ const _SHIPPED = path.join(
 );
 
 /**
+ * What a folder holds, for the report: its entries, or why there are none.
+ * @param {string} dir
+ * @returns {string}
+ */
+function _listing(dir) {
+  if (!fs.existsSync(dir)) return "GONE";
+  try {
+    return fs.readdirSync(dir).join(", ") || "(empty)";
+  } catch (err) {
+    return `unreadable (${err.code})`;
+  }
+}
+
+/**
+ * The report a failed copy prints: the error, what the copy's folder and
+ * the shipped folder held at that moment, and every test folder in the
+ * temp directory with whether its process was still running.
+ * @param {string} dir   The copy's folder.
+ * @param {Error} err    What the copy threw.
+ * @param {string} [from]  The folder copied; the shipped folder unless a
+ *   test of this report passes another.
+ * @returns {string}
+ */
+function failedCopyReport(dir, err, from = _SHIPPED) {
+  const folders = describeTestTempFolders().map(
+    (f) => `    ${f.name}  pid ${f.pid} ${f.running ? "running" : "ended"}`,
+  );
+  return [
+    `[shipped-defaults-copy] The copy of the shipped settings failed ` +
+      `(pid ${process.pid}, ${new Date().toISOString()}): ${err.message}`,
+    `  The copy's folder, ${dir}: ${_listing(dir)}`,
+    `  The shipped folder, ${from}: ${_listing(from)}`,
+    `  Test folders in ${os.tmpdir()}:`,
+    ...(folders.length > 0 ? folders : ["    (none)"]),
+    `  How to read this: docs/engineering.md, "A Test File That Fails as It Loads".`,
+  ].join("\n");
+}
+
+/**
  * Copy the shipped settings folder into a temp folder of this process's,
- * and point the loader at the copy.
+ * and point the loader at the copy. A copy that fails prints its report
+ * (`failedCopyReport`) and throws.
  *
+ * @param {string} [shipped]  The folder copied; the shipped folder
+ *   unless a test of the failure passes another.
+ * @param {(text: string) => void} [print]  Where the report goes; stderr
+ *   unless a test of the failure passes its own.
  * @returns {string} The copy's path.
  */
-function useShippedDefaultsCopy() {
+function useShippedDefaultsCopy(
+  shipped = _SHIPPED,
+  print = (text) => process.stderr.write(text),
+) {
   const dir = makeTestTempFolder("shipped");
-  fs.cpSync(_SHIPPED, dir, { recursive: true });
+  try {
+    for (const e of fs.readdirSync(shipped, { withFileTypes: true })) {
+      const from = path.join(shipped, e.name);
+      const to = path.join(dir, e.name);
+      if (e.isDirectory()) fs.cpSync(from, to, { recursive: true });
+      else fs.copyFileSync(from, to);
+    }
+  } catch (err) {
+    print(`${failedCopyReport(dir, err, shipped)}\n`);
+    throw err;
+  }
   process.env.LP_RANGER_DEFAULTS_DIR = dir;
   return dir;
 }
@@ -72,4 +139,8 @@ function changeShippedCopy(dir, file, changes) {
   return changed;
 }
 
-module.exports = { useShippedDefaultsCopy, changeShippedCopy };
+module.exports = {
+  useShippedDefaultsCopy,
+  changeShippedCopy,
+  failedCopyReport,
+};

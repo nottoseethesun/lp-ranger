@@ -14,7 +14,9 @@
  * this folder (`settings-copies.js`, `env-file.js`). Every step is safe
  * to run again: one that finds nothing left to change says nothing.
  *
- * Runs on Node built-ins only, so it works before `npm ci` has installed
+ * Needs no installed package: Node's built-ins, and two of LP Ranger's
+ * modules that require nothing (src/lib/bot-config-keys.js,
+ * src/lib/composite-key.js), so it works before `npm ci` has installed
  * anything, as Step Six's copy does.
  *
  * The CLI is self-documenting — run with `--help` for the full

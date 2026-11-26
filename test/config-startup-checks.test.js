@@ -504,7 +504,7 @@ describe("Bot Settings defaults the operator overrides", () => {
   });
 
   it("start normally inside their ranges", () => {
-    // Pinned empty, so a developer's .env cannot stand in for the file.
+    // Pinned empty, so a value the shell exports cannot stand in for the file.
     const saved = process.env.MAX_REBALANCES_PER_DAY;
     process.env.MAX_REBALANCES_PER_DAY = "";
     try {

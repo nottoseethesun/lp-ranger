@@ -2,7 +2,8 @@
  * @file src/client/web/js/dashboard-privacy-subform.js
  * @description
  * State persistence + event wiring for the Privacy Mode sub-form in the
- * Settings popover. Three independent controls nested under the master
+ * Privacy Mode dialog (`privacyModal`, opened from the Settings menu).
+ * Three independent controls nested under the master
  * "Privacy Mode" toggle:
  *
  *   1. `privacyBlurWalletSwitch`    — blur wallet-address strings
@@ -21,8 +22,9 @@
  *     hiding, and the page-load restore applies the state again once
  *     they land.
  *
- * This module only owns the sub-form state. Wiring the settings into the
- * actual blur-application path lives in `dashboard-events-manage.js`.
+ * This module also applies the blur (`applyPrivacyState`) and answers
+ * whether privacy mode is on (`isPrivacyModeOn`). The master switch's own
+ * handler lives in `dashboard-events-manage.js`.
  */
 
 "use strict";
@@ -77,8 +79,8 @@ const _WALLET_SELECTORS = [
  * dollar-prefixed number in their text content; blur is applied only
  * when the parsed value strictly exceeds the user-configured threshold.
  * `.kpi-value` covers the dashboard's big numeric readouts;
- * `[data-privacy="usd"]` is a future-extension hook for tagging other
- * USD-displaying elements (token-count cells, etc.).
+ * `[data-privacy="usd"]` tags other USD-displaying elements (the IL/G
+ * popover's cells, for one); token-count cells are `[data-privacy="coin"]`.
  */
 const _USD_SELECTORS = [".kpi-value", '[data-privacy="usd"]'];
 
@@ -126,9 +128,10 @@ function _savedSwitch(lsKey) {
 }
 
 /**
- * Clamp a numeric string to the 5-digit input range (0..99999). Returns
- * null when the input is not a finite non-negative integer in range so
- * callers can fall back to the default.
+ * Parse a numeric string as the threshold, rounding a fraction down.
+ * Returns null when the input is empty or missing, not a finite number,
+ * or outside the 5-digit input range (0..99999), so callers can fall
+ * back to the default; it never clamps.
  * @param {string|number} v
  * @returns {number|null}
  */

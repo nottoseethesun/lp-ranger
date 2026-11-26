@@ -15,9 +15,9 @@
  *
  *   Each case loads the real `src/lib/config.js` afresh, as
  *   `test/config-startup-checks.test.js` does. The five variables are
- *   pinned to nothing BEFORE anything under `src/lib/` is required, because
- *   dotenv leaves a variable alone once it is set, so the operator's own
- *   `.env` cannot reach these cases. Operator overrides are read from a
+ *   pinned to nothing BEFORE anything under `src/lib/` is required, so a
+ *   value the shell exports cannot reach these cases (under `node --test`
+ *   no `.env` is read). Operator overrides are read from a
  *   directory of the test's own, whose bot-config-defaults.json moves
  *   each of the five defaults off its shipped value, so a default written
  *   into the code fails.

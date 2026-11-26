@@ -79,7 +79,10 @@ below describe the same options.
 ## Options
 
 Every option takes its value after a space, as in `--wallet 0x…`. An
-address may be written in any letter case.
+address may be written with its letters all in lower case, all in
+capitals (after the `0x`), or in its EIP-55 form, the mixed case whose
+capitals carry a checksum of the address. One in mixed case whose
+capitals do not match that checksum is refused: `not an address: …`.
 
 ### `coins-in-transaction.js`
 

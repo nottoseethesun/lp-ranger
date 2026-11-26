@@ -160,14 +160,24 @@ function _validateKey(body) {
   return { rawKey, parsed };
 }
 
-/*- Resolve the live bot state + the pool identity for `rawKey`.
- *  Pool identity (token0/token1/fee) is read from `state.activePosition`
- *  — the summary object `bot-recorder._activePosSummary` publishes to
- *  the state map via `emit({activePosition: ...})` every poll cycle.
- *  We deliberately do NOT read `positionMgr.get(liveKey)` for the
- *  fields — that manager entry carries only `{key, tokenId, status}`
- *  and would produce a false `missing`.  Returns { refusal }, `missing`,
- *  when the position cannot be resolved. */
+/**
+ * Resolve the live bot state and the pool identity for `rawKey`. The pool
+ * identity (token0/token1/fee) is read from `state.activePosition`, the
+ * summary `bot-recorder._activePosSummary` builds, which the bot loop
+ * publishes to the state map (`emit({activePosition: ...})`) when it
+ * starts, after each rebalance, and on a poll that sees the position's
+ * liquidity change. It is deliberately
+ * not read from `positionMgr.get(liveKey)`: that entry carries only the
+ * loop's own fields (`key`, `tokenId`, `status`, `handle`, `starting`),
+ * no pool identity, and would produce a false `missing`.
+ * @param {string} rawKey  The position's composite key, as asked.
+ * @param {Map<string, object>} states  The per-position bot states.
+ * @param {object} positionMgr  The position manager, which resolves a
+ *   key a rebalance moved.
+ * @returns {{liveKey: string, state: object, position: object}
+ *   |{refusal: object}}  The refusal, `missing`, when the position cannot
+ *   be resolved.
+ */
 function _resolveStateAndPosition(rawKey, states, positionMgr) {
   const liveKey = resolveLiveKey(positionMgr, rawKey, (k) => states.get(k));
   const state = states.get(liveKey);
@@ -184,18 +194,15 @@ function _resolveStateAndPosition(rawKey, states, positionMgr) {
   return { liveKey, state, position };
 }
 
-/*- Guard against reloading a position that is mid-scan or has a coin
- *  move under way.  Every in-progress condition is `refused`, with an
- *  `error` code the client can tell apart and a user-facing `message` it
- *  shows.  Returns null when the position is idle. */
 /**
- * Shared in-flight guard for the reset operations.
+ * Shared in-flight guard for the reset operations: it refuses a position
+ * that is mid-scan or has a coin move under way. Every in-progress
+ * condition is `refused`, with an `error` code the client can tell apart
+ * and a user-facing `message` it shows; null when the position is idle.
  *
- * The copy is parameterised because `rescan-prices.js` reuses
- * this helper: without it, the Re-scan Prices dialog told users to wait
- * before starting a "Reload Current Position" that "can take up to four
- * hours" — the wrong feature and the wrong duration. Defaults reproduce
- * Reload's original wording byte-for-byte.
+ * The words are parameterised because Re-scan Prices (`rescan-prices.js`)
+ * shares this guard and names its own feature and duration; the defaults
+ * are Reload's.
  *
  * @param {object} state  Per-position bot state.
  * @param {object} [copy] `{ action, scanExtra }` overrides.
@@ -289,11 +296,13 @@ function _performReset(diskConfig, liveKey, state, position, wallet) {
  * Create Reload Current Position.
  * @param {object} deps
  * @param {Function} deps.getAllPositionBotStates
- * @param {object} deps.positionMgr  Position manager (getPosition, key resolution).
+ * @param {object} deps.positionMgr  Position manager; its `get(key)` and
+ *   `getAll()` resolve a key a rebalance moved (`resolveLiveKey`,
+ *   src/bot/server-key-resolver.js).
  * @param {object} deps.walletManager
  * @param {object} deps.diskConfig   Shared in-memory disk config reference
- *   (same object every other server route + the bot loop reads through
- *   `readConfigValue`).  Must be mutated in place, not reloaded from
+ *   (the same object the rest of the bot, its loops included, reads
+ *   through `readConfigValue`).  Must be mutated in place, not reloaded from
  *   disk — see `_clearDiskConfigForKey`'s header comment.
  * @returns {(body: object) => object}  Reloads the position the request's
  *   `positionKey` names, and returns the result.

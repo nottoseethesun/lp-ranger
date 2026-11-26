@@ -14,8 +14,9 @@
  *
  * Extracted so tests can drive the invariants without booting a full
  * bot loop (provider, signer, position detector, live poll runner).
- * `startBotLoop` composes this with `setPolling` / `setStopped`
- * callbacks to reflect its own state transitions.
+ * `startBotLoop` tells it when a poll starts and ends (`setPolling`),
+ * clears its timer before a scan (`cancel`), and halts it at a stop or a
+ * retire (`stop`).
  */
 
 "use strict";

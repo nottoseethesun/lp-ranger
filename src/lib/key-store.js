@@ -2,11 +2,17 @@
  * @file key-store.js
  * @module keyStore
  * @description
- * Encrypted private-key storage for the LP Ranger.
+ * Password-based encryption for the LP Ranger: AES-256-GCM under a key
+ * derived from a password with PBKDF2.
  *
- * Encrypts a private key with a user-supplied password using AES-256-GCM
- * and PBKDF2 key derivation.  The encrypted payload is saved as a JSON file
- * on disk so the user does not need to keep the raw private key in `.env`.
+ * The app's one user is src/lib/api-key-store.js, which encrypts the
+ * third-party api keys (Moralis, Telegram) with the helpers below
+ * (`_deriveKey`, `_encrypt`, `_decrypt`), the format version and the
+ * iteration count.  `encryptAndSave` and `loadAndDecrypt`, which write and
+ * read a whole private-key file in the format below, have no caller in the
+ * app; only test/key-store.test.js calls them.  The wallet's file,
+ * wallet.json, is encrypted and written by src/lib/wallet-manager.js, in a
+ * format of its own.
  *
  * Encryption details
  * ──────────────────
@@ -56,7 +62,11 @@ const path = require("path");
 /** Current file format version. */
 const _FORMAT_VERSION = 1;
 
-/** PBKDF2 iteration count (OWASP 2023 recommendation for SHA-512). */
+/**
+ * PBKDF2 iteration count. 600,000 is the figure OWASP's Password Storage
+ * Cheat Sheet gives for HMAC-SHA-256; for HMAC-SHA-512, the digest used
+ * here, it gives fewer, so this count is above its recommendation.
+ */
 const _PBKDF2_ITERATIONS = 600_000;
 
 /** PBKDF2 digest algorithm. */

@@ -39,6 +39,7 @@ const {
   markStopping,
   beginWalletImport,
   endWalletImport,
+  refusalToTakeKey,
 } = require("./app-phase");
 const {
   createPerPositionBotState,
@@ -69,11 +70,14 @@ const { underWay, scansEnded } = require("./under-way");
  * `createBot` is its one caller in the app, so the server and the
  * headless bot build the parts one way, the count included.
  *
+ * @param {{skipBackups?: boolean}} [opts]  `skipBackups` for a caller
+ *   that makes the settings' safety copies itself, later (the server, once
+ *   it holds its port): the price library's load then makes none.
  * @returns {{ positionMgr: object }}  The parts `botOperations` works over.
  */
-function buildBotParts() {
+function buildBotParts(opts = {}) {
   sendTx.init({ urls: config.RPC_URLS });
-  readPriceCacheSettings();
+  readPriceCacheSettings(opts.skipBackups === true);
   const positionMgr = createPositionManager({
     rebalanceLock: createRebalanceLock(),
   });
@@ -98,11 +102,13 @@ function buildBotParts() {
  *   (src/lib/wallet-manager.js): the wallet the bot manages positions of.
  *   The headless bot passes one that answers `getAddress` alone, with
  *   its signer's wallet, which is all the start-up asks of it.
+ * @param {boolean} [opts.skipBackups]  True when the caller makes the
+ *   settings' safety copies itself (`buildBotParts`).
  * @returns {object}  The bot's operations (`botOperations`).
  */
 function createBot(opts) {
   const { diskConfig, walletManager } = opts;
-  const { positionMgr } = buildBotParts();
+  const { positionMgr } = buildBotParts({ skipBackups: opts.skipBackups });
   return botOperations({ diskConfig, walletManager, positionMgr });
 }
 
@@ -140,6 +146,8 @@ function createBot(opts) {
  *   the real ones unless given.
  * @param {Function} [parts.readProvider]
  * @param {Function} [parts.loadScanCache]
+ * @param {Function} [parts.startBotLoop]  The loop Manage starts for a
+ *   position (src/bot/bot-loop.js); the real one unless given.
  * @returns {object}  The bot's operations, listed below.
  */
 function botOperations(parts) {
@@ -165,6 +173,7 @@ function botOperations(parts) {
     ethersLib: parts.ethersLib,
     readProvider: parts.readProvider,
     loadScanCache: parts.loadScanCache,
+    startBotLoop: parts.startBotLoop,
   });
   const moves = createManualMoves(shared);
   const walletScan = createWalletScan({
@@ -210,6 +219,12 @@ function botOperations(parts) {
     hasPrivateKey: () =>
       privateKeyRef.current !== null && privateKeyRef.current !== undefined,
     /**
+     * Why the bot must not take a key now (src/bot/app-phase.js), or null
+     * when it may: while a wallet import is under way, which takes its
+     * own wallet's key, an unlock and the launch's key step are refused.
+     */
+    refusalToTakeKey: () => refusalToTakeKey(),
+    /**
      * The signer every position signs through, built once from the key
      * the bot holds (a random wallet in a dry run with none): its
      * provider, signer and address. The headless bot asks for it as it
@@ -232,8 +247,12 @@ function botOperations(parts) {
       privateKeyRef.current = null;
       positionMgr.resetSharedSigner();
     },
-    /** Start the positions saved as managed (src/bot/auto-start.js). */
-    startManagedPositions: () => startManagedPositions(),
+    /**
+     * Start the positions saved as managed (src/bot/auto-start.js). The
+     * wallet import's own closing start-up passes `{ forImport: true }`:
+     * it is the one start-up that begins while an import is under way.
+     */
+    startManagedPositions: (opts) => startManagedPositions(opts),
     /**
      * Begin a wallet import (src/bot/app-phase.js): null when it began,
      * else why it is refused (a stop, a start-up or another import under

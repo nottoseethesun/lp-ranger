@@ -19,9 +19,9 @@
  * Without this, `botState._getConfig` was always undefined and the
  * gate never tripped.
  *
- * Pure: returns the bound reader function.  Tests can call this in
- * isolation to assert the wire-up exists without standing up a full
- * `startBotLoop` mock surface.
+ * Sets `botState._getConfig` and returns the same reader.  Tests can call
+ * this in isolation to assert the wire-up exists without standing up a
+ * full `startBotLoop` mock surface.
  *
  * @param {object}    botState  The per-position state object.
  * @param {object}    opts      `startBotLoop` opts.

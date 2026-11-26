@@ -21,8 +21,8 @@ let _providers = [];
 
 /**
  * One-shot fetch of the chart-providers list. Fetch or parse failures
- * leave the cache empty so the Chart Links section simply renders
- * empty — never blocks the Pool Details modal from opening.
+ * leave the cache empty, so no link is painted and each keeps the page's
+ * `href="#"` — never blocks the Pool Details modal from opening.
  * @returns {Promise<void>}
  */
 export async function loadChartProviders() {
@@ -63,8 +63,9 @@ function _buildUrl(provider, poolAddress) {
 /**
  * Populate the Chart Links section of the Pool Details modal for the
  * given pool address. Each anchor's `href` is set to the resolved URL;
- * when the pool address is missing, every link is disabled by removing
- * its `href` (so it renders as plain text rather than a broken link).
+ * when the pool address is missing, every link is disabled by setting
+ * `href="#"` and `aria-disabled="true"` (the stylesheet greys it out and
+ * blocks clicks, so it does not lead to a broken link).
  * @param {string|null|undefined} poolAddress
  */
 export function paintChartLinks(poolAddress) {

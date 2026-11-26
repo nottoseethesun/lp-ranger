@@ -41,6 +41,7 @@ let confirm;
 let pollMs;
 let scanning;
 let answer;
+let savedFetch;
 
 before(async () => {
   await learnActiveChain();
@@ -71,6 +72,15 @@ beforeEach(() => {
   );
   scanning = true;
   answer = { ok: false, scanInProgress: true, error: WORDS, positionKey: KEY };
+  /*-
+   *  TEST-ONLY global swap: the dialog asks the server through `fetch`
+   *  (`fetchWithCsrf`, src/client/web/js/dashboard-helpers.js) and waits
+   *  on `setTimeout`, and takes no seam for either: what it asks, and
+   *  when, is what these cases check. The stand-in answers `answer`; on
+   *  mock time a wait ends only when a case moves the clock. Both
+   *  restored pristine after each case (`afterEach`).
+   */
+  savedFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
     ok: false,
     status: 409,
@@ -82,6 +92,7 @@ beforeEach(() => {
 afterEach(() => {
   confirm.closeRebalanceConfirm();
   mock.timers.reset();
+  globalThis.fetch = savedFetch;
 });
 
 const modal = () => document.getElementById("rebalanceIlWarningModal");

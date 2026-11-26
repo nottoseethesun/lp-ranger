@@ -6,7 +6,7 @@
  * its own module so `server.js` stays under the 500-line cap.
  *
  * Provides:
- *   - `createPauseInfra({ thresholdMs, checkIntervalMs })` — instantiates
+ *   - `createPauseInfra({ bot, jsonResponse, readJsonBody })` — instantiates
  *     the server-side idle tracker, starts it, and returns
  *     `{ markActivity, stop, routes }`.  `routes` is a route-table
  *     fragment ready to be spread into the main `_routes` object.
@@ -21,8 +21,9 @@
  *   - `POST /api/pause-price-lookups` and `POST /api/unpause-price-lookups`
  *     are idempotent.  Both also markActivity so the idle timer stays in
  *     sync with whatever the browser is doing.
- *   - `stop()` is invoked by the graceful-shutdown handler so the
- *     periodic check timer is cleared cleanly.
+ *   - `stop()` is called by src/server.js's SIGINT/SIGTERM handler (Ctrl+C,
+ *     `npm stop`), which clears the periodic check timer.  The held stop
+ *     of `npm run gentle-stop` does not call it.
  *
  * The pause itself is the bot's, kept by its price library; the server
  * asks for it through the bot's interface (src/bot/bot-interface.js).
@@ -44,12 +45,14 @@ const DEFAULT_IDLE_CHECK_MS = 60_000;
  *   and `unpausePriceLookups`.
  * @param {number} [opts.thresholdMs]
  * @param {number} [opts.checkIntervalMs]
- * @param {Function} [opts.jsonResponse]  Defaults to a minimal local impl.
+ * @param {Function} opts.jsonResponse  `(res, status, body) => void`,
+ *   through which the two routes answer; it has no default.
  * @param {Function} [opts.readJsonBody]  Optional JSON body reader.  When
  *   provided, the pause/unpause endpoints will read `{ reason }` from the
  *   request body and forward it to the gate so the server log records
- *   why the transition happened (browser blur / no-input / focus / …).
- *   When omitted, the endpoints log `"browser request"` as the reason.
+ *   why the transition happened (no-input / focus / …).
+ *   When it is omitted, or the body names no reason, the reason passed is
+ *   `browser browser request`.
  * @returns {{ markActivity: () => void, stop: () => void, routes: object }}
  */
 function createPauseInfra({

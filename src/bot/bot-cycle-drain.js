@@ -49,8 +49,11 @@ function _notifyPos(position) {
  *     removeLiquidity and mint); return `{ rebalanced: false }`.
  *   - Drained + no rebalance in flight + `forceRebalance` → `null`
  *     so the rebalance pipeline runs on the drained NFT.
- *   - Drained + no rebalance in flight + `rebalanceFailedMidway` →
- *     `null` so the midway-recovery path runs.
+ *   - Drained + no rebalance in flight + `rebalanceFailedMidway` without
+ *     `rebalancePaused` → `null` so the midway-recovery path runs.  With
+ *     `rebalancePaused` too (the rebalance was aborted, as by a slippage
+ *     abort), no retry is coming, so the drain timer below runs as for
+ *     any drained position.
  *   - Drained + no rebalance in flight + timer not yet elapsed →
  *     arm or advance the timer, return `{ rebalanced: false }`.
  *   - Drained + no rebalance in flight + timer elapsed → fire a
@@ -63,13 +66,14 @@ function checkZeroLiquidity(deps) {
   const { position } = deps;
   const state = deps._botState || {};
   const drained = isThisPositionDrained(position);
-  /*- Re-open-failure retire is handled DIRECTLY by bot-loop.js's
-   *  `_handleError` via `setTimeout(_handleRetire, dashboardHasPolledMs)`
-   *  (src/bot/dashboard-has-polled.js).
-   *  No drain.js branch for `_retireImmediately` — an earlier defense-in-
-   *  depth flag was fired by drain.js BEFORE the setTimeout could elapse
-   *  (drain.js runs from the scan-completion pollCycle, within ~2 s of
-   *  the failure), preempting the dashboard-poll window.  Removed.  */
+  /*-
+   *  A failed re-open's retire is bot-loop.js's alone: `_handleError`
+   *  sets it on a timer, `setTimeout(_handleRetire, dashboardHasPolledMs)`
+   *  (src/bot/dashboard-has-polled.js), so the dashboard sees the failure
+   *  first. This file has no branch for it: it runs from the poll that
+   *  follows a scan, within about 2 s of the failure, so a retire from
+   *  here would come before the dashboard could see it.
+   */
   /*-
    *  `rebalanceFailedMidway` flags a "needs mint retry from wallet"
    *  state.  When the bot is also `rebalancePaused` (slippage abort —
@@ -158,13 +162,17 @@ function checkRetireRequest(deps) {
 }
 
 /**
- * True when the position is in the "aborted-and-drained" terminal
- * state: a prior rebalance failed (e.g., slippage), leaving wallet
- * tokens + 0 NFT liquidity, and `rebalancePaused` is set so the gate
- * in `_checkRebalanceGates` will block any retry until the user
- * adjusts Slippage or clicks Manage.  Used by `pollCycle` to skip
- * pool-state / pnl / Moralis work for the duration of this state —
- * none of those resolution paths require fresh data.
+ * True when the position is in the "aborted-and-drained" state: it
+ * holds no liquidity, `rebalancePaused` is set, and no Rebalance Now is
+ * asked for (`forceRebalance`).  A prior rebalance failed (e.g.,
+ * slippage), leaving wallet tokens + 0 NFT liquidity, and the paused gate
+ * (`checkStateGates`, src/bot/bot-cycle-gates.js) blocks every automatic
+ * retry.  The state ends when the user saves either Slippage setting,
+ * clicks Rebalance Now or retries a re-open with Manage, each of which
+ * clears `rebalancePaused`; or when the drain timer retires the position.
+ * Used by `pollCycle` to skip pool-state / pnl / Moralis work for the
+ * duration of this state — none of those resolution paths require fresh
+ * data.
  *
  * @param {object} deps  pollCycle deps (uses `position`, `_botState`).
  * @returns {boolean}

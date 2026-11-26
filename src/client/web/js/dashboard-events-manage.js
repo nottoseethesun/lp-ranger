@@ -125,7 +125,7 @@ export function _bindCopyBtn(id) {
 
 // ── Pool Details modal ──────────────────────────────
 
-/** @type {import('./dashboard-positions.js').PosStore | null} */
+/** @type {typeof import('./dashboard-positions-store.js').posStore | null} */
 let _posStoreRef = null;
 
 /**
@@ -267,37 +267,50 @@ function _formatPositionSpec(active) {
  * Restores the button text and shows an actionable alert that names the
  * specific position and tells the user how to retry.
  *
- * When the server reason indicates an RPC-side failure, the retry hint
- * also tells the user the bot has already engaged sticky failover — so
- * the next click hits the backup RPC immediately instead of repeating
- * the same dead-RPC walk.  See `src/bot/bot-loop-detect.js`.
+ * When the reason contains "No V3 NFT position found" or "RPC failure",
+ * the retry hint adds that LP Ranger moves to another rpc endpoint when
+ * one keeps failing.
  *
  * A refusal under the one-position-per-pool rule gets no retry hint,
  * since a second click would be refused the same way: its words say
  * which position holds the pool and what to do
- * (src/client/web/js/dashboard-manage-refusal.js).
+ * (src/client/web/js/dashboard-manage-refusal.js). Nor does any other
+ * refusal (409): its words, the bot's, already say when to try again,
+ * or that nothing starts while LP Ranger stops.
  *
  * Exported so a test can drive it with an answer of its own.
  *
  * @param {string} verb    Human verb for the message ("manage"/"unmanage").
  * @param {object|string} payload  Server error body `{ error, message }`
- *   (preferred) OR a bare reason string (legacy callers / network
- *   errors that never reached the JSON parse).
+ *   (preferred) OR a bare reason string (an http status the body did
+ *   not explain, a network error that never reached the json parse, or
+ *   the re-open check's own `error`, src/client/web/js/dashboard-reopen-flow.js).
  * @param {object} [active] Active position (for the spec line).
- * @param {Function} [tell]  Shows the message; the browser's `alert`
- *   unless a test passes its own.
+ * @param {object} [opts]
+ * @param {number} [opts.status]  The answer's http status; none for a
+ *   network error or the re-open check.
+ * @param {Function} [opts.tell]  Shows the message; the browser's
+ *   `alert` unless a test passes its own.
  */
-export function _handleManageFailure(verb, payload, active, tell = alert) {
+export function _handleManageFailure(
+  verb,
+  payload,
+  active,
+  { status, tell = alert } = {},
+) {
   /*- Wrap the whole body in try/finally so the in-flight clear + paint
    *  ALWAYS fire \u2014 audit found that a misbehaving modal helper could
    *  leave the button stuck disabled if it threw before reaching the
    *  restore.  All other writes go through paintManageUI() instead of
    *  touching the DOM directly, so the single-owner invariant holds. */
   try {
-    /*- Normalize the payload: accept legacy bare strings (network
-     *  errors, HTTP-status-only fallbacks) and the new structured body
-     *  the server sends from the bot's Manage (`manage` in
-     *  src/bot/position-lifecycle.js) (`{ error, message, tokenId }`). */
+    /*-
+     *  Normalize the payload: accept a bare string (a network error, an
+     *  http-status-only fallback, the re-open check's `error`) and the
+     *  structured body the server
+     *  sends from the bot's Manage (`manage` in
+     *  src/bot/position-lifecycle.js), `{ error, message, tokenId }`.
+     */
     const isObj = payload && typeof payload === "object";
     const code = isObj ? payload.error : payload;
     const message = isObj ? payload.message : payload;
@@ -321,15 +334,16 @@ export function _handleManageFailure(verb, payload, active, tell = alert) {
       return;
     }
     const buttonLabel = verb === "manage" ? "Manage" : "Stop Managing";
-    /*- The bot-loop-detect retry chain engages sticky RPC failover on
-     *  every miss, so by the time the server returns "No V3 NFT position
-     *  found" the next attempt is already routed through the backup. */
+    /*- A reason that names a missing V3 NFT position or an rpc failure
+     *  gets a hint that LP Ranger moves to another endpoint when one keeps
+     *  failing, so a second try may be answered elsewhere. */
     const looksLikeRpcFailure = /No V3 NFT position found|RPC failure/i.test(
       code || "",
     );
-    const retryHint = looksLikeRpcFailure
-      ? `\n\nClick "${buttonLabel}" again to retry \u2014 the bot has already failed over to the backup RPC.`
-      : `\n\nClick "${buttonLabel}" again to retry.`;
+    let retryHint = `\n\nClick "${buttonLabel}" again to retry.`;
+    if (status === 409) retryHint = "";
+    else if (looksLikeRpcFailure)
+      retryHint = `\n\nClick "${buttonLabel}" again to retry \u2014 LP Ranger moves to another RPC endpoint when one keeps failing.`;
     /*- alert() is intentional here — the manage flow is a deliberate
      *  user action and silent failure is what got us into the stuck-UI
      *  state this branch is fixing. */
@@ -392,6 +406,7 @@ async function _sendUnmanage(active) {
       "unmanage",
       body.error ? body : `HTTP ${res.status}`,
       active,
+      { status: res.status },
     );
     return false;
   }
@@ -462,6 +477,7 @@ async function _sendManage(active) {
       "manage",
       body.error ? body : `HTTP ${res.status}`,
       active,
+      { status: res.status },
     );
     return false;
   }
@@ -530,16 +546,19 @@ export async function _toggleManagePosition() {
   if (!active?.tokenId || active.positionType !== "nft") return;
   const isManaged = isPositionManaged(active.tokenId);
   const key = manageKey(active);
-  /*- Closed-position re-open path: any drained NFT (liquidity=0)
-   *  routes through `_runClosedPositionFlow` regardless of whether
-   *  the SERVER currently has it in the managed set (it may, if a
-   *  prior re-open started the bot loop but the rebalance aborted).
-   *  The re-open flow always sends `forceRebalance: true`, and
-   *  the bot's Manage honors that on already-running positions via
-   *  `_stampReopenFlagsOnLive`, so this is the correct path for
-   *  both "fresh auto-retired" and "running-but-aborted" closed
-   *  positions.  Without this branch the user would fall through
-   *  to `_sendManage`, which silently no-ops on already-running. */
+  /*-
+   *  The re-open of a closed position: any drained NFT (liquidity=0)
+   *  goes through `_runClosedPositionFlow`, whether or not the server
+   *  has it in the managed set (it may, if a prior re-open started the
+   *  bot loop but the rebalance aborted). The re-open flow always sends
+   *  `forceRebalance: true`, and the bot's Manage honors that on a
+   *  running position (`_stampReopenFlagsOnLive`), so this path serves
+   *  both an auto-retired closed position and a running one whose
+   *  re-open aborted. Without it, a running one would get Stop Managing
+   *  (`_sendUnmanage`), and an auto-retired one a plain Manage
+   *  (`_sendManage`), which sends no `forceRebalance` and so starts a
+   *  loop with no re-open rebalance.
+   */
   if (isPositionClosed(active)) {
     await _runClosedPositionFlow(active);
     return;
@@ -584,7 +603,8 @@ export async function _toggleManagePosition() {
  * all previous in-line state checks (closed gate, managed gate, in-
  * flight gate, rebalance-in-flight gate) are folded into the pure
  * compute function there.  Arguments are ignored; paintManageUI()
- * reads its own inputs from posStore + getLastStatus + DOM.
+ * reads its own inputs from posStore + getLastStatus + isSyncComplete
+ * + the wallet.
  */
 export function updateManageBadge() {
   paintManageUI();

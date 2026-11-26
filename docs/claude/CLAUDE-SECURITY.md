@@ -14,7 +14,7 @@ The security audit has three independent layers:
 | ----- | ------- | --------------- |
 | **Dependency CVEs** | `npm run audit:deps` | Known vulnerabilities in npm packages (high severity) |
 | **Security lint** | `npm run audit:security` | Unsafe code patterns via eslint-plugin-security |
-| **Secret scan** | `npm run audit:secrets` | Hardcoded private keys, mnemonics, API keys via secretlint |
+| **Secret scan** | `npm run audit:secrets` | Hardcoded service tokens (AWS, GCP, GitHub, Slack and others) and PEM-encoded private keys, via secretlint; no rule for a wallet's hex key or a seed phrase |
 
 All three run in CI (`.github/workflows/security-audit.yml`) as
 separate jobs that can be individually required in branch protection.
@@ -31,19 +31,24 @@ private key means total loss of funds. Keys flow through:
 
 - `PRIVATE_KEY` env var (plaintext — simplest, least secure)
 - `app-config/user-configurable/wallet.json` (AES-256-GCM encrypted on disk, gitignored — imported via dashboard or `node scripts/import-wallet.js`)
-- In-memory only during signing (never written to disk in plaintext)
+- In memory once unlocked, as the key and in the signer built from it, until the process exits or a wallet import replaces the wallet (never written to disk in plaintext)
 
-**secretlint** catches hardcoded keys before they reach the repo.
-The recommended preset includes patterns for generic private keys,
-API keys, and credentials. **eslint-plugin-no-secrets** adds
-entropy-based detection within JS source files.
+**secretlint** catches hardcoded credentials of the kinds its
+recommended preset knows: service tokens, and private keys in PEM form
+(`-----BEGIN … PRIVATE KEY-----`). No rule in the preset matches a
+wallet's 64-hex-digit key or a BIP-39 seed phrase.
+**eslint-plugin-no-secrets** adds entropy-based detection within JS
+source files, but at `tolerance: 4.5` bits a character it cannot flag a
+hexadecimal string, which holds at most four.
 
 ### Unsafe entropy
 
 `Math.random()` is not cryptographically secure. If used for nonce
 generation, key derivation, or any security-sensitive randomness,
-an attacker could predict outputs. The security lint rule
-`detect-pseudoRandomBytes` catches this.
+an attacker could predict outputs. The main lint bans it outside the
+tests (a `no-restricted-syntax` rule in `eslint.config.js`); the
+security lint's `detect-pseudoRandomBytes` catches the deprecated
+`crypto.pseudoRandomBytes()`.
 
 ### Injection (eval, child\_process, dynamic require)
 
@@ -53,7 +58,7 @@ loading arbitrary modules. The security lint catches all three:
 
 - `detect-eval-with-expression`
 - `detect-child-process`
-- `detect-non-literal-require` (disabled — see Triage section)
+- `detect-non-literal-require`
 
 ### Prototype pollution
 
@@ -62,14 +67,16 @@ Bracket notation (`obj[userInput]`) can overwrite `__proto__`,
 The `detect-object-injection` rule catches this but is disabled
 because bracket access on config objects is intentional and pervasive
 in this codebase. Config keys come from the server's own
-`POSITION_KEYS` / `GLOBAL_KEYS` arrays, not user input.
+`SETTING_POSITION_KEYS` / `GLOBAL_KEYS` arrays, not user input.
 
 ### Path traversal
 
 `fs.readFileSync(userInput)` allows reading arbitrary files. The
 `detect-non-literal-fs-filename` rule catches this but is disabled
-because all fs paths in this codebase come from
-`path.join(process.cwd(), CONSTANT)` — no user-controlled paths.
+because no file path in this codebase comes from a request: each is a
+constant under the working directory or the app's folder, a path the
+operator sets in `.env` or `logging.json`, or a test's temporary folder
+(docs/security.md § Filesystem Safety).
 
 ### Dependency CVEs (supply chain)
 
@@ -199,7 +206,7 @@ Two `eslint-plugin-security` rules are disabled in
 | Rule | Why disabled |
 | ---- | ------------ |
 | `detect-non-literal-fs-filename` | ~90 false positives — every `fs` call uses computed paths from `__dirname` / constants, never user input. The rule can't distinguish safe constant paths from user-controlled ones. |
-| `detect-object-injection` | Bracket access on config objects is intentional; keys come from server-owned `GLOBAL_KEYS` / `POSITION_KEYS` arrays. |
+| `detect-object-injection` | Bracket access on config objects is intentional; keys come from server-owned `GLOBAL_KEYS` / `SETTING_POSITION_KEYS` arrays. |
 
 ### Per-line exceptions for custom EVM rules
 
@@ -271,10 +278,11 @@ is left holding.
 
 ### Slippage guards
 
-Swap slippage is applied to a `staticCall` quote, not spot price.
-When price impact exceeds the user's slippage setting, the swap
-aborts and the bot pauses — preventing large losses from low
-liquidity pools.
+Swap slippage is applied to a quote, not spot price: on the V3
+router, a `staticCall` quote; on the aggregator, the quote it gives
+for the slippage sent with the request. When price impact exceeds the
+user's slippage setting, the swap aborts and the bot pauses —
+preventing large losses from low liquidity pools.
 
 ### Key storage
 
@@ -283,22 +291,26 @@ imported) wallet with AES-256-GCM and PBKDF2-SHA512 key derivation
 at **600,000 iterations** (OWASP 2023 guidance for SHA-512).
 `src/lib/api-key-store.js` (third-party API keys) reuses
 `src/lib/key-store.js`'s encryption helpers at the same 600,000
-iterations. Plaintext keys exist only in memory during signing. The
+iterations. Once unlocked, the plaintext key stays in memory until the
+process exits or a wallet import replaces the wallet
+(docs/security.md § In-Memory Handling). The
 encrypted `app-config/user-configurable/wallet.json` and
 `app-config/user-configurable/api-keys.json` files are both gitignored.
 
 The bookkeeping report (`util/bookkeeping/moralis-key.js`) uses the
 app's own Moralis key, through the same store (`src/lib/api-key-store.js`),
-so there is one key in one place. It never opens the wallet file; it
-asks for the wallet's password only because the app encrypts every api
+so there is one key in one place. It never unlocks the wallet: the
+wallet file is read, still encrypted, as the report loads
+`src/lib/config.js`, and nothing in the report uses it. It asks for the
+wallet's password only because the app encrypts every api
 key with it, through a terminal prompt that shows nothing of what is
 typed (`src/lib/ask-password.js`, shared with `--headless`, src/bot.js and
 scripts/import-wallet.js), never as an argument, which shell history and
 `ps` would keep; the password is kept nowhere, and the plain key only in
 memory for the run. With no key saved, it asks for one and saves it there,
 encrypted with the wallet's password typed twice. That password is not
-checked against the wallet's, since `src/lib/wallet-manager.js` reads the
-wallet file as it loads, and the report never loads it. A test
+checked against the wallet's, since a check would mean decrypting the
+wallet's private key with it, which the report never does. A test
 (`util/test/bookkeeping-moralis-key.test.js`) asks `git check-ignore`
 whether `app-config/user-configurable/api-keys.json` is ignored, so a
 change to `.gitignore` that would let it reach the remote fails the
@@ -311,7 +323,8 @@ import (via the dashboard UI or `node scripts/import-wallet.js`) —
 decrypts both `wallet.json` and every service entry in
 `api-keys.json`. One password, every secret. Clearing the wallet (the
 dashboard's Clear Wallet, or `npm run reset-wallet`) deletes only
-`wallet.json`: the api keys stay, under the old password, so a wallet
+`wallet.json` and its save's temp copy, `wallet.json.tmp`: the api keys
+stay, under the old password, so a wallet
 imported again under a new password cannot open them until each is
 saved again. The Clear Wallet dialog warns of this.
 
@@ -322,7 +335,11 @@ Three modes, in order of security recommendation:
 2. **`--headless` terminal prompt** — `node src/server.js --headless`
    prompts on stdin. Same security as the dashboard (memory only),
    no browser needed. If no password is provided, the server exits
-   with an error rather than falling through to dashboard mode.
+   with an error rather than falling through to dashboard mode. With
+   no terminal to type into, the prompt closes at once and says so,
+   and the server exits with that error. So does the headless bot, but
+   not in a dry run (`DRY_RUN=true`), which goes on with no key and
+   sends nothing.
 3. **`WALLET_PASSWORD` in `.env`** — fully unattended. Password
    lives on disk as plaintext. Least recommended.
 
@@ -335,14 +352,18 @@ process exits.
 (invoked via `npm run reset-wallet`) performs two idempotent
 actions:
 
-1. Delete `app-config/user-configurable/wallet.json`.
+1. Delete `app-config/user-configurable/wallet.json`, and
+   `wallet.json.tmp` beside it, the copy a save writes first, from which
+   the next start would otherwise put the wallet back.
 2. Remove every line matching `^WALLET_PASSWORD=` from `.env`
    by reading the file, filtering out the matching lines, writing
    to a `.tmp` sibling, and atomically renaming. File permissions
    are preserved via `fs.chmodSync` before the rename.
 
 Both steps tolerate missing targets. `npm run clean` and
-`npm run dev-clean` invoke `reset-wallet` as their first step.
+`npm run dev-clean` run `reset-wallet` once they have force-stopped a
+running server (`npm run stop`) and seen it exit, before they delete
+anything else.
 
 ### Config validation
 

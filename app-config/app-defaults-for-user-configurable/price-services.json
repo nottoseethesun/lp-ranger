@@ -1,5 +1,5 @@
 {
-  "_comment": "Where the price services the app asks for token prices live: each one's api base url, with its version where the url carries one, and no trailing slash. Every request to a service is built on its baseUrl, so a service that moves its api is changed here only. Which of a chain's tokens a service can price is set per chain in chains.json → priceServices. Read by src/lib/price-service-urls.js, which stops startup on a value that is not an https url, naming it.",
+  "_comment": "Where the price services the app asks for token prices live: each one's api base url, with its version where the url carries one, and no trailing slash. Every request to a service is built on its baseUrl, so a service that moves its api is changed here only. Each chain's id at each service, or \"\" where a service does not cover the chain, is set per chain in chains.json → priceServices. Read by src/lib/price-service-urls.js, which stops startup on a value that is not an https url, naming it.",
   "dexScreener": {
     "baseUrl": "https://api.dexscreener.com"
   },

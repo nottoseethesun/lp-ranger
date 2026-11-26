@@ -7,9 +7,10 @@
  * `npm run clean:log` (`--log`), which empties the diagnostic log alone.
  *
  * The log files are wherever logging.json puts them, an operator's
- * override included: the diagnostic log, the error log, and the error log
- * `npm run check` keeps beside it. Each is deleted or emptied only when
- * it lies inside the install folder.
+ * override included: the diagnostic log and the error log. The rebalance
+ * log is wherever LOG_FILE or app-runtime.json puts it
+ * (src/lib/rebalance-log-setting.js). Each is deleted or emptied only
+ * when it lies inside the install folder.
  *
  * **`clean` must leave nothing behind.** It therefore names no cache
  * files of its own: `clear-blockchain-scan-cache.js` owns the
@@ -49,7 +50,8 @@ const {
   human,
 } = require("./clear-blockchain-scan-cache");
 const { loadMergedDefaults } = require("../src/lib/load-merged-defaults");
-const { checkErrorLogPath } = require("./_check-error-log");
+const { loadEnvFile } = require("../src/lib/env-settings");
+const { rebalanceLogSetting } = require("../src/lib/rebalance-log-setting");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -66,7 +68,6 @@ const STATE_FILES = [
   "app-config/user-configurable/bot-config.json",
   "app-config/user-configurable/bot-config.backup.json",
   "app-config/user-configurable/api-keys.json",
-  "app-data/rebalance_log.json",
   "app-data/position-records.json",
   "app-data/position-records.backup.json",
 ];
@@ -95,17 +96,14 @@ function _isFilePath(p) {
 
 /**
  * The log files `npm run clean` removes, from logging.json's settings:
- * the diagnostic log at `path`, the error log at `errorLogPath`, and the
- * error log `npm run check` keeps beside it. A path left empty names no
- * file; an empty `path` is how log-to-file is switched off.
+ * the diagnostic log at `path`, and the error log at `errorLogPath`. A
+ * path left empty names no file; an empty `path` is how log-to-file is
+ * switched off.
  * @param {{path?: *, errorLogPath?: *}} logging
  * @returns {string[]}
  */
 function logFilesFrom(logging) {
-  const files = [logging.path, logging.errorLogPath].filter(_isFilePath);
-  if (_isFilePath(logging.errorLogPath))
-    files.push(checkErrorLogPath(logging.errorLogPath));
-  return files;
+  return [logging.path, logging.errorLogPath].filter(_isFilePath);
 }
 
 const LOG_FILES = logFilesFrom(_LOGGING);
@@ -313,6 +311,14 @@ function main() {
 
   const removed = [];
   for (const f of STATE_FILES) if (rmFile(f)) removed.push(f);
+  /*-
+   *  The rebalance log, wherever LOG_FILE or app-runtime.json puts it:
+   *  .env is read first, since LOG_FILE may be set there. Removed in a
+   *  dev-clean too, and only inside the install folder, as a log file is.
+   */
+  loadEnvFile();
+  const rebalanceLog = rmLogFiles([rebalanceLogSetting()]);
+  removed.push(...rebalanceLog.removed);
   const logs = dev ? { removed: [], outside: [] } : rmLogFiles(LOG_FILES);
   removed.push(...logs.removed);
   for (const f of BUILD_ARTIFACTS) if (rmFile(f)) removed.push(f);
@@ -326,7 +332,7 @@ function main() {
       `director(ies), plus ${cache.removed} cache file(s) (${human(cache.bytes)}).`,
   );
   for (const r of removed) console.log("    " + r);
-  reportOutside(logs.outside);
+  reportOutside([...rebalanceLog.outside, ...logs.outside]);
   if (cache.kept.length > 0) {
     console.log(
       "[clean] Preserved for fast dev restart: " + cache.kept.join(", "),

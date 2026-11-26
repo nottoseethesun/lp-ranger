@@ -113,10 +113,13 @@ describe("the words for a refusal under the pool rule", () => {
 });
 
 describe("a refused Manage", () => {
-  /** What the Manage alert says for `answer`. */
-  function told(answer) {
+  /** What the Manage alert says for `answer`, given with http `status`. */
+  function told(answer, status) {
     const said = [];
-    manage._handleManageFailure("manage", answer, A, (text) => said.push(text));
+    manage._handleManageFailure("manage", answer, A, {
+      status,
+      tell: (text) => said.push(text),
+    });
     return said;
   }
 
@@ -135,9 +138,29 @@ describe("a refused Manage", () => {
   });
 
   it("still offers a retry for a failure a retry can mend", () => {
-    const [text] = told({ ok: false, error: "Failed to start position: x" });
+    const [text] = told(
+      { ok: false, error: "Failed to start position: x" },
+      500,
+    );
     assert.match(text, /Failed to start position: x/);
     assert.match(text, /Click "Manage" again to retry/);
+  });
+
+  it("adds no retry of its own to a refusal that says when to try", () => {
+    const words =
+      "LP Ranger is importing a wallet. " +
+      "Try again once it has started that wallet's positions.";
+    const [text] = told({ ok: false, error: words }, 409);
+    assert.ok(text.endsWith(words), text);
+    assert.doesNotMatch(text, /again to retry/);
+  });
+
+  it("offers no retry while LP Ranger stops", () => {
+    const [text] = told(
+      { ok: false, error: "LP Ranger is stopping, so nothing starts." },
+      409,
+    );
+    assert.doesNotMatch(text, /again to retry/);
   });
 });
 

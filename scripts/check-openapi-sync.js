@@ -43,7 +43,8 @@ const SPEC_PATH = path.join(ROOT, "docs", "openapi.json");
  *  a closed position's history, and the csrf token, which the csrf check
  *  answers before the route table (src/server/server-csrf.js). An
  *  explicit list, one line per route, so another such route has to be
- *  added deliberately instead of by widening a regex.
+ *  added deliberately instead of by widening a regex. Each must be in
+ *  the spec, as every scanned route must.
  */
 const DYNAMIC_ROUTES = [
   "GET /api/position/{tokenId}/history",
@@ -96,9 +97,9 @@ function specOperations(spec) {
 function _routeProblems(spec, problems) {
   const routes = registeredRoutes();
   const ops = specOperations(spec);
-  const documented = new Set([...ops, ...DYNAMIC_ROUTES].map(normalize));
+  const documented = new Set([...ops].map(normalize));
   const live = new Set([...routes, ...DYNAMIC_ROUTES].map(normalize));
-  for (const r of [...routes].sort())
+  for (const r of [...routes, ...DYNAMIC_ROUTES].sort())
     if (!documented.has(normalize(r)))
       problems.push(`route not documented in openapi.json: ${r}`);
   for (const s of [...ops].sort())

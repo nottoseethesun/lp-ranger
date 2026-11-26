@@ -69,6 +69,9 @@ function put(dir, name, data) {
   fs.writeFileSync(path.join(dir, name), JSON.stringify(data));
 }
 
+/** The rebalance log in a folder `appData` made. */
+const logIn = (dir) => path.join(dir, "rebalance_log.json");
+
 /**
  * A stand-in `app-data/` holding two rebalances in one pool's chain, a
  * logged rebalance the event cache lacks, an entry the test suite would
@@ -215,7 +218,7 @@ test("cachedRebalances finds nothing without a scan cache", () => {
 });
 
 test("loggedRebalances keeps the wallet's entries and skips the test suite's", () => {
-  const logged = loggedRebalances(appData(), WHO);
+  const logged = loggedRebalances(logIn(appData()), WHO);
   assert.deepEqual(
     logged.map((e) => e.newTokenId),
     ["12", "21"],
@@ -226,7 +229,7 @@ test("joinRebalances adds the log's transactions and its rebalances the cache la
   const dir = appData();
   const moves = joinRebalances(
     cachedRebalances(dir, WHO),
-    loggedRebalances(dir, WHO),
+    loggedRebalances(logIn(dir), WHO),
   );
   const byNew = new Map(moves.map((m) => [m.nfts[1], m]));
   assert.deepEqual(byNew.get("11").listed, []);
@@ -260,22 +263,29 @@ test("positionCoins gives each NFT's coins and each coin's symbol", () => {
 });
 
 test("loggedDecimals gives each logged coin's decimals", () => {
-  const decimals = loggedDecimals(loggedRebalances(appData(), WHO));
+  const decimals = loggedDecimals(loggedRebalances(logIn(appData()), WHO));
   assert.equal(decimals.get(COIN0.toLowerCase()), 18);
   assert.equal(decimals.get(COIN1.toLowerCase()), 8);
 });
 
 test("recordsNear keeps the moves near the range, and those with no time", () => {
   const dir = appData();
-  const near = recordsNear(dir, WHO, { startMs: T, endMs: T + 1000 });
+  const near = recordsNear(
+    dir,
+    WHO,
+    { startMs: T, endMs: T + 1000 },
+    logIn(dir),
+  );
   assert.deepEqual(
     near.moves.map((m) => m.lastHash),
     [hash(5), hash(1), hash(4), hash(2), hash(3)],
   );
-  const far = recordsNear(dir, WHO, {
-    startMs: T + 2 * RECORD_MARGIN_MS,
-    endMs: T + 3 * RECORD_MARGIN_MS,
-  });
+  const far = recordsNear(
+    dir,
+    WHO,
+    { startMs: T + 2 * RECORD_MARGIN_MS, endMs: T + 3 * RECORD_MARGIN_MS },
+    logIn(dir),
+  );
   assert.deepEqual(
     far.moves.map((m) => m.lastHash),
     [hash(5)],

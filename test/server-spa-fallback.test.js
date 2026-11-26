@@ -11,6 +11,27 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("assert");
 const http = require("http");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+
+/*-
+ *  Refused outside the test runner, before the server loads: loading
+ *  src/server.js rewrites the backups of bot-config.json and the records,
+ *  in the operator's own files unless `node --test` gives this process
+ *  files of its own.
+ */
+if (process.env.NODE_TEST_CONTEXT === undefined)
+  throw new Error(
+    "Run test/server-spa-fallback.test.js with node --test: it would write the operator's settings",
+  );
+
+/*-
+ *  The server's settings check, run as it loads, reads an empty folder
+ *  for the operator's copies, named before the server loads, so a file
+ *  of the operator's cannot stop this run (test/server.test.js does the
+ *  same).
+ */
+process.env.LP_RANGER_USER_CONFIG_DIR = makeTestTempFolder("spa-overrides");
+
 const { start, stop } = require("../src/server");
 
 const PORT = 54370;

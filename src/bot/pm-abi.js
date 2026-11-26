@@ -2,10 +2,12 @@
  * @file pm-abi.js
  * @module pmAbi
  * @description
- * Single source of truth for the NonfungiblePositionManager ABI.  Loaded from
- * the `@uniswap/v3-periphery` npm package so every module shares the same
- * canonical definitions for positions(), Transfer, Collect,
- * IncreaseLiquidity, etc.
+ * The NonfungiblePositionManager ABI, loaded from the
+ * `@uniswap/v3-periphery` npm package, which the modules that read the
+ * position manager share for positions(), Transfer, Collect,
+ * IncreaseLiquidity, etc.  `resolvePoolAddressForToken`
+ * (src/bot/pool-creation-block.js) declares its own `positions()` fragment
+ * instead.
  */
 
 "use strict";

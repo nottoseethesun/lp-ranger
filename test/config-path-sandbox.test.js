@@ -23,7 +23,7 @@
 
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
@@ -38,6 +38,7 @@ const {
 const {
   makeTestTempFolder,
   removeLeftoverTestTempFolders,
+  describeTestTempFolders,
 } = require("../src/lib/test-temp-folders");
 
 const LIVE = path.join(
@@ -48,9 +49,14 @@ const LIVE = path.join(
 );
 
 describe("undirected config writes never reach the operator's file", () => {
-  it("is running where the redirect applies", () => {
-    /*- Guards the guard. Without this, every assertion below would pass
-     *  vacuously if Node stopped setting the variable. */
+  /*-
+   *  Asked before any case runs, since a failing hook runs none of them.
+   *  Without the runner's marker (the file run as a plain script, say),
+   *  the saves below would write the operator's bot-config.json, and
+   *  every assertion would pass vacuously if Node stopped setting the
+   *  variable.
+   */
+  before(() => {
     assert.notEqual(
       process.env.NODE_TEST_CONTEXT,
       undefined,
@@ -184,6 +190,25 @@ describe("a test process's temp folders", () => {
       assert.equal(fs.existsSync(dir), false, `${dir} was left behind`);
     assert.equal(/^ADDED=(\d+)$/m.exec(stdout)[1], "0", "no hook per folder");
     assert.doesNotMatch(stderr, /MaxListenersExceededWarning/);
+  });
+});
+
+describe("the test folders, as a failed copy of the shipped settings reports them", () => {
+  it("name each folder's process and whether it still runs", () => {
+    const parent = makeTestTempFolder("describe");
+    const ended = spawnSync(process.execPath, ["-e", ""]).pid;
+    const stopped = `lp-ranger-test-config-${ended}-abc123`;
+    const running = `lp-ranger-test-shipped-${process.pid}-def456`;
+    for (const name of [stopped, running, "check-backup-jkl012"])
+      fs.mkdirSync(path.join(parent, name));
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    assert.deepEqual(
+      describeTestTempFolders(parent).sort(byName),
+      [
+        { name: stopped, pid: ended, running: false },
+        { name: running, pid: process.pid, running: true },
+      ].sort(byName),
+    );
   });
 });
 

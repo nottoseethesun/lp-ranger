@@ -122,8 +122,8 @@ export function formatCompoundEntry(st, ctx, prevSeen) {
 
 /**
  * Format a single historical compound event for the cold-load history-populate pass.
- * Mirrors the shape of `_populateHistoryOnce`'s per-event loop in
- * `dashboard-data.js`.
+ * Called once per event by `populateCompoundHistoryOnce` in
+ * `dashboard-populate-history.js`.
  *
  * @param {object} ev              Compound event from `data.compoundHistory`.
  * @param {string} ctx             Position-context suffix.

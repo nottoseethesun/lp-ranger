@@ -11,14 +11,15 @@
  *   (`src/bot/price-source-cascade.js`) that accepts the first source
  *   returning any positive number, with no plausibility check. One bad
  *   response therefore lands in whichever stored dollar figure was being
- *   computed — the lifetime deposit, or the entry value the Impermanent
- *   Loss Guard measures against — and the lifetime scan deliberately
+ *   computed — the lifetime deposit, or the HODL baseline's entry value,
+ *   the NFT's value at its mint, which the open period's P&L starts
+ *   from — and the lifetime scan deliberately
  *   refuses to rebuild a figure that is already saved, so the bad one is
  *   permanent. (Fees Compounded is kept as coins and priced at every
  *   poll, so a bad price there passes with the next good one.) Reload
  *   Current Position fixes it, but wipes every on-chain-derived figure
- *   and re-scans the pool's whole 5-year Transfer history, which can
- *   take hours.
+ *   and re-scans the pool's whole Transfer history, back
+ *   `historyLookbackYears` (five years as shipped), which can take hours.
  *
  *   Re-scan Prices fixes only the prices. It asks the position's next
  *   lifetime scan to rebuild every stored dollar figure at freshly
@@ -44,8 +45,8 @@
  *     period keeps its dollars but not the token amounts behind them, so
  *     re-pricing one means reading its NFT's history again — which is
  *     why it is opt-in and why it costs minutes on a long chain. It
- *     still skips the pool's five-year Transfer scan, which is what
- *     separates it from Reload.
+ *     still skips the pool's Transfer scan, which is what separates it
+ *     from Reload.
  *
  * Cost: one batched read of the chain's three event histories
  * (`src/bot/nft-events-batch.js`), from each NFT's mint
@@ -92,7 +93,7 @@ const {
  *   re-reads every NFT in the chain.
  * @param {number} [windowDays]  Reach back only this many days when
  *   rebuilding that table; 0 means the whole chain. Ignored without
- *   `includeEpochs`, because nothing else this route does is
+ *   `includeEpochs`, because nothing else Re-scan Prices does is
  *   date-scoped — the rest are chain-wide totals that need every NFT.
  */
 function requestPriceRevalue(state, includeEpochs = false, windowDays = 0) {
@@ -156,9 +157,11 @@ function createRescanPrices(deps) {
           "Re-scan Prices only applies to a managed position. Click Manage first, then try again.",
       };
     }
-    /*- Feature-correct copy: the shared helper defaults to Reload's
-     *  wording ("Reload Current Position", "up to four hours"), which
-     *  is the wrong feature and the wrong duration for this route. */
+    /*-
+     *  Re-scan Prices' own words: the shared helper defaults to Reload's
+     *  ("Reload Current Position", "up to four hours"), the wrong
+     *  feature and the wrong duration here.
+     */
     const guard = _checkInProgress(r.state, {
       action: "Re-scan Prices",
       scanExtra: "",

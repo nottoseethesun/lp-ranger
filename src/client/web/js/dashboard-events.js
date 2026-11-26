@@ -30,6 +30,7 @@ import {
   openWalletModal,
   submitUnlock,
   dismissToViewOnly,
+  showUnlockDialog,
 } from "./dashboard-wallet.js";
 import {
   validateSeed,
@@ -335,10 +336,7 @@ export function bindAllEvents() {
     .querySelectorAll('form[class~="9mm-pos-mgr-noop-form"]')
     .forEach((f) => f.addEventListener("submit", (e) => e.preventDefault()));
   _click("viewOnlyBtn", dismissToViewOnly);
-  _click("unlockWalletBtn", () => {
-    const m = g("walletUnlockModal");
-    if (m) m.classList.remove("hidden");
-  });
+  _click("unlockWalletBtn", showUnlockDialog);
 
   /* ── Eye toggle (password fields) ─────── */
   document.querySelectorAll("[data-eye]").forEach((b) =>

@@ -33,7 +33,9 @@ const { assertTimerSec } = require("./timer-bounds");
  * Check one setting from the `shutdown` group as a timer delay.
  *
  * The value stands as its own default, as the aggregator's quote limit
- * does, so the ceiling that applies is the 48-hour one.
+ * does, so 1000 times it never binds, and the ceiling that applies is the
+ * range the setting declares for itself in setting-bounds.json →
+ * `timers.settings`.
  *
  * @param {object} group  The merged `shutdown` group.
  * @param {string} key    The setting's name within it.

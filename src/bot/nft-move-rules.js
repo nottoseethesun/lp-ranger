@@ -40,8 +40,8 @@
 /**
  * Compare two events by where the chain put them: block first, then
  * position within the block when both events know it. Used to sort an
- * NFT's events, here and by the compound figures
- * (src/bot/compound-activity-figures.js).
+ * NFT's events, here and by the fees worked out from the chain for a
+ * compound (src/bot/compound-fees-on-chain.js).
  * @param {{blockNumber: number, logIndex?: number}} a
  * @param {{blockNumber: number, logIndex?: number}} b
  * @returns {number}  Negative when `a` came first, positive when `b` did,

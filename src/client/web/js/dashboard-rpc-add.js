@@ -33,8 +33,8 @@ const _MODAL = "rpcAddModal";
 /**
  * Show or clear the dialog's inline error.
  *
- * Inline as well as toasted: the toast is transient and the operator is
- * looking at the field they need to correct.
+ * Shown in the dialog as well as logged in the Activity Log by its
+ * callers: the operator is looking at the field they need to correct.
  * @param {string} msg  Message, or "" to clear.
  * @returns {void}
  */
@@ -64,16 +64,6 @@ function _savedListUsable() {
   return false;
 }
 
-/**
- * Validate an endpoint URL.
- *
- * Only shape is checked, not reachability: an endpoint can be down at
- * the moment it is added and fine a minute later, and the failover list
- * already handles one that never answers. Rejecting a typo'd scheme
- * here is worth it because that one never recovers.
- * @param {string} url  Raw operator input.
- * @returns {string|null}  Error message, or null when acceptable.
- */
 /**
  * Open the dialog, cleared and focused.
  * @returns {void}

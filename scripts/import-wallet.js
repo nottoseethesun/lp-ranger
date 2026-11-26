@@ -22,7 +22,7 @@
 "use strict";
 
 const { log } = require("../src/lib/log");
-const { askPassword } = require("../src/lib/ask-password");
+const { askForImport } = require("./_import-wallet-ask");
 const { Wallet } = require("ethers");
 const { migrateAppConfig } = require("../src/lib/migrate-app-config");
 
@@ -47,12 +47,14 @@ function flag(name) {
 const passwordFromFlag = flag("--password");
 
 /**
- * Ask for a secret, showing nothing of what is typed.
+ * Ask for a secret, showing nothing of what is typed. When the prompt
+ * closes with nothing typed (Ctrl+D), it has said so, and the import
+ * stops (scripts/_import-wallet-ask.js).
  * @param {string} prompt
  * @returns {Promise<string>}  The answer, trimmed.
  */
-async function ask(prompt) {
-  return (await askPassword(prompt)).trim();
+function ask(prompt) {
+  return askForImport(prompt);
 }
 
 /** Read all of stdin as a single string (for piped input). */
@@ -69,6 +71,12 @@ function readStdin() {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 (async function main() {
+  /*-
+   *  Put the wallet's files right first: the copy a save cut short left
+   *  is put back as wallet.json, or removed (src/lib/wallet-manager.js),
+   *  as the server and the headless bot do as they start.
+   */
+  walletManager.settleWalletFile();
   if (walletManager.hasWallet()) {
     const status = walletManager.getStatus();
     log.error("A wallet is already imported (address: %s).", status.address);

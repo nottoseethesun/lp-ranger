@@ -5,11 +5,10 @@
  * What happens when RPC failover has tried every endpoint and none
  * answered.
  *
- * Lives apart from `src/bot/send-transaction.js` for the same reason
- * `src/bot/rpc-read-retry.js` does: this is a self-contained decision, not
- * part of endpoint selection. It takes no state of its own — the caller
- * owns the endpoint list and the sticky window, and is handed back the
- * deadline to apply.
+ * Lives apart from `src/bot/send-transaction.js`, which calls it, because
+ * this is a self-contained decision, not part of endpoint selection. It
+ * takes no state of its own — the caller owns the endpoint list and the
+ * sticky window, and is handed back the deadline to apply.
  */
 
 "use strict";

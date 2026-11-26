@@ -1,9 +1,12 @@
 /**
  * @file dashboard-reopen-flow.js
- * @description Closed-position re-open flow: dust-check + two-step
- *   dialog sequence + handoff to the existing rebalance modal in
- *   `reopenContext` mode.  Extracted from `dashboard-events-manage.js`
- *   so that file stays under the 500-line cap.
+ * @description Closed-position re-open flow: the can-reopen check (the
+ *   wallet's two coins against the dust threshold), then the one dialog
+ *   its answer calls for.  The intro dialog's Re-open Position button
+ *   sends Manage with `forceRebalance: true` through `_postRebalance`
+ *   (`dashboard-rebalance-confirm.js`).  Extracted from
+ *   `dashboard-events-manage.js` so that file stays under the 500-line
+ *   cap.
  *
  *   Entry point: `runReopenFlow(active, opts)`.  Opts carry the
  *   handful of helpers the flow needs from the events module so this
@@ -156,23 +159,24 @@ function _injectBalanceRow(overlay, slot, bal) {
   li.textContent = `${bal.symbol}: ${amountStr} ($${usdStr})${bal.isDust ? "  — below threshold" : ""}`;
 }
 
-/*- Render the "re-open requires a rebalance" intro modal.  The
- *  standard modal template's footer ships an "OK" close button (used
- *  here as the dismiss action — user clicks OK to back out, edit
- *  settings, then re-click Manage).  We append a "Re-open Position"
- *  button in an action row inside the body for the proceed action.
+/*-
+ *  Render the "re-open requires a rebalance" intro modal. The standard
+ *  modal template's footer ships an "OK" close button, used here as the
+ *  dismiss action: the user clicks OK to back out, edits settings, then
+ *  clicks Manage again. A "Re-open Position" button is appended in an
+ *  action row inside the body for the proceed action.
  *
- *  Range width for the re-open is read by the bot loop from the
- *  persistent `rebalanceRangeWidthPct` POSITION_KEY (set via the
- *  Range Width row in Bot Settings) — no width in the request body,
- *  no modal step in between.  Users who want a custom width configure
- *  it in Bot Settings first, then click Manage.  Otherwise the bot
- *  falls back to `rangeMath.preserveRange()` (existing default).
+ *  The re-open's range follows the position's Range settings, the No
+ *  Override toggle included, as any rebalance's does: the request carries
+ *  no width, and the modal asks for none (see the click handler below).
+ *  A user who wants other Range settings sets them in Bot Settings first,
+ *  then clicks Manage.
  *
- *  IMPORTANT: scope every querySelector to the freshly-created
- *  overlay (by id) — a bare document-level lookup would bind to a
- *  stale duplicate if any prior modal with the same id is still in
- *  the DOM, leaving the new button inert. */
+ *  IMPORTANT: scope every querySelector to the freshly-created overlay
+ *  (by id). A bare document-level lookup would bind to a stale duplicate
+ *  if any prior modal with the same id is still in the DOM, leaving the
+ *  new button inert.
+ */
 const REOPEN_INTRO_MODAL_ID = "9mm-pos-mgr-reopen-intro-modal";
 function _showReopenIntroModal(active, formatPositionSpec) {
   const spec = formatPositionSpec(active);
@@ -181,7 +185,7 @@ function _showReopenIntroModal(active, formatPositionSpec) {
     (spec
       ? '<p class="9mm-pos-mgr-text-muted">Position: ' + spec + "</p>"
       : "") +
-    '<p class="9mm-pos-mgr-text-muted">Each rebalance incurs gas and slippage that can crystallize impermanent loss over time. If you want a specific range width, set it in <strong>Bot Settings</strong> first; otherwise the bot preserves the current tick spread on re-open.</p>' +
+    '<p class="9mm-pos-mgr-text-muted">Each rebalance incurs gas and slippage that can crystallize impermanent loss over time. The re-open follows this position&rsquo;s Range settings in <strong>Bot Settings</strong>: with No Override on, as every position starts, it keeps the current tick spread, centered on the price. For a width of your own, turn No Override off and set the Price Range Extension first.</p>' +
     '<div class="9mm-pos-mgr-modal-action-row">' +
     '<button type="button" class="modal-btn primary" data-action="reopen-confirm">Re-open Position</button>' +
     "</div>";
@@ -195,11 +199,12 @@ function _showReopenIntroModal(active, formatPositionSpec) {
   const btn = overlay?.querySelector('[data-action="reopen-confirm"]');
   if (!btn) return;
   btn.addEventListener("click", async () => {
-    /*- Close the intro modal, then POST /api/position/manage directly.
-     *  No `customRangeWidthPct` in body — range width comes from
-     *  persistent config (POSITION_KEY `rebalanceRangeWidthPct`),
-     *  read by the bot loop via `deps._getConfig` in
-     *  `src/bot/bot-cycle-opts.js`; empty ⇒ `preserveRange()` fallback. */
+    /*-
+     *  Close the intro modal, then POST /api/position/manage directly.
+     *  No `customRangeWidthPct` in the body: the re-open's range follows
+     *  the position's Range settings, No Override toggle included, as any
+     *  rebalance's does (`buildRebalanceOpts`, src/bot/bot-cycle-opts.js).
+     */
     if (overlay) overlay.remove();
     /*- Manage: fire the POST.  The Price Range Extension input stays
      *  empty until the user types a value (empty = preserveRange).

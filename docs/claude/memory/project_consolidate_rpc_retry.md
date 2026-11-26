@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
-  modified: 2026-10-24T04:55:01.257Z
+  modified: 2026-11-25T05:18:25.958Z
 ---
 
 **Status: DONE, 2026-10-02.** All three steps shipped. The duplication
@@ -156,7 +156,8 @@ keep it, both rely on it.
    third copy introduced.
 2. The two error classes keep their `(attemptCount, cause)` signatures
    and their current names — callers check them by instance
-   (`bot-loop-detect.js:307`, `server-positions.js:597`).
+   (the pool-state catch in `src/bot/bot-loop-detect.js`, and
+   `_startFailure` in `src/bot/position-lifecycle.js`).
 3. The existing tests for both paths pass unchanged, including the delay
    overrides. The helper gets one test for the walk order and one for
    exhaustion.

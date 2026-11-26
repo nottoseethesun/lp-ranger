@@ -3,7 +3,7 @@
  * @description Tests for the shared `logCtx` helper and address
  *   abbreviation in `src/bot/logger.js`.  Guards the canonical 6-field
  *   format used by every compound / rebalance / swap entry-point log.
- *   See the `feedback-log-full-context` memory for the rule.
+ *   See the logging rule, docs/claude/memory/feedback_logging.md.
  */
 
 "use strict";

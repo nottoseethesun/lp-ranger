@@ -54,7 +54,8 @@ function underWay(states, movesOver) {
 /**
  * Wait until no scan is running: each running scan's pass, which the bot
  * loop keeps as `_scanDone`, is awaited, and the positions are looked at
- * again, since a scan can end only after another has started.
+ * again, since another scan can start meanwhile: one that waited for a
+ * move starts when the poll that clears the move ends (src/bot/bot-loop.js).
  *
  * @param {Function} getStates  Each position's bot state, by key.
  * @returns {Promise<void>}

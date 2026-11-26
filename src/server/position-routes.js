@@ -8,7 +8,9 @@
  * Position and Re-scan Prices; an unmanaged position's details and
  * lifetime figures, and a closed position's history. Each reads the
  * request, asks the bot through its interface (src/bot/bot-interface.js)
- * and answers with what the bot returns (src/server/bot-result.js).
+ * and answers with what the bot returns: through src/server/bot-result.js,
+ * which turns a refusal's reason into an http status, except the history
+ * route, which answers 200 with the record the bot returns.
  */
 
 "use strict";

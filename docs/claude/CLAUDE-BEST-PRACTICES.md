@@ -56,7 +56,7 @@ if (x !== undefined && x !== null && String(x) === "0") { ... }
 const v = x ?? defaultValue;
 ```
 
-Ten-plus explicit `!== undefined && !== null` guards already exist across the codebase (`dashboard-history.js:203`, `position-detector.js:272-273`, `dashboard-data.js:193`, etc.) — this section codifies that as the standard.
+Ten-plus explicit `!== undefined && !== null` guards already exist across the codebase (the tick reads in `position-detector.js`, the page index in `dashboard-history.js`, and others) — this section codifies that as the standard.
 
 ## Formatting & Line Limits
 
@@ -65,7 +65,7 @@ Ten-plus explicit `!== undefined && !== null` guards already exist across the co
 
 ## Test Isolation
 
-- **Tests must NEVER overwrite production files** — any test that touches files in `app-config/user-configurable/` (`bot-config.json`, `wallet.json`, `api-keys.json`) or `app-data/` (`rebalance_log.json`, and the scan caches in `app-data/scan-cache/` such as `pnl-epochs-cache.json` and `historical-price-cache.json`) must snapshot the file in a `before` hook and restore it in an `after` hook. Under `node --test`, bot-config.json's folder and the scan-cache folder are each test process's own, so only a test that names a path itself can reach the operator's. Deleting a production cache file in a test `afterEach` destroys the user's cached data and forces expensive multi-minute reconstruction on next restart.
+- **Tests must NEVER write production files.** A test that would touch a file in `app-config/user-configurable/` or `app-data/` points it at a folder from `makeTestTempFolder` instead. Under `node --test` most of these are a test process's own already, and no `.env` is read: CLAUDE-TESTING.md § "Temp folders" lists which, and those that are not redirected. `npm run check` fails a run whose tests changed `app-config/user-configurable/`, `app-data/` or the shipped settings folder, a file written and put back included (its "Folders kept" row). Deleting a production cache file in a test destroys the user's cached data and forces a multi-minute rebuild on the next restart.
 - **Audit ALL test files after adding new caches or config files** — when a new disk-backed cache or config file is added, search all test files (`grep -rn "filename" test/`) to verify no test deletes or overwrites it without snapshot/restore. A single unprotected test file can silently destroy hours of cached data on every `npm run check` (including pre-commit hooks).
 - **In-memory singletons must also be restored** — if a test imports a module that has a module-level singleton (e.g. `_diskConfig` in `src/server.js`), the `after` hook must restore the in-memory object to match the restored file. Otherwise, subsequent `saveConfig` calls re-write stale test data over the restored production file.
 - **Use temp directories for test-specific files** — tests that create their own config/cache files should use `os.tmpdir()` or `fs.mkdtempSync()`, not the project's `tmp/` directory. Pass the `dir` parameter to functions that support it (e.g. `saveConfig(cfg, dir)`, `loadConfig(dir)`).
@@ -93,7 +93,6 @@ Ten-plus explicit `!== undefined && !== null` guards already exist across the co
 - **Validate option values inside the parser** — a function as `.option()`'s third argument, throwing `InvalidArgumentError`. Commander then names the option in the message and refuses before the tool works. Accepting a bad value instead surfaces it later as a failure that never mentions the flag.
 - **Lead the description with what the tool is for**, not how to spell a flag. Put exit codes and trailing notes in `.addHelpText("after", …)`.
 - **Build the command inside a function**, not at module scope, so a test can parse several argument lists without options accumulating.
-- **A diagnostic that may be run against a live install imports nothing from `src/lib/`** — loading the app's config opens the log file and reads operator settings. Accept a duplicated default over that, and say so in the file header.
 
 ## UI & Display
 

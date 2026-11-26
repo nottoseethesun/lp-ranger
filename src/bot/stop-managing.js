@@ -9,9 +9,10 @@
  *   later Manage does not find it on.
  *   A rebalance can move the position to a new NFT while its loop
  *   stops, since the stop waits for the check under way. The position
- *   manager moves its record's key with it, so the result and every step
- *   after the stop use the key the position has by then, and the result
- *   names both keys (src/bot/position-answer-tag.js).
+ *   manager moves its record's key with it, so every step after the stop
+ *   uses the key the position has by then. The result keeps the key the
+ *   request named as `key`, and names both keys when a rebalance moved it
+ *   (src/bot/position-answer-tag.js).
  *   Built by the bot's position lifecycle (src/bot/position-lifecycle.js);
  *   the server answers with what it returns (src/server/bot-result.js).
  */

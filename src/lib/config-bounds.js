@@ -50,8 +50,10 @@ const { inRange } = require("./settings-schema-parts");
  * interval, each taken from `setting-bounds.json`. The two decimals
  * overrides share the range every ERC-20 decimals is held to, whether
  * read from the chain or typed. The price-cache settings have no field
- * on the dashboard, but `POST /api/config` saves them all the same, and
- * the price code reads what was saved at its next start.
+ * on the dashboard, but `POST /api/config` saves them all the same: the
+ * price code reads the three cache lifetimes at its next start, and the
+ * pause exception's window (`pricePauseExceptionPollWindowMultiple`) at
+ * the next poll.
  */
 const BOUNDS = Object.freeze({
   priceCacheTtlMs: SETTING_BOUNDS.priceCacheTtlMs,
@@ -209,9 +211,10 @@ function _lifetimeStartWords() {
 }
 
 /**
- * Each setting `POST /api/config` saves, which is each setting the
- * dashboard lets an operator set: its JSON Schema, and the words for a
- * value the schema refuses.
+ * Each setting `POST /api/config` saves: every setting the dashboard lets
+ * an operator set, and the price-cache settings in `BOUNDS`, which have no
+ * field. For each, its JSON Schema, and the words for a value the schema
+ * refuses.
  *
  * @param {object} ctx  As for `settingSchemas`.
  * @returns {Object<string, {schema: object, words: Function}>}

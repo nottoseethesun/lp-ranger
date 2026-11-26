@@ -10,15 +10,18 @@
  *   dashboard tab still showing the Unlock Wallet dialog, say, confirms
  *   it and decrypts the same keys again, and starts nothing: a second
  *   start-up over running positions once left each half-connected to the
- *   dashboard until a restart. A wrong password changes nothing.
+ *   dashboard until a restart. A wrong password changes nothing. While a
+ *   wallet import is under way, an unlock is refused and changes nothing,
+ *   asked again once its decrypt is done.
  */
 
-const { describe, it } = require("node:test");
+const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   createUnlockHandler: unlockRouteOver,
 } = require("../src/server/server-unlock");
 const { botOperations } = require("../src/bot/bot-interface");
+const appPhase = require("../src/bot/app-phase");
 
 /**
  * The unlock route over the bot's own operations (src/bot/bot-interface.js),
@@ -42,14 +45,21 @@ const createUnlockHandler = (deps) => {
 
 const KEY = "0x" + "11".repeat(32);
 
-/** An unlock route over a wallet whose password is `right`. */
-function route({ key = null } = {}) {
-  const calls = { startUps: 0, decrypted: [] };
+/**
+ * An unlock route over a wallet whose password is `right`, whose decrypt
+ * runs `duringDecrypt` before it answers; with `saved` false, over no
+ * wallet at all.
+ */
+function route({ key = null, duringDecrypt = () => {}, saved = true } = {}) {
+  const calls = { startUps: 0, decrypted: [], revealed: 0 };
   const privateKeyRef = { current: key };
   let body = {};
   const handle = createUnlockHandler({
     walletManager: {
+      hasWallet: () => saved,
       revealWallet: async (password) => {
+        calls.revealed++;
+        duringDecrypt();
         if (password !== "right") throw new Error("bad password");
         return { privateKey: KEY };
       },
@@ -119,6 +129,52 @@ describe("entering the wallet password", () => {
     const r = route();
     const res = await r.unlock(undefined);
     assert.equal(res.status, 400);
+    assert.equal(r.calls.startUps, 0);
+  });
+
+  it("says there is no wallet to unlock when none is saved, decrypting nothing", async () => {
+    /*-
+     *  The decrypt refuses for want of a wallet too, and that refusal
+     *  must not read as a password typed wrong.
+     */
+    const r = route({ saved: false });
+    const res = await r.unlock("right");
+    assert.equal(res.status, 404);
+    assert.match(res.answer.error, /no wallet to unlock/);
+    assert.equal(r.calls.revealed, 0);
+    assert.equal(r.privateKeyRef.current, null);
+    assert.equal(r.calls.startUps, 0);
+  });
+});
+
+describe("entering the wallet password while a wallet import is under way", () => {
+  /*-
+   *  The import is replacing the wallet the password opens. Taken, the
+   *  old wallet's key would be the bot's, and the unlock's start-up would
+   *  start the old wallet's positions once the new wallet was in.
+   */
+  afterEach(() => appPhase._resetAppPhaseForTests());
+
+  it("is refused before the decrypt, changing nothing", async () => {
+    const r = route();
+    appPhase.beginWalletImport();
+    const res = await r.unlock("right");
+    assert.equal(res.status, 409);
+    assert.match(res.answer.error, /importing a wallet/);
+    assert.equal(r.calls.revealed, 0, "no decrypt");
+    assert.equal(r.privateKeyRef.current, null);
+    assert.deepEqual(r.calls.decrypted, []);
+    assert.equal(r.calls.startUps, 0);
+  });
+
+  it("is refused when the import begins during its decrypt", async () => {
+    const r = route({ duringDecrypt: () => appPhase.beginWalletImport() });
+    const res = await r.unlock("right");
+    assert.equal(res.status, 409);
+    assert.match(res.answer.error, /importing a wallet/);
+    assert.equal(r.calls.revealed, 1);
+    assert.equal(r.privateKeyRef.current, null, "the old key not taken");
+    assert.deepEqual(r.calls.decrypted, []);
     assert.equal(r.calls.startUps, 0);
   });
 });

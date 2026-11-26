@@ -6,7 +6,7 @@
  * docs/architecture.md "Idle-Driven Price-Lookup Pause".  Lives in its own
  * module so `src/bot/price-fetcher.js` stays under the 500-line cap.
  *
- * Four sources mutate `_priceLookupsPaused`:
+ * Four sources decide whether lookups are paused:
  *  1. Server-side idle tracker (15 min no /api/* traffic).
  *  2. Browser-side idle detection (POST /api/pause-price-lookups,
  *     POST /api/unpause-price-lookups).
@@ -21,11 +21,13 @@
  * They are read when `readPriceCacheSettings` is called, never when this
  * file is loaded; until then each is its default. The bot's parts call it
  * as they are built (`buildBotParts`, src/bot/bot-interface.js), which
- * each program does as it starts. A
- * tool under util/ that needs them passes `skipBackups`, so its read
- * leaves LP Ranger's backups of its settings files alone. The
- * dust-unit-price TTL is derived as `priceTtl * multiplier`; an assertion
- * guards the integer-multiple invariant against future hand-edits.
+ * each program does as it starts. The server and a tool under util/ pass
+ * `skipBackups`, so their reads make no backups of the settings files: the
+ * server makes them itself once it holds its port, and a tool's would
+ * replace the app's while LP Ranger runs. The headless bot lets the read
+ * make them. The dust-unit-price TTL is derived as `priceTtl * multiplier`;
+ * an assertion guards the integer-multiple invariant against future
+ * hand-edits.
  */
 
 "use strict";
@@ -94,9 +96,10 @@ function _ttlsFrom(cfg) {
  * cannot be read, leaves the default.
  *
  * The read is `loadConfig`'s, which copies the settings files over their
- * backups unless told not to. The server and the bot let it; a tool under
- * util/ passes `skipBackups`, since its copy would replace the app's while
- * LP Ranger runs.
+ * backups unless told not to. The headless bot lets it. The server passes
+ * `skipBackups` (src/server.js, through `createBot`), since it makes the
+ * copies itself once it holds its port. So does a tool under util/, since
+ * its copy would replace the app's while LP Ranger runs.
  * @param {boolean} [skipBackups]  True to make no backup copies, as
  *   `loadConfig` takes it. Default false.
  */

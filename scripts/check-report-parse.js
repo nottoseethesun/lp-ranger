@@ -1,7 +1,7 @@
 /**
  * @file scripts/check-report-parse.js
  * @description
- * Pure parsers for raw tool outputs written by scripts/check.sh into
+ * Pure parsers for raw tool outputs written by scripts/check.js into
  * test/report-artifacts/raw-data/. Every parser is a small function that
  * takes the already-loaded JSON or text and returns a plain object of the
  * shape used by the aggregator in check-report.js. Kept separate from the

@@ -40,7 +40,7 @@
  *
  *   import { log } from "./dashboard-log.js";
  *   log.info("[poll] tick", n);
- *   // → [lp-ranger] [poll] [2026-06-19 23:13:29] tick 5
+ *   // → [lp-ranger] [poll] [2026-06-19 23:13:29Z] tick 5
  */
 
 "use strict";

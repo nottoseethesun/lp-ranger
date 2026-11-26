@@ -7,7 +7,8 @@
  *
  * Structure:
  *   { global: { rpcUrls, moralisEnabled, approvalMultiple, … },
- *     positions: { [compositeKey]: { status, thresholdPct, … } } }
+ *     positions: { [compositeKey]: { status,
+ *       rebalanceOutOfRangeThresholdPercent, … } } }
  *
  * The `positions` object is the single source of truth.
  * Managed positions are derived: any key with
@@ -22,8 +23,8 @@
  * (gitignored) holds the settings and each position's status; the bot's
  * records for each position (`RECORD_POSITION_KEYS`) are in
  * `app-data/position-records.json` (src/lib/util/position-records.js). In memory a
- * position's slot holds both. See the `app-config/` section of server.js
- * for the full layout. Tests pass a `dir` override to `loadConfig(dir)` /
+ * position's slot holds both. See "The app-config Directory" in
+ * docs/engineering.md for the full layout. Tests pass a `dir` override to `loadConfig(dir)` /
  * `saveConfig(cfg, dir)` and write directly to `${dir}/bot-config.json`
  * and `${dir}/position-records.json`, bypassing those folders.
  */
@@ -127,43 +128,71 @@ function _empty() {
  * when everything else it has is a record.
  *
  * A load also copies each of the two files beside itself, as
- * bot-config.backup.json and position-records.backup.json. The server and
- * the bot load once as they start, so the copies hold the files as they
- * were before that run saved anything: a way back from a save that went
- * wrong. A caller that only reads a setting passes `skipBackups`, and
- * leaves the copies as the last start made them: a tool under util/ that
- * reads the price library's settings does
- * (`readPriceCacheSettings(true)`, src/bot/price-fetcher-gate.js), so it
- * never replaces the app's copies.
- * @param {string} [dir]  Directory override (default: cwd).
+ * bot-config.backup.json and position-records.backup.json
+ * (`backUpSettings`): a way back from a save that went wrong. The
+ * headless bot loads twice as it starts, its own load and the price
+ * library's (`readPriceCacheSettings`, src/bot/price-fetcher-gate.js),
+ * with nothing saved between, so the copies hold the files as they were
+ * before that run saved anything. A caller that only reads a setting
+ * passes `skipBackups`, and leaves the copies as the last start made
+ * them: a tool under util/ that reads the price library's settings does
+ * (`readPriceCacheSettings(true)`), so it never replaces the app's
+ * copies. So does the server as it loads, which calls `backUpSettings`
+ * itself once it holds its port: a second start, which fails on the
+ * port, then replaces neither copy of the server already running.
+ * @param {string} [dir]  Directory override for both files (default:
+ *   `app-config/user-configurable/` for bot-config.json and `app-data/`
+ *   for the records file).
  * @param {boolean} [skipBackups]  True to make no copies. Default false.
  * @returns {object}       Config object (or empty structure if no file).
  */
 function loadConfig(dir, skipBackups = false) {
-  const cfg = _loadSettingsFile(_configPath(dir), skipBackups);
+  const cfg = _loadSettingsFile(_configPath(dir));
   const records = readPositionRecords(dir);
   const count = Object.keys(records).length;
-  if (count > 0) {
+  if (count > 0)
     log.info(
       "[config] loadConfig: records for %d positions from %s",
       count,
       positionRecordsPath(dir),
     );
-    if (skipBackups !== true) backUpPositionRecords(dir);
-  }
+  if (skipBackups !== true) backUpSettings(dir);
   mergePositionRecords(cfg, records);
   _purgePhantomEntries(cfg);
   return cfg;
 }
 
 /**
+ * Copy bot-config.json beside itself, as bot-config.backup.json, when it
+ * holds a position, and the records file, as position-records.backup.json,
+ * when it holds a record: a way back from a save that went wrong. A file
+ * that holds nothing, or is missing or not json, leaves its copy as it
+ * was. `loadConfig` calls it unless asked not to; the server calls it
+ * once it holds its port (src/server.js).
+ * @param {string} [dir]  Directory override for both files (default:
+ *   `app-config/user-configurable/` for bot-config.json and `app-data/`
+ *   for the records file).
+ */
+function backUpSettings(dir) {
+  const file = _configPath(dir);
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (Object.keys(raw.positions || {}).length > 0)
+      fs.copyFileSync(file, file.replace(".json", ".backup.json"));
+  } catch {
+    /* best-effort: no file, or one that is not json, has nothing to keep */
+  }
+  if (Object.keys(readPositionRecords(dir)).length > 0)
+    backUpPositionRecords(dir);
+}
+
+/**
  * Read bot-config.json, or an empty config when it is missing, empty or
- * not JSON.
+ * not json.
  * @param {string} filePath
- * @param {boolean} skipBackups  True to make no copy, as `loadConfig`.
  * @returns {{global: object, positions: object}}
  */
-function _loadSettingsFile(filePath, skipBackups) {
+function _loadSettingsFile(filePath) {
   try {
     const text = fs.readFileSync(filePath, "utf8");
     if (!text || text.trim().length === 0) {
@@ -182,14 +211,6 @@ function _loadSettingsFile(filePath, skipBackups) {
       filePath,
       text.length,
     );
-    // Backup on load — safety net for config stomping investigation
-    if (posCount > 0 && skipBackups !== true) {
-      try {
-        fs.copyFileSync(filePath, filePath.replace(".json", ".backup.json"));
-      } catch {
-        /* best-effort */
-      }
-    }
     return {
       global: raw.global || {},
       positions: raw.positions || {},
@@ -408,8 +429,8 @@ function _writeSplit(cfg, filePath, dir) {
 }
 
 /**
- * Return composite keys of all managed positions.
- * Managed = any position whose status is not 'stopped'.
+ * Return composite keys of all managed positions: those whose status is
+ * 'running'. A slot with any other status, or none, is not managed.
  * @param {object} cfg  Config object.
  * @returns {string[]}
  */
@@ -466,7 +487,6 @@ function getOrCreatePositionConfig(cfg, positionKey) {
  * Add a position to the managed set.
  * @param {object} cfg          Config object.
  * @param {string} positionKey  Composite key.
- * @param {string} [status]     Initial status (default: 'running').
  */
 function addManagedPosition(cfg, positionKey) {
   const pos = getOrCreatePositionConfig(cfg, positionKey);
@@ -565,6 +585,7 @@ module.exports = {
   compositeKey,
   botConfigPath,
   loadConfig,
+  backUpSettings,
   saveConfig,
   getPositionConfig,
   getOrCreatePositionConfig,

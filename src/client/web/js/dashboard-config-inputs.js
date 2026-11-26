@@ -1,8 +1,9 @@
 /**
  * @file dashboard-config-inputs.js
  * @description Populates the Bot Settings form inputs from the
- * `/api/status` payload, and holds the shipped-default cache that the
- * "Default" / "No Offset" buttons inject from.
+ * `/api/status` payload, and holds the shipped-default cache that other
+ * modules read (`getInputDefault`), the Price Range Extension "Default"
+ * button among them.
  *
  * Split out of `dashboard-data.js` when adding the Impermanent Loss
  * Guard's `impermanentLossGuardPct: "inIlGuard"` entry pushed that file
@@ -13,8 +14,9 @@
  *
  * `populateConfigInputs` runs once per position (latched by
  * `_configSynced` in dashboard-data.js), `syncGlobalConfig` once per
- * page load.  Both skip inputs the user is mid-edit on, via the
- * dirty-flag cache.
+ * page load and once more after each reset (`resetGlobalSynced`, at a
+ * position switch and after the server refuses a value).  Both skip
+ * inputs the user is mid-edit on, via the dirty-flag cache.
  */
 
 "use strict";
@@ -151,14 +153,15 @@ export function populateConfigInputs(d) {
 
 let _globalSynced = false;
 
-/** Re-arm the once-per-page-load global sync (called on position switch). */
+/** Re-arm the global sync (called on position switch, and after the server refuses a value). */
 export function resetGlobalSynced() {
   _globalSynced = false;
 }
 
 /** Populate global-key inputs (e.g. Settings popover Gas Fee %) from
- *  /api/status global block.  Runs once per page load, only after a
- *  real value lands (skips the initial poll where global may be empty). */
+ *  /api/status global block.  Runs once per page load and once after
+ *  each `resetGlobalSynced`, only after a real value lands (skips the
+ *  initial poll where global may be empty). */
 export function syncGlobalConfig(d) {
   if (_globalSynced) return;
   let any = false;

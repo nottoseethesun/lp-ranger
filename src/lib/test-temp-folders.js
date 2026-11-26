@@ -8,11 +8,10 @@
  * run leaves none behind.
  *
  * A test that needs a folder of its own takes one from
- * `makeTestTempFolder`. So do `src/lib/bot-config-v2.js` and
- * `src/lib/scan-cache-dir.js`, which under `node --test` resolve the config
- * folder and the scan-cache folder to such folders rather than
- * `app-config/user-configurable/` and `app-data/scan-cache/`, so no test
- * can write the operator's bot-config.json or caches. Each folder
+ * `makeTestTempFolder`, and so does each module that, under
+ * `node --test`, keeps a test off one of the operator's files in
+ * `app-config/user-configurable/` and `app-data/`; which files is listed
+ * in docs/claude/CLAUDE-TESTING.md § "Temp folders". Each folder
  * belongs to one process: the runner runs test files in parallel
  * processes, which would otherwise overwrite one another's files. The
  * folders are in the system's temp directory (`os.tmpdir()`), outside
@@ -114,4 +113,26 @@ function removeLeftoverTestTempFolders(dir = os.tmpdir()) {
   return removed;
 }
 
-module.exports = { makeTestTempFolder, removeLeftoverTestTempFolders };
+/**
+ * Every test folder, with the process its name gives it to and whether
+ * that process is still running. A failed copy of the shipped settings
+ * prints it (test/helpers/shipped-defaults-copy.js), to show whether a
+ * folder went while its process ran.
+ * @param {string} [dir]  Where the folders are; the system's temp
+ *   directory unless a test points elsewhere.
+ * @returns {{name: string, pid: number, running: boolean}[]}
+ */
+function describeTestTempFolders(dir = os.tmpdir()) {
+  const folders = [];
+  for (const name of fs.readdirSync(dir)) {
+    const pid = _ownerOf(name);
+    if (pid !== null) folders.push({ name, pid, running: _running(pid) });
+  }
+  return folders;
+}
+
+module.exports = {
+  makeTestTempFolder,
+  removeLeftoverTestTempFolders,
+  describeTestTempFolders,
+};

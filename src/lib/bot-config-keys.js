@@ -2,13 +2,15 @@
  * @file src/lib/bot-config-keys.js
  * @module bot-config-keys
  * @description
- *   The config vocabulary: which keys exist in `bot-config.json`, which
- *   section each belongs to, and what each one means.
+ *   The config vocabulary: which keys a position's slot and the global
+ *   section hold, which of them are settings, kept in `bot-config.json`,
+ *   and which are the bot's records, kept in
+ *   `app-data/position-records.json`, and what each one means.
  *
  *   Pure data, no dependencies. Split out of `bot-config-v2.js` at the
  *   500-line cap, and the right seam besides: the openapi-sync gate and
- *   the shipped-defaults reader ask only "what keys are there?" and have
- *   no business loading the config machinery to find out.
+ *   a util migration (util/migration/from-0.9.9/) ask only "what keys are
+ *   there?" and have no business loading the config machinery to find out.
  */
 
 "use strict";
@@ -49,9 +51,10 @@ const GLOBAL_KEYS = [
   "gasFeePct",
   /*-
    *  Price-source cache TTL in milliseconds for `src/bot/price-fetcher.js`
-   *  (the in-memory cache that backs `fetchTokenPriceUsd`).  Read once
-   *  per process at module-load time (no live reload — restart to
-   *  apply).  Default `120000` (2 min).  See the idle-driven price-
+   *  (the in-memory cache that backs `fetchTokenPriceUsd`). Read once
+   *  per process, when `readPriceCacheSettings`
+   *  (src/bot/price-fetcher-gate.js) is called as the bot's parts are
+   *  built (no live reload — restart to apply). Default `120000` (2 min).  See the idle-driven price-
    *  lookup pause section in docs/architecture.md for context.
    */
   "priceCacheTtlMs",
@@ -89,7 +92,7 @@ const GLOBAL_KEYS = [
   "pricePauseExceptionPollWindowMultiple",
 ];
 
-/** Keys that belong in a per-position (per-pool) section. */
+/** Keys that belong in a per-position section. */
 /**
  * Position-config keys whose values are derived from scanning the chain.
  *
@@ -170,13 +173,16 @@ const RECORD_POSITION_KEYS = Object.freeze([
  * `nftCompoundedAmountsByTokenId`) and prices them where they are
  * displayed, because a saved dollar figure is true only at the price
  * that computed it — an error that grows with the position's age. The
- * rest are settings that were retired; each says why where it is listed.
+ * rest are three retired settings and a copy of the pool's lifetime HODL
+ * amounts that nothing read back; each says why where it is listed.
  *
  * Nothing reads these, so leaving them would be dead weight in a file
  * operators open and read. `saveConfig` drops them from every slot on
- * the next write. They carry no information the app wants back: the
- * compound totals' replacement is re-derived from the chain, never
- * from these.
+ * the next write, except a running slot the drop would leave holding its
+ * status alone, which keeps them until a save gives it real content
+ * (`_stripRetiredKeys`, src/lib/bot-config-v2.js). They carry no
+ * information the app wants back: the compound totals' replacement is
+ * re-derived from the chain, never from these.
  *
  * This is not a migration and must not grow into one. A key belongs
  * here only once it has no reader anywhere.
@@ -385,8 +391,9 @@ const POSITION_KEYS = [
    *  When set, `ltStartDate()` in `dashboard-date-utils.js` uses it
    *  ahead of every auto-detected candidate (firstEpochDateUtc,
    *  hodlBaseline.mintDate, poolFirstMintDate).  Cleared by POSTing
-   *  `null` — the null-sweep in server-routes.js POST /api/config
-   *  handler deletes the key from disk so bot-config.json stays clean.
+   *  `null` — the null-sweep in the bot's settings save
+   *  (src/bot/settings-save.js, behind POST /api/config) deletes the key
+   *  from disk so bot-config.json stays clean.
    *  The dashboard input accepts a number of days; the save handler
    *  computes `today - days` and stores the result as this string.
    */
@@ -449,7 +456,7 @@ function hasCompoundedTotal(amount0, amount1) {
  *
  * Exported because the writers need it per side, not just as the pair
  * test above. Either side alone establishes the total, so the other may
- * still hold anything the config file can express — and these values are
+ * still hold anything the records file can express — and these values are
  * read straight out of JSON, where a hand-edited `"100"` is a string.
  * Adding to that string concatenates instead of summing, and the result
  * reaches `toFixed` and throws, in the middle of recording a compound

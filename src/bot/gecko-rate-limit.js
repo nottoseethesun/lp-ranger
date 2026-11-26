@@ -6,13 +6,16 @@
  *
  * GeckoTerminal's free public API enforces ~30 requests per 60-second window
  * across all endpoints (OHLCV, pool info, networks, etc.). This module keeps
- * a single global queue so every GeckoTerminal call (made by `price-fetcher.js`,
- * `gecko-pool-cache.js`, or any future caller) shares the same budget. We
+ * one list of call times for the process, so every GeckoTerminal call (made
+ * by `price-fetcher.js`, `price-sources-current.js` and `gecko-pool-cache.js`)
+ * counts against one budget, `_MAX_CALLS` (20) per 60 seconds. We
  * deliberately stay below the hard limit to leave headroom for transient bursts.
  *
  * The limiter uses a sliding window: it tracks the timestamps of the last N
  * calls and waits until the oldest one falls outside the 60-second window
- * before allowing a new call to proceed.
+ * before allowing a new call to proceed. It is not a queue: every call that
+ * finds the window full waits for the same oldest call, then all of them go,
+ * so concurrent calls can take the window past `_MAX_CALLS`.
  *
  * Lives in its own module to avoid a circular dependency between
  * `price-fetcher.js` and `gecko-pool-cache.js` (both need rate limiting and

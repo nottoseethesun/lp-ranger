@@ -30,8 +30,10 @@ const {
   RECORD_POSITION_KEYS,
 } = require("../src/lib/bot-config-keys");
 
-/*- The app's module folders: the modules the programs share, the
- *  server's own and the bot's own, each with its subfolders. */
+/*-
+ *  The app's module folders: the modules the programs share, the
+ *  server's own and the bot's own, each with its subfolders.
+ */
 const SRC_DIRS = ["lib", "server", "bot"].map((d) =>
   path.join(__dirname, "..", "src", d),
 );

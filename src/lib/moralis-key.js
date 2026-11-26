@@ -23,8 +23,9 @@ const { readBotConfigDefaults } = require("./bot-config-defaults");
  * dialog's switch, and a `null` save clears it. With none saved, the
  * default in bot-config-defaults.json decides, the operator's copy of
  * that file on top. The server applies the answer when the wallet is
- * unlocked and on every save of the switch, and `GET /api/status`
- * publishes it, so the switch shows what the server does.
+ * unlocked, and the bot on every save of the switch
+ * (src/bot/settings-save.js); `GET /api/status` publishes it, so the
+ * switch shows what is applied.
  *
  * @param {object|undefined} globalCfg  bot-config.json's `global`.
  * @returns {boolean}

@@ -4,8 +4,8 @@
  * on-chain activity detection, key reveal modal, wallet clear,
  * and shared validation helpers.
  *
- * Split from dashboard-wallet.js — imported by that module
- * and re-exported so external consumers are unaffected.
+ * Split from dashboard-wallet.js — dashboard-events.js imports this
+ * module directly; dashboard-wallet.js does not import or re-export it.
  *
  * Depends on: dashboard-helpers.js (g, act, ACT_ICONS),
  * ethers-adapter.js (ethers),

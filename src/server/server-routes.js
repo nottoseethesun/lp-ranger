@@ -12,6 +12,7 @@
 
 const { log } = require("../lib/log");
 const config = require("../lib/config");
+const { readEnv } = require("../lib/env-settings");
 const {
   saveEncryptedKey,
   loadEncryptedKey,
@@ -42,6 +43,9 @@ const { sendBotResult } = require("./bot-result");
  * @param {Function} deps.readJsonBody
  * @param {Function|null} [deps.askPassword]  Prompts on the terminal for
  *   the wallet password (`--headless`), else null.
+ * @param {() => (string|undefined)} [deps.envWalletPassword]  Reads
+ *   WALLET_PASSWORD from the environment, through `readEnv`, which takes
+ *   a blank value as none; a test passes its own.
  * @param {Function} deps.notifyShutdown  Sends the shutdown alert
  *   (src/server/telegram-notifications/server-shutdown.js).
  * @returns {object} Handler function map.
@@ -55,6 +59,7 @@ function createRouteHandlers(deps) {
     readJsonBody,
     askPassword,
     notifyShutdown,
+    envWalletPassword = () => readEnv("WALLET_PASSWORD"),
   } = deps;
 
   /** Cached wallet password for API key encryption (set on unlock). */
@@ -71,8 +76,9 @@ function createRouteHandlers(deps) {
    * new wallet's saved ones. Refused while the app may start nothing (a
    * stop, a start-up or another import under way, src/bot/app-phase.js).
    * From its first step until its closing start-up has finished, the bot
-   * holds the import as under way: a Manage is refused, and the
-   * dashboard's badge reads Syncing.
+   * holds the import as under way: a Manage, an unlock and any start-up
+   * but the import's own are refused, and the dashboard's badge reads
+   * Syncing.
    */
   async function _handleWalletImport(req, res) {
     const refusal = bot.beginWalletImport();
@@ -123,7 +129,7 @@ function createRouteHandlers(deps) {
       );
       log.info("[server] Loading key from imported wallet");
       _decryptApiKeys(body.password).catch(() => {});
-      await bot.startManagedPositions();
+      await bot.startManagedPositions({ forImport: true });
     } catch (err) {
       log.warn("[server] Key resolution after import:", err.message);
     }
@@ -181,8 +187,48 @@ function createRouteHandlers(deps) {
   let _starting = false;
 
   /**
-   * Resolve the private key and auto-start all
-   * managed positions from v2 config.
+   * Why the launch's key step stands aside now, for the log, or null when
+   * it may go on. A wallet import under way takes its own wallet's key
+   * and starts that wallet's positions. A key the bot holds already came
+   * from the dashboard while the launch waited on the prompt or the
+   * decrypt: an unlock has started the saved positions, and an import has
+   * loaded its own wallet, which the password given may not open.
+   * @returns {string|null}
+   */
+  function _whyKeyStepStandsAside() {
+    if (bot.refusalToTakeKey() !== null)
+      return "a wallet import is under way, which takes its own wallet's key and starts that wallet's positions";
+    if (bot.hasPrivateKey())
+      return "the wallet is unlocked already, and its positions are left as they are";
+    return null;
+  }
+
+  /**
+   * The key from the wallet's password, which comes from WALLET_PASSWORD
+   * or the terminal prompt (`--headless`), and the password. The key is
+   * null when no password came, or when the key step stands aside by the
+   * time one did (`_whyKeyStepStandsAside`): then nothing is decrypted.
+   * @returns {Promise<{pk: string|null, password: string|null}>}
+   */
+  async function _keyFromPassword() {
+    const fromEnv = envWalletPassword();
+    const password =
+      fromEnv ||
+      (askPassword && (await askPassword("[server] Enter wallet password: ")));
+    if (!password || _whyKeyStepStandsAside() !== null)
+      return { pk: null, password: password || null };
+    const pk = (await walletManager.revealWallet(password)).privateKey;
+    const via = fromEnv ? "WALLET_PASSWORD" : "terminal";
+    log.info("[server] Wallet unlocked via %s", via);
+    return { pk, password };
+  }
+
+  /**
+   * The launch's key step: resolve the private key, hand it to the bot
+   * and start the positions saved as managed. It stands aside while a
+   * wallet import is under way, and once the bot holds a key, asked
+   * before the decrypt and again after it, since the prompt and the
+   * decrypt can each take a while.
    */
   async function _tryResolveKey() {
     if (_starting) {
@@ -204,17 +250,14 @@ function createRouteHandlers(deps) {
       // 2. Encrypted wallet — env var, headless prompt,
       //    or wait for dashboard unlock.
       else if (walletManager.hasWallet()) {
-        password =
-          process.env.WALLET_PASSWORD ||
-          (askPassword &&
-            (await askPassword("[server] Enter wallet password: ")));
-        if (password) {
-          pk = (await walletManager.revealWallet(password)).privateKey;
-          const via = process.env.WALLET_PASSWORD
-            ? "WALLET_PASSWORD"
-            : "terminal";
-          log.info("[server] Wallet unlocked via %s", via);
-        }
+        ({ pk, password } = await _keyFromPassword());
+      }
+
+      // Asked again after the decrypt, as well as before it.
+      const aside = _whyKeyStepStandsAside();
+      if (aside !== null) {
+        log.info("[server] The launch's key step stands aside: %s", aside);
+        return;
       }
 
       if (!pk) {
@@ -222,9 +265,9 @@ function createRouteHandlers(deps) {
           // --headless: CLI is the only path — don't suggest the dashboard.
           if (walletManager.hasWallet())
             log.error(
-              "[server] Wallet locked — password not" +
-                " provided. Set WALLET_PASSWORD in .env" +
-                " or re-run with --headless to be prompted.",
+              "[server] The wallet is locked: no password was given. Set" +
+                " WALLET_PASSWORD in .env, or start the server with" +
+                " --headless from a terminal to type it.",
             );
           else
             log.error(

@@ -26,7 +26,7 @@ The four writers:
 
 All four stop automatic rebalances at the same gate, turn the status
 pill to a red ABORTED, and raise the same alert dialog with the error's
-own message, in a yellow warning shell for case 4. None clears by itself: a Slippage save clears it, and
+own message, in a yellow warning shell for case 4. None clears by itself: a Slippage save or a Rebalance Now clears it, and
 otherwise a position left drained is retired, within seconds in case 3
 and after thirty minutes in the others.
 

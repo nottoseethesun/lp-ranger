@@ -2,8 +2,9 @@
  * @file test/config.test.js
  * @description Unit tests for src/lib/config.js.
  *
- * Because config.js reads process.env at require-time, we test
- * assertLiveModeReady() by manipulating the exported object. How each
+ * Because config.js reads process.env as it loads, assertLiveModeReady()
+ * is tested in child processes, each loading config.js over the inputs
+ * its case decides. How each
  * `.env` variable is read is covered by test/settings-check.test.js
  * (src/lib/env-settings.js), and the Bot Settings `.env` can set by
  * test/config-env-ranges.test.js.
@@ -15,9 +16,15 @@
 
 const { describe, it } = require("node:test");
 const assert = require("assert");
+const os = require("os");
+const path = require("path");
+const util = require("util");
+const { spawnSync } = require("child_process");
 
 const config = require("../src/lib/config");
-const walletManager = require("../src/lib/wallet-manager");
+const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+const { _setSinkForTests } = require("../src/lib/log");
+const { useRebalanceLog } = require("./helpers/rebalance-log");
 
 // ── Default values ────────────────────────────────────────────────────────────
 
@@ -69,10 +76,77 @@ describe("config default values", () => {
     );
   });
 
-  it("LOG_FILE is a non-empty string", () => {
+  it("puts the rebalance log in a temp folder of the test process's own under node --test", () => {
+    /*-
+     *  So no test can append a rebalance it makes to the operator's log,
+     *  however it reaches `appendLog`.
+     */
+    const file = config.rebalanceLogPath();
+    const dir = path.dirname(file);
+    assert.strictEqual(path.dirname(dir), os.tmpdir());
     assert.ok(
-      typeof config.LOG_FILE === "string" && config.LOG_FILE.length > 0,
+      path
+        .basename(dir)
+        .startsWith(`lp-ranger-test-rebalance-log-${process.pid}-`),
+      file,
     );
+  });
+
+  it("makes that folder when the log is first asked for, not as it loads, and once", () => {
+    /*-
+     *  A child keeps the runner's marker, so it is under `node --test`
+     *  too; it counts its own log folders before and after the first ask.
+     */
+    const env = { ...process.env };
+    delete env.LOG_FILE;
+    const lib = JSON.stringify(
+      path.join(__dirname, "..", "src", "lib", "config"),
+    );
+    const mine =
+      "require('fs').readdirSync(require('os').tmpdir()).filter((n) =>" +
+      " n.startsWith('lp-ranger-test-rebalance-log-' + process.pid + '-'))" +
+      ".length";
+    // Asked twice: one folder, and the same file both times.
+    const script =
+      `const config = require(${lib}); const before = ${mine};` +
+      ` const a = config.rebalanceLogPath(); const b = config.rebalanceLogPath();` +
+      ` process.stdout.write("\\nFOLDERS=" + before + "," + ${mine} +` +
+      ` " SAME=" + (a === b));`;
+    const res = spawnSync(process.execPath, ["-e", script], {
+      cwd: makeTestTempFolder("log-file-cwd"),
+      env,
+      encoding: "utf8",
+    });
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /\nFOLDERS=0,1 SAME=true$/);
+  });
+
+  it("uses the shipped rebalance log path outside tests", () => {
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    delete env.LOG_FILE;
+    const lib = JSON.stringify(
+      path.join(__dirname, "..", "src", "lib", "config"),
+    );
+    const res = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `process.stdout.write("\\nLOG=" + require(${lib}).rebalanceLogPath())`,
+      ],
+      { cwd: makeTestTempFolder("log-file-cwd"), env, encoding: "utf8" },
+    );
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /\nLOG=\.\/app-data\/rebalance_log\.json$/);
+  });
+
+  it("names the log in LOG_FILE when it is set", () => {
+    const restoreLog = useRebalanceLog("/somewhere/else/log.json");
+    try {
+      assert.strictEqual(config.rebalanceLogPath(), "/somewhere/else/log.json");
+    } finally {
+      restoreLog();
+    }
   });
 
   it("POSITION_MANAGER is a non-empty string", () => {
@@ -89,20 +163,68 @@ describe("config default values", () => {
 
 // ── assertLiveModeReady ───────────────────────────────────────────────────────
 
-describe("assertLiveModeReady", () => {
-  it("does not throw when PRIVATE_KEY and RPC_URL are present", () => {
-    // assertLiveModeReady throws iff RPC_URL is missing OR
-    // (PRIVATE_KEY is missing AND no wallet file exists on disk).
-    const hasKey = !!config.PRIVATE_KEY || walletManager.hasWallet();
-    if (hasKey && config.RPC_URL) {
-      assert.doesNotThrow(() => config.assertLiveModeReady());
-    } else {
-      // Expected to throw — that's correct behaviour for missing config
-      assert.throws(
-        () => config.assertLiveModeReady(),
-        /Missing required configuration/i,
-      );
+/**
+ * What `assertLiveModeReady` says in a child process, which reads
+ * PRIVATE_KEY as config.js loads, so each case decides it there: left out
+ * unless `privateKey` names one, with the wallet file in a folder of the
+ * child's own, holding a wallet when `withWallet`. The child runs from an
+ * empty folder of its own, so it never finds the install's `.env`, even
+ * with this file run as a plain script.
+ * @param {{privateKey?: string, withWallet?: boolean}} opts
+ * @returns {string}  "ready", or the first line of what it threw.
+ */
+function liveModeReadyInChild({ privateKey, withWallet = false }) {
+  const lib = (name) =>
+    JSON.stringify(path.join(__dirname, "..", "src", "lib", name));
+  const env = {
+    ...process.env,
+    WALLET_FILE_PATH: path.join(makeTestTempFolder("live-mode"), "wallet.json"),
+  };
+  delete env.PRIVATE_KEY;
+  if (privateKey !== undefined) env.PRIVATE_KEY = privateKey;
+  const importWallet = withWallet
+    ? `await require(${lib("wallet-manager")}).importWallet({
+         address: "0xAbCdEf0000000000000000000000000000000001",
+         privateKey: "0x" + "cd".repeat(32),
+         password: "pw",
+       });`
+    : "";
+  const script = `(async () => {
+    ${importWallet}
+    try {
+      require(${lib("config")}).assertLiveModeReady();
+      process.stdout.write("\\nSAYS=ready");
+    } catch (err) {
+      process.stdout.write("\\nSAYS=" + err.message.split("\\n")[0]);
     }
+  })();`;
+  const res = spawnSync(process.execPath, ["-e", script], {
+    cwd: makeTestTempFolder("live-mode-cwd"),
+    env,
+    encoding: "utf8",
+  });
+  assert.strictEqual(res.status, 0, res.stderr);
+  // The answer follows the child's log lines, which share its stdout.
+  return res.stdout.match(/\nSAYS=(.*)$/)[1];
+}
+
+describe("assertLiveModeReady", () => {
+  it("passes with a key in PRIVATE_KEY and no wallet saved", () => {
+    assert.strictEqual(
+      liveModeReadyInChild({ privateKey: "0x" + "ab".repeat(32) }),
+      "ready",
+    );
+  });
+
+  it("passes with a wallet saved and no PRIVATE_KEY", () => {
+    assert.strictEqual(liveModeReadyInChild({ withWallet: true }), "ready");
+  });
+
+  it("refuses with neither, naming what is missing", () => {
+    assert.match(
+      liveModeReadyInChild({}),
+      /Missing required configuration for live-bot mode/,
+    );
   });
 
   it("exported assertLiveModeReady is a function", () => {
@@ -186,7 +308,7 @@ describe("config module shape", () => {
     "CHECK_INTERVAL_SEC",
     "MIN_REBALANCE_INTERVAL_MIN",
     "MAX_REBALANCES_PER_DAY",
-    "LOG_FILE",
+    "rebalanceLogPath",
     "POSITION_MANAGER",
     "FACTORY",
     "SWAP_ROUTER",
@@ -201,30 +323,36 @@ describe("config module shape", () => {
   }
 });
 describe("cli-help", () => {
+  /*-
+   *  The help is printed through the log module, whose seam for its
+   *  output records it; put back in each case's `finally`.
+   */
   it("prints server help without throwing", () => {
-    const orig = console.log;
     let out = "";
-    console.log = (s) => {
-      out += s;
-    };
+    const restoreLog = _setSinkForTests({
+      log: (...args) => {
+        out += util.format(...args);
+      },
+    });
     try {
       require("../src/server/server-cli-help")("server");
       assert.ok(out.includes("Dashboard"));
     } finally {
-      console.log = orig;
+      restoreLog();
     }
   });
   it("prints bot help without throwing", () => {
-    const orig = console.log;
     let out = "";
-    console.log = (s) => {
-      out += s;
-    };
+    const restoreLog = _setSinkForTests({
+      log: (...args) => {
+        out += util.format(...args);
+      },
+    });
     try {
       require("../src/bot/bot-cli-help")("bot");
       assert.ok(out.includes("Headless"));
     } finally {
-      console.log = orig;
+      restoreLog();
     }
   });
 });

@@ -11,6 +11,8 @@
 
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("assert");
+const util = require("util");
+const { _setSinkForTests } = require("../src/lib/log");
 // Before anything that reads a price loads: prices come from a fixed table.
 require("./helpers/price-stand-ins");
 const { resolvePrivateKey } = require("../src/bot/bot-private-key");
@@ -131,18 +133,19 @@ describe("bot-provider: _patchFeeData via buildProvider", () => {
       }),
     };
     _patchFeeData(provider);
-    const origLog = console.log;
     let feeLogs = 0;
-    console.log = (...args) => {
-      if (typeof args[0] === "string" && args[0].includes("feeData:"))
-        feeLogs++;
-    };
+    // The log module's seam for its output, put back in the `finally`.
+    const restoreLog = _setSinkForTests({
+      log: (...args) => {
+        if (util.format(...args).includes("feeData:")) feeLogs++;
+      },
+    });
     try {
       await provider.getFeeData();
       await provider.getFeeData();
       await provider.getFeeData();
     } finally {
-      console.log = origLog;
+      restoreLog();
     }
     assert.strictEqual(feeLogs, 1);
   });
@@ -154,6 +157,12 @@ describe("bot-loop: resolvePrivateKey", () => {
   const cfg = require("../src/lib/config");
   let orig;
   let origEnvWp;
+  /*-
+   *  TEST-ONLY global swap: resolvePrivateKey reads WALLET_PASSWORD from
+   *  the environment, through `readEnv`, and takes no seam for it; each
+   *  case starts with it unset. Restored pristine after each case
+   *  (`afterEach`).
+   */
   beforeEach(() => {
     orig = { pk: cfg.PRIVATE_KEY };
     origEnvWp = process.env.WALLET_PASSWORD;

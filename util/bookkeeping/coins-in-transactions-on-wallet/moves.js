@@ -139,16 +139,18 @@ function poolRebalances(value, pool) {
 }
 
 /**
- * The rebalances `rebalance_log.json` holds for the wallet at the
- * position manager. An entry the test suite wrote names no real wallet,
- * so it never matches.
+ * The rebalances the rebalance log holds for the wallet at the position
+ * manager. An entry the test suite wrote names no real wallet, so it
+ * never matches.
  *
- * @param {string} appDataDir  The `app-data/` folder.
+ * @param {string} logFile  The rebalance log, where the app keeps it
+ *   (`rebalanceLogPath`, src/lib/config.js): `app-data/rebalance_log.json`
+ *   unless LOG_FILE or app-runtime.json's `log.file` moves it.
  * @param {{wallet: string, positionManager: string}} who
  * @returns {object[]}  Log entries.
  */
-function loggedRebalances(appDataDir, { wallet, positionManager }) {
-  const log = readJson(path.join(appDataDir, "rebalance_log.json")) ?? [];
+function loggedRebalances(logFile, { wallet, positionManager }) {
+  const log = readJson(logFile) ?? [];
   return log.filter(
     (e) =>
       typeof e.wallet === "string" &&
@@ -277,11 +279,12 @@ function loggedDecimals(logged) {
  * @param {{chain: string, cacheTag: string, wallet: string,
  *   positionManager: string}} who
  * @param {{startMs: number, endMs: number}} range  The report's span.
+ * @param {string} logFile  The rebalance log (`loggedRebalances`).
  * @returns {{moves: object[], coinsOf: Map, symbols: Map,
  *   decimals: Map}}
  */
-function recordsNear(appDataDir, who, range) {
-  const logged = loggedRebalances(appDataDir, who);
+function recordsNear(appDataDir, who, range, logFile) {
+  const logged = loggedRebalances(logFile, who);
   const all = [
     ...joinRebalances(cachedRebalances(appDataDir, who), logged),
     ...recordedCompounds(appDataDir, who),

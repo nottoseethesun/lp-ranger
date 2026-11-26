@@ -50,10 +50,9 @@ export function formatSettingChange(key, value) {
 }
 
 /**
- * Look up the label for a given key without the "is now" prefix —
- * used for messages like `<label> cleared — using default`.  Falls
- * back to the raw key when no label is registered so the message
- * still round-trips information.
+ * Look up the label for a given key without the "is now" wording, for
+ * a message that names a setting.  Falls back to the raw key when no
+ * label is registered so the message still round-trips information.
  * @param {string} key
  * @returns {string}
  */

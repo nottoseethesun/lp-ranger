@@ -7,8 +7,9 @@
  *   (src/server/position-routes.js), and the token-symbol lookup; and
  *   that the map holds every handler the server mounts. Settings saves
  *   are tested in test/server-routes-extra.test.js, the held stop in
- *   test/server-routes-stop.test.js, and the start-up in
- *   test/server-auto-start.test.js.
+ *   test/server-routes-stop.test.js, the start-up in
+ *   test/server-auto-start.test.js, and the launch's key step in
+ *   test/server-launch-key-step.test.js.
  */
 
 "use strict";
@@ -17,7 +18,8 @@ const { describe, it, afterEach } = require("node:test");
 const assert = require("assert");
 const { createRouteHandlers } = require("./_bot-route-adapters");
 const { compositeKey } = require("../src/lib/bot-config-v2");
-const { CHAIN_NAME } = require("../src/lib/config");
+const config = require("../src/lib/config");
+const { CHAIN_NAME } = config;
 const appPhase = require("../src/bot/app-phase");
 const { makeDeps, makeRes } = require("./helpers/route-handler-deps");
 
@@ -210,7 +212,7 @@ describe("server-routes createRouteHandlers", () => {
         );
       }
 
-      it("from its first step until it has finished", async () => {
+      it("from its first step, and not once it has ended", async () => {
         const seen = [];
         const h = importing(() => {
           seen.push(appPhase.walletImportUnderWay());
@@ -231,6 +233,37 @@ describe("server-routes createRouteHandlers", () => {
         });
         await assert.rejects(h._handleWalletImport({}, makeRes()), /bad key/);
         assert.strictEqual(appPhase.walletImportUnderWay(), false);
+      });
+
+      it("through its own closing start-up, which still begins", async () => {
+        /*-
+         *  The start-up asks for the shared signer once it has begun, so
+         *  the ask shows it began, and what was under way meanwhile.
+         */
+        const seen = [];
+        const base = makeDeps();
+        const h = createRouteHandlers(
+          makeDeps({
+            positionMgr: {
+              ...base.positionMgr,
+              getSharedSigner: async () => {
+                seen.push({
+                  importing: appPhase.walletImportUnderWay(),
+                  startUp: appPhase.startUpProgress(),
+                });
+                throw new Error("no chain in this test");
+              },
+            },
+          }),
+        );
+        const res = makeRes();
+        await h._handleWalletImport({}, res);
+        assert.strictEqual(res._status, 200);
+        assert.deepStrictEqual(seen, [
+          { importing: true, startUp: { done: 0, total: 0 } },
+        ]);
+        assert.strictEqual(appPhase.walletImportUnderWay(), false);
+        assert.strictEqual(appPhase.startUpProgress(), null);
       });
     });
   });
@@ -441,23 +474,6 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(res._status, 400);
       assert.strictEqual(res._body.ok, false);
       assert.ok(res._body.error.includes("wallet"));
-    });
-  });
-
-  // ── _tryResolveKey ────────────────────────────────────────────────────────
-
-  describe("_tryResolveKey", () => {
-    it("is in the map", () => {
-      /*-
-       *  It picks the key from PRIVATE_KEY, then the wallet unlocked by
-       *  WALLET_PASSWORD or the terminal prompt (src/server/server-routes.js).
-       *  Driving it needs the process's own environment and wallet file,
-       *  so this checks only that the map holds it.
-       */
-      const deps = makeDeps();
-      deps.diskConfig.positions = {};
-      const h = createRouteHandlers(deps);
-      assert.strictEqual(typeof h._tryResolveKey, "function");
     });
   });
 

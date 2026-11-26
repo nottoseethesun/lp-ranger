@@ -9,12 +9,16 @@
  * wallet = same nonce).
  *
  * Functional API — no classes, no mutable singleton state.  Call
- * `createPositionManager(opts)` to get a handle with start/stop/pause/resume.
+ * `createPositionManager(opts)` to get a handle that starts and stops
+ * positions; it has no pause or resume.
  *
  * @example
- * const mgr = createPositionManager({ signer, provider, ethersLib, rebalanceLock });
- * await mgr.startPosition(compositeKey, { tokenId, botState, updateBotState });
- * mgr.getAll();  // → Map of managed positions
+ * const mgr = createPositionManager({ rebalanceLock: createRebalanceLock() });
+ * await mgr.startPosition(compositeKey, {
+ *   tokenId,
+ *   startLoop: () => startBotLoop(loopOpts),
+ * });
+ * mgr.getAll();  // → [{ key, tokenId, status }]
  */
 
 "use strict";
@@ -73,13 +77,30 @@ function createPositionManager(opts) {
     if (_sharedPromise) return _sharedPromise;
     _sharedPromise = (async () => {
       const { privateKey, ethersLib, dryRun } = signerOpts || {};
-      /*- Initialise the send-transaction module's primary + fallback
-          providers from chain config.  init() is idempotent: any
-          other call with the same URLs (the bot's parts, built in
-          bot-interface.js, or bot-loop) is a no-op.  ensureReachable() probes the primary and
-          engages failoverToNextRPC() if it's down at boot. */
+      /*-
+       *  Put the send-transaction module's providers into service from
+       *  chain config, one per endpoint in the list. init() is idempotent:
+       *  any other call with the same urls (the bot's parts, built in
+       *  bot-interface.js, or bot-loop) does nothing. ensureReachable(),
+       *  run at each build of the shared signer, tries the endpoints in
+       *  order and moves to a later one only when it is the first to
+       *  answer, starting a sticky window there. When the first endpoint
+       *  answers, a sticky window already engaged stays until it ends.
+       *
+       *  When no endpoint answers, the signer is made all the same: it
+       *  and its nonce counter need no endpoint until the first read or
+       *  send, which the failover carries to one that answers. So no
+       *  position is left to sign through a counter of its own (the
+       *  user's ruling, 2026-11-25).
+       */
       sendTx.init({ urls: config.RPC_URLS }, ethersLib);
-      await sendTx.ensureReachable();
+      try {
+        await sendTx.ensureReachable();
+      } catch {
+        log.warn(
+          "[pos-mgr] Making the shared signer all the same: the first read or send finds an endpoint through the failover",
+        );
+      }
       const provider = sendTx.getManagedReadProvider();
       const base =
         dryRun && !privateKey
@@ -128,13 +149,6 @@ function createPositionManager(opts) {
   const _clock = opts.nowFn || Date.now;
   let _poolResetAt = nextMidnight(_clock);
 
-  /**
-   * Build a fully-qualified pool key.  The namespace (chain, contract,
-   * wallet) is required so a single wallet running multiple NFT providers
-   * (or the same pool on two chains) cannot cross-count.  Token
-   * addresses are sorted for a canonical ordering regardless of how the
-   * caller orders them.
-   */
   /** Reset all pool counters at midnight UTC. */
   function _tickPoolDaily() {
     if (_clock() >= _poolResetAt) {
@@ -225,7 +239,6 @@ function createPositionManager(opts) {
    *   Returns `{ stop() }`.  The caller (Manage in position-lifecycle.js,
    *   or the start-up in auto-start.js) is responsible for wiring up the
    *   bot state and dependencies.
-   * @param {object}   [posOpts.savedConfig]  Saved position config from disk.
    * @returns {Promise<void>} Rejects when the app is stopping, when the
    *   loop fails to start, or when the position was removed while it
    *   started.

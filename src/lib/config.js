@@ -34,8 +34,11 @@
 
 "use strict";
 
+const path = require("path");
 const runtimeFlags = require("./runtime-flags");
 const walletManager = require("./wallet-manager");
+const { makeTestTempFolder } = require("./test-temp-folders");
+const { rebalanceLogSetting } = require("./rebalance-log-setting");
 const {
   loadMergedDefaults,
   loadShippedDefaults,
@@ -140,7 +143,8 @@ const _SAVED_RPC_URLS = (() => {
  *
  * `RPC_URLS` mixes the two, so recomposing from it would re-seed the
  * saved entries on every save and make them impossible to remove. The
- * server recomposes from this base plus the freshly saved list.
+ * bot's settings save (`_applyRpcUrls`, src/bot/settings-save.js)
+ * recomposes from this base plus the freshly saved list.
  * @type {string[]}
  */
 const RPC_URLS_BASE = composeRpcUrls({
@@ -321,7 +325,7 @@ const MIN_REBALANCE_INTERVAL_MIN = parseBoundedSetting(
   "minRebalanceIntervalMin",
 );
 
-/** Maximum rebalances per liquidity pool within a single 24-hour window. */
+/** Maximum rebalances per liquidity pool in one UTC day; the count resets at 00:00 UTC. */
 const MAX_REBALANCES_PER_DAY = parseBoundedSetting(
   "MAX_REBALANCES_PER_DAY",
   _BOT_DEFAULTS.maxRebalancesPerDay,
@@ -349,8 +353,32 @@ const IMPERMANENT_LOSS_GUARD_PCT = parseBoundedSetting(
   "impermanentLossGuardPct",
 );
 
-/** File path for the JSON rebalance event log. */
-const LOG_FILE = readEnv("LOG_FILE") ?? APP_CONFIG.log.file;
+/** The test process's own rebalance log, made the first time it is asked for. */
+let _testRebalanceLog = null;
+
+/**
+ * Where the rebalance log is, asked each time it is read or written:
+ * LOG_FILE in `.env`, else `log.file` in app-runtime.json (an operator's
+ * copy applied), the rule `rebalanceLogSetting` holds
+ * (src/lib/rebalance-log-setting.js); under `node --test` with no
+ * LOG_FILE, a file in a temp folder of the test process's own, made the
+ * first time, so no test appends a rebalance it makes to the operator's
+ * log. A test that needs a log of its own sets LOG_FILE.
+ * @returns {string}
+ */
+function rebalanceLogPath() {
+  if (
+    process.env.NODE_TEST_CONTEXT === undefined ||
+    readEnv("LOG_FILE") !== undefined
+  )
+    return rebalanceLogSetting(APP_CONFIG.log.file);
+  if (_testRebalanceLog === null)
+    _testRebalanceLog = path.join(
+      makeTestTempFolder("rebalance-log"),
+      "rebalance_log.json",
+    );
+  return _testRebalanceLog;
+}
 
 /**
  * Read how long after a drain a re-deposit on the same NFT still counts as
@@ -765,7 +793,7 @@ module.exports = {
   POLL_AFTER_ACTION_MS,
   LIFETIME_RESCAN_CHECK_MS,
   DRAINED_RETIRE_MS,
-  LOG_FILE,
+  rebalanceLogPath,
 
   // Contracts
   POSITION_MANAGER,

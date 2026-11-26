@@ -2,9 +2,10 @@
  * @file src/bot/bot-cycle.js
  * @module bot-cycle
  * @description
- * Poll cycle, execution, gates, and private key resolution.  Extracted
- * from bot-loop.js.  (Config reload + the OOR trigger predicates live
- * in src/bot/bot-cycle-triggers.js.)
+ * Poll cycle, execution and gates.  The bot's signing key is resolved in
+ * src/bot/bot-private-key.js, not here.  Extracted from bot-loop.js.
+ * (Config reload + the OOR trigger predicates live in
+ * src/bot/bot-cycle-triggers.js.)
  */
 
 "use strict";
@@ -90,7 +91,8 @@ function _notifyPos(position) {
 
 /*- Canonical 6-field log context for rebalance entry-point logs.  Used
  *  by both `_prepareRebalance` and `_handleRebalanceSuccess` so the
- *  field set is built in one place — see [[feedback-log-full-context]]. */
+ *  field set is built in one place — see
+ *  docs/claude/memory/feedback_logging.md. */
 function _rebalanceCtx(deps, position) {
   return logCtx({
     chain: config.CHAIN_NAME,
@@ -103,14 +105,17 @@ function _rebalanceCtx(deps, position) {
 }
 
 /**
- * Acquire lock, log reason, and prepare state for rebalance.
+ * Log the rebalance's reason, acquire the lock, and prepare state for
+ * rebalance.
  *
  * Returns null, with the lock let go, when the position's bot loop has
  * been stopped by then: no rebalance starts on a stopped loop. A stop
- * comes from shutting the server down, which exits within seconds and
- * would cut a rebalance off after its liquidity was removed, or from
- * Stop Managing. Asked once the lock is held, since the wait for another
- * position's rebalance or compound can span the stop.
+ * comes from Stop Managing or from the program shutting down. A signal to
+ * the server exits within seconds and would cut a rebalance off after its
+ * liquidity was removed; the stop route `npm run gentle-stop` asks for
+ * waits for a move under way but starts none. Asked once the lock is held,
+ * since the wait for another position's rebalance or compound can span
+ * the stop.
  *
  * @param {object} deps  Poll-cycle deps; `_isStopped` reports the stop.
  * @returns {Promise<{release: Function|null, state: object,
@@ -492,7 +497,10 @@ function _liquidityChanged(prev, cur) {
  * poll-cycle's pnl + cleanup-detection steps have finished.  Extracted
  * to keep `pollCycle` under the complexity cap.
  *
- * Each move it decides, a compound in range or a rebalance out of it,
+ * A position in range, or out of range inside the OOR threshold before
+ * its timeout, is checked for an automatic compound; past the threshold
+ * or the timeout, or with a Rebalance Now or a residual cleanup asked
+ * for, it goes to the rebalance path.  Each move it decides
  * is decided inside `duringMoveInitiation`, so no scan of the position
  * starts until the decision and any move it allows are over
  * (src/bot/scan-state.js).
@@ -558,7 +566,8 @@ async function _decideRebalance(deps, ethersLib, poolState, compounded, snap) {
    *  position's tokens and run the move under `withFreshPricesAllowed`
    *  so every downstream price fetch (the gas gate, swap-gates,
    *  rebalancer-execute, rebalancer-correct, bot-pnl-updater, dust)
-   *  bypasses the pause flag and the cache TTL.  Counter is decremented
+   *  passes the pause flag, with the cache lifetime shortened to
+   *  `moveCacheTtlMs`.  Counter is decremented
    *  in `finally` so a thrown error still restores the prior pause
    *  state.
    *

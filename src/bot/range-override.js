@@ -48,8 +48,10 @@ const _DEFAULTS = readBotConfigDefaults();
 
 /**
  * Per-position config keys that constitute a Range override.  A slot
- * carrying any of these was configured before the toggle existed, so an
- * absent `rangeOverrideEnabled` resolves to `true` for it — upgrading
+ * holding a Price Range Extension, a Position Offset or a Full-Range flag
+ * of `true` was configured before the toggle existed (a saved `false`
+ * flag, or a null value, counts for nothing), so an absent
+ * `rangeOverrideEnabled` resolves to `true` for it — upgrading
  * must never silently stop applying settings a live position already
  * relies on.
  */
@@ -106,7 +108,8 @@ function resolveRangeOverrideEnabled(posCfg) {
  *   `resolveRangeOverrideEnabled`.
  * @param {object} [defaults]  The resolved defaults; the install's own
  *   unless a test passes others.
- * @returns {number}  Percent of the range below the current price.
+ * @returns {number}  Percent of the range above the current price (50 is
+ *   centred).
  */
 function resolveRebalanceOffsetPct(posCfg, defaults = _DEFAULTS) {
   if (!resolveRangeOverrideEnabled(posCfg)) return CENTERED_OFFSET_PCT;
@@ -119,10 +122,11 @@ function resolveRebalanceOffsetPct(posCfg, defaults = _DEFAULTS) {
 /**
  * The Full-Range flag among a position's Range settings: its saved one,
  * or else `true` when the install's default turns Full-Range on (shipped,
- * with the operator's override). With neither there is none, and a
- * rebalance with the Range settings in force keeps the position's own
- * spread, so the dashboard's checkbox shows whether that spread is full
- * range already. The bot applies this flag only while the Range settings
+ * with the operator's override). With neither there is none, so the
+ * dashboard's checkbox shows whether the position's own spread is full
+ * range already; a rebalance with the Range settings in force then takes
+ * the saved Price Range Extension, or else keeps that spread. The bot
+ * applies this flag only while the Range settings
  * are in force (`buildRebalanceOpts`, src/bot/bot-cycle-opts.js), and
  * `GET /api/status` publishes it for the checkbox
  * (src/bot/build-status-positions.js).

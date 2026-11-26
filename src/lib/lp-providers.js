@@ -24,10 +24,12 @@
  * we've verified for that deployment (the same factory + PM hash may
  * exist on multiple v3-fork clones).
  *
- * The file is re-read on every request so operators can edit
- * `app-config/user-configurable/lp-providers.json` live without a
- * server restart.  Read or parse failures fall back to an empty map so
- * the endpoint never 500s.
+ * The file is read once, by the layered loader, and kept for the life of
+ * the process, so an operator's edit to
+ * `app-config/user-configurable/lp-providers.json` takes effect on
+ * restart.  A shipped file that cannot be read or parsed gives an empty
+ * map, so the endpoint never 500s; an operator's copy that cannot be
+ * parsed leaves the shipped entries standing, with a warning.
  *
  * Case handling: JSON keys are stored in canonical EIP-55 casing and
  * are NOT normalised on load.  `getLpProvider` and

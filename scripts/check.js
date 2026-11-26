@@ -3,27 +3,23 @@
  * @description Run lint + tests + coverage + security audits and emit a
  * full report of the results.
  *
- * Outputs (all under test/report-artifacts/, gitignored):
- *   raw-data/*.json            Machine-readable tool outputs (eslint,
- *                              stylelint, html-validate, npm audit,
- *                              security-lint, secretlint, plus
+ * Outputs (all under test/report-artifacts/, gitignored; each file is
+ * listed in docs/engineering.md § "Check Report Artifacts"):
+ *   raw-data/                  Machine-readable tool outputs, among them
  *                              exit-codes.json with every tool's exit
- *                              code)
- *   raw-data/lcov.info         lcov coverage report of the test run
- *   text-reports/summary.txt          Human-readable overview (cli-table3)
- *   text-reports/tests-summary.txt    Parsed test rollup
- *   text-reports/eslint-timing.txt    ESLint TIMING=1 slowest-rule capture
- *   text-reports/markdownlint.txt     markdownlint-cli2 text output
+ *                              code, kept-folders.json with what the
+ *                              tests changed in the install's folders,
+ *                              and lcov.info, the test run's coverage
+ *   text-reports/              Human-readable outputs: the summary, the
+ *                              test rollup, and the text-only tools'
  *   config-values.tap          Raw TAP v14 from the shipped-config tests,
  *                              which run before the rest of the suite
  *   tests.tap                  Raw TAP v14 from `node --test`
  *   report.pdf                 Unified PDF of all results (pdfmake)
  *
- * And one outside it: logs/error-npm-run-check.log, whatever the tests
- * wrote to logs/error.log. The run deletes logs/error.log and the
- * previous run's copy before it starts, and renames the file once the
- * tests are done, so the operator's error log never holds a test's
- * entries.
+ * The operator's error log is not touched: under `node --test` a test
+ * that records a failure writes a file of its own process's
+ * (src/lib/error-log.js).
  *
  * After capturing raw outputs this script delegates to
  * scripts/check-report.js to parse, print the terminal summary, and
@@ -38,12 +34,12 @@
 "use strict";
 
 const { log } = require("../src/lib/log");
-const { getErrorLogPath } = require("../src/lib/error-log");
 const {
   removeLeftoverTestTempFolders,
 } = require("../src/lib/test-temp-folders");
-const { checkErrorLogPath } = require("./_check-error-log");
 const { runAsync } = require("./_run-async");
+const { keptFoldersOutcome } = require("./_kept-folders");
+const { folderSnapshot, snapshotChanges } = require("./_folder-snapshot");
 const {
   JS_TARGETS,
   SECURITY_TARGETS,
@@ -69,10 +65,25 @@ const _APP_DATA_DIR = "app-data";
 const _SCAN_CACHE_DIR = path.join("app-data", "scan-cache");
 const _OPERATOR_STATE_DIRS = [_USER_CFG_DIR, _APP_DATA_DIR, _SCAN_CACHE_DIR];
 
-/*- The file-name predicate used by the backup/wipe/restore helpers.
- *  Hoisted up here so the top-level script body (restoreProdFiles is
- *  called from the EXIT trap, which fires anywhere below) can
- *  reference it without hitting the temporal-dead-zone. */
+/*-
+ *  The folders no test may write, held to what they held before the
+ *  tests (scripts/_folder-snapshot.js): the shipped settings, which every
+ *  test process reads at once, and the operator's own, which a test run
+ *  outside this script would change.
+ */
+const _KEPT_FOLDERS = [
+  path.join("app-config", "app-defaults-for-user-configurable"),
+  _USER_CFG_DIR,
+  _APP_DATA_DIR,
+];
+
+/*-
+ *  The file-name predicate used by the backup/wipe/restore helpers.
+ *  Hoisted up here because the script body calls those helpers before
+ *  the helpers section is reached (restoreProdFiles from runTestStages's
+ *  `finally`), and a later declaration would still be in its
+ *  temporal-dead-zone then.
+ */
 const _IS_README = (n) => n === "README.md";
 process.chdir(ROOT);
 
@@ -102,15 +113,6 @@ const NO_NODE_WEB_STORAGE = "--no-experimental-webstorage";
  *  `test` scripts pass the same limit.
  */
 const TEST_TIMEOUT = "--test-timeout=60000";
-
-/*-
- *  The catastrophic-failure log, at the path src/lib/error-log.js owns, and
- *  the name a test run's entries are kept under beside it. Resolved
- *  after the chdir above, since the log's path is relative to the
- *  working directory.
- */
-const ERROR_LOG = getErrorLogPath();
-const CHECK_ERROR_LOG = checkErrorLogPath(ERROR_LOG);
 
 /** Resolve a binary in node_modules/.bin. */
 function bin(name) {
@@ -149,15 +151,6 @@ function ensureOrWrite(filePath, fallback) {
 fs.rmSync(REPORT_DIR, { recursive: true, force: true });
 fs.mkdirSync(RAW_DIR, { recursive: true });
 fs.mkdirSync(TXT_DIR, { recursive: true });
-/*-
- *  Some tests drive code that records a failure in logs/error.log, and
- *  that is the operator's own file. So the run starts with neither it
- *  nor the previous run's copy, and once the tests are done whatever
- *  they wrote is renamed (`keepTestErrorLog`). Nothing older is lost
- *  that a server start would keep: startup deletes logs/error.log.
- */
-fs.rmSync(ERROR_LOG, { force: true });
-fs.rmSync(CHECK_ERROR_LOG, { force: true });
 
 // ── Lint (JS) ──────────────────────────────────────────────────────────────
 // TIMING=1 writes the slowest-rules table to stdout AFTER the JSON blob
@@ -487,14 +480,25 @@ wipeRuntimeFiles();
  * Run the config-value tests, then the rest of the suite, and put the
  * operator's files back whatever happens, an interrupt included.
  * Forces --test-reporter=tap so the output is deterministic TAP v14
- * regardless of Node version or TTY state.
+ * regardless of Node version or TTY state. What the install's folders
+ * hold is read before the tests and after them, and every change named.
+ * A test run never throws (`runAsync` resolves with its exit status);
+ * when a read of the folders or a write of a test report does, the
+ * folders are not compared (`folderChanges` null), the error saying why
+ * (`folderError`). A stage's status is kept only once its report is
+ * written, so a run whose report could not be saved reads as failed, and
+ * one whose report was saved keeps its own status.
  * @returns {Promise<{configValuesExit: number|undefined,
- *   testsExit: number}>}
+ *   testsExit: number, folderChanges: (string[]|null),
+ *   folderError: (string|null)}>}
  */
 async function runTestStages() {
   let configValuesExit;
   let testsExit;
+  let folderChanges = null;
+  let folderError = null;
   try {
+    const foldersBefore = _KEPT_FOLDERS.map((dir) => folderSnapshot(dir));
     /*-
      *  The shipped config files are checked before any other test. A
      *  value of the wrong type, or outside its range, breaks whatever
@@ -511,11 +515,11 @@ async function runTestStages() {
       "--test-reporter-destination=stdout",
       ...configValueTests(),
     ]);
-    configValuesExit = configRun.status;
     fs.writeFileSync(
       path.join(REPORT_DIR, "config-values.tap"),
       configRun.stdout + configRun.stderr,
     );
+    configValuesExit = configRun.status;
     if (interrupted !== null) throw new Error(`interrupted by ${interrupted}`);
     const testsRun = await runAsync("node", [
       "--test",
@@ -549,30 +553,42 @@ async function runTestStages() {
       // Every other test: the config values ran above.
       ...listTestFiles().filter((f) => !configValueTests().includes(f)),
     ]);
-    testsExit = testsRun.status;
     fs.writeFileSync(
       path.join(REPORT_DIR, "tests.tap"),
       testsRun.stdout + testsRun.stderr,
     );
+    testsExit = testsRun.status;
+    folderChanges = _KEPT_FOLDERS.flatMap((dir, i) =>
+      snapshotChanges(dir, foldersBefore[i], folderSnapshot(dir)),
+    );
   } catch (err) {
-    testsExit = 1;
-    log.error("[check] Test runner failed:", err.message);
+    if (testsExit === undefined) testsExit = 1;
+    folderError = err.message;
+    log.error(
+      "[check] Stopped before the install's folders were compared: %s",
+      err.message,
+    );
   } finally {
     restoreProdFiles(backupDir);
     fs.rmSync(backupDir, { recursive: true, force: true });
-    keepTestErrorLog();
     for (const signal of INTERRUPTS) process.off(signal, onInterrupt);
   }
-  return { configValuesExit, testsExit };
+  return { configValuesExit, testsExit, folderChanges, folderError };
 }
 
 /**
  * Report the run: every stage's exit code to the aggregator, which
  * prints the summary and writes the PDF, and exit with its verdict. An
  * interrupted run reports nothing and exits 1.
- * @param {{configValuesExit: number|undefined, testsExit: number}} tests
+ * @param {{configValuesExit: number|undefined, testsExit: number,
+ *   folderChanges: (string[]|null), folderError: (string|null)}} tests
  */
-function reportRun({ configValuesExit, testsExit }) {
+function reportRun({
+  configValuesExit,
+  testsExit,
+  folderChanges,
+  folderError,
+}) {
   if (interrupted !== null) {
     log.error(
       "[check] Stopped by %s; the operator's files are restored.",
@@ -582,6 +598,7 @@ function reportRun({ configValuesExit, testsExit }) {
   }
 
   // ── Write exit codes + file counts for the aggregator ───────────────────
+  const kept = keptFoldersOutcome(folderChanges, folderError);
   const exitCodes = {
     eslint: eslintRun.status,
     stylelint: stylelintRun.status,
@@ -600,12 +617,27 @@ function reportRun({ configValuesExit, testsExit }) {
     secretlint: secretlintRun.status,
     configValues: configValuesExit,
     tests: testsExit,
+    keptFolders: kept.exit,
     htmlFileCount,
   };
   fs.writeFileSync(
     path.join(RAW_DIR, "exit-codes.json"),
     JSON.stringify(exitCodes, null, 2) + "\n",
   );
+  fs.writeFileSync(
+    path.join(RAW_DIR, "kept-folders.json"),
+    JSON.stringify(kept.report, null, 2) + "\n",
+  );
+  if (folderChanges === null)
+    log.error(
+      "[check] The install's folders were not compared: %s",
+      folderError,
+    );
+  else if (folderChanges.length > 0)
+    log.error(
+      "[check] The tests changed the install's folders:\n  %s",
+      folderChanges.join("\n  "),
+    );
 
   // ── Aggregate + print summary + write PDF ───────────────────────────────
   const aggregator = run("node", ["scripts/check-report.js"], {
@@ -740,15 +772,6 @@ function _restoreDir(srcDir, dstDir, accept) {
       path.join(dstDir, entry.name),
     );
   }
-}
-
-/**
- * Rename what the tests wrote to the error log (logs/error.log as
- * shipped) to error-npm-run-check.log beside it. No file means no test
- * wrote one.
- */
-function keepTestErrorLog() {
-  if (fs.existsSync(ERROR_LOG)) fs.renameSync(ERROR_LOG, CHECK_ERROR_LOG);
 }
 
 /** Restore operator-state directories (app-config/user-configurable/,

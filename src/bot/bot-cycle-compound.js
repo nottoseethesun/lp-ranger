@@ -50,7 +50,8 @@ const _DEFAULTS = readBotConfigDefaults();
  * whatever prices that poll had, and the idle pause answers a price
  * read from cache with no age limit — or with nothing at all on a
  * process that has never fetched one, which is every headless
- * `npm run bot` start.  Deciding to spend gas on a compound wants a
+ * `npm run bot` start without `--start-with-price-lookups-unpaused`.
+ * Deciding to spend gas on a compound wants a
  * current number, so the token amounts are re-valued here inside
  * `withFreshPricesAllowed`.
  *
@@ -373,9 +374,12 @@ async function recordCompound(deps, result) {
  * fit the current tick ratio and, when the swap ran, other coins from
  * the wallet: those it held before the collect, and a deposit that
  * reached it while the compound ran. The fees left over stay in the
- * wallet as residual (tracked by residual-tracker.js). The lifetime
- * compounded total counts them with the fees put back, as every fee
- * collected, and never the wallet's coins the deposit took in.
+ * wallet, where the Wallet Residual (Pool) counts them from the wallet's
+ * balance (`walletResiduals`, src/bot/bot-pnl-updater.js); the residual
+ * tracker (src/bot/residual-tracker.js) records only what rebalances
+ * leave. The lifetime compounded total counts them with the fees put
+ * back, as every fee collected, and never the wallet's coins the deposit
+ * took in.
  *
  * "lifetime" is this pool's cumulative compounded coins across every
  * NFT in the rebalance chain, reported in coins because coins are what
@@ -506,8 +510,9 @@ async function executeCompound(deps, poolState, ethersLib, trigger) {
   /*- Idle-driven price-lookup pause: drop cached prices for this
    *  position's tokens and run the compound under
    *  `withFreshPricesAllowed` so every downstream price fetch
-   *  (compounder-swap, swap-gates, dust) bypasses the pause flag and
-   *  the cache TTL.  Counter is decremented in `finally` so a thrown
+   *  (compounder-swap, swap-gates, dust) passes the pause flag, with the
+   *  cache lifetime shortened to `moveCacheTtlMs`.  Counter is
+   *  decremented in `finally` so a thrown
    *  error still restores the prior pause state. */
   invalidatePriceCacheFor([
     { token: deps.position.token0 },

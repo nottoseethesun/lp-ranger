@@ -15,7 +15,7 @@
  * private key, and a copy would be a second place that key lies in the
  * clear. For the same reason a step's report names variables and never
  * quotes a value. The file is rewritten atomically, with its permissions
- * kept. Runs on Node built-ins only, like the rest of the migration.
+ * kept. Needs no installed package, like the rest of the migration.
  */
 
 const fs = require("fs");

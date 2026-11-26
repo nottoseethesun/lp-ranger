@@ -2,7 +2,7 @@
 /**
  * @file scripts/check-report.js
  * @description
- * Aggregator invoked at the end of scripts/check.sh. Reads all raw tool
+ * Aggregator invoked at the end of scripts/check.js. Reads all raw tool
  * outputs from test/report-artifacts/raw-data/ plus the text captures in
  * test/report-artifacts/text-reports/, parses them via
  * check-report-parse.js, prints a colored terminal summary (cli-table3),
@@ -12,11 +12,11 @@
  * `summary.md` is GitHub-flavored markdown for `$GITHUB_STEP_SUMMARY` —
  * CI appends it so the rollup renders inline on every workflow run page.
  *
- * Exit code is 0 only when every check is green — scripts/check.sh
+ * Exit code is 0 only when every check is green — scripts/check.js
  * propagates this for GitHub CI. Safe to rerun without re-running any
  * tools: reads only the previously-captured files.
  *
- * See the "Check report artifacts" section of server.js for the full
+ * See "Check Report Artifacts" in docs/engineering.md for the full
  * layout and regeneration workflow.
  */
 
@@ -103,6 +103,39 @@ function _knipDetail(knip) {
 }
 
 /**
+ * The Folders kept row: whether the tests left the install's folders as
+ * they found them, and the first change when they did not, from the
+ * report scripts/check.js wrote (scripts/_kept-folders.js). Green only for
+ * folders compared and unchanged. Folders it could not compare, as when a
+ * read of them or a write of a test report failed, read as not compared,
+ * with the error that stopped it, never as untouched. Its own function,
+ * as `_unusedSrcModulesResult` is, to keep `loadResults` under the
+ * complexity ceiling.
+ * @param {{changes: (string[]|null), error: (string|null)}|null} report
+ *   kept-folders.json, null when it could not be read.
+ * @returns {{ok: boolean, detail: string}}
+ */
+function _keptFoldersCheck(report) {
+  if (report === null) return { ok: false, detail: "report missing" };
+  if (report.changes === null) {
+    const why =
+      report.error === null || report.error === undefined
+        ? "no reason recorded"
+        : report.error;
+    return { ok: false, detail: `not compared: ${why}` };
+  }
+  if (report.changes.length === 0)
+    return {
+      ok: true,
+      detail: "shipped settings, user-configurable/ and app-data/ untouched",
+    };
+  return {
+    ok: false,
+    detail: `${report.changes.length} change(s), first: ${report.changes[0]}`,
+  };
+}
+
+/**
  * The unused-module check's result (scripts/check-unused-src-modules.js),
  * or a result saying it did not run when its file is missing or not
  * JSON. Its own function, as `_knipDetail` is, to keep `loadResults`
@@ -144,14 +177,18 @@ function _unusedSrcModulesDetail(result) {
  */
 function loadResults() {
   const exitCodes = _readJson("exit-codes.json") || {};
+  const keptFoldersReport = _readJson("kept-folders.json");
   const eslint = P.parseEslint(_readJson("eslint.json"));
   const eslintTiming = P.parseEslintTiming(
     _readTextReport("eslint-timing.txt"),
   );
   const stylelint = P.parseStylelint(_readJson("stylelint.json"));
   const htmlValidate = P.parseHtmlValidate(_readJson("html-validate.json"));
-  // html-validate's JSON reporter omits clean files, so use the count
-  // captured by check.sh from the glob instead of the parsed results[].length.
+  /*-
+   *  html-validate's json reporter omits clean files, so use the count
+   *  captured by check.js from the glob instead of the parsed
+   *  results[].length.
+   */
   if (exitCodes.htmlFileCount !== undefined) {
     htmlValidate.files = exitCodes.htmlFileCount;
   }
@@ -197,12 +234,14 @@ function loadResults() {
   const configTests = P.parseTapTests(_readText("config-values.tap"));
   const tests = P.parseTapTests(_readText("tests.tap"));
 
-  // Rule counts from --print-config dumps. eslint.json, stylelint.json,
-  // and security-lint.json only know about rules that fired; for the true
-  // "rules loaded" count we read the resolved-config dumps that check.sh
-  // captures alongside the regular lint output. html-validate and
-  // markdownlint don't have an equivalent, so their rule counts stay null
-  // → rendered as "—".
+  /*-
+   *  Rule counts from --print-config dumps. eslint.json, stylelint.json,
+   *  and security-lint.json only know about rules that fired; for the
+   *  true "rules loaded" count we read the resolved-config dumps that
+   *  check.js captures alongside the regular lint output. html-validate
+   *  and markdownlint don't have an equivalent, so their rule counts stay
+   *  null → rendered as "—".
+   */
   const eslintRules = P.parseConfigRuleCount(_readJson("eslint-config.json"));
   const stylelintRules = P.parseConfigRuleCount(
     _readJson("stylelint-config.json"),
@@ -298,6 +337,7 @@ function loadResults() {
         `${tests.pass}/${tests.tests} passed, ${tests.suites} suites, ` +
         `${(tests.duration / 1000).toFixed(1)}s`,
     },
+    keptFolders: _keptFoldersCheck(keptFoldersReport),
     coverage: {
       ok: coverageOk,
       detail:
@@ -341,6 +381,7 @@ function loadResults() {
     { name: "openapi-sync", ...checks.openapiSync },
     { name: "Config values", ...checks.configValues },
     { name: "Tests", ...checks.tests },
+    { name: "Folders kept", ...checks.keptFolders },
     { name: "Coverage", ...checks.coverage },
     { name: "npm audit", ...checks.npmAudit },
     { name: "security-lint", ...checks.securityLint },
@@ -545,4 +586,5 @@ module.exports = {
   writeSummaryTxt,
   writeTestsSummaryTxt,
   writeSummaryMd,
+  _keptFoldersCheck, // exported for tests
 };

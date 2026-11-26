@@ -2,7 +2,11 @@
  * @file src/bot/send-transaction.js
  * @module send-transaction
  * @description
- * Single TX-submission entry point for the entire app.  Bundles:
+ * The app's rpc endpoint selection, and `sendTransaction`, which every
+ * transaction goes out through except the aggregator swap and that
+ * swap's cancel: src/bot/rebalancer-aggregator.js sends those through
+ * src/bot/tx-retry.js itself, and waits on them through
+ * `waitForReceipt`.  `sendTransaction` bundles:
  *   - estimateGas with chain-config gas-limit multiplier and per-call floor
  *   - mid-session RPC failover along the chain's ordered endpoint list,
  *     sticky for `rpcFailoverStickyMs` (bot-config-defaults.json)
@@ -11,21 +15,27 @@
  *   - automatic cancel via zero-value self-transfer after TX_CANCEL_SEC
  *
  * Public API:
- *   - init(rpcConfig)         — call once at boot from bot-loop.js
- *   - sendTransaction(opts)   — every TX-sending path in the app
+ *   - init(rpcConfig)         — build one provider per endpoint; called,
+ *                               idempotently, by the three boot paths:
+ *                               the bot's interface, bot-loop.js and
+ *                               position-manager.js
+ *   - sendTransaction(opts)   — send one transaction, as above
  *   - getCurrentRPC()         — provider currently in use (consulted by
  *                               nonce-manager-wrapper to keep the
  *                               singleton NonceManager bound to the
  *                               active RPC)
- *   - failoverToNextRPC()     — step one place forward through the RPC
- *                               list for the sticky window.  Off the
- *                               end of the list it pauses all RPC
+ *   - failoverToNextRPC()     — report that an endpoint failed; step one
+ *                               place forward through the rpc list for
+ *                               the sticky window once its failure rate
+ *                               crosses `rpcFailoverRatePercentage`.  Off
+ *                               the end of the list it pauses all rpc
  *                               traffic and restarts from the first
  *                               endpoint.
  *
  * Encapsulation: this module owns the ordered list of providers, one per
- * endpoint. Callers pass the raw `chain.rpc` JSON; provider construction
- * stays here.
+ * endpoint. Callers pass `{ urls: config.RPC_URLS }`, the list
+ * src/lib/config.js composes from the endpoints added in Bot Settings,
+ * `.env` and chains.json; provider construction stays here.
  *
  * RPC-failover scope: estimateGas-failover works with ANY signer because
  * `sendTransaction` performs the estimate against `getCurrentRPC()`
@@ -83,13 +93,14 @@ let _stickyUntilMs = 0;
  * Register the chain's RPC providers.  Idempotent: safe to call from
  * multiple boot paths (the bot's interface, bot-loop.js,
  * position-manager.js).  A
- * second call with the SAME URLs is a no-op; a second call with DIFFERENT
- * URLs throws — the process can only have one active RPC pair at a time.
+ * second call with the SAME urls is a no-op; a second call with DIFFERENT
+ * urls throws — the process has one ordered endpoint list at a time.
  *
- * Both providers are constructed eagerly via `bot-provider.buildProvider`
- * (which applies the feeData patch) regardless of boot-time reachability —
- * the whole point of mid-session failover is that the fallback must be
- * usable at the moment the primary fails, possibly hours after boot.
+ * One provider per endpoint is constructed eagerly via
+ * `bot-provider.buildProvider` (which applies the feeData patch),
+ * regardless of boot-time reachability: the point of mid-session failover
+ * is that the next endpoint is usable the moment the current one fails,
+ * possibly hours after boot.
  *
  * @param {{urls: string[]}} rpcConfig
  *   Ordered RPC URLs, most-preferred first.  Callers pass the
@@ -167,7 +178,7 @@ function setRpcUrls(urls, ethersLib) {
  * How many endpoints are actually available to move between.
  *
  * A chain configured with one endpoint (the testnet ships exactly that)
- * cannot fail over, and five call sites need that answer.  One accessor
+ * cannot fail over, and four call sites need that answer.  One accessor
  * rather than a `_primaryUrl === _fallbackUrl` test at each, which also
  * stops being correct once the list can hold more than two.
  * @returns {number}
@@ -264,19 +275,20 @@ function noteRpcOutcome(provider, ok) {
 }
 
 /**
- * Boot-time reachability probe for the primary RPC.  Calls
- * `primary.getBlockNumber()`; if it throws, engages `failoverToNextRPC()`
- * and verifies that `fallback.getBlockNumber()` succeeds.  The result
- * is reported through the shared `getCurrentRPC` state, so subsequent
- * reads (via `getManagedReadProvider`) and writes go to the same RPC as
- * the probe settled on.
+ * Reachability probe, run each time a shared signer is built: at boot, at
+ * the first unlock after a dashboard-only start, and after a wallet
+ * import's reset. Asks each endpoint in order for its block number and
+ * stops at the first that answers. When that is a later endpoint, it
+ * engages the sticky window on it (`_engageFailoverTo`), so reads (via
+ * `getManagedReadProvider`) and writes go there. When the first endpoint
+ * answers, selection is left as it is: a sticky window already engaged
+ * stays in force until it ends, while the log names the first endpoint,
+ * the one that answered. It walks the list itself, never through
+ * `failoverToNextRPC`, so it holds nothing for the all-endpoints-down
+ * pause.
  *
- * Idempotent: a second call when the sticky-failover window is active
- * simply re-probes the primary and lets `failoverToNextRPC()` extend
- * the window if the primary is still down.
- *
- * Throws if `init()` hasn't run yet, or if BOTH primary AND fallback
- * are unreachable.
+ * Throws if `init()` hasn't run yet, or if every endpoint is unreachable,
+ * with the last endpoint's error.
  *
  * @returns {Promise<void>}
  */
@@ -310,23 +322,24 @@ async function ensureReachable() {
       noteRpcResult(_urls[i], false);
       const more = i < _providers.length - 1;
       log.warn(
-        `[bot] RPC unreachable at startup (${i + 1} of ${_providers.length}): ${_urls[i]} — ${err.message}`,
+        `[bot] RPC unreachable (${i + 1} of ${_providers.length}): ${_urls[i]} — ${err.message}`,
       );
       if (more) log.info(`[bot] Falling back to ${_urls[i + 1]}`);
     }
   }
-  /*- Every endpoint failed.  Say it plainly and in one line: what the
+  /*-
+   *  Every endpoint failed. Say it plainly and in one line: what the
    *  caller logs is the raw ethers error plus a stack, which names a
    *  single endpoint and reads like a crash rather than like "this
    *  machine cannot reach the chain".
    *
-   *  Startup is NOT the all-endpoints-down pause.  That pause belongs
-   *  to `failoverToNextRPC`, which this probe does not use — it walks
-   *  the list itself and commits only on success.  So nothing is held
-   *  here, and the operator can restart the moment the connection is
-   *  back rather than waiting an hour. */
+   *  This probe is NOT the all-endpoints-down pause. That pause belongs
+   *  to `failoverToNextRPC`, which this probe does not use: it walks the
+   *  list itself and commits only on success. So nothing is held here,
+   *  and the caller decides what a failed probe means.
+   */
   log.error(
-    `[bot] STARTUP: no RPC endpoint answered — tried all ${_providers.length}, last was ${_urls[_providers.length - 1]}. The bot cannot start until one is reachable. Check this machine's internet connection, then the endpoint list in Bot Settings → Network.`,
+    `[bot] No RPC endpoint answered — tried all ${_providers.length}, last was ${_urls[_providers.length - 1]}. Check this machine's internet connection, then the endpoint list in Bot Settings → Network.`,
   );
   throw lastErr;
 }
@@ -335,13 +348,21 @@ async function ensureReachable() {
  * Return a `Proxy` that quacks like an ethers JsonRpcProvider but
  * resolves the underlying provider via `getCurrentRPC()` on every
  * property access — including method calls and the Contract internals
- * that go through `provider.call` / `provider.send`.  On a failover-
- * eligible async rejection, calls `failoverToNextRPC()` and retries
- * the same call once against the new active RPC.  This is the single
- * entry point for ALL read-side provider access in the app, so a
- * sustained primary outage produces exactly one read-failure log line
- * per call site and then everything follows the fallback for the
- * sticky window.
+ * that go through `provider.call` / `provider.send`.  A call that
+ * answers is reported to the out-of-service decider
+ * (src/bot/rpc-out-of-service.js) as a success. A failover-eligible
+ * async rejection (`_isReadFailoverable`) is reported as a failure, and
+ * the call goes to the read-retry loop (`retryRead`,
+ * src/bot/rpc-read-retry.js): it reports each failure to
+ * `failoverToNextRPC` and asks again, on whichever endpoint is then
+ * selected, with no attempt limit, until one serves it, logging each
+ * retry that fails. Any other rejection is rethrown at once.
+ *
+ * Most reads in the app go through this proxy. The bounded reads, which
+ * must give up rather than wait (pool state, the re-open check's wallet
+ * read, the swap's balance read), run their own `retryRead` against
+ * `getCurrentRPC()`, and the gas estimate and the reachability probe
+ * ask the providers directly.
  *
  * Contracts constructed with the returned proxy automatically follow
  * failover, because ethers' Contract delegates every RPC call through
@@ -434,9 +455,12 @@ function getManagedReadProvider() {
 }
 
 /**
- * Provider currently in use.  Returns the fallback iff we're inside an
- * active failover window; otherwise the primary.  When the window expires
- * we automatically revert to primary on the next call — self-healing.
+ * Provider currently in use: the first endpoint's, or, while a sticky
+ * window is engaged, that of the later endpoint a failover, the
+ * reachability probe or the gas estimate's walk moved selection to (the
+ * last endpoint's, while the all-endpoints-down pause holds traffic).
+ * Once the window's deadline has passed, the next call moves selection
+ * back to the first endpoint and logs that it did.
  *
  * Throws if `init()` hasn't run yet, to prevent silent un-routed TX sends.
  * @returns {import('ethers').JsonRpcProvider}
@@ -468,10 +492,10 @@ function getCurrentRPC() {
 }
 
 /**
- * URL of the currently selected endpoint, for the two callers that
- * build a provider per URL and need to know where to start.  Reads
- * through `getCurrentRPC` so an expired sticky window has snapped back
- * first.  `null` before `init` — those callers then use their own order.
+ * The url of the currently selected endpoint, or `null` before `init`.
+ * Reads through `getCurrentRPC`, so an expired sticky window has
+ * snapped back first. No module of the app calls it; the tests read
+ * selection through it.
  * @returns {string|null}
  */
 function getCurrentRPCUrl() {
@@ -482,8 +506,14 @@ function getCurrentRPCUrl() {
 
 /**
  * Report that an endpoint failed, and step one place forward through the
- * RPC list if it is still the one selected, sticky for
- * `rpcFailoverStickyMs`.
+ * rpc list, sticky for `rpcFailoverStickyMs`, when the endpoint is still
+ * the one selected and the out-of-service decider
+ * (`decideIfCurrentRPCIsOutOfService`, src/bot/rpc-out-of-service.js)
+ * finds that failures were more than `rpcFailoverRatePercentage` percent
+ * of the outcomes reported for it in the last
+ * `rpcFailoverRateDurationMinutes` minutes (50% and five minutes as
+ * shipped, in bot-config-defaults.json). Otherwise selection stays
+ * where it is.
  *
  * Called by the read-retry loop when an endpoint answers with a failure
  * that is the endpoint's fault, and by the NonceManager wrapper when its
@@ -505,11 +535,11 @@ function getCurrentRPCUrl() {
  * `false` and their callers retry on the endpoint the first one moved
  * to. The list is then spent only by endpoints that actually refused.
  *
- * Omitting the argument keeps the unconditional advance, which is a
- * different request — "step the list" rather than "this endpoint
- * failed" — and is what boot probes and tests driving state want. A
- * caller reacting to a failure always has the provider it called and
- * should pass it.
+ * Omitting the argument drops only the "still selected" test: the
+ * selected endpoint's failure rate still decides. No module of the app
+ * omits it (the reachability probe, `ensureReachable`, walks the list
+ * itself); tests driving state do. A caller reacting to a failure
+ * always has the provider it called and should pass it.
  *
  * The end of the list is not a dead end.  Stepping off the last endpoint
  * holds ALL RPC traffic for the configured wait, staying on the endpoint
@@ -524,7 +554,11 @@ function getCurrentRPCUrl() {
  *   fail. When given and selection has already moved off it, nothing
  *   happens. `null` counts as not given, so a caller whose provider
  *   turned out absent still steps rather than being silently pinned.
- * @returns {boolean} Whether selection actually moved.
+ * @returns {boolean} True when selection moved to the next endpoint, or
+ *   when the list ran out and the hold began (selection then stays on
+ *   the last endpoint). False on a chain with one endpoint, when the
+ *   named endpoint is no longer selected, and while the selected
+ *   endpoint's failure rate has not crossed `rpcFailoverRatePercentage`.
  */
 function failoverToNextRPC(failedProvider) {
   if (_providers.length === 0) {
@@ -695,8 +729,10 @@ async function _estimateWithFailover(populated, label) {
  *
  * Decision tree:
  *   1. populated.gasLimit set → use as-is (caller knows exactly what it wants).
- *   2. estimateGas succeeds → max(estimate × multiplier, floor).
- *   3. both estimates fail → floor.
+ *   2. estimateGas succeeds on some endpoint (`_estimateWithFailover`)
+ *      → max(estimate × multiplier, floor).
+ *   3. the estimate fails on the selected endpoint and on each one after
+ *      it → floor.
  *
  * The chain-config multiplier (`config.CHAIN.gasLimitMultiplier`) is
  * applied with millis-precision so non-integer values like 1.5× work.
@@ -721,7 +757,7 @@ async function _resolveGasLimit(populated, floor, label) {
     return final;
   } catch (err) {
     log.warn(
-      "[send-tx] %s: estimateGas failed on both RPCs — using floor %s. Inner: %s",
+      "[send-tx] %s: estimateGas failed on every endpoint — using floor %s. Inner: %s",
       label,
       String(floor),
       err.shortMessage || err.message,

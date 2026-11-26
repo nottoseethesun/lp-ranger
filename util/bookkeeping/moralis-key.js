@@ -19,8 +19,8 @@
  *
  * The key's password is LP Ranger's wallet password, since the app
  * encrypts every api key it keeps with that password. The report needs
- * neither the wallet nor its private key, and never opens the wallet
- * file: the password opens only the key, and each prompt says so. A run
+ * neither the wallet nor its private key, and never unlocks the wallet:
+ * the password opens only the key, and each prompt says so. A run
  * asks for the password and opens the saved key with it. With no key
  * saved yet, it warns not to save a key or password in LP Ranger
  * meanwhile, asks for the key and for the password twice, asks Moralis
@@ -34,15 +34,15 @@
  * library reads. Git ignores everything in `app-config/user-configurable/`
  * but its README, so the store never reaches the remote.
  *
- * The password typed for a new key is not checked against the wallet's.
- * LP Ranger's wallet module reads the wallet file as it loads, so a check
- * through it would have the report, and each of its tests, read that
- * file. A key saved under another password is one LP Ranger cannot open:
- * it logs that as the wallet unlocks, and the dashboard's Settings can
- * save the key again. The same happens when the wallet is cleared and
- * imported again under a new password, so a password that does not open
- * the key is answered with both: run again with the wallet's password,
- * or, if that was it, save the key again in Settings.
+ * The password typed for a new key is not checked against the wallet's,
+ * since a check would mean decrypting the wallet's private key with it,
+ * which the report never does. A key saved under another password is one
+ * LP Ranger cannot open: it logs that as the wallet unlocks, and the
+ * dashboard's Settings can save the key again. The same happens when the
+ * wallet is cleared and imported again under a new password, so a
+ * password that does not open the key is answered with both: run again
+ * with the wallet's password, or, if that was it, save the key again in
+ * Settings.
  *
  * Every run asks Moralis about the key once, before it prices anything.
  * The price library answers a refused key as it answers a coin with no
@@ -87,6 +87,24 @@ function refused(message) {
 }
 
 /**
+ * Ask with `ask`, refusing when the prompt closed with nothing typed: the
+ * prompt answers null then, having said why (src/lib/ask-password.js).
+ * @param {Function} ask  Prompts and answers what is typed.
+ * @param {string} prompt
+ * @returns {Promise<string>}  What was typed.
+ * @throws {Error}  With `keyRefused` set, when nothing was typed.
+ */
+async function _typed(ask, prompt) {
+  const answer = await ask(prompt);
+  if (answer === null)
+    throw refused(
+      "Nothing was typed: the prompt closed first. Run the report again " +
+        "in a terminal you can type into.",
+    );
+  return answer;
+}
+
+/**
  * Ask Moralis whether it takes the key in memory.
  * @param {Function} ping  Answers "valid", "quota", "invalid" or another
  *   word, as `pingMoralis` does.
@@ -126,7 +144,7 @@ async function checkKey(ping, say, refusal) {
  *   the key, or the key is no longer saved.
  */
 async function openSavedKey(ask) {
-  const password = await ask(PASSWORD_PROMPT);
+  const password = await _typed(ask, PASSWORD_PROMPT);
   let key;
   try {
     key = await loadEncryptedKey("moralis", password);
@@ -156,11 +174,19 @@ async function openSavedKey(ask) {
  *   passwords differ.
  */
 async function askNewKey(ask) {
-  const key = (await ask("Moralis api key: ")).trim();
-  if (key.length === 0) throw refused("No Moralis api key was entered.");
-  const password = await ask(PASSWORD_PROMPT);
-  if (password.length === 0) throw refused("No password was entered.");
-  const again = await ask("That password again: ");
+  const key = (await _typed(ask, "Moralis api key: ")).trim();
+  if (key.length === 0)
+    throw refused(
+      "No Moralis api key was entered, so none was saved. Run again and " +
+        "enter the key as Moralis shows it.",
+    );
+  const password = await _typed(ask, PASSWORD_PROMPT);
+  if (password.length === 0)
+    throw refused(
+      "No password was entered, so the key was not saved. Run again and " +
+        "type LP Ranger's wallet password.",
+    );
+  const again = await _typed(ask, "That password again: ");
   // eslint-disable-next-line security/detect-possible-timing-attacks -- Safe: comparing two strings the user typed, to confirm one, not checking a secret
   if (again !== password)
     throw refused("The two passwords differ, so the key was not saved.");

@@ -9,7 +9,8 @@ rules that are most commonly violated, so they are impossible to miss.
 
 - **Prettier is enforced** by `npm run lint`, which the husky pre-commit
   hook runs. A commit with unformatted JS FAILS rather than being silently
-  rewritten — run `npm run format` (or `npm run lint:fix`) to fix it. The
+  rewritten — run `npm run format` to fix it (`npm run lint:fix` formats
+  the json and yaml files, not the JavaScript). The
   file list lives in `scripts/lint-targets.js`, shared by every gate.
 - **NEVER add `// prettier-ignore`** directives. They create technical debt
   that must be cleaned up later.
@@ -35,9 +36,11 @@ rules that are most commonly violated, so they are impossible to miss.
 
 - `--max-warnings 0` — warnings are treated as errors.
 - **No `eslint-disable` directives** for main lint rules.
-- Security lint rules (`9mm/no-number-from-bigint`, `9mm/no-secret-logging`)
-  may use per-line `eslint-disable-next-line` with a documented
-  `-- Safe: <reason>` comment.
+- Security lint rules (`9mm/no-number-from-bigint`, `9mm/no-secret-logging`,
+  `security/detect-unsafe-regex`, `security/detect-non-literal-regexp`,
+  `security/detect-possible-timing-attacks`) may use per-line
+  `eslint-disable-next-line` with a documented `-- Safe: <reason>`
+  comment. docs/security.md lists each exception in use.
 - No `stylelint-disable` directives.
 - Never exclude entire files from any lint pass.
 

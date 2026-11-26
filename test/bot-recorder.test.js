@@ -21,8 +21,10 @@ const {
   _pushRebalanceEvent,
   _recordResidual,
   _notifyRebalance,
+  appendLog,
 } = require("../src/bot/bot-recorder");
 const { bigIntReplacer } = require("../src/lib/bigint-json");
+const { useRebalanceLog } = require("./helpers/rebalance-log");
 const {
   updateHodlBaseline: _updateHodlBaseline,
 } = require("../src/bot/bot-recorder-baseline");
@@ -488,27 +490,20 @@ describe("appendLog", () => {
   it("creates log file and appends entry", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "br-test-"));
     const logPath = path.join(dir, "test-rebalance.json");
-    const origLog = process.env.LOG_FILE;
-    process.env.LOG_FILE = logPath;
-    // Clear require cache so config picks up new LOG_FILE
-    delete require.cache[require.resolve("../src/lib/config")];
-    delete require.cache[require.resolve("../src/bot/bot-recorder")];
-    const { appendLog: al } = require("../src/bot/bot-recorder");
-    al({ action: "test", value: 123n });
-    const entries = JSON.parse(fs.readFileSync(logPath, "utf8"));
-    assert.strictEqual(entries.length, 1);
-    assert.strictEqual(entries[0].action, "test");
-    assert.strictEqual(entries[0].value, "123");
-    assert.ok(entries[0].loggedAt);
-    // Append a second entry
-    al({ action: "test2" });
-    const entries2 = JSON.parse(fs.readFileSync(logPath, "utf8"));
-    assert.strictEqual(entries2.length, 2);
-    // Cleanup
-    fs.rmSync(dir, { recursive: true });
-    if (origLog) process.env.LOG_FILE = origLog;
-    else delete process.env.LOG_FILE;
-    delete require.cache[require.resolve("../src/lib/config")];
-    delete require.cache[require.resolve("../src/bot/bot-recorder")];
+    const restoreLog = useRebalanceLog(logPath);
+    try {
+      appendLog({ action: "test", value: 123n });
+      const entries = JSON.parse(fs.readFileSync(logPath, "utf8"));
+      assert.strictEqual(entries.length, 1);
+      assert.strictEqual(entries[0].action, "test");
+      assert.strictEqual(entries[0].value, "123");
+      assert.ok(entries[0].loggedAt);
+      appendLog({ action: "test2" });
+      const entries2 = JSON.parse(fs.readFileSync(logPath, "utf8"));
+      assert.strictEqual(entries2.length, 2);
+    } finally {
+      restoreLog();
+      fs.rmSync(dir, { recursive: true });
+    }
   });
 });

@@ -327,10 +327,11 @@ function _clearStale(allStates) {
  * @param {object} d  Flattened status payload from /api/status.
  */
 /**
- * Pure dispatch decision for the four core per-position alerts.  Given
+ * Pure dispatch decision for the five core per-position alerts.  Given
  * the flattened states map and a snapshot of the dedup Sets, returns
- * the list of alerts that should fire this poll — the caller performs
- * the modal creation and Set mutation.  Extracted so tests can drive
+ * the list of alerts that should fire this poll.  Only the tests call
+ * it: `showPerPositionAlerts` applies the same five conditions itself,
+ * so a change to one is made in both.  Extracted so tests can drive
  * dispatch without cloneTpl / DOM / `_createModal` side effects.
  *
  * @param {Record<string, object>} allStates
@@ -340,7 +341,7 @@ function _clearStale(allStates) {
  *   compoundErrShown: Set<string>,
  *   catastrophicShown: Set<string>,
  *   ilGuardShown: Set<string>,
- * }} dedup  Read-only for dispatch — caller updates on fire.
+ * }} dedup  Read-only for dispatch.
  * @returns {Array<{kind:string, key:string, message?:string}>}
  */
 export function _computeCoreAlertDispatch(allStates, dedup) {

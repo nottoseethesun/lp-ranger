@@ -38,6 +38,14 @@ const settle = async () => {
 };
 
 describe("_handleStopWhenAllClear", () => {
+  /*-
+   *  TEST-ONLY global swap: the stop's exit starts a real timer that ends
+   *  the process (`setTimeout(() => process.exit(0), exitTimeoutMs)`,
+   *  src/server/server-routes.js), and the route takes no seam for it:
+   *  the timer is part of what is under test. On mock time it fires only
+   *  when a case moves the clock. Restored pristine after each case, by
+   *  `mock.timers.reset()`.
+   */
   beforeEach(() => mock.timers.enable({ apis: ["setTimeout"] }));
   afterEach(() => {
     mock.timers.reset();
@@ -169,6 +177,12 @@ describe("_handleStopWhenAllClear", () => {
      *  `close` never calls back, as with a connection that stays open.
      */
     const exits = [];
+    /*-
+     *  TEST-ONLY global swap: the stop ends the process with
+     *  `process.exit`, which the route takes no seam for; recorded
+     *  instead, so the case sees when the exit comes. Restored pristine
+     *  after the case, by `mock.restoreAll()`.
+     */
     mock.method(process, "exit", (code) => {
       exits.push(code);
     });

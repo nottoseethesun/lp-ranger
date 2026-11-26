@@ -11,11 +11,13 @@
  * internal key (never by position) so a new setting only needs a
  * one-line addition here to get a friendly log line.
  *
- * The file is re-read on every request so operators can edit
- * `app-config/user-configurable/setting-labels.json` live without a
- * server restart.  Read or parse failures fall back to an empty map
- * so the endpoint never 500s (missing entries fall back to the raw
- * `<key> = <value>` form on the client side).
+ * The file is read once, by the layered loader, and kept for the life of
+ * the process, so an operator's edit to
+ * `app-config/user-configurable/setting-labels.json` takes effect on
+ * restart.  A shipped file that cannot be read or parsed gives an empty
+ * map, so the endpoint never 500s (missing entries fall back to the raw
+ * `<key> = <value>` form on the client side); an operator's copy that
+ * cannot be parsed leaves the shipped labels standing, with a warning.
  */
 
 "use strict";

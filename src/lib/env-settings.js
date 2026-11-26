@@ -13,7 +13,12 @@
  * address is EIP-55, and nothing is coerced. `readEnv` answers the value
  * a variable sets, or undefined when it sets none, and throws naming the
  * variable when its text is anything else; the app's readers read
- * through it (src/lib/runtime-flags.js, src/lib/config.js). `envProblems` asks
+ * through it (src/lib/runtime-flags.js, src/lib/config.js, and each
+ * module whose file a variable moves), all but three:
+ * `LP_RANGER_DEFAULTS_DIR` and `LP_RANGER_USER_CONFIG_DIR` are read
+ * straight from the environment by the layered loader these rules are
+ * built on (src/lib/load-merged-defaults.js), and `CHAIN_NAME` by its own
+ * rule (`resolveChainName`, src/lib/runtime-flags.js). `envProblems` asks
  * every variable at once, its range or timer rule included, and
  * `envFileProblems` finds a line in `.env` that sets nothing LP Ranger
  * reads, both for the settings check (src/lib/settings-check.js) at startup
@@ -22,9 +27,16 @@
  * A variable unset, or set to nothing but spaces, sets no value: the
  * JSON setting it overrides, or the default, stands.
  *
+ * Which `.env` file is read is decided here too (`envFilePath`), and
+ * `loadEnvFile` loads it: the install's, in the working directory, and
+ * none under `node --test`, so no test runs on the operator's choices. A
+ * test that needs a variable sets it in `process.env`.
+ *
  * The private key and the wallet password are never quoted back.
  */
 
+const path = require("path");
+const dotenv = require("dotenv");
 const validator = require("validator");
 const { boundAt } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
@@ -333,4 +345,32 @@ function envFileProblems(text) {
   return problems;
 }
 
-module.exports = { ENV_SETTINGS, readEnv, envProblems, envFileProblems };
+/**
+ * The `.env` file the app reads: the install's, in the working directory,
+ * or none under `node --test` (Node sets `NODE_TEST_CONTEXT` in every test
+ * process), so a test never reads the operator's. Asked each time.
+ * @returns {string|null}  Its path, or null for none.
+ */
+function envFilePath() {
+  if (process.env.NODE_TEST_CONTEXT !== undefined) return null;
+  return path.resolve(".env");
+}
+
+/**
+ * Load the `.env` file the app reads (`envFilePath`) into `process.env`.
+ * As dotenv does, it leaves a variable the environment already sets as it
+ * is, and a missing file loads nothing.
+ */
+function loadEnvFile() {
+  const file = envFilePath();
+  if (file !== null) dotenv.config({ path: file });
+}
+
+module.exports = {
+  ENV_SETTINGS,
+  readEnv,
+  envProblems,
+  envFileProblems,
+  envFilePath,
+  loadEnvFile,
+};

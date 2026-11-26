@@ -75,6 +75,15 @@ describe("openapi.json sync gate — the invariants it enforces", () => {
     );
   });
 
+  it("catches a route matched on the url that the spec leaves out", () => {
+    const r = withSpec((s) => delete s.paths["/api/csrf-token"]);
+    assert.equal(r.ok, false);
+    assert.ok(
+      r.problems.some((p) => p.includes("GET /api/csrf-token")),
+      r.problems.join("\n"),
+    );
+  });
+
   it("catches a documented route the server no longer serves", () => {
     const r = withSpec((s) => {
       s.paths["/api/does-not-exist"] = {
