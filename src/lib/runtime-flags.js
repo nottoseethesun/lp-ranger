@@ -76,8 +76,9 @@ function parseTimerSec(envName, fallbackSec, key, env = process.env) {
       defaultSec: fallbackSec,
       label: envName,
       remedy:
-        `Set ${envName} in .env within range, or correct the ` +
-        `app-runtime.json values it defaults from, and restart.`,
+        `Set ${envName} in .env within range, or correct the settings ` +
+        `file value it defaults from (app-runtime.json, or ` +
+        `bot-config-defaults.json for CHECK_INTERVAL_SEC), and restart.`,
     });
   } catch (err) {
     /*- Re-thrown only to carry the `[config]` tag the rest of this

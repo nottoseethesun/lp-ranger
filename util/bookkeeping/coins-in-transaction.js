@@ -125,8 +125,9 @@ The json object:
   liquidity          the position manager's IncreaseLiquidity,
                      DecreaseLiquidity and Collect events: event, nftId,
                      amount0, amount1
-  nftTransfers       NFTs minted, from the zero address, or burned, to it:
-                     nftId, from, to
+  nftTransfers       every NFT the position manager moved (a mint comes
+                     from the zero address, a burn goes to it): nftId,
+                     from, to
   fees               for a drain, each NFT's Collect less its
                      DecreaseLiquidity: nftId, amount0, amount1
   transfers          the wallet's coin transfers: coin, direction ("out" or

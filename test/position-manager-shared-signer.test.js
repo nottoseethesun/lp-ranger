@@ -136,22 +136,42 @@ describe("position-manager getSharedSigner()", () => {
     );
   });
 
+  it("is made even when no rpc endpoint answers", async () => {
+    /*-
+     *  The signer and its nonce counter need no endpoint until the first
+     *  read or send. A build that failed here would leave no shared
+     *  counter for the positions to sign through.
+     */
+    const mgr = makeMgr();
+    const lib = mockEthersLib();
+    const Down = function () {
+      this.getBlockNumber = async () => {
+        throw new Error("rpc down");
+      };
+      this.getFeeData = async () => ({ gasPrice: 1n });
+      this.send = async () => "0x1";
+    };
+    const shared = await mgr.getSharedSigner({
+      privateKey: "0xabc",
+      ethersLib: { ...lib, JsonRpcProvider: Down },
+    });
+    assert.strictEqual(shared.address, "0xDEADBEEF");
+  });
+
   it("rebuilds after a failed first attempt (no poisoned cache)", async () => {
     const mgr = makeMgr();
-    /*- Both primary and fallback fail until firstRoundDone is tripped. */
+    /*- The wallet refuses the key until firstRoundDone is tripped. */
     let firstRoundDone = false;
     let providerCalls = 0;
     const lib = {
       JsonRpcProvider: function () {
         providerCalls++;
-        this.getBlockNumber = async () => {
-          if (!firstRoundDone) throw new Error("rpc down");
-          return 1;
-        };
+        this.getBlockNumber = async () => 1;
         this.getFeeData = async () => ({ gasPrice: 1n });
         this.send = async () => "0x1";
       },
       Wallet: function (pk, provider) {
+        if (!firstRoundDone) throw new Error("invalid private key");
         this.provider = provider;
         this.address = "0xAA";
         this.connect = (p) => {
@@ -168,7 +188,7 @@ describe("position-manager getSharedSigner()", () => {
     lib.Wallet.createRandom = () => new lib.Wallet("0xr", null);
     await assert.rejects(
       () => mgr.getSharedSigner({ privateKey: "0xabc", ethersLib: lib }),
-      /rpc down/,
+      /invalid private key/,
     );
     firstRoundDone = true;
     const shared = await mgr.getSharedSigner({

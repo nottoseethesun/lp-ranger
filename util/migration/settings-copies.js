@@ -12,7 +12,7 @@
  * place, and answers a line for each change (`updateSettingsCopy`). The
  * old file is kept in the install's `tmp/` first, so each change can be
  * undone, and the copy is written back atomically. A dry run reports the
- * changes and makes none. Runs on Node built-ins only, like the rest of
+ * changes and makes none. Needs no installed package, like the rest of
  * the migration.
  */
 

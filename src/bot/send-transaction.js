@@ -757,7 +757,7 @@ async function _resolveGasLimit(populated, floor, label) {
     return final;
   } catch (err) {
     log.warn(
-      "[send-tx] %s: estimateGas failed on both RPCs — using floor %s. Inner: %s",
+      "[send-tx] %s: estimateGas failed on every endpoint — using floor %s. Inner: %s",
       label,
       String(floor),
       err.shortMessage || err.message,

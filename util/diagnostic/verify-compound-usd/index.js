@@ -36,11 +36,13 @@
  * at the current poll are half of the fee earnings the Lifetime panel's
  * Profit adds (Current Fees plus Fees Compounded,
  * `src/client/web/js/dashboard-data-kpi.js`).
- * That total is only ever accumulated
- * incrementally once disk holds a non-zero value — the on-chain
- * rescan in `src/bot/bot-recorder-lifetime.js` is deliberately gated off
- * by `_resolveDiskState`.  So a single bad compound figure persists in
- * lifetime P&L until the value is corrected by hand.
+ * Once a total is saved, zero included, each compound adds to it, and
+ * the lifetime scan in `src/bot/bot-recorder-lifetime.js` does not count
+ * the coins again from the chain unless a rebuild of the compound list is
+ * asked for (`lifetimeScanPlan`). So a wrong coin amount stays in the
+ * Lifetime figures until such a rebuild replaces it; Re-scan Prices and
+ * Reload Current Position each lead to one. A wrong price does not stay,
+ * since the coins are priced again at every poll.
  *
  * What it does
  * ────────────
@@ -147,9 +149,11 @@
  *   node util/diagnostic/verify-compound-usd --token-id <id>
  *
  * Options:
- *   --token-id <id>     Verify a bare NFT id; skips the config lookup
- *                       entirely.  Use on a host that does not have
- *                       the position's bot-config.json.
+ *   --token-id <id>     Verify a bare NFT id. The config is still read
+ *                       when it is there, to find the position whose
+ *                       compoundHistory holds this NFT's rows; a missing
+ *                       config is not an error, so it serves on a host
+ *                       that does not have the position's bot-config.json.
  *   --usd <amount>      A reported figure to explain (e.g. the number
  *                       from a Telegram alert).  Runs the hypothesis
  *                       checks against every in-window event even when
@@ -287,7 +291,10 @@ function buildProgram() {
       "[compositeKey-or-fragment]",
       "the position to explain; omit it when using --token-id",
     )
-    .option("--token-id <id>", "verify a bare NFT id; skips the config lookup")
+    .option(
+      "--token-id <id>",
+      "verify a bare NFT id; the config is read when it is there",
+    )
     .option("--usd <amount>", "a reported figure to explain", parseNumber)
     .option("--days <n>", "scan window in days", parseNumber, DEFAULT_DAYS)
     .option("--from-block <n>", "explicit window start", parseNumber)

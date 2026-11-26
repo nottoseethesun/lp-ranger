@@ -5,9 +5,10 @@
  * gates apply to.
  *
  * Why this file exists:
- *   Four consumers need the same list — the `format` and `format:check`
- *   npm scripts, `scripts/check.js`, and the `lint-staged` config the
- *   pre-commit hook runs.  Spelled out separately they drift, and the
+ *   Several consumers need the same lists — `scripts/format.js` (the
+ *   `format` and `format:check` npm scripts), `scripts/check.js`,
+ *   `scripts/audit.js` and `scripts/markdownlint.js`.  Spelled out
+ *   separately they drift, and the
  *   drift is invisible: a hook that formats a wider set than the gate
  *   checks writes formatting on commit that no command verifies, and
  *   the gate stays green either way.

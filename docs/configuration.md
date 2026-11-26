@@ -57,6 +57,7 @@ For the controls protecting the wallet, see [`docs/security.md`](security.md).
   - [Waiting for gas](#waiting-for-gas)
   - [Sending and stopping](#sending-and-stopping)
   - [Logs and price services](#logs-and-price-services)
+  - [Prices, compounds, alerts and the rest](#prices-compounds-alerts-and-the-rest)
   - [Dashboard settings the server sends](#dashboard-settings-the-server-sends)
   - [Dashboard settings built into the page](#dashboard-settings-built-into-the-page)
 
@@ -105,7 +106,8 @@ the dust threshold, RPC error-classifier strings, logging, LP-provider
 metadata, the price services, the dashboard's settings, and setting
 labels. The engineering reference linked below inventories them all,
 and [Other Operator Tunables](#other-operator-tunables) lists the
-settings in them that have no dashboard control.
+settings in them, and in the files above, that have no dashboard
+control.
 
 The dashboard's settings are in three files. An override takes effect:
 
@@ -567,16 +569,21 @@ startup, naming it.
 | `estimatedRebalanceGasUnits` | `800000` | The gas a whole rebalance is priced at before it starts, to decide whether it waits (`rebalanceGasDeferPct`); also a period's gas when a rebalance reports none. |
 | `aggregator.estimatedSwapGasUnits` | `500000` | What the swap gas gate prices a swap at, the router's included, so it is required with or without an aggregator. |
 | `aggregator.gasUnitsWhenQuoteOmitsGas` | `300000` | Gas units an aggregator swap is sent with when its quote names none; times `gasLimitMultiplier`, like the quote's own figure. Required whenever there is an aggregator. |
+| `aggregator.gasPriceMultiplier` | `1.5` | An aggregator swap is sent at the higher of the quote's gas price and the one every send uses (`gasPriceMultiplier` above applied), times this. Required whenever there is an aggregator. |
+| `aggregator.waitMs` | `180000` | How long an aggregator swap may stay unconfirmed, from its first send, before its nonce is cancelled and the swap quoted again. Required whenever there is an aggregator. |
+| `aggregator.cancelGasMultiplier` | `1.5` | That cancel is priced at the gas price every send uses times this, and at least at the swap's own price times `speedUpGasBump`. Required whenever there is an aggregator. |
+| `aggregator.maxAttempts` | `4` | How many times an aggregator swap is tried, with a fresh quote each time, before the swap falls back to the V3 router. Required whenever there is an aggregator. |
 
 ### File Paths and Diagnostics
 
-These are not operator settings. Each one redirects a single file that a
-module owns. **Leave every one of them unset in a normal install** — the
+These are not operator settings. Each one redirects a file or a folder
+that a module owns. **Leave every one of them unset in a normal install** — the
 defaults are the layout the rest of the app, `npm run clean` and the
 upgrade scripts all expect.
 
-The eight path overrides exist for one purpose: so that a test run can never
-write over a production file, whatever directory it is invoked from. Each is
+The ten path overrides exist for the tests: so that a test run can never
+write over a production file, whatever directory it is invoked from, and
+can read settings of its own. Each is
 read by the module named on its row, not by `config.js`. None has a JSON
 counterpart, and none should — a key in a shipped defaults file would present
 these as a supported way to lay out an install, which they are not.
@@ -591,6 +598,8 @@ these as a supported way to lay out an install, which they are not.
 | `LIQUIDITY_PAIR_DETAILS_CACHE_PATH` | `app-data/scan-cache/liquidity-pair-details-cache.json` | **none** | Initial-residual snapshot per pool scope ([`src/bot/liquidity-pair-details.js`](../src/bot/liquidity-pair-details.js)). |
 | `POOL_CREATION_BLOCK_CACHE_PATH` | `app-data/scan-cache/pool-creation-blocks-cache.json` | **none** | Resolved pool deployment blocks ([`src/bot/pool-creation-block.js`](../src/bot/pool-creation-block.js)). |
 | `TOKEN_SYMBOL_CACHE_PATH` | `app-data/scan-cache/token-symbol-cache.json` | **none** | Token names and symbols read from the chain ([`src/lib/token-symbol-cache.js`](../src/lib/token-symbol-cache.js)). |
+| `LP_RANGER_DEFAULTS_DIR` | `app-config/app-defaults-for-user-configurable/` | **none** | The folder the shipped settings files are read from ([`src/lib/load-merged-defaults.js`](../src/lib/load-merged-defaults.js)), so a test can point it at a copy. Read from the environment as that module loads, before `.env` is loaded, so a line in `.env` changes nothing. |
+| `LP_RANGER_USER_CONFIG_DIR` | `app-config/user-configurable/` | **none** | The folder an operator's copies of the settings files are read from (same module), so a test can point it at a folder of its own. Read the same way as `LP_RANGER_DEFAULTS_DIR`. |
 | `INSPECTOR_PORT` | `9229` | **none** | Port `npm run debug-attach` reports the V8 inspector on ([`scripts/_debug-attach.js`](../scripts/_debug-attach.js)). |
 | `LP_RANGER_PID` | *(unset)* | **none** | The process for `npm run debug-attach` to signal, for when its port and `pgrep` lookups find the wrong one. It changes with every start, so it suits the command line better than `.env`. |
 | `MORALIS_API_KEY` | *(unset)* | **none** | Read only by `util/diagnostic/verify-compound-usd`. The key LP Ranger itself prices with is the one entered in Settings, stored encrypted in `api-keys.json`; this variable does not change it. |
@@ -609,7 +618,8 @@ engineering reference for the full inventory.
 
 ## RPC Request Pacing and Log Chunking
 
-Three settings govern how LP Ranger talks to an RPC endpoint. All live in
+Three settings govern how LP Ranger paces and chunks its requests to rpc
+endpoints, and what it does when none answers. All live in
 `app-config/app-defaults-for-user-configurable/bot-config-defaults.json` and
 all are deliberately **absent from the dashboard**. The first two are a pair:
 the chunk size decides how many requests a scan produces, the interval decides
@@ -770,6 +780,10 @@ so it is bounded like the timer settings above.
 | `rpcFailoverStickyMs` | `3600000` | How long failover stays on the endpoint it moved to before reads go back to the first one. 1 minute to 2 days. |
 | `boundedReadAttemptsPerEndpoint` | `2` | How often each endpoint in service is asked for pool state, or for the wallet balances behind the re-open check, before the read reports itself unavailable. 1 to 10. |
 | `boundedReadRetryDelayMs` | `3000` | The wait before asking the same endpoint again. Moving to another endpoint is not a reason to wait. |
+| `rpcFailoverRatePercentage` | `50` | Failover leaves an endpoint once more than this share, in percent, of what it was asked within the window below failed. 1 to 99. |
+| `rpcFailoverRateDurationMinutes` | `5` | That window, in minutes. 1 to 60. |
+| `rpcRetryOn429DelaysMs` | `[10000, 30000, 60000]` | The waits, in milliseconds and in order, before a request an endpoint refused with an http 429 is sent to it again. Each 1 to 600000. |
+| `rpcMax429PenaltyMs` | `120000` | The longest wait a run of 429s from one endpoint puts on every request to it. 0 to 600000. |
 
 ### History scans
 
@@ -834,10 +848,40 @@ In `app-runtime.json`.
 | File | Setting | Default | What it governs |
 | ---- | ------- | ------- | --------------- |
 | `logging.json` | `errorLogPath` | `logs/error.log` | Where catastrophic failures are recorded. Emptied at every startup; the dashboard's alert for one names this file. |
+| `logging.json` | `enabled` | `false` | Whether every run copies the console to the log file, as `--log-file` does for one run. |
+| `logging.json` | `path` | `logs/lp-ranger.log` | The file that copy goes to, unless `--log-file` names another. Empty, with no path after the flag, it leaves log-to-file off. |
 | `price-services.json` | `dexScreener.baseUrl` | `https://api.dexscreener.com` | DexScreener's api. |
 | `price-services.json` | `geckoTerminal.baseUrl` | `https://api.geckoterminal.com/api/v2` | GeckoTerminal's api, with its version. |
 | `price-services.json` | `geckoTerminal.topPoolsConsidered` | `10` | How many of GeckoTerminal's top-ranked pools for a token are considered for its historical price. At least 1. |
 | `price-services.json` | `moralis.baseUrl` | `https://deep-index.moralis.io/api/v2.2` | Moralis's api, with its version. |
+
+### Prices, compounds, alerts and the rest
+
+| File | Setting | Default | What it governs |
+| ---- | ------- | ------- | --------------- |
+| `bot-config-defaults.json` | `priceCacheTtlMs` | `120000` | How long a fetched current price is reused, two minutes as shipped. `POST /api/config` can save this setting and the next two in `bot-config.json`'s global section, which outranks this file. 1000 to 86400000. |
+| `bot-config-defaults.json` | `dustUnitPriceCacheMultiplier` | `30` | The gold price behind the dust threshold is reused this many times `priceCacheTtlMs`, an hour as shipped. 1 to 1000. |
+| `bot-config-defaults.json` | `moveCacheTtlMs` | `4000` | How long a price is reused inside a rebalance or compound. 1000 to 60000. |
+| `bot-config-defaults.json` | `pricePauseExceptionPollWindowMultiple` | `10` | While the Position Balanced Telegram alert is on, it reads fresh prices past the idle pause once every this many polls. 1 to 10000. |
+| `bot-config-defaults.json` | `positionBalancedBandPct` | `2.5` | How many points either side of an even split of a position's value still count as balanced, for that alert. 0.1 to 25. |
+| `bot-config-defaults.json` | `positionBalancedCooldownMs` | `1800000` | The least time between two of those alerts for one position, 30 minutes as shipped. 60000 to 86400000. |
+| `bot-config-defaults.json` | `rescanPricesRecentWindowDays` | `60` | How many days back Re-scan Prices' "Limit to the last N days" option reaches. 1 to 3650. |
+| `bot-config-defaults.json` | `ilGuardRetry.baseMs` | `14400000` | How long the bot waits before it tries again a rebalance the Impermanent Loss Guard refused, four hours as shipped; the wait doubles with each refusal in a row. 60000 to 2592000000. |
+| `bot-config-defaults.json` | `ilGuardRetry.maxMs` | `604800000` | The longest that wait grows to, a week as shipped. 60000 to 2592000000. |
+| `bot-config-defaults.json` | `residualCleanup.delayMs` | `600000` | How long after a rebalance the bot looks at the coins it left in the wallet, ten minutes as shipped. 1 to 86400000. |
+| `bot-config-defaults.json` | `residualCleanup.thresholdPct` | `5` | When those coins are more than this percent of the position and the coins together, the bot makes one more rebalance to put them back. 0.01 to 100. |
+| `bot-config-defaults.json` | `lowGasThresholds.worstCaseGasFactor` | `91` | One worst-case rebalance's gas, as a multiple of `standardSendGas`. A wallet holding less native coin than that costs at the current gas price reads GAS CRITICAL. 1 to 10000. |
+| `bot-config-defaults.json` | `lowGasThresholds.safetyMultiplier` | `3` | How many worst-case rebalances' gas the wallet should hold for each managed position; below that it reads Gas Running Low. 1 to 100. |
+| `bot-config-defaults.json` | `lowGasThresholds.standardSendGas` | `21000` | The gas of a plain transfer of the native coin, the unit the two above count in. 21000 to 1000000. |
+| `app-runtime.json` | `compound.minFeeUsd` | `1` | The least unclaimed fees, in USD, a compound is made for: Compound Now stays disabled below it, an automatic compound waits for it, and no Auto-Compound Threshold may be set under it. |
+| `app-runtime.json` | `compound.defaultThresholdUsd` | `5` | The Auto-Compound Threshold of a position that has none saved. |
+| `app-runtime.json` | `compound.repositionWindowSec` | `500000` | An addition of liquidity within this many seconds after liquidity was taken out of the same NFT is read as a reposition, not a compound: about 5.8 days as shipped. |
+| `app-runtime.json` | `rescanPrices.timeoutMs` | `7200000` | How long the Re-scan Prices dialog waits for the scan it started before it hands the button back, two hours as shipped; the scan runs on. |
+| `csrf.json` | `tokenTtlMs` | `3600000` | How long a CSRF token the server hands out stays valid, an hour as shipped. |
+| `csrf.json` | `refreshIntervalMs` | `300000` | How often the dashboard asks for a fresh token, five minutes as shipped. It must be below `tokenTtlMs`. |
+| `dust-threshold.json` | `thresholdUnits` | `0.00020833333333333335` | The dust threshold, in troy ounces of gold: the least value LP Ranger acts on, such as the smallest swap it makes. About $1 when an ounce is worth $4,800. |
+| `dust-threshold.json` | `fallbackThresholdUsd` | `1` | The threshold in USD when no price service answers for gold. |
+| `dust-threshold.json` | `priceSourceTokens` | PAXG, then XAUT | The tokens gold's price is read from, in that order, each naming its own chain at Moralis and DexScreener. |
 
 ### Dashboard settings the server sends
 

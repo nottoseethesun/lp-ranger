@@ -2571,12 +2571,14 @@ The builder covers all three published pages — the gallery, the User
 Manual, and the disclosure — so the preview surfaces breakage in any of
 them, not just the gallery.
 
-**Filenames follow one convention:**
+**Filenames mostly follow one pattern:**
 `dashboard-screenshot-<section>-<subject>[-<n>].png`, where `<section>`
 matches a gallery heading (`general`, `bot-configuration`,
 `action-dialog`, `settings-dialog`, `info-dialog`, `responsive`), and
-`-<n>` appears only where a subject needs multiple frames, numbered from
-1 with no gaps.
+`-<n>` numbers a subject's frames from 1. The `general` and `responsive`
+frames name no subject (`dashboard-screenshot-general-1.png` to `-4`,
+`dashboard-screenshot-responsive-1.png` to `-8`, with no `-7`), and
+`dashboard-screenshot-bot-configuration.png` names none either.
 
 ### Utilities
 
@@ -2926,8 +2928,8 @@ warm one does not.
 
 Unlike the other tools here it imports nothing from `src/lib/` — only
 `_helpers`, `commander`, and the shipped `chains.json` and
-`app-runtime.json`, read as data — so it opens no log file and reads no
-operator settings, and is therefore safe to run against a live install.
+`app-runtime.json`, read as data — so it reads no operator settings and
+writes nothing, and is safe to run against a live install.
 That is the whole point of it, and it is why the default endpoint is read
 from the shipped `chains.json` here rather than from `config.RPC_URLS`.
 
@@ -4260,12 +4262,19 @@ arrive.
 | An endpoint does not answer | `[bot] RPC unreachable (n of N): <url> — <error>` |
 | Another one remains to try | `[bot] Falling back to <next url>` |
 | None answered | `[bot] No RPC endpoint answered — tried all N, last was <url>. Check this machine's internet connection, then the endpoint list in Bot Settings → Network.` |
+| …then, building the shared signer | `[pos-mgr] Making the shared signer all the same: the first read or send finds an endpoint through the failover` |
 
-The summary line earns its place from what follows it. `ensureReachable`
-throws the last endpoint's error, and the caller logs that error with a
-stack trace — which names a single endpoint and reads like a crash
-rather than like "this machine cannot reach the chain". The summary says
-the latter in one sentence, before the stack arrives.
+`ensureReachable` throws the last endpoint's error, which names a single
+endpoint; the summary line says, in one sentence, that this machine
+cannot reach the chain. The shared signer's build
+(`getSharedSigner`, `src/bot/position-manager.js`) catches the throw and
+makes the signer all the same: the signer and its nonce counter need no
+endpoint until the first read or send, which the failover carries to one
+that answers. So every position still signs through the one counter, and
+the start-up starts no position without the shared signer
+(`src/bot/auto-start.js`): one started without it would keep a nonce
+counter of its own, and two counters for one wallet pick the same nonce
+(the user's ruling, 2026-11-25).
 
 ### Startup is not the all-endpoints-down wait
 
@@ -4275,9 +4284,9 @@ banner. Startup does neither, and the two are separate by construction:
 the wait belongs to `failoverToNextRPC`, which the probe does not call —
 it walks the list itself and commits only on success.
 
-For the operator that means a failed startup can be retried the moment
-the connection is back. Nothing is being held, so there is no wait to
-sit out first.
+For the operator that means a start while no endpoint answers goes on:
+nothing is held by the probe, and the first reads wait for an endpoint,
+as any read does during an outage.
 
 ## How Scans Survive RPC Failures
 

@@ -99,11 +99,25 @@ function createAutoStartManagedPositions(deps) {
     readProvider = () => sendTx.getManagedReadProvider(),
   } = deps;
 
-  /** Initialise the app-wide shared NonceManager signer (best-effort). */
+  /**
+   * The app-wide shared signer, whose one NonceManager every position
+   * signs through, or null when there is none: no key outside a dry run,
+   * or a build that failed. The start-up then starts no position, since
+   * one started without it would keep a nonce counter of its own, and
+   * two counters for one wallet pick the same nonce; each stays on the
+   * list for the next launch.
+   * @param {object} eth  ethers.
+   * @returns {Promise<{provider: object, signer: object, address: string}|null>}
+   */
   async function _initSharedSigner(eth) {
     const noKey =
       privateKeyRef.current === null || privateKeyRef.current === undefined;
-    if (noKey && !config.DRY_RUN) return null;
+    if (noKey && !config.DRY_RUN) {
+      log.warn(
+        "[bot] Not starting the managed positions: there is no key to sign with",
+      );
+      return null;
+    }
     try {
       return await positionMgr.getSharedSigner({
         privateKey: privateKeyRef.current,
@@ -112,8 +126,7 @@ function createAutoStartManagedPositions(deps) {
       });
     } catch (err) {
       log.warn(
-        "[bot] Shared signer init failed: %s —" +
-          " positions will start without injected signer",
+        "[bot] Not starting the managed positions: the shared signer could not be made (%s); they stay on the list for the next launch",
         err.message,
       );
       return null;
@@ -185,9 +198,9 @@ function createAutoStartManagedPositions(deps) {
         startLoop: () =>
           startBotLoop({
             privateKey: privateKeyRef.current,
-            provider: shared?.provider,
-            signer: shared?.signer,
-            address: shared?.address,
+            provider: shared.provider,
+            signer: shared.signer,
+            address: shared.address,
             dryRun: config.DRY_RUN,
             eagerScan: false,
             updateBotState: (patch) =>
@@ -345,6 +358,7 @@ function createAutoStartManagedPositions(deps) {
     try {
       const provider = readProvider();
       const shared = await _initSharedSigner(ethersLib);
+      if (shared === null) return;
       const ctx = {
         provider,
         pmC: new ethersLib.Contract(

@@ -86,9 +86,21 @@ function createPositionManager(opts) {
        *  order and moves to a later one only when it is the first to
        *  answer, starting a sticky window there. When the first endpoint
        *  answers, a sticky window already engaged stays until it ends.
+       *
+       *  When no endpoint answers, the signer is made all the same: it
+       *  and its nonce counter need no endpoint until the first read or
+       *  send, which the failover carries to one that answers. So no
+       *  position is left to sign through a counter of its own (the
+       *  user's ruling, 2026-11-25).
        */
       sendTx.init({ urls: config.RPC_URLS }, ethersLib);
-      await sendTx.ensureReachable();
+      try {
+        await sendTx.ensureReachable();
+      } catch {
+        log.warn(
+          "[pos-mgr] Making the shared signer all the same: the first read or send finds an endpoint through the failover",
+        );
+      }
       const provider = sendTx.getManagedReadProvider();
       const base =
         dryRun && !privateKey

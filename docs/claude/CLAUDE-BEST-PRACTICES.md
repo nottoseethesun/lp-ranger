@@ -93,7 +93,6 @@ Ten-plus explicit `!== undefined && !== null` guards already exist across the co
 - **Validate option values inside the parser** — a function as `.option()`'s third argument, throwing `InvalidArgumentError`. Commander then names the option in the message and refuses before the tool works. Accepting a bad value instead surfaces it later as a failure that never mentions the flag.
 - **Lead the description with what the tool is for**, not how to spell a flag. Put exit codes and trailing notes in `.addHelpText("after", …)`.
 - **Build the command inside a function**, not at module scope, so a test can parse several argument lists without options accumulating.
-- **A diagnostic that may be run against a live install imports nothing from `src/lib/`** — loading the app's config opens the log file and reads operator settings. Accept a duplicated default over that, and say so in the file header.
 
 ## UI & Display
 

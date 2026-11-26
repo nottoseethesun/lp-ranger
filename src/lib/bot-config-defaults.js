@@ -445,7 +445,7 @@ function _read({ strict }) {
      */
     if (err.badTimerValue || err.badSettingValue) throw err;
     log.warn(
-      "[bot-config-defaults] Falling back to built-in defaults: %s",
+      "[bot-config-defaults] Falling back to the shipped file's values: %s",
       err.message,
     );
     return { ..._FALLBACK };

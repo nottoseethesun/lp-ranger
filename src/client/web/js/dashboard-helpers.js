@@ -727,7 +727,7 @@ let _csrfToken = null;
  *  60 min server-side TTL — survives Chrome tab discards, silent network
  *  failures, and main-thread stalls during long pool scans on hardware
  *  like Raspberry Pi 5 (recommended configuration: with Heat Sink and
- *  Fan, 5GB RAM, and Ethernet cable Internet connection instead of
+ *  Fan, 16GB RAM, and Ethernet cable Internet connection instead of
  *  Wi-Fi).
  */
 let _csrfRefreshIntervalMs = CSRF_DEFAULTS.refreshIntervalMs;

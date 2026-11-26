@@ -19,10 +19,8 @@
  * than left to be inferred.
  *
  * **It imports nothing from `src/lib/`** — only `_helpers`, which is itself
- * dependency-free, and the two shipped JSON files, read as data. That is
- * deliberate and worth keeping. Loading the app's config would open the
- * log file and read operator settings, so the tool could no longer be
- * run against a live install without disturbing it. As written it makes
+ * dependency-free, and the two shipped JSON files, read as data, so it
+ * reads none of the operator's settings. As written it makes
  * plain HTTP requests and writes nothing to disk, so it is safe to run
  * while Production is up — which is the moment its answer is wanted. The
  * cost is that an operator's own override of `chains.json` is not read;

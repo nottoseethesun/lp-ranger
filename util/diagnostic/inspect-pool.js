@@ -9,8 +9,9 @@
  * what the app *thinks* is true so you can compare to on-chain ground
  * truth via `reconcile-hodl`.
  *
- * What it reads (both files; a missing epoch cache is tolerated):
- *   - app-config/user-configurable/bot-config.json  — per-position cached state
+ * What it reads (a missing epoch cache is tolerated):
+ *   - app-config/user-configurable/bot-config.json  — per-position settings
+ *   - app-data/position-records.json                — per-position records
  *   - app-data/scan-cache/pnl-epochs-cache.json     — per-pool epoch state
  *
  * What it prints:
