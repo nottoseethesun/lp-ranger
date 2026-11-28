@@ -138,7 +138,7 @@ describe("POST /api/position/reload — in-progress guard", () => {
 
   it("returns 409 server-stopping once the server holds a stop", async () => {
     /*-
-     *  The held stop waits for the scans running (src/server/stop-when-all-clear.js):
+     *  The held stop waits for the scans running (src/lib/stop-when-all-clear.js):
      *  a Reload's scan started then would be cut off, or hold the stop.
      */
     const key = _mockKey();

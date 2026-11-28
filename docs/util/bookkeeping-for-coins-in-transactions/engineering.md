@@ -161,7 +161,7 @@ Moralis key typed into the report is saved in the app's own key store.
 | `src/lib/load-merged-defaults.js` | `chains.json` with the operator's copy over it, which `--blockchain` is checked against |
 | `src/lib/bot-config-defaults.js` | The pace of requests and the span of a log search |
 | `src/bot/historical-token-price.js` | A price: Moralis's at a block, else GeckoTerminal's close for the UTC day |
-| `src/bot/price-cache.js`, `src/bot/gecko-pool-cache.js`, `src/bot/shared-json-file.js` | The price library's two caches, and how a cache file is written |
+| `src/bot/price-cache.js`, `src/bot/gecko-pool-cache.js`, `src/lib/shared-json-file.js` | The price library's two caches, and how a cache file is written |
 | `src/lib/scan-cache-dir.js` | Where those caches go under `node --test` |
 | `src/lib/api-key-store.js`, `src/lib/api-key-holder.js` | The saved Moralis key, and the plain key in memory |
 | `src/lib/ask-password.js` | The prompt for the key's password, which shows nothing of what is typed |
@@ -771,7 +771,7 @@ first (`cachePath`), so the tools never write LP Ranger's own caches in
 process's own folder (`src/lib/scan-cache-dir.js`). A price is written as it
 arrives. Each write reads the file as it is at that moment, lays the
 run's own prices over it and replaces it whole
-(`src/bot/shared-json-file.js`).
+(`src/lib/shared-json-file.js`).
 
 ### One Run at a Time
 

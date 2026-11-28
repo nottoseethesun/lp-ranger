@@ -6,19 +6,20 @@
  * @description
  * Each pool's rebalances today, kept in a file of their own,
  * `app-data/pool-daily-counts.json`, apart from the rebalance log, so a
- * restart counts every rebalance made today toward Max Rebalances / Day:
- * one whose log entry could not be written, those in a log that cannot
- * be read, and those in a log `--delete-all-caches-and-logs` removed
+ * restart counts toward Max Rebalances / Day every rebalance made today
+ * whose count was saved: one whose log entry could not be written, and
+ * those in a log `npm run delete-all-caches-and-logs`, or
+ * `npm run build-and-start -- --delete-all-caches-and-logs`, removed,
  * included (the user's decision, 2026-11-27). The position manager
  * (src/bot/position-manager.js) saves the counts at each rebalance, and
  * takes them back as the bot starts, beside the counts it reads from the
  * rebalance log, keeping the larger for each pool.
  *
  * The file holds one UTC day: one from an earlier day counts nothing. It
- * is small, so it is replaced whole through a copy (src/bot/shared-json-file.js),
+ * is small, so it is replaced whole through a copy (src/lib/shared-json-file.js),
  * and a write cut short leaves the last counts whole. A failed save is
- * told as every file failure is (src/lib/file-problem.js), never thrown:
- * the count in memory holds until the next start.
+ * told as every file failure is (src/lib/file-problem.js), which stops LP
+ * Ranger, never thrown: the count in memory holds until the exit.
  * Under `node --test` it is a file of the test process's own.
  *
  * The bot's own: the server reaches it only through the bot's interface
@@ -28,7 +29,7 @@
 const path = require("path");
 const { tellFileProblem } = require("../lib/file-problem");
 const { makeTestTempFolder } = require("../lib/test-temp-folders");
-const { readJsonObject, replaceJsonFile } = require("./shared-json-file");
+const { readJsonObject, replaceJsonFile } = require("../lib/shared-json-file");
 
 /** The file's name, in `app-data/`. */
 const COUNTS_FILE = "pool-daily-counts.json";

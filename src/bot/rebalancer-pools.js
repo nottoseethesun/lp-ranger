@@ -303,10 +303,9 @@ function _setRetryDelayForTests(ms) {
  * Spending the whole budget therefore takes a while, and deliberately:
  * selection moves on a failure rate rather than on each refusal, so a
  * blip keeps the retry on one endpoint and the wait applies to every
- * attempt after the first.  At the shipped three endpoints and two
- * attempts each that is five waits, so a Manage click against a sick
- * endpoint can sit for the better part of twenty seconds before the
- * dialog appears.  Waiting is the right trade for a poll — the blips
+ * attempt after the first.  At the shipped two endpoints and two
+ * attempts each that is three waits, so a Manage click against a sick
+ * endpoint can sit for ten seconds or more before the dialog appears.  Waiting is the right trade for a poll — the blips
  * that cause it last seconds — and the dialog is what bounds it for
  * someone watching.
  *

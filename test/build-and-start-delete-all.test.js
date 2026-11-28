@@ -7,9 +7,11 @@
  *   (scripts/delete-all-caches-and-logs.js) runs before the build, in a
  *   process of its own, since that step loads `.env` and build-and-start
  *   must not: the server it starts would take `.env`'s values for ones the
- *   shell set. An answer other than YES stops the run with no error, any
- *   other failure stops it with the step's status, and the flag is never
- *   passed to the server.
+ *   shell set. It tells the step the server starts after it, which
+ *   `npm run delete-all-caches-and-logs`, the same step run alone, does
+ *   not. An answer other than YES stops the run with no error, any other
+ *   failure stops it with the step's status, and the flag is never passed
+ *   to the server.
  *
  *   The script is read, not run. Run here, a regression that let another
  *   answer through would delete this install's logs and start LP Ranger.
@@ -54,8 +56,41 @@ describe("build-and-start --delete-all-caches-and-logs", () => {
     );
     assert.match(
       STEP,
-      /process\.exitCode = outcome === "declined" \? DECLINED_EXIT : 1;/,
-      "the step gives that status for an answer other than YES",
+      /process\.exitCode = _exitStatus\(outcome, serverStartsAfter\);/,
+      "the step gives its status by how it ended and who runs it",
+    );
+  });
+
+  it("tells its deletion step that the server starts after it", () => {
+    /*-
+     *  Told so, the step says the server starts after it, names
+     *  `npm run delete-all-caches-and-logs` when the headless bot runs, and
+     *  answers an answer other than YES with DECLINED_EXIT. Run alone,
+     *  as `npm run delete-all-caches-and-logs`, it is told nothing, and
+     *  starts nothing after (the user's ruling, 2026-11-28).
+     */
+    assert.match(
+      SCRIPT,
+      /\[\s*path\.join\(ROOT, "scripts", "delete-all-caches-and-logs\.js"\),\s*SERVER_STARTS_AFTER,\s*\]/,
+    );
+    assert.match(
+      STEP,
+      /readScriptArgs\(process\.argv\.slice\(2\), \[SERVER_STARTS_AFTER\]\)/,
+    );
+    assert.match(
+      STEP,
+      /const serverStartsAfter = args\.flags\.has\(SERVER_STARTS_AFTER\);/,
+    );
+  });
+
+  it("is a command of its own, starting nothing after", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(ROOT, "package.json"), "utf8"),
+    );
+    assert.equal(
+      pkg.scripts["delete-all-caches-and-logs"],
+      "node scripts/delete-all-caches-and-logs.js",
+      "no argument: the step then starts nothing after",
     );
   });
 

@@ -745,13 +745,15 @@ command-injection vector. The rule flags only two forms: a
 `execSync`, `spawn` or `spawnSync`, which are what the app's scripts and
 server use, so each of those is held by review. The stop path's
 `child_process` use is `scripts/_find-process.js`: `ps` (and `lsof`, where
-`/proc` gives no working directory) to confirm that the PID from the PID
-file, or each listener on the port, is this install's server, and `lsof`
-to find the listeners on the port when there is no PID file or it is
-stale. Its commands are shell strings holding a port and a PID: the port
-comes from the `PORT` setting, and the PIDs from the PID file, read as a
-positive integer, and from `lsof`'s own answer; nothing a request carries
-reaches them.
+`/proc` gives no working directory) to confirm that the PID from a PID
+file is this install's server or, for `npm run delete-all-caches-and-logs`
+and `npm run build-and-start -- --delete-all-caches-and-logs`, its
+headless bot, or that each listener on the port is this install's server, and
+`lsof` to find the listeners on the port when there is no PID file or it
+is stale. Its commands are shell strings holding a port and a PID: the
+port comes from the `PORT` setting, and the PIDs from a PID file, read
+as a positive integer, and from `lsof`'s own answer; nothing a request
+carries reaches them.
 
 Two `eslint-plugin-security` rules are disabled in
 `eslint-security.config.js`:
@@ -1168,12 +1170,18 @@ and no rebalance, compound or Reload begins after it
 every scan still running, and exits cleanly so nonces are not left
 hanging. Each position's stop waits for a rebalance or compound under
 way, a position still starting included, so none is cut off
-(`src/server/stop-when-all-clear.js`). A repeat of the request changes
+(`src/lib/stop-when-all-clear.js`). A repeat of the request changes
 nothing. The recommended way is `npm run gentle-stop`, which sends it
 and prints what the server is still finishing.
 `npm stop` sends SIGTERM to the PID in `tmp/lp-ranger.pid`, running
 Ctrl+C's `shutdown` handler: a force-stop, exiting within three seconds
-whatever is under way. See
+whatever is under way. The headless bot, which serves no http, takes
+the same held stop from the signal SIGUSR2, sent to the PID in
+`tmp/lp-ranger-bot.pid`; Ctrl+C and SIGTERM are its force-stop. Only
+the account it runs as, or root, can signal it, so its stop opens
+nothing to the network. A file LP Ranger cannot read or write stops it
+the same held way, save that no scan is waited for
+(`src/lib/stop-on-file-problem.js`). See
 [Stopping a Running Install](npm-project-commands.md#stopping-a-running-install).
 
 ## Code Review Controls

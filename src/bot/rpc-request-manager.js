@@ -8,7 +8,7 @@
  *
  * **Why it is global rather than per-provider.**  Rate limits are
  * published per IP, not per endpoint object.  This process may hold
- * three providers (see `chains.json` → `rpc.urls`) and run a five-year
+ * several providers (see `chains.json` → `rpc.urls`) and run a five-year
  * event scan while the bot polls, and every one of those shares the
  * same source address.  A per-provider or per-scan limiter would each
  * think itself well-behaved while the machine as a whole sailed past

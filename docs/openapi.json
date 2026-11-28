@@ -161,21 +161,6 @@
                           "nullable": true,
                           "description": "Why the server refused to start and is about to exit, in the operator's words, ending with what to do and to restart the server, as for a PRIVATE_KEY for another wallet than the one imported. Null on an ordinary launch. Each open dashboard tab shows it in a dialog, which stays once the server has gone, and closes its Unlock dialog. A Clear and an unlock are refused meanwhile. The server exits once tabs have had time to ask (the dashboard's poll interval, dashboardPollIntervalMs, times pollsBeforeAssumedSeen: 7.5 s as shipped), without waiting for anyone to read it."
                         },
-                        "rebalanceLogProblem": {
-                          "type": "object",
-                          "nullable": true,
-                          "description": "The last failed read or write of the rebalance log since the server started, or null. There being no log yet is no failure. Each dashboard tab shows each failure once, in its Rebalance log error dialog.",
-                          "properties": {
-                            "message": {
-                              "type": "string",
-                              "description": "The words for the operator, its paragraphs apart by a blank line: whether reading or writing the log failed, to check the file's permissions and whether the disk is full, then to restart LP Ranger and use Settings → Reload Current Position, and should the app still not work, to run npm run build-and-start -- --delete-all-caches-and-logs, which removes the log with all of LP Ranger's other caches and logs."
-                            },
-                            "at": {
-                              "type": "integer",
-                              "description": "When it failed, in milliseconds since the Unix epoch."
-                            }
-                          }
-                        },
                         "walletJustChanged": {
                           "type": "object",
                           "nullable": true,
@@ -552,7 +537,7 @@
         "description": "Remove the stored wallet and its key. The server forgets the wallet (walletAddress turns null, and an unlock answers 404) and deletes its encrypted file. It sets PRIVATE_KEY and WALLET_PASSWORD to unset in memory and removes their lines from .env, and forgets the session's wallet password. It halts every position at once and forgets the key and the signer built from it; the positions' saved status is kept, so importing the same wallet again starts them again. It waits for nothing and answers at once. Refused while the server, having refused to start, waits to exit; while a wallet import or the start-up of the saved positions is under way; while a rebalance or compound is under way or a position is starting; and while an unlock, a Reveal Key or the launch's key step is using the wallet (the last from its first step, the --unlock-at-terminal prompt included, until the bot holds the key and the start-up has begun, or the step ends without a key; the prompt holds it until it is answered, even after a dashboard unlock has taken the key, and whatever is typed there is then ignored, so pressing Enter ends the wait). Every status answer carries the same refusal as clearWalletRefusal.",
         "responses": {
           "200": {
-            "description": "Wallet cleared: no wallet, no key, every position stopped. `warnings` lists, in the operator's words, what the Clear could not remove: a .env it could not rewrite, naming the lines left, or PRIVATE_KEY or WALLET_PASSWORD set in the environment the server was started from. Each is logged too, and the dashboard shows them in its Wallet cleared: finish by hand dialog.",
+            "description": "Wallet cleared: no wallet, no key, every position stopped. `warnings` lists, in the operator's words, what the Clear could not remove: PRIVATE_KEY or WALLET_PASSWORD set in the environment the server was started from. Each is logged too, and the dashboard shows them in its Wallet cleared: finish by hand dialog. A .env the Clear cannot rewrite is a file failure, which stops LP Ranger before this answer is sent, the log and the Telegram alert naming the lines to remove by hand.",
             "content": {
               "application/json": {
                 "schema": {

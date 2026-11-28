@@ -99,8 +99,8 @@ function buildBotParts(opts = {}) {
     log.info("[bot] Seeded %d pool rebalance(s) for today's cap", seeded);
   /*-
    *  The counts saved apart from the log hold a rebalance the log lost:
-   *  one whose entry could not be written, or a log that cannot be read
-   *  or was deleted (src/bot/pool-daily-counts-file.js).
+   *  one whose entry could not be written, or one in a log that was
+   *  deleted (src/bot/pool-daily-counts-file.js).
    */
   const raised = positionMgr.restoreSavedPoolDailyCounts();
   if (raised > 0)

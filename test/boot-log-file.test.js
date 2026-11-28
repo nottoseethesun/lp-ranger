@@ -171,6 +171,65 @@ describe("_readLoggingConfig", () => {
     assert.equal(r.path, null);
   });
 
+  it("tells a shipped logging.json that is not valid JSON by its full path and as not valid JSON, naming no cause the error does not show", () => {
+    /*-
+     *  Read before the settings check, it stops LP Ranger at once (the
+     *  user's ruling, 2026-11-27: "avoid a false negative of 'can't read
+     *  file or disk full' if that's not the case"). The handler a program
+     *  sets, its stop, and the log are stand-ins, put back after.
+     */
+    const { handleFileProblemsWith } = require("../src/lib/file-problem");
+    const { _setSinkForTests } = require("../src/lib/log");
+    fs.writeFileSync(CFG_PATH, "not json {{");
+    const told = [];
+    handleFileProblemsWith((words) => told.push(words));
+    const restoreLog = _setSinkForTests({
+      log: () => {},
+      warn: () => {},
+      error: () => {},
+    });
+    try {
+      _readLoggingConfig();
+    } finally {
+      handleFileProblemsWith(null);
+      restoreLog();
+    }
+    assert.equal(told.length, 1, told.join("\n"));
+    assert.ok(
+      told[0].startsWith(
+        `LP Ranger could not read ${CFG_PATH}: it is not valid JSON (`,
+      ),
+      told[0],
+    );
+    assert.doesNotMatch(told[0], /permission|disk/i);
+  });
+
+  it("tells a shipped logging.json that is missing as not there", () => {
+    const { handleFileProblemsWith } = require("../src/lib/file-problem");
+    const { _setSinkForTests } = require("../src/lib/log");
+    fs.unlinkSync(CFG_PATH);
+    const told = [];
+    handleFileProblemsWith((words) => told.push(words));
+    const restoreLog = _setSinkForTests({
+      log: () => {},
+      warn: () => {},
+      error: () => {},
+    });
+    try {
+      _readLoggingConfig();
+    } finally {
+      handleFileProblemsWith(null);
+      restoreLog();
+    }
+    assert.equal(told.length, 1, told.join("\n"));
+    assert.ok(
+      told[0].startsWith(
+        `LP Ranger could not read ${CFG_PATH}: it is not there.`,
+      ),
+      told[0],
+    );
+  });
+
   it("treats non-boolean enabled as false", () => {
     fs.writeFileSync(CFG_PATH, JSON.stringify({ enabled: 1, path: "x.log" }));
     const r = _readLoggingConfig();

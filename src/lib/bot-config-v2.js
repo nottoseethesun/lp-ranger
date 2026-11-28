@@ -195,18 +195,17 @@ function backUpSettings(dir) {
 }
 
 /**
- * Read bot-config.json, or an empty config when it is missing, empty or
- * not json.
+ * Read bot-config.json, or an empty config when it is missing. A file
+ * that is empty, cannot be read or is not valid JSON is told as every
+ * file failure is (src/lib/file-problem.js), which stops LP Ranger, and
+ * reads as an empty config meanwhile.
  * @param {string} filePath
  * @returns {{global: object, positions: object}}
  */
 function _loadSettingsFile(filePath) {
   try {
     const text = fs.readFileSync(filePath, "utf8");
-    if (!text || text.trim().length === 0) {
-      log.warn("[config] loadConfig: file exists but is EMPTY — %s", filePath);
-      return _empty();
-    }
+    // Empty is not valid JSON: JSON.parse names it so.
     const raw = JSON.parse(text);
     const posCount = Object.keys(raw.positions || {}).length;
     const managed = Object.values(raw.positions || {}).filter(
@@ -543,27 +542,32 @@ function migratePositionKey(cfg, oldKey, newKey) {
 }
 
 /**
- * Read a single value from the `global` section, quietly.
+ * Read a single value from the `global` section.
  *
  * Deliberately NOT `loadConfig`: this runs during module initialisation
- * of `src/lib/config.js`, before logging is meaningful and on every import
- * including every test, so it must not log, must not warn, and must not
- * throw.  Any problem reading the file means "not set".
+ * of `src/lib/config.js`, on every import including every test, so there
+ * it must not log, must not warn, and must not throw: any problem reading
+ * the file means "not set", and the startup check, which runs right after,
+ * refuses a file that cannot be read or is not valid JSON. A caller that
+ * reads while LP Ranger runs passes `tell`, so a file gone bad since is
+ * told as every file failure is (src/lib/file-problem.js), which stops LP
+ * Ranger; an empty file is not valid JSON then.
  * @param {string} key    Global setting name.
  * @param {string} [dir]  Directory override (default: app-config dir).
+ * @param {boolean} [tell]  Tell a file that cannot be read or is not
+ *   valid JSON; quiet unless given.
  * @returns {*}  The value, or undefined when unset or unreadable.
  */
-function readGlobalSetting(key, dir) {
+function readGlobalSetting(key, dir, tell = false) {
+  const file = _configPath(dir);
   try {
-    const text = fs.readFileSync(_configPath(dir), "utf8");
-    if (!text || text.trim().length === 0) return undefined;
+    const text = fs.readFileSync(file, "utf8");
+    if (!tell && (!text || text.trim().length === 0)) return undefined;
     const raw = JSON.parse(text);
     const v = raw && raw.global ? raw.global[key] : undefined;
     return v === null ? undefined : v;
-  } catch {
-    /*- Absent, empty or malformed config is a normal first-run state,
-     *  not an error worth surfacing.  Callers treat undefined as "the
-     *  operator has not set this", which is exactly right. */
+  } catch (err) {
+    if (tell) tellFileProblem({ doing: "read", file, err });
     return undefined;
   }
 }

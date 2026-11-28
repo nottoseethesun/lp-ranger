@@ -25,9 +25,9 @@ const config = require("../src/lib/config");
 
 describe("_describe — how one endpoint is presented", () => {
   it("labels the first endpoint as the primary", () => {
-    const e = _describe("https://rpc-pulsechain.g4mm4.io", 0);
-    assert.strictEqual(e.host, "rpc-pulsechain.g4mm4.io");
-    assert.strictEqual(e.label, "rpc-pulsechain.g4mm4.io (primary)");
+    const e = _describe("https://rpc.pulsechain.com", 0);
+    assert.strictEqual(e.host, "rpc.pulsechain.com");
+    assert.strictEqual(e.label, "rpc.pulsechain.com (primary)");
     assert.strictEqual(e.primary, true);
   });
 
@@ -35,12 +35,12 @@ describe("_describe — how one endpoint is presented", () => {
     /*- The ordinal is the useful part: the raw URL does not tell an
      *  operator what the bot will do with it. */
     assert.strictEqual(
-      _describe("https://rpc.pulsechain.com", 1).label,
-      "rpc.pulsechain.com (fallback 1)",
+      _describe("https://rpc.pulsechain.box", 1).label,
+      "rpc.pulsechain.box (fallback 1)",
     );
     assert.strictEqual(
-      _describe("https://rpc.pulsechain.box", 2).label,
-      "rpc.pulsechain.box (fallback 2)",
+      _describe("https://node.example", 2).label,
+      "node.example (fallback 2)",
     );
     assert.strictEqual(_describe("https://x.test", 2).primary, false);
   });
@@ -123,5 +123,26 @@ describe("handleRpcEndpoints — the route", () => {
 
   it("reports no added endpoints on a fresh install", () => {
     assert.deepStrictEqual(readSavedRpcUrls(), []);
+  });
+
+  it("reads bot-config.json telling a file gone bad, since it reads while LP Ranger runs", () => {
+    /*-
+     *  Wiring, asserted against the source: a damaged bot-config.json met
+     *  here is told as every file failure is, which stops LP Ranger (the
+     *  user's ruling, 2026-11-27), where the read as src/lib/config.js
+     *  loads stays quiet for the startup check. What the read tells is
+     *  pinned in test/position-records.test.js.
+     */
+    const src = require("fs").readFileSync(
+      require("path").join(
+        __dirname,
+        "..",
+        "src",
+        "server",
+        "rpc-endpoints.js",
+      ),
+      "utf8",
+    );
+    assert.match(src, /readGlobalSetting\("rpcUrls", undefined, true\)/);
   });
 });

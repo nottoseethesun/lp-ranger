@@ -8,10 +8,7 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("assert");
 const path = require("path");
-const {
-  sendFileProblemsTo,
-  _forgetToldFileProblemsForTests,
-} = require("../src/lib/file-problem");
+const { handleFileProblemsWith } = require("../src/lib/file-problem");
 const {
   lpPositionCachePath,
   loadLpPositionCache,
@@ -48,6 +45,15 @@ function createMockFs() {
       if (files[p] === undefined) throw _enoent();
       delete files[p];
     },
+    // A save goes through a copy (src/lib/shared-json-file.js), in memory here.
+    mkdtempSync(prefix) {
+      return prefix + "XXXXXX";
+    },
+    renameSync(from, to) {
+      files[to] = files[from];
+      delete files[from];
+    },
+    rmSync() {},
   };
 }
 
@@ -174,8 +180,8 @@ describe("lp-position-cache — clear", () => {
      *  (src/lib/file-problem.js), so the operator can see why a stale
      *  cache might outlive a rebalance.
      *
-     *  TEST-ONLY: the alert a program sets is a stand-in, put back in
-     *  the `finally`. */
+     *  TEST-ONLY: the handler a program sets (its stop) is a stand-in,
+     *  put back in the `finally`. */
     const mockFs = createMockFs();
     mockFs.unlinkSync = () => {
       const e = new Error("EACCES: permission denied");
@@ -183,8 +189,7 @@ describe("lp-position-cache — clear", () => {
       throw e;
     };
     const alerts = [];
-    _forgetToldFileProblemsForTests();
-    sendFileProblemsTo((words) => alerts.push(words));
+    handleFileProblemsWith((words) => alerts.push(words));
     try {
       assert.doesNotThrow(() =>
         clearLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
@@ -195,7 +200,7 @@ describe("lp-position-cache — clear", () => {
         /^LP Ranger could not delete .*lp-position-cache/,
       );
     } finally {
-      sendFileProblemsTo(null);
+      handleFileProblemsWith(null);
     }
   });
 });

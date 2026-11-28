@@ -22,9 +22,9 @@
 "use strict";
 
 const fs = require("fs");
-const path = require("path");
 const config = require("./config");
 const { tellFileProblem } = require("./file-problem");
+const { replaceJsonFile } = require("./shared-json-file");
 const { cacheKey } = require("./cache-store");
 const { scanCachePath } = require("./scan-cache-dir");
 const { readEnv } = require("./env-settings");
@@ -55,18 +55,15 @@ function _loadSymCache() {
 }
 
 /**
- * Persist the in-memory cache to disk; a failure is told as every caught
- * file failure is (src/lib/file-problem.js), never thrown.
+ * Persist the in-memory cache to disk, replaced whole through a copy
+ * (src/lib/shared-json-file.js), so a write cut short leaves the last
+ * copy whole; a failure is told as every caught file failure is
+ * (src/lib/file-problem.js), never thrown.
  */
 function flushSymbolCache() {
   if (!_symCache) return;
   try {
-    fs.mkdirSync(path.dirname(_SYM_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(
-      _SYM_CACHE_PATH,
-      JSON.stringify(_symCache, null, 2),
-      "utf8",
-    );
+    replaceJsonFile(_SYM_CACHE_PATH, _symCache);
   } catch (err) {
     tellFileProblem({ doing: "write to", file: _SYM_CACHE_PATH, err });
   }

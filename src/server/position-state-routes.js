@@ -21,7 +21,7 @@
  * It answers 400 for a key that does not parse as a position's composite
  * key (chain-wallet-contract-tokenId). Whether anything is under way, for
  * a stop, is the held stop's answer (`POST /api/stop-when-all-clear`,
- * src/server/stop-when-all-clear.js).
+ * src/lib/stop-when-all-clear.js).
  */
 
 "use strict";

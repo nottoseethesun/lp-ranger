@@ -193,7 +193,9 @@ The bot persists its state to three locations:
    PBKDF2-SHA512 at 600,000 iterations); the encrypted third-party api keys
    `api-keys.json`; and any override of a shipped file.
 2. **`app-data/` directory** — per-install runtime data. Contains the
-   historical rebalance event log (`rebalance_log.json`) and each
+   historical rebalance event log (`rebalance_log.json`), each pool's
+   rebalances today (`pool-daily-counts.json`, so a restart counts a
+   rebalance the log lost toward Max Rebalances / Day) and each
    position's records (`position-records.json`: HODL baseline, compound
    history and coins, gas per NFT, lifetime deposit, residuals).
    Separate from `app-config/` because it's per-install data, not config.

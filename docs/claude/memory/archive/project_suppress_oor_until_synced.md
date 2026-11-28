@@ -1,12 +1,25 @@
 ---
 name: unmanaged-view-shows-false-oor-until-synced
-description: "Low-priority nice-to-have — Unmanaged view briefly shows \"out of range\" before range/price finish rendering; Managed view displays perfectly"
+description: "DONE, archived 2026-11-27 — Unmanaged view briefly showed \"out of range\" before range/price finished rendering; the stale-figures guard now hides the range banner and bar until the position's first answer"
 metadata:
   node_type: memory
   type: project
   originSessionId: b6a0b30e-9cd6-4560-a6cd-597053c26378
-  modified: 2026-10-24T05:23:48.532Z
+  modified: 2026-11-28T02:36:06.464Z
 ---
+
+**Status: DONE, found 2026-11-27 and taken off the README's Nice to
+Have's at the user's word ("remove any other nice-to-haves that have
+either been done or no longer apply").** It was done by a broader
+change, not by this plan: the range banner and the range bar carry
+`data-position-graphic` (src/client/web/index.html), which the
+stylesheet hides while the figures on screen may be another
+position's (`body[data-position-data-stale]`,
+src/client/web/css/9mm-pos-mgr.css; src/client/web/js/dashboard-stale-data.js).
+An unmanaged position counts as fresh only once its first answer has
+set price and range together (`markPositionDataFresh` after `_apply`,
+src/client/web/js/dashboard-unmanaged.js), and a switch does not
+repaint the banner. The note below is the record.
 
 The Unmanaged view briefly shows a position as "out of range" when first opened, before the range bar + current price have finished rendering. Waiting ~1 minute self-heals (no reload needed). Managed view does not have this issue — it displays perfectly.
 

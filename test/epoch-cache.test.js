@@ -228,6 +228,118 @@ describe("epoch-cache", () => {
     assert.strictEqual(getCachedFreshDeposits(key), null);
   });
 
+  it("keeps every pool's entries whole when a write is cut short, as on a full disk", () => {
+    const { _setSinkForTests } = require("../src/lib/log");
+    const pool = (n) => ({
+      contract: `0xCUT${n}${U}`,
+      wallet: "0xW",
+      token0: "0xT0",
+      token1: "0xT1",
+      fee: 500,
+    });
+    setCachedEpochs(pool(1), {
+      closedEpochs: [{ entryValue: 1 }],
+      liveEpoch: null,
+    });
+    setCachedEpochs(pool(2), {
+      closedEpochs: [{ entryValue: 2 }],
+      liveEpoch: null,
+    });
+    const errors = [];
+    const restoreLog = _setSinkForTests({
+      log: () => {},
+      warn: () => {},
+      error: (...a) => errors.push(a.join(" ")),
+    });
+    /*-
+     *  TEST-ONLY global swap: fs.writeFileSync, put back in the `finally`.
+     *  It writes part of the text and then fails, as a full disk does; the
+     *  epoch cache has no seam for its file system.
+     */
+    const realWrite = fs.writeFileSync;
+    fs.writeFileSync = (p, data, ...rest) => {
+      realWrite(p, String(data).slice(0, 10), ...rest);
+      throw Object.assign(new Error("ENOSPC: no space left on device"), {
+        code: "ENOSPC",
+      });
+    };
+    try {
+      setCachedEpochs(pool(1), {
+        closedEpochs: [{ entryValue: 1 }, { entryValue: 9 }],
+        liveEpoch: null,
+      });
+    } finally {
+      fs.writeFileSync = realWrite;
+      restoreLog();
+    }
+    assert.ok(
+      errors.some((e) => e.includes("could not write to")),
+      "the failure is told",
+    );
+    assert.strictEqual(
+      getCachedEpochs(pool(1)).closedEpochs.length,
+      1,
+      "the pool as last written",
+    );
+    assert.strictEqual(
+      getCachedEpochs(pool(2)).closedEpochs[0].entryValue,
+      2,
+      "the other pool kept",
+    );
+  });
+
+  it("writes nothing over a cache it cannot read, so no save while LP Ranger stops wipes the other pools", () => {
+    /*-
+     *  A cache that cannot be read is told, which stops LP Ranger; the
+     *  stop waits for a move under way, and a save meanwhile would write
+     *  its own pool alone over every other pool's history. The handler a
+     *  program sets (its stop) and the log are stand-ins, put back in the
+     *  `finally`, which also removes the damaged file.
+     */
+    const {
+      setCachedLifetimeHodl,
+      clearCacheEntry,
+    } = require("../src/bot/epoch-cache");
+    const { handleFileProblemsWith } = require("../src/lib/file-problem");
+    const { _setSinkForTests } = require("../src/lib/log");
+    const pool = {
+      contract: `0xBAD${U}`,
+      wallet: "0xW",
+      token0: "0xT0",
+      token1: "0xT1",
+      fee: 500,
+    };
+    const damaged = '{ "cut short';
+    fs.writeFileSync(_isolatedPath, damaged);
+    const told = [];
+    handleFileProblemsWith((words) => told.push(words));
+    const restoreLog = _setSinkForTests({
+      log: () => {},
+      warn: () => {},
+      error: () => {},
+    });
+    try {
+      setCachedEpochs(pool, {
+        closedEpochs: [{ entryValue: 5 }],
+        liveEpoch: null,
+      });
+      setCachedLifetimeHodl(pool, { amount0: 1, amount1: 2 });
+      clearCacheEntry(pool);
+      assert.equal(
+        fs.readFileSync(_isolatedPath, "utf8"),
+        damaged,
+        "left as it was",
+      );
+      assert.ok(told.length >= 1, "told");
+      assert.match(told[0], /: it is not valid JSON \(/);
+      assert.equal(getCachedEpochs(pool), null, "read as empty");
+    } finally {
+      handleFileProblemsWith(null);
+      restoreLog();
+      fs.rmSync(_isolatedPath, { force: true });
+    }
+  });
+
   it("clearCacheEntry is a no-op when the key is not present", () => {
     const { clearCacheEntry } = require("../src/bot/epoch-cache");
     /*- Must not throw. */

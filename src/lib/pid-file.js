@@ -1,34 +1,37 @@
 /**
- * @file src/server/server-pid.js
- * @module server-pid
+ * @file src/lib/pid-file.js
+ * @module pid-file
  * @description
- * PID-file lifecycle for the LP Ranger server.  On startup the server writes
- * its process id to `tmp/lp-ranger.pid`, and the file goes when the process
- * does: a signal-driven shutdown, `POST /api/stop-when-all-clear` and an
- * uncaught error all end in Node's `exit` event, which removes it.  Only a
- * process killed outright leaves it behind, since that runs no code at
- * all.  `npm stop`
- * (scripts/stop.js) reads the PID and sends SIGTERM — the force-stop Ctrl+C
- * also makes, which exits within `shutdown.exitTimeoutMs` (app-runtime.json,
- * three seconds as shipped) and cuts off a rebalance or compound under way —
- * so an operator can stop the server without switching to its terminal or
- * hunting the process by port.
- *
- * Every function is defensive: a PID-file failure must never crash startup or
- * block shutdown.  The file lives under `tmp/` (gitignored, ephemeral) and is
- * not sensitive — it holds only the OS process id.
+ * The PID files of LP Ranger's two programs. The server writes its
+ * process id to `tmp/lp-ranger.pid` once it holds its port, and the
+ * headless bot to `tmp/lp-ranger-bot.pid` as it starts. Each file goes
+ * when its process does: a signal-driven shutdown, the held stop
+ * (src/lib/stop-when-all-clear.js) and an uncaught error all end in
+ * Node's `exit` event, which removes it. Only a process killed outright
+ * leaves it behind, since that runs no code at all.
+ * `npm stop` and `npm run gentle-stop` read the server's
+ * (scripts/stop.js, scripts/gentle-stop.js), so an operator can stop the
+ * server without switching to its terminal or hunting the process by
+ * port. `npm run delete-all-caches-and-logs`, and
+ * `npm run build-and-start -- --delete-all-caches-and-logs`, read both,
+ * to stop whichever program runs before they delete anything
+ * (scripts/delete-all-caches-and-logs.js).
+ * No function throws: a failure is told, as every caught file failure is
+ * (src/lib/file-problem.js). The files live under `tmp/` (gitignored,
+ * ephemeral) and are not sensitive: each holds only the OS process id.
  */
 
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
-const { log } = require("../lib/log");
-const { tellFileProblem } = require("../lib/file-problem");
+const { log } = require("./log");
+const { tellFileProblem } = require("./file-problem");
 
-/*- Default path, relative to process.cwd() when not absolute — the server and
- *  scripts/stop.js both run from the project root, so they agree on it. */
-const _DEFAULT_PATH = "tmp/lp-ranger.pid";
+/*- Each program's file, relative to process.cwd() — every program and
+ *  script runs from the install folder, so they agree on it. */
+const SERVER_PID_FILE = "tmp/lp-ranger.pid";
+const BOT_PID_FILE = "tmp/lp-ranger-bot.pid";
 
 /** Resolve the PID-file path against cwd if it's relative. */
 function _resolvePath(p) {
@@ -37,11 +40,12 @@ function _resolvePath(p) {
 
 /**
  * @param {object} [opts]
- * @param {string} [opts.filePath]  Override the default path (tests).
+ * @param {string} [opts.filePath]  The program's file; the server's
+ *   unless given.
  * @returns {string}  Absolute path of the PID file.
  */
 function getPidFilePath(opts) {
-  return _resolvePath((opts && opts.filePath) || _DEFAULT_PATH);
+  return _resolvePath((opts && opts.filePath) || SERVER_PID_FILE);
 }
 
 /**
@@ -49,24 +53,29 @@ function getPidFilePath(opts) {
  * when this process exits.  Logs a one-line confirmation (standard
  * formatting) on success.  Never throws.
  * @param {object} [opts]
- * @param {string} [opts.filePath]  Override the default path (tests).
+ * @param {string} [opts.filePath]  The program's file; the server's
+ *   unless given.
+ * @param {string} [opts.howToStop]  How the operator stops the program,
+ *   for the confirmation.
  * @returns {boolean}  True if the file was written.
  */
 function writePidFile(opts) {
   const filePath = getPidFilePath(opts);
+  const howToStop =
+    (opts && opts.howToStop) ||
+    "`npm run gentle-stop`, or `npm stop` to force it";
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, String(process.pid) + "\n");
     process.once("exit", () => _removeIfOwn(filePath));
     log.info(
-      "[server-pid] Wrote PID %d to %s (stop with `npm stop`)",
+      "[pid-file] Wrote PID %d to %s (stop with %s)",
       process.pid,
       filePath,
+      howToStop,
     );
     return true;
   } catch (err) {
-    /*- A PID-file write failure must not abort startup: it is told, as
-     *  every caught file failure is (src/lib/file-problem.js). */
     tellFileProblem({ doing: "write to", file: filePath, err });
     return false;
   }
@@ -74,7 +83,7 @@ function writePidFile(opts) {
 
 /**
  * The `exit` listener `writePidFile` installs.  Removes the file only
- * while it still names this process, so an exiting server never deletes
+ * while it still names this process, so an exiting program never deletes
  * the file a newer one has written.  Synchronous, as an `exit` listener
  * must be.
  */
@@ -92,7 +101,8 @@ function _removeIfOwn(filePath) {
  * `npm stop`, clearing a file its server can no longer remove.  Never
  * throws.
  * @param {object} [opts]
- * @param {string} [opts.filePath]  Override the default path (tests).
+ * @param {string} [opts.filePath]  The program's file; the server's
+ *   unless given.
  * @returns {boolean}  True if a file existed and was removed.
  */
 function removePidFile(opts) {
@@ -110,7 +120,8 @@ function removePidFile(opts) {
  * Read the PID from the file.  Returns a positive integer, or null when the
  * file is missing, empty, or malformed.
  * @param {object} [opts]
- * @param {string} [opts.filePath]  Override the default path (tests).
+ * @param {string} [opts.filePath]  The program's file; the server's
+ *   unless given.
  * @returns {number|null}
  */
 function readPid(opts) {
@@ -120,7 +131,7 @@ function readPid(opts) {
     const pid = Number(raw);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch (err) {
-    // No file is no server; one there that cannot be read is told.
+    // No file is no program; one there that cannot be read is told.
     tellFileProblem({ doing: "read", file: filePath, err });
     return null;
   }
@@ -131,5 +142,6 @@ module.exports = {
   removePidFile,
   readPid,
   getPidFilePath,
-  _DEFAULT_PATH, // exported for tests
+  SERVER_PID_FILE,
+  BOT_PID_FILE,
 };

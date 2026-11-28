@@ -226,14 +226,13 @@ describe("the watch", () => {
      *  figures can arrive, as with the wallet locked: made inert, its OK
      *  would do nothing. The ids are the ones the code showing
      *  each notice uses (dashboard-app-notices.js; the dialogs are found
-     *  by them in test/dashboard-wallet-poll.test.js and
-     *  test/dashboard-rebalance-log-notice.test.js).
+     *  by them in test/dashboard-wallet-poll.test.js).
      */
     watch = stale.startStaleDataWatch(50);
     select(B);
     mock.timers.tick(50);
     const ids = notices.APP_NOTICE_IDS;
-    assert.equal(ids.length, 5, "every notice about the app");
+    assert.equal(ids.length, 4, "every notice about the app");
     for (const id of ids) {
       const notice = document.createElement("div");
       notice.id = id;

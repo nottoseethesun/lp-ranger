@@ -59,24 +59,31 @@ const _isGroup = (v) =>
   v !== null && typeof v === "object" && !Array.isArray(v);
 
 /**
- * Every position's records, by position key: `{}` when there is no file,
- * or when it cannot be read as one, which the settings check refuses at
- * startup before anything loads it.
+ * Every position's records, by position key: `{}` when there is no file.
+ * A file that cannot be read, or is not valid JSON, is told as every file
+ * failure is (src/lib/file-problem.js), which stops LP Ranger; the
+ * settings check refuses such a file at startup before anything loads it,
+ * so this is the guard for one that goes bad after. A read that fails is
+ * thrown on as well, and JSON that is not valid answers `{}`.
  * @param {string} [dir]  As for `positionRecordsPath`.
  * @returns {Record<string, object>}
  */
 function readPositionRecords(dir) {
+  const file = positionRecordsPath(dir);
   let text;
   try {
-    text = fs.readFileSync(positionRecordsPath(dir), "utf8");
+    text = fs.readFileSync(file, "utf8");
   } catch (err) {
     if (err.code === "ENOENT") return {};
+    // Told, which stops LP Ranger; a tool, which sets no stop, still sees it.
+    tellFileProblem({ doing: "read", file, err });
     throw err;
   }
   try {
     const raw = JSON.parse(text);
     return _isGroup(raw?.positions) ? raw.positions : {};
-  } catch {
+  } catch (err) {
+    tellFileProblem({ doing: "read", file, err });
     return {};
   }
 }

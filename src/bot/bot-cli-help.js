@@ -30,5 +30,23 @@ Bot-only options:
                   continuous P&L cache warming on a headless box.
                   See docs/architecture.md "Idle-Driven Price-Lookup
                   Pause" for the full rationale.
+
+Stopping:
+  kill -USR2 "$(cat tmp/lp-ranger-bot.pid)"
+                  Stop once nothing is under way: nothing new starts,
+                  and it exits once each rebalance, compound and scan
+                  under way has finished.  The headless bot writes its
+                  PID to tmp/lp-ranger-bot.pid as it starts.
+  Ctrl+C          Force-stop: exits within three seconds, cutting off
+                  a rebalance or compound under way.  SIGTERM does the
+                  same.
+
+Deleting every cache and log:
+  npm run delete-all-caches-and-logs
+                  Once you type YES, stops the headless bot once
+                  nothing is under way, deletes all of LP Ranger's
+                  caches and logs, and starts nothing after: start the
+                  headless bot again with npm run bot.  The wallet,
+                  keys and settings are kept.
 ${commonHelp()}`);
 };

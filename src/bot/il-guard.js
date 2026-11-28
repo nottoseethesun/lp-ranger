@@ -210,12 +210,11 @@ function ilGuardInputs(snap) {
  *  would be a second copy of the anchor, free to drift the moment the
  *  section is renamed.
  *
- *  Guarded on purpose.  This reads `src/lib/shared-help-content.json` —
- *  help copy, which the trading engine has no business
- *  depending on.  Unguarded, a missing or malformed
- *  shared-help-content.json takes `bot-cycle` down with it and the bot
- *  will not start at all: a docs file breaking the money loop.  Degrade
- *  to a message without a link instead.
+ *  Read in its own try.  This reads `src/lib/shared-help-content.json`,
+ *  help copy LP Ranger ships: a missing or malformed one is told as every
+ *  file failure is (src/lib/file-problem.js), which stops LP Ranger
+ *  gracefully, and the message meanwhile goes without a link, rather
+ *  than an uncaught throw taking `bot-cycle` down at once.
  *
  *  Read with `fs` rather than `require` because it is data, not a
  *  module — and a guarded `require` here trips `n/global-require`. */

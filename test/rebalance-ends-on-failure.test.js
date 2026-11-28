@@ -9,8 +9,9 @@
  *   While a position is marked as rebalancing, every Clear Wallet and
  *   wallet import is refused (src/bot/under-way.js), so the mark comes
  *   off on every way out of a rebalance, a throw included. A failed read
- *   or write of the rebalance log stops nothing that follows it, the move
- *   onto the new position included. The rebalance cycle
+ *   or write of the rebalance log is told, which stops LP Ranger, but cuts
+ *   nothing short in the rebalance that met it, the move onto the new
+ *   position included: the stop waits for that rebalance to finish. The rebalance cycle
  *   (`_executeAndRecord`, src/bot/bot-cycle.js) is driven here with the
  *   rebalance itself and the recorder's other writes stood in for.
  */
@@ -23,10 +24,10 @@ const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { _setSinkForTests } = require("../src/lib/log");
 const { useRebalanceLog } = require("./helpers/rebalance-log");
 const { walletChangeRefusal } = require("../src/bot/under-way");
-const {
-  rebalanceLogProblem,
-  _forgetRebalanceLogProblemForTests,
-} = require("../src/bot/rebalance-log");
+const { handleFileProblemsWith } = require("../src/lib/file-problem");
+
+/*- The words each file failure was handed on in, this case. */
+let _handed = [];
 
 const REBALANCER = require.resolve("../src/bot/rebalancer");
 const RECORDER = require.resolve("../src/bot/bot-recorder");
@@ -83,19 +84,25 @@ function cycleDeps() {
 let _restoreSink = null;
 
 beforeEach(() => {
-  _forgetRebalanceLogProblemForTests();
+  _handed = [];
   /*-
    *  TEST-ONLY: the cycle's log lines are kept off the test's output,
-   *  through the log module's own seam; put back in `afterEach`.
+   *  through the log module's own seam, and the handler a program sets
+   *  for file failures (its stop) is a stand-in; both put back in
+   *  `afterEach`.
    */
   _restoreSink = _setSinkForTests({
     log: () => {},
     warn: () => {},
     error: () => {},
   });
+  handleFileProblemsWith((words) => _handed.push(words));
 });
 
-afterEach(() => _restoreSink());
+afterEach(() => {
+  _restoreSink();
+  handleFileProblemsWith(null);
+});
 
 describe("a rebalance that fails partway", () => {
   it("comes off as under way when it throws, so a Clear and an import are not refused", async () => {
@@ -152,9 +159,9 @@ describe("a rebalance whose log cannot be read or written", () => {
     }
     assert.equal(applied.length, 1, "on to the new position");
     assert.equal(deps._botState.rebalanceInProgress, false);
-    assert.match(
-      rebalanceLogProblem().message,
-      /could not read its rebalance log/,
+    assert.ok(
+      _handed.some((w) => /could not read its rebalance log/.test(w)),
+      "told, which stops LP Ranger",
     );
   });
 });

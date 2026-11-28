@@ -8,10 +8,12 @@ blockchain who owns each managed position's NFT before starting it. An
 NFT that has left the wallet, or no longer exists, takes its position
 off the managed list.
 
-The question goes through an rpc endpoint. If the endpoint answers it
-with an error of its own, a rate limit say, the answer says nothing
-about the NFT. The position then stays on the managed list, but it is
-not started at this launch; it starts at the next one.
+The question goes through an rpc endpoint, by the read the app's other
+reads use (`sendTx.getManagedReadProvider()`), which already asks the
+next endpoint after a rate limit, an endpoint that is down, or a
+timeout. Any other error, such as a call that fails without saying why,
+says nothing about the NFT. The position then stays on the managed
+list, but it is not started at this launch; it starts at the next one.
 
 ## Why this is not required
 

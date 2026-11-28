@@ -37,7 +37,6 @@
 
 const fs = require("fs");
 const path = require("path");
-const { log } = require("./log");
 const { tellFileProblem } = require("./file-problem");
 
 const _APP_CONFIG_DIR = path.join(__dirname, "..", "..", "app-config");
@@ -127,34 +126,46 @@ function deepMerge(defaults, user) {
 
 /*- Read + parse the shipped defaults file.  Throws with a clear
  *  message on either read or parse failure — these are install errors
- *  and should fail loudly. */
+ *  and should fail loudly.  The error carries the file's path (`path`)
+ *  and the error met (`cause`), so a caller that tells it
+ *  (src/lib/file-problem.js) names the file and the real cause: not
+ *  there, its permissions, or JSON that is not valid. */
 function _readDefaults(filename) {
   const p = path.join(DEFAULTS_DIR, filename);
   let raw;
   try {
     raw = fs.readFileSync(p, "utf8");
   } catch (err) {
-    throw new Error(
-      `[load-merged-defaults] Cannot read shipped defaults at ${p}: ` +
-        err.message,
-      { cause: err },
+    throw Object.assign(
+      new Error(
+        `[load-merged-defaults] Cannot read shipped defaults at ${p}: ` +
+          err.message,
+        { cause: err },
+      ),
+      { path: p },
     );
   }
   try {
     return stripDocKeys(JSON.parse(raw));
   } catch (err) {
-    throw new Error(
-      `[load-merged-defaults] Malformed shipped defaults JSON at ${p}: ` +
-        err.message,
-      { cause: err },
+    throw Object.assign(
+      new Error(
+        `[load-merged-defaults] Malformed shipped defaults JSON at ${p}: ` +
+          err.message,
+        { cause: err },
+      ),
+      { path: p },
     );
   }
 }
 
 /*- Read + parse the optional user override file.  Returns `undefined`
- *  if the file is absent (normal case).  A read or parse failure logs
- *  a warning and returns `undefined` so the consumer falls back to
- *  shipped defaults — a hand-edit typo must never brick the install. */
+ *  if the file is absent (normal case).  A read or parse failure is told
+ *  as every file failure is (src/lib/file-problem.js), with its cause,
+ *  which stops LP Ranger (the user's ruling, 2026-11-27: "LP Ranger
+ *  always exits gracefully ... if any json file is not valid"); until the
+ *  exit the consumer goes on with the shipped defaults.  The startup
+ *  check refuses such a file before this runs at a start. */
 function _readUserOverride(filename) {
   const p = path.join(USER_DIR, filename);
   if (!fs.existsSync(p)) return undefined;
@@ -163,24 +174,12 @@ function _readUserOverride(filename) {
     raw = fs.readFileSync(p, "utf8");
   } catch (err) {
     tellFileProblem({ doing: "read", file: p, err });
-    log.warn(
-      "[load-merged-defaults] Cannot read user override %s: %s — " +
-        "falling back to shipped defaults",
-      p,
-      err.message,
-    );
     return undefined;
   }
   try {
     return stripDocKeys(JSON.parse(raw));
   } catch (err) {
     tellFileProblem({ doing: "read", file: p, err });
-    log.warn(
-      "[load-merged-defaults] Malformed user override JSON at %s: %s — " +
-        "falling back to shipped defaults",
-      p,
-      err.message,
-    );
     return undefined;
   }
 }

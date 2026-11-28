@@ -8,7 +8,10 @@
 A one-off audit found roughly 47 element IDs in the dashboard's HTML that
 no JavaScript or CSS refers to any more &mdash; leftovers from features
 whose code was removed while the markup stayed behind. One cluster has
-since been deleted; about 42 remain.
+since been deleted, and the audit also counted ids the dashboard builds
+by name as it runs (the Reset and Cancel buttons, the wallet panels'
+validation ids, the chart and decimals controls). About 20 remain
+(2026-11-27).
 
 ## Detail
 

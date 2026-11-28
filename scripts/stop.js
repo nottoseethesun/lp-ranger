@@ -10,7 +10,7 @@
  *   the server first and calls `stopServer` below once nothing is.
  *
  *   Primary: read the PID from `tmp/lp-ranger.pid` (written on startup by
- *   `src/server/server-pid.js`) and send SIGTERM — the same clean shutdown as Ctrl+C
+ *   `src/lib/pid-file.js`) and send SIGTERM — the same clean shutdown as Ctrl+C
  *   (stops all positions, closes the HTTP server, removes the PID file). If
  *   the process is still alive once the server's own exit timeout has
  *   passed, plus a margin, escalate to SIGKILL and clear the now-stale PID
@@ -40,7 +40,7 @@ const {
   readPid,
   getPidFilePath,
   removePidFile,
-} = require("../src/server/server-pid");
+} = require("../src/lib/pid-file");
 const { serverPort } = require("../src/lib/server-address");
 const { readShutdownTimings } = require("../src/lib/shutdown-timing");
 const {

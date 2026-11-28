@@ -266,3 +266,59 @@ describe("tee preserves passthrough", () => {
     );
   });
 });
+
+describe("a write to the log file that fails", () => {
+  it("ends the writes to the file before it is told, so its own log line cannot loop", () => {
+    /*-
+     *  Every file failure is told, and the telling writes a log line,
+     *  which the tee would write to the same file and fail on again.
+     *  The first failure ends the writes to the file, so it is told once
+     *  and the terminal keeps every line.
+     */
+    const { enableLogFile, disableLogFile } = require("../src/lib/log-file");
+    const { handleFileProblemsWith } = require("../src/lib/file-problem");
+    const file = path.join(TMP, "tee-fails.log");
+    const seen = [];
+    const told = [];
+    /*-
+     *  TEST-ONLY global swap: the terminal's two streams, a sink, and
+     *  fs.writeSync, failing as on a full disk; all put back in the
+     *  `finally`. The handler a program sets is a stand-in.
+     */
+    const origOut = process.stdout.write;
+    const origErr = process.stderr.write;
+    process.stdout.write = (c) => seen.push(String(c)) > 0;
+    process.stderr.write = (c) => seen.push(String(c)) > 0;
+    handleFileProblemsWith((words) => told.push(words));
+    enableLogFile(file);
+    const realWriteSync = fs.writeSync;
+    let writes = 0;
+    fs.writeSync = () => {
+      writes += 1;
+      throw Object.assign(new Error("ENOSPC: no space left on device"), {
+        code: "ENOSPC",
+      });
+    };
+    try {
+      process.stdout.write("first line\n");
+      process.stdout.write("second line\n");
+    } finally {
+      fs.writeSync = realWriteSync;
+      disableLogFile();
+      handleFileProblemsWith(null);
+      process.stdout.write = origOut;
+      process.stderr.write = origErr;
+    }
+    assert.equal(writes, 1, "one write to the file tried, then none");
+    assert.equal(told.length, 1, "told once");
+    assert.match(
+      told[0],
+      /^LP Ranger could not write to .*tee-fails\.log: the disk is full\./,
+    );
+    assert.ok(
+      seen.some((c) => c.includes("first line")),
+      "the terminal",
+    );
+    assert.ok(seen.some((c) => c.includes("second line")));
+  });
+});

@@ -2,8 +2,8 @@
 
 /**
  * @file test/shared-json-file.test.js
- * @description Reading and writing a JSON file more than one process may
- *   write (src/bot/shared-json-file.js): a read that finds no object answers an
+ * @description Reading and writing a JSON file whole
+ *   (src/lib/shared-json-file.js): a read that finds no object answers an
  *   empty one, and a write replaces the file whole, through a folder of
  *   its own beside it that it removes, and leaves the file as it was when
  *   it fails.
@@ -17,7 +17,7 @@ const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const {
   readJsonObject,
   replaceJsonFile,
-} = require("../src/bot/shared-json-file");
+} = require("../src/lib/shared-json-file");
 
 /** A path in a new folder of the test process's own. */
 const fileIn = (name) => path.join(makeTestTempFolder("shared-json"), name);

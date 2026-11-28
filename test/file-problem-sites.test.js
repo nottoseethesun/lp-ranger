@@ -18,13 +18,10 @@ const fs = require("fs");
 const path = require("path");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { _setSinkForTests } = require("../src/lib/log");
-const {
-  sendFileProblemsTo,
-  _forgetToldFileProblemsForTests,
-} = require("../src/lib/file-problem");
+const { handleFileProblemsWith } = require("../src/lib/file-problem");
 const { createCacheStore } = require("../src/lib/cache-store");
 const { saveConfig } = require("../src/lib/bot-config-v2");
-const { writePidFile } = require("../src/server/server-pid");
+const { writePidFile } = require("../src/lib/pid-file");
 const { writeErrorLog } = require("../src/lib/error-log");
 const { apiKeysPath, saveEncryptedKey } = require("../src/lib/api-key-store");
 
@@ -32,24 +29,23 @@ let alerts;
 let restoreSink;
 
 beforeEach(() => {
-  _forgetToldFileProblemsForTests();
   alerts = [];
   /*-
    *  TEST-ONLY: the log's lines are kept off the test's output through
-   *  the log module's own seam, and the alert a program sets is a
-   *  stand-in; both put back in `afterEach`.
+   *  the log module's own seam, and the handler a program sets (its
+   *  stop) is a stand-in; both put back in `afterEach`.
    */
   restoreSink = _setSinkForTests({
     log: () => {},
     warn: () => {},
     error: () => {},
   });
-  sendFileProblemsTo((words) => alerts.push(words));
+  handleFileProblemsWith((words) => alerts.push(words));
 });
 
 afterEach(() => {
   restoreSink();
-  sendFileProblemsTo(null);
+  handleFileProblemsWith(null);
 });
 
 /** An fs stand-in whose `name` call fails with `code`. */
@@ -73,7 +69,7 @@ describe("a cache's failed read or write", () => {
     assert.equal(alerts.length, 1);
     assert.match(
       alerts[0],
-      /^LP Ranger could not read \/x\/event-cache\.json\./,
+      /^LP Ranger could not read \/x\/event-cache\.json: its permissions do not allow it\./,
     );
   });
 
@@ -94,14 +90,17 @@ describe("a cache's failed read or write", () => {
       fsModule: {
         ...failing("writeFileSync", "ENOSPC"),
         readFileSync: () => "{}",
+        // The write goes through a copy beside the file; nothing real here.
         mkdirSync: () => {},
+        mkdtempSync: (prefix) => prefix + "XXXXXX",
+        rmSync: () => {},
       },
     });
     await store.set("k", 1);
     assert.equal(alerts.length, 1);
     assert.match(
       alerts[0],
-      /^LP Ranger could not write to \/x\/event-cache\.json\./,
+      /^LP Ranger could not write to \/x\/event-cache\.json: the disk is full\./,
     );
   });
 });
@@ -117,7 +116,7 @@ describe("the settings save", () => {
     assert.ok(
       alerts.some((w) =>
         w.startsWith(
-          `LP Ranger could not write to ${path.join(dir, "bot-config.json")}.`,
+          `LP Ranger could not write to ${path.join(dir, "bot-config.json")}: `,
         ),
       ),
       alerts.join("\n"),
@@ -132,7 +131,10 @@ describe("the server's PID file", () => {
     // Its folder is a file: the write fails.
     assert.equal(writePidFile({ filePath: path.join(file, "x.pid") }), false);
     assert.equal(alerts.length, 1);
-    assert.match(alerts[0], /^LP Ranger could not write to .*x\.pid\./);
+    assert.match(
+      alerts[0],
+      /^LP Ranger could not write to .*x\.pid: a file or folder is already where LP Ranger had to make one\./,
+    );
   });
 });
 
@@ -145,7 +147,7 @@ describe("the error log", () => {
       false,
     );
     assert.equal(alerts.length, 1);
-    assert.match(alerts[0], /^LP Ranger could not write to .*e\.log\./);
+    assert.match(alerts[0], /^LP Ranger could not write to .*e\.log: /);
   });
 });
 
@@ -159,7 +161,7 @@ describe("the api keys' save", () => {
       await assert.rejects(saveEncryptedKey("moralis", "key", "pw"));
       assert.ok(
         alerts.some((w) =>
-          w.startsWith(`LP Ranger could not write to ${file}.`),
+          w.startsWith(`LP Ranger could not write to ${file}: `),
         ),
         alerts.join("\n"),
       );

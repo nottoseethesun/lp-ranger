@@ -13,7 +13,7 @@
  *   (`POST /api/stop-when-all-clear`). The server holds that stop: from
  *   the request on it starts nothing new, and it exits once each
  *   rebalance or compound under way, and each scan running, has
- *   finished (src/server/stop-when-all-clear.js). The server decides when, so
+ *   finished (src/lib/stop-when-all-clear.js). The server decides when, so
  *   no check can begin a move between an all-clear and the stop, as one
  *   could while this script asked first and stopped after.
  *
@@ -43,7 +43,7 @@ const http = require("http");
 const { log } = require("../src/lib/log");
 const { serverHost, serverPort } = require("../src/lib/server-address");
 const { readShutdownTimings } = require("../src/lib/shutdown-timing");
-const { readPid } = require("../src/server/server-pid");
+const { readPid } = require("../src/lib/pid-file");
 const { isAlive } = require("./stop");
 
 const _PATH = "/api/stop-when-all-clear";

@@ -4,6 +4,8 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 
 **State and open items: [PROJECT-STATE.md](PROJECT-STATE.md)**, not auto-loaded. Open it before a status report, audit, release or burn-in write-up, or a change to an area it covers. New `project_*`/`reference_*` pointers go there; `feedback_*` here.
 
+**Resume point:** the hand-off at the top of [PROJECT-STATE.md](PROJECT-STATE.md) ("Resume here", 2026-11-28, for Tuesday evening, 2026-12-01). Open it first when picking up.
+
 `CLAUDE.md` covers architecture; `private/` is machine-local, `archive/` resolved history. New here? Read [renamed lp ranger](project_renamed_lp_ranger.md) first.
 
 ## Workflow, git, CI & testing
@@ -47,6 +49,8 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line; record each at once
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — Don't ask which
 - [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
+- [bad operator, not a bug](feedback_bad_operator_not_a_bug.md) — A scenario needing LP Ranger run wrongly (second OS account, sudo) is a feature, not a bug
+- [audit the same as the previous one](feedback_audit_same_as_previous.md) — After a fix round passes: three read-only auditors, verify, record, open bugs first, wait
 - [token cost first](feedback_token_cost_first.md) — Before a big multi-agent spend, say the rough cost and offer a cheaper scope
 - [report that resolved](feedback_report_that_resolved.md) — "It finally went" closes it: acknowledge, don't investigate
 - [server is a layer on the bot](feedback_server_is_a_layer_on_the_bot.md) — Separation of concerns: the bot behind a small interface; src/lib/ only what two or more parts use

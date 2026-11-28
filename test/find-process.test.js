@@ -1,15 +1,17 @@
 /**
  * @file test/find-process.test.js
  * @description `npm stop` signals the PID in `tmp/lp-ranger.pid` only
- *   while that PID is still this install's LP Ranger server. The file
- *   outlives a server killed outright, and the system may have given its
- *   number to another process since — another project's `node server.js`
- *   among them; `serverProcessState` is what tells them apart, from the
- *   command line and the working directory together.
+ *   while that PID is still this install's LP Ranger server, and
+ *   `--delete-all-caches-and-logs` the PID in `tmp/lp-ranger-bot.pid`
+ *   only while it is still this install's headless bot. A file outlives
+ *   a program killed outright, and the system may have given its number
+ *   to another process since — another project's `node server.js` among
+ *   them; `serverProcessState` and `botProcessState` are what tell them
+ *   apart, from the command line and the working directory together.
  *
  *   Drives real processes through the real `ps`: this test process, which
- *   is not the server, and children running a script named `server.js`
- *   from this install's root and from somewhere else.
+ *   is neither program, and children running a script named `server.js`
+ *   or `bot.js` from this install's root and from somewhere else.
  */
 
 "use strict";
@@ -23,15 +25,19 @@ const { spawn } = require("node:child_process");
 
 const {
   serverProcessState,
+  botProcessState,
   psCmd,
   processCwd,
   sortServerPids,
 } = require("../scripts/_find-process");
 
-/** Run a `server.js` from a scratch directory, with `cwd` as its working directory. */
-async function withServerScript(cwd, fn) {
+/**
+ * Run a script named `name` (`server.js` unless given) from a scratch
+ * directory, with `cwd` as its working directory.
+ */
+async function withServerScript(cwd, fn, name = "server.js") {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lp-ranger-stop-"));
-  const script = path.join(dir, "server.js");
+  const script = path.join(dir, name);
   fs.writeFileSync(script, "setTimeout(() => {}, 30000);\n");
   const child = spawn(process.execPath, [script], {
     stdio: "ignore",
@@ -103,6 +109,35 @@ test("only this install's server is sorted as ours, when stopping by port", asyn
       assert.deepStrictEqual(unknown, [dead]);
     });
   });
+});
+
+test("a bot.js running from this install's root is the headless bot, and not the server", async () => {
+  /*-
+   *  `--delete-all-caches-and-logs` stops whichever program runs before
+   *  it deletes anything, and signals the PID in the bot's file only while
+   *  it is still this install's headless bot.
+   */
+  await withServerScript(
+    process.cwd(),
+    async (pid) => {
+      assert.strictEqual(botProcessState(pid), "yes");
+      assert.strictEqual(serverProcessState(pid), "no");
+    },
+    "bot.js",
+  );
+});
+
+test("neither a server.js nor another directory's bot.js is taken for the headless bot", async () => {
+  await withServerScript(process.cwd(), async (pid) => {
+    assert.strictEqual(botProcessState(pid), "no");
+  });
+  await withServerScript(
+    null,
+    async (pid) => {
+      assert.strictEqual(botProcessState(pid), "no");
+    },
+    "bot.js",
+  );
 });
 
 test("a PID with no process behind it cannot be vouched for", () => {

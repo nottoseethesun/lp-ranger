@@ -16,10 +16,12 @@ in `app-data/` are not:
   built from the same kinds of value the schemas use. A field no reader
   knows is left alone, since an older release may have written it.
 - **The rebalance log**, `app-data/rebalance_log.json`, is read with no
-  check of its entries. A file that is not a list is read as empty.
+  check of its entries. A file that is not a list is told as a failed
+  read, as every caught file failure is (`src/lib/file-problem.js`), and
+  is never written over.
 - **The scan caches**, `app-data/scan-cache/*.json`, are read with no
-  check of their shape. One that is not valid JSON is read as empty and
-  filled again from the blockchain and the price services.
+  check of their shape. One that is not valid JSON is told as a failed
+  read too.
 
 ## Shape of the fix
 
@@ -39,6 +41,6 @@ same Ajv instance.
 
 Likely touch points: the records check (`src/lib/config-record-checks.js`,
 `src/lib/bot-config-checks.js`), the startup check
-(`src/lib/settings-check.js`), the rebalance log's readers
-(`src/bot/bot-recorder.js`, `src/bot/position-history.js`) and the cache
+(`src/lib/settings-check.js`), the rebalance log's one reader
+(`src/bot/rebalance-log.js`) and the cache
 readers (`src/lib/cache-store.js`, `src/bot/epoch-cache.js`).

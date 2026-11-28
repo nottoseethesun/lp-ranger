@@ -29,7 +29,6 @@ const {
 } = require("./position-states");
 const { managedPositionList } = require("./managed-positions");
 const { guaranteedDashboardHasPolledMs } = require("./dashboard-has-polled");
-const { rebalanceLogProblem } = require("./rebalance-log");
 
 /**
  * Create the status report.
@@ -48,8 +47,7 @@ const { rebalanceLogProblem } = require("./rebalance-log");
  * @returns {(posDefaults: object) => Promise<object>}  The report: the
  *   `positions` map, and `gasStatus`, `positionScan`, `swapRouteLabel`,
  *   `managedPositions`, `startingManagedPositions`, `importingWallet`,
- *   `poolDailyCounts`, `guaranteedDashboardHasPolledMs` and
- *   `rebalanceLogProblem`.
+ *   `poolDailyCounts` and `guaranteedDashboardHasPolledMs`.
  */
 function createStatusReport(deps) {
   const {
@@ -106,12 +104,6 @@ function createStatusReport(deps) {
        *  dashboard's Manage button and Re-scan Prices dialog keep to it.
        */
       guaranteedDashboardHasPolledMs: guaranteedDashboardHasPolledMs(),
-      /*-
-       *  The last failed read or write of the rebalance log since the
-       *  process started, or null: the words for the operator and when,
-       *  which each tab shows once (src/bot/rebalance-log.js).
-       */
-      rebalanceLogProblem: rebalanceLogProblem(),
     };
   };
 }

@@ -23,9 +23,9 @@
 const { log } = require("../lib/log");
 const { tellFileProblem } = require("../lib/file-problem");
 const fs = require("fs");
-const path = require("path");
 const ethers = require("ethers");
 const sendTx = require("./send-transaction");
+const { replaceJsonFile } = require("../lib/shared-json-file");
 const config = require("../lib/config");
 const { findPoolCreationBlock } = require("./pool-creation-finder");
 const { cacheKey } = require("../lib/cache-store");
@@ -70,15 +70,14 @@ function _loadDisk() {
   }
 }
 
-/** Persist in-memory cache to disk (best-effort). */
+/**
+ * Persist in-memory cache to disk, replaced whole through a copy
+ * (src/lib/shared-json-file.js), so a write cut short leaves the last
+ * copy whole.
+ */
 function _saveDisk() {
   try {
-    fs.mkdirSync(path.dirname(_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(
-      _CACHE_PATH,
-      JSON.stringify(Object.fromEntries(_memCache), null, 2),
-      "utf8",
-    );
+    replaceJsonFile(_CACHE_PATH, Object.fromEntries(_memCache));
   } catch (err) {
     tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });
   }

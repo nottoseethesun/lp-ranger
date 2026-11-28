@@ -123,6 +123,43 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
   process.exit(0);
 }
 
+const {
+  handleFileProblemsWith,
+  tellFileProblem,
+} = require("./lib/file-problem");
+const { createStopOnFileProblem } = require("./lib/stop-on-file-problem");
+
+/*-
+ *  A file LP Ranger cannot read or write stops it, from the first file
+ *  it reads (src/lib/stop-on-file-problem.js; the user's ruling,
+ *  2026-11-27): the alert, if Telegram holds its keys, then the server
+ *  stops answering, then the bot stops once each position's check has
+ *  ended, then the process exits. The server keeps its port until the
+ *  exit, refusing every request (`refusing`, read by `handleRequest`), so
+ *  a second start fails on the port while this one finishes a move. The
+ *  parts it acts on are filled in below as each comes to be: the alert
+ *  once its module has loaded, the bot once built, the server once made.
+ *  Before then there is nothing to stop.
+ */
+const _stopParts = { alert: null, bot: null, server: null, refusing: false };
+handleFileProblemsWith(
+  createStopOnFileProblem({
+    alert: (words, detail) => {
+      if (_stopParts.alert !== null) _stopParts.alert(words, detail);
+    },
+    closeServer: () => {
+      _stopParts.refusing = true;
+      if (_stopParts.server !== null) _stopParts.server.closeAllConnections();
+    },
+    markStopping: () => {
+      if (_stopParts.bot !== null) _stopParts.bot.markStopping();
+    },
+    stopPositions: () =>
+      _stopParts.bot === null ? undefined : _stopParts.bot.stopAll(),
+    exit: (status) => process.exit(status),
+  }),
+);
+
 /*- Boot wiring for the --log-file CLI flag + logging.json static
  *  tunable.  MUST run before any log output so the file captures the
  *  startup banner.  No-op when neither source opts in.  See
@@ -147,7 +184,7 @@ require("./lib/ui-defaults").readUiDefaults();
 
 const { log } = require("./lib/log");
 const { resetErrorLog } = require("./lib/error-log");
-const { writePidFile } = require("./server/server-pid");
+const { writePidFile } = require("./lib/pid-file");
 const { readShutdownTimings } = require("./lib/shutdown-timing");
 // First statement of a real run — `--help` has already exited above, so
 // nothing logs before this and it always tops the log.  Black on light gray (inverse of
@@ -187,15 +224,6 @@ const { createWalletInUse } = require("./server/wallet-in-use");
 const { createWalletClearRoute } = require("./server/wallet-clear");
 const { logVersionBanner } = require("./server/build-info");
 const { createBot } = require("./bot/bot-interface");
-const { sendFileProblemsTo, tellFileProblem } = require("./lib/file-problem");
-const { notifyFileProblem } = require("./lib/telegram-notifications/telegram");
-
-/*-
- *  Every file failure LP Ranger catches is told in the log and as the
- *  Telegram alert for other errors (src/lib/file-problem.js).
- */
-sendFileProblemsTo(notifyFileProblem);
-
 /*-
  * First log: version/commit banner for support triage. Logged before
  * any other startup work so it is always at the top of the server log.
@@ -247,6 +275,8 @@ const _bot = createBot({
   walletManager,
   skipBackups: true,
 });
+// The stop on a file failure stops this bot from here on (top of file).
+_stopParts.bot = _bot;
 
 const _managedAtStartup = managedKeys(_diskConfig);
 if (_managedAtStartup.length > 0)
@@ -426,7 +456,11 @@ const { moralisEnabledIn } = require("./lib/moralis-key");
 const { askPassword: _askPassword } = require("./lib/ask-password");
 const {
   notifyShutdown: _notifyShutdown,
+  notifyFileProblemBeforeExit,
 } = require("./server/telegram-notifications/server-shutdown");
+
+// The stop on a file failure sends its alert from here on (top of file).
+_stopParts.alert = notifyFileProblemBeforeExit;
 
 /*-
  *  Whether an unlock, a Reveal Key or the launch's key step is using the
@@ -535,6 +569,15 @@ const _routes = {
 async function handleRequest(req, res) {
   const { method, url } = req;
 
+  /*-
+   *  Stopping for a file failure: the server holds its port, so a second
+   *  start fails on it while this one finishes a move, and answers nothing
+   *  (top of file).
+   */
+  if (_stopParts.refusing) {
+    req.socket.destroy();
+    return;
+  }
   if (handleCors(req, res, _serverPort, jsonResponse)) return;
   if (handleCsrf(req, res, jsonResponse)) return;
 
@@ -603,6 +646,8 @@ function _serveStaticOrSpa(url, res) {
 let _serverPort = config.PORT;
 
 const server = http.createServer(handleRequest);
+// The stop on a file failure closes it first, once it listens (top of file).
+_stopParts.server = server;
 // Lifetime P&L scans can take 5+ minutes for old pools (555 paced chunks).
 /*- `requestTimeout` is deliberately left at Node's own default.
  *
@@ -698,7 +743,7 @@ if (require.main === module) {
       /*-
        *  Server is up: record the PID so `npm stop` (scripts/stop.js) can send
        *  SIGTERM for the same clean shutdown as Ctrl+C. The file is removed
-       *  when this process exits, however it exits (src/server/server-pid.js).
+       *  when this process exits, however it exits (src/lib/pid-file.js).
        *
        *  Both come before the wallet key is resolved, not after it.
        *  Resolving it can wait on a terminal prompt, and then starts the

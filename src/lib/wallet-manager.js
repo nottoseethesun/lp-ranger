@@ -223,20 +223,24 @@ function _removeFromDisk() {
 }
 
 /**
- * The wallet a file holds, or null when the file is missing, empty or
- * holds no wallet.
+ * What a wallet file holds: `wallet`, or null when the file is missing,
+ * empty or holds no wallet; and `err`, why it could not be read as one,
+ * or null. A file not there is no failure; a read that fails, or text
+ * that is not JSON, as a save cut short leaves, is, for the caller to
+ * tell when no copy recovers the wallet.
  * @param {string} file
- * @returns {object|null}
+ * @returns {{wallet: (object|null), err: (Error|null)}}
  */
-function _readWalletFile(file) {
+function _walletIn(file) {
+  let raw;
   try {
-    const raw = JSON.parse(fs.readFileSync(file, "utf8"));
-    return raw && raw.address && raw.encrypted ? raw : null;
+    raw = JSON.parse(fs.readFileSync(file, "utf8"));
   } catch (err) {
-    // A file not there holds no wallet; one there that cannot be read is told.
-    tellFileProblem({ doing: "read", file, err });
-    return null;
+    return { wallet: null, err: err.code === "ENOENT" ? null : err };
   }
+  const isWallet =
+    raw !== null && raw !== undefined && raw.address && raw.encrypted;
+  return { wallet: isWallet ? raw : null, err: null };
 }
 
 /**
@@ -272,7 +276,7 @@ function settleWalletFile() {
   const file = walletFilePath();
   const tmp = `${file}.tmp`;
   if (!fs.existsSync(tmp)) return;
-  if (_readWalletFile(file) === null && _readWalletFile(tmp) !== null) {
+  if (_walletIn(file).wallet === null && _walletIn(tmp).wallet !== null) {
     _recoverFromTmpFile(file);
     return;
   }
@@ -284,11 +288,18 @@ function settleWalletFile() {
 /**
  * Load _state from wallet.json, reading only. Without a wallet there and
  * with a whole one in wallet.json.tmp, the wallet is read from that copy,
- * which stays where it is until `settleWalletFile` puts it back.
+ * which stays where it is until `settleWalletFile` puts it back: a
+ * wallet.json missing, empty or cut short beside a whole copy is what a
+ * save cut short leaves, and no failure. A wallet.json that cannot be
+ * read, with no copy to recover the wallet from, is a file failure, told
+ * as every one is (src/lib/file-problem.js), which stops LP Ranger.
  */
 function _loadFromDisk() {
   const file = walletFilePath();
-  const raw = _readWalletFile(file) ?? _readWalletFile(`${file}.tmp`);
+  const main = _walletIn(file);
+  const raw = main.wallet ?? _walletIn(`${file}.tmp`).wallet;
+  if (raw === null && main.err !== null)
+    tellFileProblem({ doing: "read", file, err: main.err });
   if (raw === null) return;
   _state.address = raw.address;
   _state.source = raw.source || "key";

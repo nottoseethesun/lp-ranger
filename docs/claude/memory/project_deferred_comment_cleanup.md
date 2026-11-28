@@ -5,10 +5,12 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 69776dd5-edb5-451f-b253-a207133d6169
-  modified: 2026-10-24T04:54:43.196Z
+  modified: 2026-11-28T02:37:10.638Z
 ---
 
-Three comment jobs, deliberately queued behind the two behaviour items:
+Two comment jobs, deliberately queued behind the two behaviour items
+(a third, an engineering.md passage, was rewritten on 2026-10-18 and
+taken out of this note on 2026-11-27):
 the unmanaged view saving an empty rebuild (#2.2), and the Sync badge
 that stays on "Syncing…" with no reason shown (#3). The user set that
 order on 2026-09-17.
@@ -35,8 +37,3 @@ opener line. Counts on 2026-09-17: 119 added by branch
 `b61b888`; 1,936 repo-wide across 352 files. Scope is the branch's own,
 starting with the 23 — not a repo-wide sweep, which is churn during
 burn-in.
-
-**3. `docs/engineering.md` storytelling.** A passage recounting the July
-2026 discrepancy ($11.63 versus ~$255.50) in content the assistant did
-not write. The user's call whether that is institutional memory or
-narrative to replace with the invariant.

@@ -129,13 +129,21 @@ function _writeToFile(chunk) {
     fs.writeSync(_fd, _stripAnsi(s));
   } catch (err) {
     /*- A handle closed between the null-check and the write (a rare
-     *  race in process-exit teardown) is no failure. Any other is told,
-     *  as every caught file failure is (src/lib/file-problem.js): its
-     *  log line meets this write again, and is not told twice. Either
-     *  way the original process.stdout.write still runs, so the
-     *  terminal still sees the output. */
-    if (err.code !== "EBADF")
-      tellFileProblem({ doing: "write to", file: _activePath, err });
+     *  race in process-exit teardown) is no failure. Any other first
+     *  ends the writes to the file, then is told, as every caught file
+     *  failure is (src/lib/file-problem.js): its log line, and every line
+     *  after it, reach the terminal alone, so telling it cannot meet this
+     *  write again and loop. Either way the original process.stdout.write
+     *  still runs, so the terminal still sees the output. */
+    if (err.code === "EBADF") return;
+    const fd = _fd;
+    _fd = null;
+    try {
+      fs.closeSync(fd);
+    } catch {
+      /* closed already: the writes have ended either way */
+    }
+    tellFileProblem({ doing: "write to", file: _activePath, err });
   }
 }
 

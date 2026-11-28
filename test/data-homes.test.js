@@ -124,9 +124,9 @@ describe("where each kind of data is kept", () => {
     }
   });
 
-  it("keeps nothing in tmp/ but the server's PID file", () => {
+  it("keeps nothing in tmp/ but the two programs' PID files", () => {
     for (const [file, code] of MODULES) {
-      if (file === "server-pid.js") continue;
+      if (file === "pid-file.js") continue;
       assert.doesNotMatch(
         code,
         builtInto("tmp"),

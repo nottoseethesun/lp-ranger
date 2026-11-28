@@ -214,8 +214,30 @@ function buildHeader(title, position, esc = _raw) {
  * @returns {Promise<boolean>} True if sent, false if skipped or failed.
  */
 async function notify(eventType, details = {}) {
-  if (!isConfigured()) return false;
-  if (!_enabledEvents[eventType]) return false;
+  if (!wouldSend(eventType)) return false;
+  const { text, plain } = alertMessage(eventType, details);
+  return _send(text, plain);
+}
+
+/**
+ * Whether an alert of `eventType` would be sent now: Telegram holds its
+ * keys, and the alert is on.
+ * @param {string} eventType  One of the `EVENT_DEFAULTS` keys.
+ * @returns {boolean}
+ */
+function wouldSend(eventType) {
+  return isConfigured() && _enabledEvents[eventType] === true;
+}
+
+/**
+ * An alert's message, escaped for MarkdownV2 and again in plain text:
+ * what `notify` sends, and what a program sends from a process of its own
+ * when it is about to exit (src/server/telegram-notifications/server-shutdown.js).
+ * @param {string} eventType  One of the `EVENT_DEFAULTS` keys.
+ * @param {object} details  As `notify` takes them.
+ * @returns {{text: string, plain: string}}
+ */
+function alertMessage(eventType, details = {}) {
   const title = EVENT_LABELS[eventType] || eventType;
   /*- Built twice from one builder: once escaped for MarkdownV2, once
    *  raw for the plain-text fallback. Two builders would be a mirror,
@@ -231,19 +253,7 @@ async function notify(eventType, details = {}) {
     if (details.error) lines.push(`Error: ${esc(details.error)}`);
     return lines.join("\n");
   };
-  return _send(build(escapeValue, escapeCode), build(_raw, _raw));
-}
-
-/**
- * Send a file failure LP Ranger caught as the alert for other errors:
- * what the program hands src/lib/file-problem.js as it starts.
- * @param {string} words  What LP Ranger could not do to which file, and
- *   what to do.
- * @param {string} detail  The error.
- * @returns {Promise<boolean>}
- */
-function notifyFileProblem(words, detail) {
-  return notify("otherError", { message: words, error: detail });
+  return { text: build(escapeValue, escapeCode), plain: build(_raw, _raw) };
 }
 
 /**
@@ -280,7 +290,8 @@ module.exports = {
   getEnabledEvents,
   buildHeader,
   notify,
-  notifyFileProblem,
+  wouldSend,
+  alertMessage,
   testConnection,
   EVENT_LABELS,
   _send,

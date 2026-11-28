@@ -240,9 +240,9 @@ describe("Clear Wallet on a status answer", () => {
   });
 
   it("taken by the server with something it could not remove, says what to finish by hand", async () => {
-    // As with a read-only .env, or a key set in the shell.
+    // As with a key set in the shell or a service manager.
     const LEFT = [
-      "/srv/lp-ranger/.env could not be rewritten (EROFS). Remove its PRIVATE_KEY line by hand, or the next start reads it again.",
+      "PRIVATE_KEY was also set in the environment the server was started from (the shell or a service manager), and that value, not .env's, was the one in use. Remove it there too, or the next start reads it again.",
       "WALLET_PASSWORD came from the environment the server was started from (the shell or a service manager), not .env. Remove it there too, or the next start reads it again.",
     ];
     server.clearAnswer = answer({ ok: true, warnings: LEFT });

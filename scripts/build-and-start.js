@@ -16,7 +16,10 @@
  * something in front of both steps, which is this file. So does
  * `--delete-all-caches-and-logs`, which deletes all of LP Ranger's caches
  * and logs before the build, once the operator has typed YES
- * (scripts/delete-all-caches-and-logs.js).
+ * (scripts/delete-all-caches-and-logs.js), telling that step the server
+ * starts after it. Run on its own, as `npm run delete-all-caches-and-logs`,
+ * the step starts nothing after: the way when the headless bot is what
+ * runs.
  *
  * Signals and exit codes are the shell's old behaviour, kept: each step
  * runs with `stdio: "inherit"` so the terminal talks to it directly, a
@@ -30,7 +33,11 @@
 const path = require("path");
 const { spawnSync } = require("child_process");
 const cliHelp = require("../src/server/server-cli-help");
-const { DELETE_ALL_FLAG, DECLINED_EXIT } = require("./_delete-all-flag");
+const {
+  DELETE_ALL_FLAG,
+  SERVER_STARTS_AFTER,
+  DECLINED_EXIT,
+} = require("./_delete-all-flag");
 
 const ROOT = path.join(__dirname, "..");
 
@@ -46,11 +53,15 @@ if (args.includes("--help") || args.includes("-h")) {
 /*- Before step one, when asked: delete all of LP Ranger's caches and
  *  logs, once the operator has typed YES, in a process of its own
  *  (scripts/delete-all-caches-and-logs.js), since it loads the `.env`
- *  this one must not. Any other answer stops the run, with no error. */
+ *  this one must not. Told the server starts after it, the step says so.
+ *  Any other answer stops the run, with no error. */
 if (args.includes(DELETE_ALL_FLAG)) {
   const deletion = spawnSync(
     process.execPath,
-    [path.join(ROOT, "scripts", "delete-all-caches-and-logs.js")],
+    [
+      path.join(ROOT, "scripts", "delete-all-caches-and-logs.js"),
+      SERVER_STARTS_AFTER,
+    ],
     { cwd: ROOT, stdio: "inherit" },
   );
   if (deletion.status === DECLINED_EXIT) process.exit(0);

@@ -631,8 +631,8 @@ function _showNotCleared(reason, answered) {
 
 /**
  * What a Clear the server did could not remove, from its answer
- * (`warnings`): a `.env` it could not rewrite, or a setting from the
- * environment the server was started from.
+ * (`warnings`): a setting from the environment the server was started
+ * from.
  * @param {Response} res  The 200 answer.
  * @returns {Promise<string[]>}  Empty when nothing was left.
  */

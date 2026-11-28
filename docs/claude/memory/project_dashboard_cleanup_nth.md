@@ -1,16 +1,16 @@
 ---
 name: project_dashboard_cleanup_nth
-description: "NTH (polish, not bugs) — dashboard import cycles, module-level cache sweep, 42 orphan HTML ids"
+description: "NTH (polish, not bugs) — dashboard import cycles, orphan HTML ids"
 metadata: 
   node_type: memory
   type: project
   originSessionId: 07cfe275-1c36-4264-bf15-f23bc31b60d4
-  modified: 2026-10-24T05:23:58.455Z
+  modified: 2026-11-28T02:36:54.187Z
 ---
 
 # Dashboard cleanup — nice-to-haves
 
-Polish, not bugs. Merged from: project_dashboard_cycle_cleanup, project_dashboard_state_cleanup, project_unused_html_ids_audit.
+Polish, not bugs. Merged from: project_dashboard_cycle_cleanup, project_unused_html_ids_audit. (A third part, the sweep of the dashboard's module-level caches, was finished and taken out on 2026-11-27; its triage rule is in [[feedback-audit-program-state]].)
 
 ## dashboard cycle cleanup
 
@@ -21,40 +21,6 @@ Polish, not bugs. Merged from: project_dashboard_cycle_cleanup, project_dashboar
 **How to apply:** When the user wants to tackle this, the cycle clusters break down into roughly 10 atomic groups (some 2-module, some up to 7-module chains around `dashboard-positions ↔ dashboard-data ↔ dashboard-events` and `dashboard-data-status ↔ throttle ↔ compound`). Standard tactics: extract a shared state/types module, invert one direction via callback/parameter, or (last resort) lazy `import()`. No automated tool recommends fixes — `madge` only diagnoses. Order of operations: trivial 2-module cycles first (`wallet ↔ wallet-import`, `data ↔ closed-pos`, `data-status ↔ alerts`), then the data-kpi cluster, then the load-bearing positions/data hubs, then the events chain, then throttle/compound chain. Manual UI verification after each cluster — no automated dashboard tests exist.
 
 After cleanup is done, add `madge --circular --extensions js src/ scripts/ eslint-rules/ test/ src/client/web/` as a step in `scripts/check.js` so future cycles are blocked.
-
-## dashboard state cleanup — RESOLVED 2026-09-02
-
-**Nothing left to do here; the other two sections of this file are
-still live.** Re-checked all eight flagged caches against the tree:
-`_historyPopulated` and `_configSynced` no longer exist at all;
-`_lastStatus`, `_scanWasComplete` and `_lastEvents` are explicitly
-reset on position switch; and `_lastData`, `_lastPrices` and
-`_allPositionStates` are overwritten wholesale every poll, so none of
-them can hold a previous pool's value the way `_poolFirstDate` did.
-The one-poll window after a switch is closed by `_activateCore`
-firing `pollNow()` immediately. Removed from the README's
-Nice-to-Have list; do not re-add it.
-
-Original note follows, for the triage rule, which is still worth
-applying to caches added in future.
-
-After fixing the `_poolFirstDate` sticking-across-pools bug (branch `fix-lifetime-days-sticking-across-pools`, 2026-04-28), the user noted there are likely more dashboard module-level caches that mirror per-poll data and could leak across position/pool switches the same way.
-
-**Candidates flagged for later** (all in `src/client/web/`):
-- `dashboard-data.js:105` — `_lastStatus`, `_historyPopulated`, `_configSynced`
-- `dashboard-data.js:205` — `_scanWasComplete` (derivable from `data.rebalanceScanComplete`)
-- `dashboard-il-debug.js:23` — `_lastData`
-- `dashboard-history.js:32` — `_lastEvents`
-- `dashboard-price-override.js:37` — `_lastPrices`
-- `dashboard-positions-store.js:115` — `_allPositionStates`
-
-DI slots (`let _pollNow = null` etc.) are a different pattern — leave them.
-
-**Triage rule:** "Does this cache mirror what the next poll already carries, AND does it leak across position/pool switches?" — same test that nailed `_poolFirstDate`.
-
-**Why:** Deferred during the burn-in/soft-launch phase (post-MVP, post-soft-launch-ready 2026-04-24). The codebase is well-tested and stable; speculative refactors risk introducing regressions before a production release. The single-bug fix already shipped covers the user-visible symptom.
-
-**How to apply:** Don't proactively start this cleanup. Bring it up only when (a) the user signals burn-in is over, (b) a related bug surfaces, or (c) the user explicitly asks to revisit dashboard state hygiene.
 
 ## unused html ids audit
 

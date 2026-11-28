@@ -14,9 +14,18 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
-const { loadConfig, saveConfig } = require("../src/lib/bot-config-v2");
+const {
+  loadConfig,
+  saveConfig,
+  readGlobalSetting,
+} = require("../src/lib/bot-config-v2");
 const { RECORD_POSITION_KEYS } = require("../src/lib/bot-config-keys");
-const { positionRecordsPath } = require("../src/lib/util/position-records");
+const {
+  positionRecordsPath,
+  readPositionRecords,
+} = require("../src/lib/util/position-records");
+const { handleFileProblemsWith } = require("../src/lib/file-problem");
+const { _setSinkForTests } = require("../src/lib/log");
 
 const KEY =
   "pulsechain-0x1111111111111111111111111111111111111111-0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2-101";
@@ -149,5 +158,141 @@ describe("loading a position's slot", () => {
       fs.existsSync(path.join(dir, "position-records.backup.json")),
       false,
     );
+  });
+});
+
+/*-
+ *  A settings or records file that is not valid JSON, or cannot be read,
+ *  is told as every file failure is, with its cause, which stops LP Ranger
+ *  (the user's ruling, 2026-11-27: "LP Ranger always exits gracefully ...
+ *  if any json file is not valid"). The handler a program sets, its stop,
+ *  and the log are stand-ins here, put back after each case.
+ */
+describe("a settings or records file LP Ranger cannot use", () => {
+  /**
+   * Run `fn` with the told failures collected and the log kept quiet.
+   * @param {() => void} fn
+   * @returns {string[]}  The words of each failure told.
+   */
+  function tellsDuring(fn) {
+    const told = [];
+    handleFileProblemsWith((words) => told.push(words));
+    const restoreLog = _setSinkForTests({
+      log: () => {},
+      warn: () => {},
+      error: () => {},
+    });
+    try {
+      fn();
+    } finally {
+      handleFileProblemsWith(null);
+      restoreLog();
+    }
+    return told;
+  }
+
+  it("tells a records file that is not valid JSON, and reads no records", () => {
+    const dir = makeTestTempFolder("records");
+    const file = positionRecordsPath(dir);
+    fs.writeFileSync(file, '{ "positions": { "cut short');
+    let records;
+    const told = tellsDuring(() => (records = readPositionRecords(dir)));
+    assert.deepEqual(records, {});
+    assert.equal(told.length, 1, told.join("\n"));
+    assert.ok(
+      told[0].startsWith(
+        `LP Ranger could not read ${file}: it is not valid JSON (`,
+      ),
+      told[0],
+    );
+    assert.doesNotMatch(
+      told[0],
+      /permission|disk/i,
+      "no cause it does not show",
+    );
+  });
+
+  it("tells, then throws, a records file that cannot be read", () => {
+    const dir = makeTestTempFolder("records");
+    const file = positionRecordsPath(dir);
+    fs.mkdirSync(file); // A folder where the file should be.
+    const told = tellsDuring(() =>
+      assert.throws(() => readPositionRecords(dir), { code: "EISDIR" }),
+    );
+    assert.equal(told.length, 1, told.join("\n"));
+    assert.ok(
+      told[0].startsWith(
+        `LP Ranger could not read ${file}: a folder is where the file should be.`,
+      ),
+      told[0],
+    );
+  });
+
+  it("tells nothing for a records file not written yet", () => {
+    const dir = makeTestTempFolder("records");
+    let records;
+    const told = tellsDuring(() => (records = readPositionRecords(dir)));
+    assert.deepEqual(records, {});
+    assert.deepEqual(told, []);
+  });
+
+  it("tells an empty bot-config.json as not valid JSON, and loads an empty config", () => {
+    const dir = makeTestTempFolder("records");
+    const file = path.join(dir, "bot-config.json");
+    fs.writeFileSync(file, "");
+    let cfg;
+    const told = tellsDuring(() => (cfg = loadConfig(dir, true)));
+    assert.deepEqual(cfg, { global: {}, positions: {} });
+    assert.equal(told.length, 1, told.join("\n"));
+    assert.ok(
+      told[0].startsWith(
+        `LP Ranger could not read ${file}: it is not valid JSON (`,
+      ),
+      told[0],
+    );
+  });
+
+  it("tells a bot-config.json that is not valid JSON", () => {
+    const dir = makeTestTempFolder("records");
+    const file = path.join(dir, "bot-config.json");
+    fs.writeFileSync(file, '{ "global": ');
+    const told = tellsDuring(() => loadConfig(dir, true));
+    assert.equal(told.length, 1, told.join("\n"));
+    assert.ok(
+      told[0].startsWith(
+        `LP Ranger could not read ${file}: it is not valid JSON (`,
+      ),
+      told[0],
+    );
+  });
+
+  it("tells a bot-config.json gone bad to a global setting read while LP Ranger runs, and not to the read as it loads", () => {
+    const dir = makeTestTempFolder("records");
+    const file = path.join(dir, "bot-config.json");
+    fs.writeFileSync(file, '{ "global": { "rpcUrls": ');
+    /*-
+     *  As src/lib/config.js loads, before the startup check, nothing is
+     *  told: the check, right after, refuses the file with every other
+     *  problem.
+     */
+    const quiet = tellsDuring(() =>
+      assert.equal(readGlobalSetting("rpcUrls", dir), undefined),
+    );
+    assert.deepEqual(quiet, []);
+    // GET /api/rpc-endpoints reads while LP Ranger runs, and tells.
+    const told = tellsDuring(() =>
+      assert.equal(readGlobalSetting("rpcUrls", dir, true), undefined),
+    );
+    assert.equal(told.length, 1, told.join("\n"));
+    assert.ok(
+      told[0].startsWith(
+        `LP Ranger could not read ${file}: it is not valid JSON (`,
+      ),
+      told[0],
+    );
+    // An empty file is not valid JSON either, read while LP Ranger runs.
+    fs.writeFileSync(file, "");
+    const empty = tellsDuring(() => readGlobalSetting("rpcUrls", dir, true));
+    assert.equal(empty.length, 1, empty.join("\n"));
   });
 });

@@ -9,10 +9,7 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("assert");
 const { createCacheStore, eventCachePath } = require("../src/lib/cache-store");
-const {
-  sendFileProblemsTo,
-  _forgetToldFileProblemsForTests,
-} = require("../src/lib/file-problem");
+const { handleFileProblemsWith } = require("../src/lib/file-problem");
 const path = require("path");
 
 // A store's lifetime is its caller's to give; these tests give a minute.
@@ -34,6 +31,15 @@ function createMockFs() {
       files[path] = data;
     },
     mkdirSync() {},
+    // A write goes through a copy (src/lib/shared-json-file.js), in memory here.
+    mkdtempSync(prefix) {
+      return prefix + "XXXXXX";
+    },
+    renameSync(from, to) {
+      files[to] = files[from];
+      delete files[from];
+    },
+    rmSync() {},
   };
 }
 
@@ -186,6 +192,25 @@ describe("cache-store — error resilience", () => {
     assert.strictEqual(await cache.get("anything"), null);
   });
 
+  it("keeps the last copy whole when a write is cut short, as on a full disk", async () => {
+    const mockFs = createMockFs();
+    const cache = createCacheStore({
+      filePath: "/tmp/test-cache.json",
+      defaultTtlMs: TTL_MS,
+      fsModule: mockFs,
+    });
+    await cache.set("a", 1);
+    const before = mockFs.files["/tmp/test-cache.json"];
+    // Part of the text lands, then the write fails, as on a full disk.
+    mockFs.writeFileSync = (p, data) => {
+      mockFs.files[p] = String(data).slice(0, 5);
+      throw new Error("ENOSPC: no space left on device");
+    };
+    await cache.set("b", 2);
+    assert.strictEqual(mockFs.files["/tmp/test-cache.json"], before);
+    assert.deepStrictEqual(Object.keys(JSON.parse(before)), ["a"]);
+  });
+
   it("survives write failure gracefully, telling it", async () => {
     const mockFs = createMockFs();
     mockFs.writeFileSync = () => {
@@ -197,23 +222,22 @@ describe("cache-store — error resilience", () => {
       fsModule: mockFs,
     });
     /*-
-     *  TEST-ONLY: the alert a program sets is a stand-in, put back in the
-     *  `finally`; the failure is told as every caught file failure is
-     *  (src/lib/file-problem.js).
+     *  TEST-ONLY: the handler a program sets (its stop) is a stand-in,
+     *  put back in the `finally`; the failure is told as every caught
+     *  file failure is (src/lib/file-problem.js).
      */
     const alerts = [];
-    _forgetToldFileProblemsForTests();
-    sendFileProblemsTo((words, detail) => alerts.push({ words, detail }));
+    handleFileProblemsWith((words, detail) => alerts.push({ words, detail }));
     try {
       await cache.set("k", "v"); // Should not throw
       assert.equal(alerts.length, 1);
       assert.match(
         alerts[0].words,
-        /^LP Ranger could not write to \/tmp\/test-cache\.json\./,
+        /^LP Ranger could not write to \/tmp\/test-cache\.json: disk full\./,
       );
       assert.equal(alerts[0].detail, "disk full");
     } finally {
-      sendFileProblemsTo(null);
+      handleFileProblemsWith(null);
     }
   });
 });

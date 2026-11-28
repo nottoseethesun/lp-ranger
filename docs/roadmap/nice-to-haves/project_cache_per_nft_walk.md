@@ -2,7 +2,8 @@
 
 > **Status:** Half done. Fix 1, the batched read, has shipped; Fix 2,
 > the cache, has not. Not a bug: every figure the walk produces is
-> correct. This is about how long producing them takes on every start.
+> correct. This is about how long producing them takes each time the
+> whole chain is read again.
 
 ## Plain language
 
@@ -14,8 +15,15 @@ lifetime profit.
 
 It used to walk them one at a time. Since Fix 1 it reads the whole
 chain in one batched pass (`scanChainNftEvents`,
-`src/bot/nft-events-batch.js`). It still keeps the answers in memory only,
-so that pass is repeated in full on every start.
+`src/bot/nft-events-batch.js`). It keeps no copy of what it read, so the
+pass is repeated in full whenever the whole chain is read again: after
+every rebalance (`_needsFullRescan`, src/bot/bot-recorder.js), at
+Re-scan Prices and Reload Current Position, and at a start that finds
+figures missing. A start with every figure saved skips it
+(`lifetimeFiguresSaved`, src/bot/bot-recorder-lifetime.js), and a
+complete epoch cache is restored without reading the chain
+(src/bot/epoch-reconstructor.js). The timings below predate those two
+skips.
 
 ## Measured, on the $eHex/$hex chain in the dev wallet
 
@@ -51,9 +59,9 @@ topics: [topicHash, ids.map(tidHex)]
 
 That collapses 133 overlapping walks into one pass over the union
 range: three event types × 170 chunks = 510 queries instead of 53,268.
-**Verified against all three shipped endpoints** with a 132-value topic
-array over a 9,000-block window — g4mm4, pulsechain.com and
-pulsechain.box each accepted it. The shipped batch still caps a group at
+**Verified against the shipped endpoints** with a 132-value topic array
+over a 9,000-block window — pulsechain.com and pulsechain.box each
+accepted it, as did g4mm4 before it shut down. The shipped batch still caps a group at
 100 ids, in case a future endpoint caps the array.
 
 This needs no cache, no new state, and no change to what the app
@@ -105,9 +113,8 @@ more here than a simpler cache file.
 
 ## Relation to the other scan nice-to-haves
 
-[Consolidate fee scans](project_consolidate_fee_scans.md),
+[Consolidate fee scans](project_consolidate_fee_scans.md) and
 [merge per-topic log queries](project_merge_per_topic_log_queries.md)
-and [mint lookup scan direction](project_mint_lookup_scan_direction.md)
 each make an individual walk cheaper. Fix 1 removes most of the walks;
 Fix 2 removes most of what remains on a restart. Merging per-topic
 queries composes directly with Fix 1 — same call, three topics instead

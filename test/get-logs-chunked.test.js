@@ -103,9 +103,11 @@ describe("chunk size wiring", () => {
   });
 
   it("clears the strictest endpoint cap observed in the wild", () => {
-    /*- rpc-pulsechain.g4mm4.io rejects anything over 10000 blocks with
-     *  JSON-RPC -32602.  A default above that would be rejected by the
-     *  very endpoint this setting exists to satisfy. */
+    /*- An endpoint enforcing the published limit rejects anything over
+     *  10000 blocks with JSON-RPC -32602, as rpc-pulsechain.g4mm4.io did
+     *  before it shut down; one an operator adds may do the same.  A
+     *  default above that would be rejected by the very endpoint this
+     *  setting exists to satisfy. */
     assert.ok(_DEFAULT_CHUNK_SIZE <= 10_000);
   });
 });
@@ -319,7 +321,8 @@ describe("scanChunked — failure behaviour", () => {
 });
 
 describe("scanChunked — the block-range cap error", () => {
-  /** An ethers-shaped rejection, as g4mm4 actually returns it. */
+  /** An ethers-shaped rejection, as an endpoint enforcing the cap returns
+   *  it (observed from rpc-pulsechain.g4mm4.io, before it shut down). */
   function capError() {
     return Object.assign(new Error("could not coalesce error (…payload…)"), {
       code: "UNKNOWN_ERROR",

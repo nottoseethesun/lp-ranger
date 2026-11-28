@@ -34,6 +34,24 @@ const { _setEnvBeforeFileForTests } = require("../src/lib/env-settings");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { createWalletInUse } = require("../src/server/wallet-in-use");
 const { clearRequestOver } = require("./helpers/wallet-clear-request");
+const { handleFileProblemsWith } = require("../src/lib/file-problem");
+
+/**
+ * Run `fn` with the handler a program sets for file failures (its stop)
+ * as a stand-in that keeps the words, put back after; answer the words.
+ * @param {() => Promise<void>} fn
+ * @returns {Promise<string[]>}
+ */
+async function telling(fn) {
+  const told = [];
+  handleFileProblemsWith((words) => told.push(words));
+  try {
+    await fn();
+  } finally {
+    handleFileProblemsWith(null);
+  }
+  return told;
+}
 
 const KEY = "pulsechain-0xW-0xPM-157149";
 
@@ -173,25 +191,37 @@ describe("Clear Wallet", () => {
     );
   });
 
-  it("finishes, naming the file and the line left, when .env cannot be rewritten", async () => {
+  it("tells a .env it cannot rewrite as a file failure, naming the line to remove by hand", async () => {
     /*-
      *  A failed rewrite once threw after the wallet was deleted: the key
-     *  and the session password stayed, and every position went on.
-     *  Here the copy cannot be made: a folder holds its name.
+     *  and the session password stayed, and every position went on. Now
+     *  everything else is done first, and the failure is told as every
+     *  file failure is, which stops LP Ranger; the answer, which a
+     *  stopping server never sends, does not repeat it. Here the copy
+     *  cannot be made: a folder holds its name.
      */
     const envFile = envFileWith("PRIVATE_KEY=0xabc\nPORT=5555\n");
     fs.mkdirSync(`${envFile}.tmp`);
     const key = "0x" + "ab".repeat(32);
-    await withKeySettings({ key }, async () => {
-      const c = clearRoute({ envFile: () => envFile });
-      const res = await c.clearNow();
-      assert.equal(res.status, 200);
-      assert.deepEqual(c.done, ["wallet", "password", "positions"]);
-      assert.equal(config.PRIVATE_KEY, null, "the key forgotten in memory");
-      assert.equal(res.body.warnings.length, 1);
-      assert.ok(res.body.warnings[0].includes(envFile), "names the file");
-      assert.match(res.body.warnings[0], /PRIVATE_KEY line by hand/);
-    });
+    let res;
+    let c;
+    const told = await telling(() =>
+      withKeySettings({ key }, async () => {
+        c = clearRoute({ envFile: () => envFile });
+        res = await c.clearNow();
+      }),
+    );
+    assert.deepEqual(c.done, ["wallet", "password", "positions"]);
+    assert.equal(told.length, 1);
+    assert.ok(
+      told[0].startsWith(`LP Ranger could not write to ${envFile}: `),
+      told[0],
+    );
+    assert.match(
+      told[0],
+      /Remove its PRIVATE_KEY line by hand, or the next start reads it again\./,
+    );
+    assert.deepEqual(res.body.warnings, [], "not said twice");
     assert.equal(
       fs.readFileSync(envFile, "utf8"),
       "PRIVATE_KEY=0xabc\nPORT=5555\n",
@@ -199,19 +229,31 @@ describe("Clear Wallet", () => {
     );
   });
 
-  it("finishes, naming both settings, when .env cannot even be read", async () => {
+  it("tells a .env it cannot even read as a read, naming both settings", async () => {
     // A folder where the file should be: which lines it holds is unknown.
     const envFile = path.join(makeTestTempFolder("wallet-clear-env"), ".env");
     fs.mkdirSync(envFile);
-    await withKeySettings({ key: "0x" + "ab".repeat(32) }, async () => {
-      const c = clearRoute({ envFile: () => envFile });
-      const res = await c.clearNow();
-      assert.equal(res.status, 200);
-      assert.deepEqual(c.done, ["wallet", "password", "positions"]);
-      assert.equal(res.body.warnings.length, 1, "nothing said of its source");
-      assert.match(res.body.warnings[0], /could not be read or rewritten/);
-      assert.match(res.body.warnings[0], /PRIVATE_KEY or WALLET_PASSWORD/);
-    });
+    let res;
+    let c;
+    const told = await telling(() =>
+      withKeySettings({ key: "0x" + "ab".repeat(32) }, async () => {
+        c = clearRoute({ envFile: () => envFile });
+        res = await c.clearNow();
+      }),
+    );
+    assert.deepEqual(c.done, ["wallet", "password", "positions"]);
+    assert.equal(told.length, 1);
+    assert.ok(
+      told[0].startsWith(
+        `LP Ranger could not read ${envFile}: a folder is where the file should be.`,
+      ),
+      told[0],
+    );
+    assert.match(
+      told[0],
+      /Remove any PRIVATE_KEY or WALLET_PASSWORD line from it by hand/,
+    );
+    assert.deepEqual(res.body.warnings, [], "nothing said of its source");
   });
 
   it("warns when a setting came from the environment the server was started from", async () => {
@@ -270,15 +312,18 @@ describe("Clear Wallet", () => {
     _setEnvBeforeFileForTests(["PRIVATE_KEY"]);
     const envFile = envFileWith("PRIVATE_KEY=0xabc\nPORT=5555\n");
     fs.mkdirSync(`${envFile}.tmp`);
-    await withKeySettings({ key: "0x" + "ab".repeat(32) }, async () => {
-      const res = await clearRoute({ envFile: () => envFile }).clearNow();
-      assert.equal(res.status, 200);
-      assert.equal(res.body.warnings.length, 2);
-      assert.match(res.body.warnings[0], /could not be rewritten/);
-      assert.match(res.body.warnings[1], /^PRIVATE_KEY was also set/);
-      for (const w of res.body.warnings)
-        assert.doesNotMatch(w, /line is removed/, w);
-    });
+    let res;
+    const told = await telling(() =>
+      withKeySettings({ key: "0x" + "ab".repeat(32) }, async () => {
+        res = await clearRoute({ envFile: () => envFile }).clearNow();
+      }),
+    );
+    assert.equal(told.length, 1);
+    assert.match(told[0], /could not write to/);
+    assert.equal(res.body.warnings.length, 1);
+    assert.match(res.body.warnings[0], /^PRIVATE_KEY was also set/);
+    for (const w of [...told, ...res.body.warnings])
+      assert.doesNotMatch(w, /line is removed/, w);
   });
 
   it("warns of nothing for a setting .env alone gave, even once its line is gone", async () => {
@@ -302,16 +347,19 @@ describe("Clear Wallet", () => {
     _setEnvBeforeFileForTests(["WALLET_PASSWORD"]);
     const envFile = path.join(makeTestTempFolder("wallet-clear-env"), ".env");
     fs.mkdirSync(envFile);
-    await withKeySettings({ password: "pw" }, async () => {
-      const res = await clearRoute({ envFile: () => envFile }).clearNow();
-      assert.equal(res.status, 200);
-      assert.equal(res.body.warnings.length, 2);
-      assert.match(res.body.warnings[0], /could not be read or rewritten/);
-      assert.match(
-        res.body.warnings[1],
-        /^WALLET_PASSWORD came from the environment/,
-      );
-    });
+    let res;
+    const told = await telling(() =>
+      withKeySettings({ password: "pw" }, async () => {
+        res = await clearRoute({ envFile: () => envFile }).clearNow();
+      }),
+    );
+    assert.equal(told.length, 1);
+    assert.match(told[0], /could not read/);
+    assert.equal(res.body.warnings.length, 1);
+    assert.match(
+      res.body.warnings[0],
+      /^WALLET_PASSWORD came from the environment/,
+    );
   });
 
   it("is refused while an unlock, a Reveal Key or the launch's key step uses the wallet", async () => {

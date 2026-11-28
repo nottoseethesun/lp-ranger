@@ -123,8 +123,8 @@ describe("the User Manual", () => {
   it("names the chain, its address segment and its aggregator through figures", () => {
     const out = render(MANUAL, SHARED, figuresFor("Foo Aggregator"));
     const chain = '<span data-figure="chainName">Testchain</span>';
-    assert.ok(out.includes(`your own ${chain} Archive RPC node`));
-    assert.ok(out.includes(`access to a ${chain} Archive node`));
+    assert.ok(out.includes(`your own ${chain} Full Archive RPC Node`));
+    assert.ok(out.includes(`access to a ${chain} Full Archive RPC Node`));
     assert.ok(
       out.includes(
         "DEX aggregator (" +

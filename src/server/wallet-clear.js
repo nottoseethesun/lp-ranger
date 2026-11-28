@@ -22,13 +22,15 @@
  * check still reading the chain starts no move once its loop is halted
  * (the user's design, 2026-11-27: refuse, never wait).
  *
- * Nothing that goes wrong with `.env` stops a Clear halfway. A rewrite
- * that fails (a full disk, a read-only file) is logged, naming the file
- * and the lines left in it, and the Clear finishes. So is a variable the
- * environment the server was started from set, whether or not `.env` also
- * had a line, since that environment sets it again at the next start.
- * Each such warning is in the answer (`warnings`), and the dashboard
- * shows it.
+ * A variable the environment the server was started from set, whether
+ * or not `.env` also had a line, is logged and named in the answer
+ * (`warnings`), which the dashboard shows, and the Clear finishes: that
+ * environment sets it again at the next start. A `.env` the Clear cannot
+ * read or rewrite (a full disk, a read-only file) is a file failure, told
+ * with the lines to remove by hand (`_byHand`), which stops LP Ranger
+ * (src/lib/stop-on-file-problem.js): the server stops answering at once,
+ * so this answer is never sent, and the Clear's other steps run before
+ * the process exits.
  *
  * Refused (409, saying why):
  * - while the server, having refused to start, waits to exit;
@@ -129,14 +131,35 @@ function _setInFile(file) {
 }
 
 /**
- * Remove the key settings' lines from `file`. A failure is pushed onto
- * `warnings`, naming the file and the lines left in it, never thrown.
+ * What the operator removes from `.env` by hand when the Clear could not
+ * rewrite it, or nothing when the file set none of the key settings.
+ * @param {string[]|null} left  The names the file sets, or null when it
+ *   could not be read.
+ * @returns {string[]}  The step, for the words the failure is told in.
+ */
+function _byHand(left) {
+  if (left === null)
+    return [
+      "Remove any PRIVATE_KEY or WALLET_PASSWORD line from it by hand, or " +
+        "the next start reads it.",
+    ];
+  if (left.length === 0) return [];
+  const one = left.length === 1;
+  return [
+    `Remove its ${left.join(" and ")} ${one ? "line" : "lines"} by hand, ` +
+      `or the next start reads ${one ? "it" : "them"} again.`,
+  ];
+}
+
+/**
+ * Remove the key settings' lines from `file`. A failure is told as every
+ * file failure is, which stops LP Ranger (src/lib/file-problem.js), with
+ * the lines to remove by hand; never thrown.
  * @param {string} file  The `.env` file.
- * @param {string[]} warnings  Where a failure is told.
  * @returns {string[]|null}  The names the file set, removed or left, or
  *   null when it could not be read, so which it sets is unknown.
  */
-function _removeFromFile(file, warnings) {
+function _removeFromFile(file) {
   try {
     const removed = removeEnvFileSettings(file, _KEY_SETTINGS) ?? [];
     for (const name of removed)
@@ -145,21 +168,12 @@ function _removeFromFile(file, warnings) {
   } catch (err) {
     const left = _setInFile(file);
     // A file it cannot even read is told as a read, never a write.
-    tellFileProblem({ doing: left === null ? "read" : "write to", file, err });
-    if (left === null)
-      warnings.push(
-        `${file} could not be read or rewritten (${err.message}). Remove ` +
-          "any PRIVATE_KEY or WALLET_PASSWORD line from it by hand, or the " +
-          "next start reads it.",
-      );
-    else if (left.length > 0) {
-      const one = left.length === 1;
-      warnings.push(
-        `${file} could not be rewritten (${err.message}). Remove its ` +
-          `${left.join(" and ")} ${one ? "line" : "lines"} by hand, or ` +
-          `the next start reads ${one ? "it" : "them"} again.`,
-      );
-    }
+    tellFileProblem({
+      doing: left === null ? "read" : "write to",
+      file,
+      err,
+      then: _byHand(left),
+    });
     return left;
   }
 }
@@ -172,7 +186,7 @@ function _removeFromFile(file, warnings) {
  * and that environment sets it again. A setting `.env` alone gave warns
  * of nothing here, even when its line is gone since the start, as after
  * `npm run reset-wallet`: the next start does not read it, and a line the
- * Clear could not remove has its own warning (`_removeFromFile`).
+ * Clear could not remove is told with the failure (`_removeFromFile`).
  * @param {string} name
  * @param {string[]|null} inFile  The key settings `.env` set, or null
  *   when it could not be read.
@@ -200,8 +214,10 @@ function _environmentWarning(name, inFile) {
  * the environment), and their lines removed from the `.env` the app
  * reads, of which there is none under `node --test` (`envFilePath`).
  * One the environment the server was started from set is warned of
- * (`_environmentWarning`), since the next start reads it again.
- * Never throws: each thing left behind is a warning, logged and returned.
+ * (`_environmentWarning`), since the next start reads it again. A `.env`
+ * it cannot rewrite is a file failure, which stops LP Ranger
+ * (`_removeFromFile`). Never throws: each other thing left behind is a
+ * warning, logged and returned.
  * @param {() => (string|null)} envFile  The `.env` file, or null.
  * @returns {string[]}  The warnings, for the operator.
  */
@@ -211,7 +227,7 @@ function _forgetKeySettings(envFile) {
   for (const name of _KEY_SETTINGS) unsetEnv(name);
   const file = envFile();
   const warnings = [];
-  const inFile = file === null ? [] : _removeFromFile(file, warnings);
+  const inFile = file === null ? [] : _removeFromFile(file);
   for (const name of wasSet) {
     const warning = _environmentWarning(name, inFile);
     if (warning !== null) warnings.push(warning);

@@ -2,7 +2,7 @@
 
 /**
  * @file test/stop-when-all-clear.test.js
- * @description The server's held stop (src/server/stop-when-all-clear.js),
+ * @description The server's held stop (src/lib/stop-when-all-clear.js),
  *   which `npm run gentle-stop` asks for: it begins at once, so nothing
  *   new starts, and the server exits only once each position's poll has
  *   ended and each scan still running has finished. Every request after

@@ -64,8 +64,11 @@ function _parseCliFlag(argv) {
 }
 
 /*- Read logging.json via the layered loader and extract {enabled, path}.
- *  Returns defaults silently when the file is missing or malformed so
- *  the boot path never crashes on a fresh install. */
+ *  It is read first, before the settings check, since it says whether
+ *  the log is copied to a file from the first line. A shipped file that
+ *  is missing, or a copy of it that cannot be read or is not valid JSON,
+ *  is told as every file failure is (src/lib/file-problem.js), naming the
+ *  cause, which stops LP Ranger at once. */
 function _readLoggingConfig() {
   try {
     const obj = loadMergedDefaults("logging.json");
@@ -90,13 +93,11 @@ function _readLoggingConfig() {
  *
  * An absent file is the success case, not an error — the flag asks for
  * an empty log, and there is nothing emptier than no file. Any other
- * failure is told rather than thrown, as every caught file failure is
- * (src/lib/file-problem.js): the run is still worth having, and a log
- * that opens with a previous run's lines still in it is better than no
- * bot. The words go to the terminal, since nothing is teeing to the
- * file yet, and say plainly that LP Ranger could not delete it, since
- * reading stale lines as current is the whole failure this flag exists
- * to prevent.
+ * failure is told, as every caught file failure is
+ * (src/lib/file-problem.js), which stops LP Ranger before it starts
+ * anything (src/lib/stop-on-file-problem.js). The words go to the
+ * terminal, since nothing is teeing to the file yet, and say plainly that
+ * LP Ranger could not delete it, and why.
  *
  * @param {string} absPath  Resolved path of the file to remove.
  * @returns {void}

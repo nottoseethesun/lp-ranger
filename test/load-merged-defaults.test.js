@@ -115,6 +115,22 @@ describe("loadMergedDefaults", () => {
     assert.throws(() => loadMergedDefaults(_NAME), /Malformed shipped/);
   });
 
+  it("names the shipped file and the error it met, for the words that tell it", () => {
+    fs.writeFileSync(_DEF, "{ not valid json");
+    assert.throws(
+      () => loadMergedDefaults(_NAME),
+      (err) =>
+        err.path === _DEF &&
+        err.cause instanceof SyntaxError &&
+        /Malformed shipped/.test(err.message),
+    );
+    _safeUnlink(_DEF);
+    assert.throws(
+      () => loadMergedDefaults(_NAME),
+      (err) => err.path === _DEF && err.cause?.code === "ENOENT",
+    );
+  });
+
   it("falls back to defaults when user override JSON is malformed", () => {
     _writeJson(_DEF, { a: 1, b: 2 });
     fs.writeFileSync(_USR, "{ not valid json");

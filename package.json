@@ -56,7 +56,8 @@
     "restore-settings": "node scripts/restore-settings.js",
     "api-doc": "node scripts/api-doc.js",
     "show-gallery": "node scripts/show-gallery.js",
-    "clear-blockchain-scan-cache": "node scripts/clear-blockchain-scan-cache.js"
+    "clear-blockchain-scan-cache": "node scripts/clear-blockchain-scan-cache.js",
+    "delete-all-caches-and-logs": "node scripts/delete-all-caches-and-logs.js"
   },
   "dependencies": {
     "@fontsource/rye": "^5.2.7",

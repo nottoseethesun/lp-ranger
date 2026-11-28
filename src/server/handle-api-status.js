@@ -179,8 +179,6 @@ function createApiStatusHandler(deps) {
         importingWallet: report.importingWallet,
         poolDailyCounts: report.poolDailyCounts,
         gasStatus: report.gasStatus,
-        // Each tab shows it in the Rebalance log error dialog, once.
-        rebalanceLogProblem: report.rebalanceLogProblem,
       },
       positions: report.positions,
     });

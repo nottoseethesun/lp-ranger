@@ -12,6 +12,21 @@
  *                                 never signs or sends transactions.
  *
  * Usage: node src/bot.js   (or: npm run bot)
+ *
+ * Stopping
+ * ────────
+ *   Ctrl+C or SIGTERM  Force-stop: exits within `shutdown.exitTimeoutMs`
+ *                      (app-runtime.json), a rebalance or compound under
+ *                      way or not.
+ *   SIGUSR2            Stop once nothing is under way, as the server's
+ *                      gentle stop does (src/lib/stop-when-all-clear.js):
+ *                      `npm run delete-all-caches-and-logs`, the way to
+ *                      delete every cache and log when you run the
+ *                      headless bot, sends it before deleting anything,
+ *                      as `npm run build-and-start -- --delete-all-caches-and-logs`
+ *                      does.
+ * While the bot runs, its PID is in `tmp/lp-ranger-bot.pid`
+ * (src/lib/pid-file.js).
  */
 
 "use strict";
@@ -27,6 +42,33 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
   cliHelp();
   process.exit(0);
 }
+
+const { handleFileProblemsWith } = require("./lib/file-problem");
+const { createStopOnFileProblem } = require("./lib/stop-on-file-problem");
+
+/*-
+ *  A file LP Ranger cannot read or write stops it, from the first file
+ *  it reads (src/lib/stop-on-file-problem.js; the user's ruling,
+ *  2026-11-27): the bot stops once each position's check has ended, then
+ *  the process exits. The headless bot has no server to close, and sends
+ *  no Telegram alert. The bot it stops is filled in once main() has built
+ *  it; before then there is nothing to stop.
+ */
+const _stopParts = { bot: null, stopPositions: null };
+handleFileProblemsWith(
+  createStopOnFileProblem({
+    alert: () => {},
+    closeServer: () => {},
+    markStopping: () => {
+      if (_stopParts.bot !== null) _stopParts.bot.markStopping();
+    },
+    stopPositions: () =>
+      _stopParts.stopPositions === null
+        ? undefined
+        : _stopParts.stopPositions(),
+    exit: (status) => process.exit(status),
+  }),
+);
 
 /*- Boot wiring for the --log-file CLI flag + logging.json static
  *  tunable.  MUST run before any log output so the file captures the
@@ -83,14 +125,8 @@ const { createPerPositionBotState } = require("./bot/position-states");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
 const { askPassword: _askPassword } = require("./lib/ask-password");
 const { readShutdownTimings } = require("./lib/shutdown-timing");
-const { sendFileProblemsTo } = require("./lib/file-problem");
-const { notifyFileProblem } = require("./lib/telegram-notifications/telegram");
-
-/*-
- *  Every file failure LP Ranger catches is told in the log and as the
- *  Telegram alert for other errors (src/lib/file-problem.js).
- */
-sendFileProblemsTo(notifyFileProblem);
+const { writePidFile, BOT_PID_FILE } = require("./lib/pid-file");
+const { createStopWhenAllClear } = require("./lib/stop-when-all-clear");
 
 // One-time migration of legacy root-level config files into app-config/.
 // Idempotent: a no-op after the first successful run.
@@ -101,6 +137,20 @@ migrateAppConfig();
 async function main() {
   // Read before anything starts, so an unusable value stops startup.
   const { exitTimeoutMs } = readShutdownTimings();
+  /*-
+   *  The bot's gentle stop and its PID file come first, before the key,
+   *  which can wait on a terminal prompt, and before the start-up, which
+   *  starts the managed positions one at a time: a bot at any step is then
+   *  found, and stopped once nothing is under way, by
+   *  `npm run delete-all-caches-and-logs` (scripts/delete-all-caches-and-logs.js).
+   *  The stop first: a script that finds the PID file signals the bot,
+   *  and a signal with no handler ends the process on the spot.
+   */
+  const handTheBotToItsStop = _installGentleStop();
+  writePidFile({
+    filePath: BOT_PID_FILE,
+    howToStop: `\`kill -USR2 ${process.pid}\`, or Ctrl+C to force it`,
+  });
   /*-
    *  Put the wallet's files right: the copy a save cut short left is put
    *  back as wallet.json, or removed (src/lib/wallet-manager.js), as the
@@ -148,6 +198,15 @@ async function main() {
     walletManager: { getAddress: () => wallet },
   });
   bot.setPrivateKey(privateKey);
+  /*-
+   *  What the gentle stop stops: every position the bot holds, and in
+   *  single-position mode, below, the loop it starts itself as well.
+   */
+  let stopPositions = () => bot.stopAll();
+  handTheBotToItsStop(bot, () => stopPositions());
+  // And the stop on a file failure, from here on (top of file).
+  _stopParts.bot = bot;
+  _stopParts.stopPositions = () => stopPositions();
   /*- App-wide shared signer: every bot-loop below must sign through the
    *  same NonceManager so per-position counters cannot drift. */
   const shared = await bot.sharedSigner();
@@ -159,7 +218,7 @@ async function main() {
       "[bot] No managed positions in config — starting single-position mode",
     );
     const botState = createPerPositionBotState(diskConfig.global, {});
-    const handle = await startBotLoop({
+    const starting = startBotLoop({
       privateKey,
       provider: shared.provider,
       signer: shared.signer,
@@ -172,6 +231,17 @@ async function main() {
       positionId: config.POSITION_ID || undefined,
       getConfig: (k) => diskConfig.global[k],
     });
+    /*-
+     *  The loop's start holds its first check and its first scan, outside
+     *  the position manager, which `bot.stopAll()` alone cannot see: a stop
+     *  waits for the start, so a rebalance in that first check finishes,
+     *  then stops the loop.
+     */
+    stopPositions = async () => {
+      const started = await starting;
+      await Promise.all([started.stop(), bot.stopAll()]);
+    };
+    const handle = await starting;
     _awaitShutdown(() => {
       handle.stop();
       bot.stopAll();
@@ -188,6 +258,42 @@ async function main() {
   await bot.startManagedPositions();
 
   _awaitShutdown(() => bot.stopAll(), exitTimeoutMs);
+}
+
+/**
+ * Install the bot's gentle stop: SIGUSR2, the stop the server takes from
+ * `npm run gentle-stop`, held until nothing is under way
+ * (src/lib/stop-when-all-clear.js). It sends no shutdown alert, since the
+ * headless bot sends no Telegram alert. Until the bot is built nothing can
+ * be under way, so the signal exits at once; a repeat changes nothing.
+ * A signal with no handler would end the process on the spot, so this is
+ * installed before anything can start.
+ * @returns {(bot: object, stopPositions: () => Promise<*>) => void}
+ *   Hands the stop the bot once it is built, with what stops its
+ *   positions.
+ */
+function _installGentleStop() {
+  let heldStop = null;
+  process.on("SIGUSR2", () => {
+    if (heldStop !== null) {
+      heldStop.request();
+      return;
+    }
+    log.info(
+      "[bot] Asked to stop once nothing is under way: nothing has started yet, so exiting",
+    );
+    process.exit(0);
+  });
+  return (bot, stopPositions) => {
+    heldStop = createStopWhenAllClear({
+      markStopping: () => bot.markStopping(),
+      notifyShutdown: () => {},
+      stopAll: stopPositions,
+      underWay: (movesOver) => bot.underWay(movesOver),
+      scansEnded: () => bot.scansEnded(),
+      exit: () => process.exit(0),
+    });
+  };
 }
 
 /**

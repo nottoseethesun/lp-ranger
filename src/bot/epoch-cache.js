@@ -23,30 +23,40 @@
 const { tellFileProblem } = require("../lib/file-problem");
 const config = require("../lib/config");
 const fs = require("fs");
-const path = require("path");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { replaceJsonFile } = require("../lib/shared-json-file");
 
 let _CACHE_PATH = scanCachePath("pnl-epochs-cache.json");
 
 /**
  * Read the full cache from disk: empty when it is not written yet, or
- * cannot be read, which is told as every caught file failure is
- * (src/lib/file-problem.js).
+ * null when it cannot be read, which is told as every caught file failure
+ * is (src/lib/file-problem.js) and stops LP Ranger. A reader takes null as
+ * empty; a writer writes nothing then, as the rebalance log does, so a
+ * save while LP Ranger stops cannot write its own pool alone over every
+ * other pool's history.
+ * @returns {object|null}
  */
 function _readCache() {
   try {
     return JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
   } catch (err) {
+    if (err.code === "ENOENT") return {};
     tellFileProblem({ doing: "read", file: _CACHE_PATH, err });
-    return {};
+    return null;
   }
 }
 
-/** Write the full cache to disk; a failure is told, never thrown. */
+/**
+ * Write the full cache to disk, replaced whole through a copy
+ * (src/lib/shared-json-file.js): a full disk or a process killed mid-write
+ * leaves the last copy whole, where a write in place left part of it,
+ * which the next save, reading nothing, wrote back as its own pool alone.
+ * A failure is told, never thrown.
+ */
 function _writeCache(data) {
   try {
-    fs.mkdirSync(path.dirname(_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(_CACHE_PATH, JSON.stringify(data, null, 2), "utf8");
+    replaceJsonFile(_CACHE_PATH, data);
   } catch (err) {
     tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });
   }
@@ -79,7 +89,7 @@ function _cacheKey({ contract, wallet, token0, token1, fee }) {
  * @returns {object|null}  Tracker state ({ closedEpochs, liveEpoch }), or null.
  */
 function getCachedEpochs(keyOpts) {
-  const cache = _readCache();
+  const cache = _readCache() ?? {};
   const key = _cacheKey(keyOpts);
   const entry = cache[key];
   if (!entry) return null;
@@ -111,6 +121,7 @@ function getCachedEpochs(keyOpts) {
  */
 function setCachedEpochs(keyOpts, data) {
   const cache = _readCache();
+  if (cache === null) return;
   const key = _cacheKey(keyOpts);
   const value = Array.isArray(data)
     ? { closedEpochs: data, liveEpoch: null }
@@ -151,7 +162,7 @@ function setCachedEpochs(keyOpts, data) {
  * @returns {{ amount0: number, amount1: number }|null}
  */
 function getCachedLifetimeHodl(keyOpts) {
-  const cache = _readCache();
+  const cache = _readCache() ?? {};
   const entry = cache[_cacheKey(keyOpts)];
   return entry?.lifetimeHodlAmounts || null;
 }
@@ -163,6 +174,7 @@ function getCachedLifetimeHodl(keyOpts) {
  */
 function setCachedLifetimeHodl(keyOpts, hodl) {
   const cache = _readCache();
+  if (cache === null) return;
   const key = _cacheKey(keyOpts);
   cache[key] = { ...(cache[key] || {}), lifetimeHodlAmounts: hodl };
   _writeCache(cache);
@@ -179,7 +191,7 @@ function setCachedLifetimeHodl(keyOpts, hodl) {
  *   built from; each entry keeps the dollar figure it was last given.
  */
 function getCachedFreshDeposits(keyOpts) {
-  const cache = _readCache();
+  const cache = _readCache() ?? {};
   const entry = cache[_cacheKey(keyOpts)];
   return entry?.freshDeposits || null;
 }
@@ -191,6 +203,7 @@ function getCachedFreshDeposits(keyOpts) {
  */
 function setCachedFreshDeposits(keyOpts, data) {
   const cache = _readCache();
+  if (cache === null) return;
   const key = _cacheKey(keyOpts);
   cache[key] = { ...(cache[key] || {}), freshDeposits: data };
   _writeCache(cache);
@@ -206,6 +219,7 @@ function setCachedFreshDeposits(keyOpts, data) {
  */
 function clearCacheEntry(keyOpts) {
   const cache = _readCache();
+  if (cache === null) return;
   const key = _cacheKey(keyOpts);
   if (!cache[key]) return;
   delete cache[key];

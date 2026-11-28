@@ -68,7 +68,8 @@ function readRpcEndpoints() {
  * @returns {string[]}
  */
 function readSavedRpcUrls() {
-  const v = readGlobalSetting("rpcUrls");
+  // Read while the server runs: a file gone bad is told, and stops LP Ranger.
+  const v = readGlobalSetting("rpcUrls", undefined, true);
   return Array.isArray(v) ? v.filter((u) => typeof u === "string") : [];
 }
 

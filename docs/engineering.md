@@ -387,17 +387,19 @@ A Clear waits for nothing and answers at once (the user's design,
 compound is under way or a position is starting, so no move is left
 for it to wait for. A halted position's check that is still reading
 the chain finishes on its own and starts no move: a move asks whether
-its loop was halted right before it begins. Nothing that goes wrong
-with `.env` stops a Clear halfway. A rewrite that fails is logged,
-naming the file and the lines left in it, and so is a setting the
-environment the server was started from set, which the next start
-reads again. That holds even when `.env` also had a line for it: dotenv
+its loop was halted right before it begins. A setting the environment
+the server was started from set is logged, since the next start reads
+it again. That holds even when `.env` also had a line for it: dotenv
 leaves a variable already set as it is, so the environment's value was
 the one in use (`setBeforeEnvFile`, `src/lib/env-settings.js`, notes
 what the environment set before `.env` was first read). The Clear still
-finishes, its answer names each in
-`warnings`, and the dashboard shows them in the Wallet cleared: finish
-by hand dialog. The lines go by dotenv's own rule (`removeEnvFileSettings`,
+finishes, its answer names each in `warnings`, and the dashboard shows
+them in the Wallet cleared: finish by hand dialog. A `.env` the Clear
+cannot read or rewrite is a file failure, which stops LP Ranger (see
+"File Failures"), its words naming the lines to remove by hand. The
+server stops answering at once, so the Clear's answer is never sent, and
+the dashboard shows Clear Wallet: no answer; the Clear's other steps
+still run before the process exits. The lines go by dotenv's own rule (`removeEnvFileSettings`,
 `src/lib/env-settings.js`): a quote left open runs on to the first
 later line holding the same quote, when only spaces or a `#` comment
 follow it there; otherwise the value is its first line alone, the
@@ -696,7 +698,7 @@ that holds the token.
 Each write of that cache, and of GeckoTerminal's pool cache
 (`src/bot/gecko-pool-cache.js`), reads the file as it is at that moment. It
 lays all of the process's entries over it, and replaces the file whole
-(`src/bot/shared-json-file.js`). The text goes into a folder `fs.mkdtempSync`
+(`src/lib/shared-json-file.js`). The text goes into a folder `fs.mkdtempSync`
 makes beside the file, with a name no other process gets, and is then
 renamed over the old file. So a write keeps every entry the file held
 when it read it, which lets LP Ranger and a tool under `util/` that
@@ -3007,9 +3009,9 @@ node util/diagnostic/check-rpc-health.js
 node util/diagnostic/check-rpc-health.js --rpc-endpoint https://rpc.pulsechain.com
 ```
 
-The default is `https://rpc-pulsechain.g4mm4.io`, the first endpoint in
+The default is `https://rpc.pulsechain.com`, the first endpoint in
 `chains.json`; `--rpc-endpoint <url>` points it anywhere else. **One
-endpoint per run** — each of the three is a separate host, so a health
+endpoint per run** — each endpoint is a separate host, so a health
 answer only ever applies to one of them. The endpoint under test is
 printed above the table for that reason, and the start time below it, in
 UTC and then local time, because the app logs in UTC and the point of a
@@ -3399,32 +3401,49 @@ One home for each kind of data:
   Reload Current Position (what it logged of each), and for
   closed-position P&L display (`src/bot/position-history.js`). There
   being no log yet is no error. Any other failed read or write is told
-  as every file failure is (see "File Failures"), once while its words
-  are unchanged, and carried by every status answer
-  (`rebalanceLogProblem`), and each dashboard tab shows it, once, in
-  the Rebalance log error
-  dialog: whether reading or writing failed, to check the file's
-  permissions and whether the disk is full, then to restart LP Ranger
-  (the server or headless bot, and the browser) and use Settings →
-  Reload Current Position, and should the app still not work on
-  restart, to remove the log with all of LP Ranger's other caches and
-  logs: `npm run build-and-start -- --delete-all-caches-and-logs`
-  (`scripts/delete-all-caches-and-logs.js`, run by
-  `scripts/build-and-start.js` in a process of its own before the build).
-  That deletes every scan cache, the chain-derived figures in the
+  as every file failure is, which stops LP Ranger (see "File
+  Failures"). The words say whether reading or writing failed, why, and
+  what to do about that cause, as for every file. Then they give three
+  steps: restart LP Ranger (the server or headless
+  bot, and the browser); use Settings → Reload Current Position; and,
+  should the app still not work on restart, remove the log with all of
+  LP Ranger's other caches and logs, by running
+  `npm run build-and-start -- --delete-all-caches-and-logs`, or, for an
+  operator who runs the headless bot, `npm run delete-all-caches-and-logs`
+  and then `npm run bot`.
+
+  Both commands run `scripts/delete-all-caches-and-logs.js`, in a
+  process of its own. `npm run delete-all-caches-and-logs` runs it
+  alone, and nothing starts after it, which makes it the way to clear
+  the caches and logs when you run the headless bot (the user's ruling,
+  2026-11-28). `npm run build-and-start -- --delete-all-caches-and-logs`
+  runs it before the build, telling it the server starts after it
+  (`--server-starts-after`, `scripts/_delete-all-flag.js`), then builds
+  and starts the server, in place of a headless bot that ran; its
+  warning then names the command that starts nothing after. It deletes every scan cache, the chain-derived figures in the
   position records (`clearScanDerivedConfig`), the rebalance log,
-  wherever `LOG_FILE` puts it, and the diagnostic log and the error log,
-  each only inside the install folder; today's rebalance counts
-  (`app-data/pool-daily-counts.json`) are kept. It says so first, and
-  that the rebuild can take several hours, and goes on only once the
-  operator types `YES`; any other answer stops the run, deleting nothing
-  (the user's design, 2026-11-27). Nothing repairs the log. The log is
+  wherever `LOG_FILE`, or else `log.file` in `app-runtime.json`, puts
+  it, and the diagnostic log and the error log, each only inside the
+  install folder; today's rebalance counts
+  (`app-data/pool-daily-counts.json`) are kept. It says so first, that a
+  running LP Ranger is stopped first, what starts after it, and that the
+  rebuild can take several hours, and goes on only once the operator
+  types `YES`; any other answer stops the run, stopping and deleting
+  nothing (the user's design, 2026-11-27). After the `YES` it stops each LP Ranger program
+  running in the install, the server first and then the headless bot,
+  each once nothing is under way: the server as `npm run gentle-stop`
+  stops it, the headless bot by the signal SIGUSR2, which runs the same
+  held stop (`src/lib/stop-when-all-clear.js`). Each is found by its PID
+  file (`src/lib/pid-file.js`), believed only while the PID is still that
+  program in this install (`scripts/_find-process.js`); one that cannot
+  be told apart is not signalled, and nothing is deleted. It waits for
+  each to exit, then deletes. Nothing repairs the log. The log is
   written in place, not through a copy, which would cost a large log
   time and disk wear (the user's ruling, 2026-11-27): so a write a full
-  disk cuts short leaves part of it, which no later read parses, and
-  the dialog then comes back after the restart as a failed read; the
-  third step's flag removes it. A write never throws, so a rebalance's
-  record-keeping goes on, and a log that could not be read is never
+  disk cuts short leaves part of it, which no later read parses, and LP
+  Ranger then stops again as it starts; the third step's command removes
+  it. A write never throws, so a rebalance's record-keeping finishes
+  while LP Ranger stops, and a log that could not be read is never
   written over. Its
   path is `LOG_FILE` in `.env` when
   set, else `log.file` in `app-runtime.json`
@@ -3438,52 +3457,110 @@ One home for each kind of data:
   Day: saved at every rebalance and taken back as the bot starts, beside
   the counts read from the rebalance log, each pool keeping the larger
   (`src/bot/pool-daily-counts-file.js`). So a restart counts every
-  rebalance made today, one whose log entry could not be written, those
-  in a log that cannot be read and those in a log
-  `--delete-all-caches-and-logs` removed included (the user's decision,
-  2026-11-27). It holds one day: a file from an earlier day counts
-  nothing. Small, it is replaced whole through a copy, so a write cut
-  short leaves the last counts whole; a failed save is told as every
-  file failure is. `npm run clean` deletes it; the flag keeps it. Under
+  rebalance made today whose count was saved, those missing from the
+  rebalance log included: one whose log entry could not be written, and
+  those in a log `npm run delete-all-caches-and-logs`, or
+  `npm run build-and-start -- --delete-all-caches-and-logs`, removed (the
+  user's decision, 2026-11-27). A log that cannot be read
+  stops LP Ranger as it starts (see "File Failures"), so no start counts
+  from one. A rebalance made while neither file could be written, as on
+  a full disk, counts only until the next start. It holds one day: a
+  file from an earlier day counts nothing. Small, it is replaced whole
+  through a copy, so a write cut short leaves the last counts whole; a
+  failed save is told as every file failure is, which stops LP Ranger.
+  `npm run clean` deletes it; both delete-all commands keep it. Under
   `node --test` it is a file in the test process's own temp folder.
 
 ### File Failures
 
-Every file failure LP Ranger catches and handles, rather than throwing
-it on, is told one way, through `tellFileProblem`
-(`src/lib/file-problem.js`; the user's design, 2026-11-27): a scan
-cache, the price caches, the settings and their backups, the position
-records, the rebalance log and today's rebalance counts, the wallet file
-and its copy, the api keys, the PID file, the error and diagnostic logs,
-`.env` (at the start, and in a Clear), a dashboard file the server
-serves, and the shipped settings files a reader falls back from. Each is
-told in the log, tagged `[files]`, with the error, and as the Telegram
-alert for other errors, in words that say only what LP Ranger could not
-do to which file ("could not read", "write to", "copy" or "delete") and
-advise checking the file's permissions and whether the disk is full; the
-rebalance log adds its three steps and the dashboard's dialog. A missing
-file is no failure of a read, a copy or a delete, so a cache or a log
-not written yet tells nothing; a file LP Ranger ships must be there, so
-missing it is told. A failure is told once while its words for that file
-are unchanged, so a file that stays unreadable is told once, not on
-every read; another failure takes its place and is told. What each place
-does after a failure is unchanged: a cache starts empty, a write is not
-thrown, a reader falls back to the shipped values (saying so in a line
-of its own), and a save the dashboard asked for still fails to it.
+LP Ranger cannot go on without its files, so a file it cannot read or
+write stops it (the user's rulings, 2026-11-27: "In the event of a file
+read or write problem, the bot and if server, the server, should send
+the Telegram alert and SIMPLY EXIT"; "always, stop the server first, so
+it doesn't err out on a stopped bot").
 
-The Telegram alert goes through the function each program hands the
-module as it starts (`sendFileProblemsTo(notifyFileProblem)`, in
-`src/server.js` and `src/bot.js`), since the Telegram module loads
-modules that tell their own failures here. Telegram sends only once its
-settings are decrypted, which in the server is after the wallet unlock:
-a failure before then reaches the log alone, as every alert does; the
-headless bot never loads the Telegram settings, so it logs. The
-diagnostic log's own write is told too: its words are recorded before
-they are logged, so the log line, meeting the same failure, is not told
-again. A write racing the exit (`EBADF`) is no failure. One reader is
-left as it was: `readGlobalSetting` (`src/lib/bot-config-v2.js`) logs
-nothing, since it runs as `src/lib/config.js` loads, and the startup
-check has refused a settings file it cannot read before then.
+Every file failure LP Ranger catches is told one way, through
+`tellFileProblem` (`src/lib/file-problem.js`): a scan cache, the price
+caches, the settings and their backups, the position records, the
+rebalance log and today's rebalance counts, the wallet file and its
+copy, the api keys, the PID file, the error and diagnostic logs, `.env`
+(at the start, and in a Clear), a dashboard file the server serves, and
+the shipped settings files. Each is told in the log, tagged `[files]`,
+with the error, in words that say only what LP Ranger could not do to
+which file ("could not read", "write to", "copy" or "delete"), and why,
+from the error itself (the user's ruling, 2026-11-27: no "permissions or
+disk full" where that is not the case): a file error's code as Node
+gives it (its permissions, a full or read-only disk, a folder where the
+file should be, too many files open), JSON that does not parse, or text
+that parses but is not what LP Ranger writes there; then what to do
+about that cause. A JSON file that is not valid is a failure like any
+other, and stops LP Ranger. The rebalance log adds its three steps, and
+a Clear the lines of `.env` to remove by hand. A missing file is no failure of a read, a copy or a
+delete, so a cache or a log not written yet tells nothing; a file LP
+Ranger ships must be there, so missing it is told. Every failure is
+told, the same one again included.
+
+Each told failure is then handed to the program's stop
+(`src/lib/stop-on-file-problem.js`), which acts on the first, once:
+
+1. It says in the log that LP Ranger is stopping.
+2. The server sends the Telegram alert for other errors, the failure's
+   words and that LP Ranger is stopping, from a detached process
+   (`notifyFileProblemBeforeExit`,
+   `src/server/telegram-notifications/server-shutdown.js`), as the
+   shutdown alert is sent, so it arrives though the server exits at
+   once. It is sent only when the server holds the Telegram keys, which
+   an unlock, the launch's key step or an import decrypts, and the Other
+   Error alert is on, as shipped: otherwise the failure reaches the log
+   alone. The headless bot sends none (the user's decision, 2026-11-27:
+   the server, run unattended, sends every alert). A sender that cannot
+   start is logged by its error's code alone, never with its arguments,
+   which hold the bot token.
+3. The server stops answering: it refuses every request and closes its
+   open connections, so no request reaches a bot that is stopping, and
+   an answer in flight, a Clear's included, is not sent. It keeps its
+   port until the exit, so a second start fails on the port while this
+   one finishes a move.
+4. Nothing new starts (`markStopping`), and each position stops once its
+   check has ended (`stopAll`), so a rebalance or compound under way
+   finishes; the headless bot's single position, started outside the
+   position manager, is waited for through its start. No scan is waited
+   for, and nothing waits for a dashboard to read a dialog.
+5. The process exits with status 1: at once when no bot is built yet,
+   as at load, else once every position has stopped.
+
+Each entry point hands the module its stop before it reads its first
+file, the boot log's settings, and fills in the parts the stop acts on
+as each is made: the alert once its module has loaded, the bot once
+built, the server once made. Until a stop is handed in, as in a tool or
+a test, a failure is logged alone. Until the process exits, the place
+that met the failure carries on without the file: a cache reads as
+empty, a write is not thrown, a settings reader goes on with its
+fallback, and a rebalance's record-keeping finishes. A file LP Ranger
+reads and then writes back whole, the rebalance log and the P&L epoch
+cache, is never written after a read of it failed, so a save while LP
+Ranger stops cannot write over what could not be read.
+
+The diagnostic log stops writing to its file at its own first failure
+(`src/lib/log-file.js`), before telling it, so that failure's log line,
+and every line after it, reach the terminal alone and the telling cannot
+loop. A write racing the exit (`EBADF`) is no failure. One read tells
+nothing: `readGlobalSetting` (`src/lib/bot-config-v2.js`) as
+`src/lib/config.js` loads, where the startup check, right after, refuses
+a file it cannot read; the same read for `GET /api/rpc-endpoints`, while
+the server runs, tells. A wallet.json a save cut short left empty beside
+a whole copy is no failure either: the copy recovers it
+(`src/lib/wallet-manager.js`); with no copy to recover from, it is told.
+
+A file a full disk or a crash cuts short could not be read at the next
+start, which would then stop. So every scan cache is replaced whole
+through a copy (`src/lib/shared-json-file.js`): written into a folder of
+its own beside the file, then renamed over it, so a write cut short
+leaves the last copy whole. The diagnostic log and the rebalance log are
+written in place, a copy not being worth its cost for a log (the user's
+rulings, 2026-11-27); a rebalance log cut short is what
+`npm run delete-all-caches-and-logs` and
+`npm run build-and-start -- --delete-all-caches-and-logs` remove.
 
 ### The Dashboard's Three Settings Files
 
@@ -4198,8 +4275,8 @@ What happens when the process starts, in order:
         after it, and again after the api keys'. A Clear Wallet is
         refused from its first step until the start-up it begins has
         finished, or until the step ends without one: the key step
-        marks the wallet in use until either, and the start-up refuses
-        a Clear until it ends. Standing aside at the
+        marks the wallet in use until the start-up has begun or the step
+        has ended, and the start-up refuses a Clear until it ends. Standing aside at the
         `--unlock-at-terminal` prompt after a dashboard unlock, the step
         ends only once the prompt is answered; pressing Enter there ends
         it.
@@ -4704,7 +4781,7 @@ What it adds to the shared loop is a **bound**. Reads whose answer
 nobody is waiting on retry until some endpoint serves them; a pool read
 has a poll cycle or a Manage click waiting, so it stops. The budget is
 `sendTx.endpointCount()` × `boundedReadAttemptsPerEndpoint` (2 as
-shipped) — six attempts on the three-endpoint mainnet — and
+shipped) — four attempts on the two-endpoint mainnet — and
 `endpointCount()` rather than `config.RPC_URLS.length` because
 `setRpcUrls` can leave the two disagreeing. `boundedReadRetryDelayMs`
 (3 s as shipped) waits before re-asking **the same** endpoint, and is

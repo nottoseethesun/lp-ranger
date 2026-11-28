@@ -44,11 +44,11 @@ and the server never sees it.
 
 ## Getting Help on Any Command
 
-The server, the headless bot, the commands that start them, and the four
+The server, the headless bot, the commands that start them, and the five
 commands that delete or stop something (`npm run clean`, `npm stop`,
-`npm run clear-blockchain-scan-cache` and `npm run reset-wallet`) take
-`--help` (or `-h`). Each prints its flag list and exits without starting
-anything:
+`npm run clear-blockchain-scan-cache`, `npm run reset-wallet` and
+`npm run delete-all-caches-and-logs`) take `--help` (or `-h`). Each
+prints its flag list and exits without starting anything:
 
 ```sh
 npm run build-and-start -- --help
@@ -60,9 +60,10 @@ npm run clean -- --help
 npm stop -- --help
 npm run clear-blockchain-scan-cache -- --help
 npm run reset-wallet -- --help
+npm run delete-all-caches-and-logs -- --help
 ```
 
-Those four also refuse an argument they do not take, before they delete
+Those five also refuse an argument they do not take, before they delete
 or stop anything, so a mistyped flag never sets them to work.
 
 `--help` starts no server and no bot, writes nothing to the log file, and
@@ -80,8 +81,9 @@ settings aside.
 The text comes from `src/server/server-cli-help.js` (the server's and
 build-and-start's) and `src/bot/bot-cli-help.js` (the headless bot's),
 which share the options and environment in `src/lib/cli-help.js`, so the
-help output and the tables below describe the same flags. `npm run clean`
-prints its own, from `scripts/clean.js`.
+help output and the tables below describe the same flags. The five
+commands that delete or stop something print their own, each from its
+script in `scripts/`.
 
 ---
 
@@ -93,6 +95,7 @@ Starting and stopping a running install.
 | ------- | ----- | ----------- | ------- |
 | `bot` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--start-with-price-lookups-unpaused` | Headless bot, no dashboard. Requires `PRIVATE_KEY` in `.env` or an imported wallet. Price lookups start paused to conserve quota; the flag disables that for continuous P&L cache warming. The log flags: see [Logging to a File](#logging-to-a-file). | `npm run bot -- --log-file --delete-pre-existing-log-file` · `npm run bot -- --start-with-price-lookups-unpaused` · `npm run bot -- --help` |
 | `clear-blockchain-scan-cache` | `--dry-run`, `--help`/`-h` | Delete every blockchain scan cache in `app-data/scan-cache/`. Refuses to run while the server is up. `--dry-run` lists what would go without deleting. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clear-blockchain-scan-cache -- --dry-run` |
+| `delete-all-caches-and-logs` | `--help`/`-h` | Delete all of LP Ranger's caches and logs, once you type `YES`, and start nothing after: the way to clear them when you run the headless bot, which you then start again with `npm run bot`. A running LP Ranger is stopped first, the server and then the headless bot, each once nothing is under way. It deletes what `npm run build-and-start -- --delete-all-caches-and-logs` deletes, which then builds and starts the server. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run delete-all-caches-and-logs` |
 | `gentle-stop` | — | The recommended way to stop the server: asks it to stop once nothing is under way, then prints what it is still finishing until it exits. See [Stopping a Running Install](#stopping-a-running-install). | `npm run gentle-stop` |
 | `start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--help`/`-h`, `--unlock-at-terminal` | Start the dashboard server and, once the wallet is unlocked, every position saved as managed. `--unlock-at-terminal` asks for the wallet password at the terminal as the server starts. The dashboard is still served and can unlock the wallet meanwhile; with no password from either, the server exits. Does not build first; a `prestart` hook verifies the artifacts exist. The log flags: see [Logging to a File](#logging-to-a-file). | `npm start -- --log-file --delete-pre-existing-log-file` · `npm start -- --verbose` · `npm start -- --help` |
 | `stop` | `--help`/`-h` | Force-stop: reads `tmp/lp-ranger.pid` and sends SIGTERM, the same path as Ctrl+C. The server exits within three seconds, cutting off any rebalance or compound under way; prefer `npm run gentle-stop`. Falls back to an lsof-by-port lookup when there is no PID file, or its PID is no longer the server's. See [Stopping a Running Install](#stopping-a-running-install). | `npm stop` |
@@ -108,7 +111,7 @@ resetting local state.
 | ------- | ----- | ----------- | ------- |
 | `api-doc` | — | Serve the Scalar API reference at `http://localhost:5556`. | `npm run api-doc` |
 | `build` | — | Full build: version stamp, manual and disclosure content, UI tokens, the esbuild bundles (the dashboard's and the User Manual's), a cache-bust stamp on every script and stylesheet the pages load, inlined SVGs. | `npm run build` |
-| `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--delete-all-caches-and-logs`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. The log flags: see [Logging to a File](#logging-to-a-file). `--delete-all-caches-and-logs`, build-and-start's own, first deletes all of LP Ranger's caches and logs: every scan cache, the figures worked out from the blockchain for each position, the rebalance log wherever `LOG_FILE` puts it, and the diagnostic log and the error log inside the install folder. Today's rebalance counts are kept. It is the way back from a damaged one, such as a rebalance log the Rebalance log error dialog says cannot be read. It says so first, and that the rebuild from the blockchain can take several hours, and goes on only when you type `YES`; any other answer stops it, deleting nothing. The wallet, keys and settings are kept. Refused while LP Ranger runs. | `npm run build-and-start -- --log-file --delete-pre-existing-log-file` · `npm run build-and-start -- --log-file /tmp/burn-in.log` · `npm run build-and-start -- --delete-all-caches-and-logs` · `npm run build-and-start -- --help` |
+| `build-and-start` | `--verbose`/`-v`, `--log-file [PATH]`, `--delete-pre-existing-log-file`, `--delete-all-caches-and-logs`, `--help`/`-h` | Build the dashboard bundle, then start the server. The usual command after pulling changes. The log flags: see [Logging to a File](#logging-to-a-file). `--delete-all-caches-and-logs`, build-and-start's own, first deletes all of LP Ranger's caches and logs: every scan cache, the figures worked out from the blockchain for each position, the rebalance log wherever `LOG_FILE`, or else `log.file` in `app-runtime.json`, puts it, outside the install folder too, and the diagnostic log and the error log inside the install folder. Today's rebalance counts are kept. It is the way back from a damaged one, such as a rebalance log LP Ranger stopped for, unable to read it. It says so first, that a running LP Ranger is stopped first, and that the rebuild from the blockchain can take several hours, and goes on only when you type `YES`; any other answer stops it, stopping and deleting nothing. Then it stops a running server as `npm run gentle-stop` does, and then a running headless bot the same way, by the signal SIGUSR2: each finishes a rebalance, compound or scan under way, then exits. Nothing is deleted until each has. The wallet, keys and settings are kept. Then the server starts, in place of a headless bot that ran: if you run the headless bot, use `npm run delete-all-caches-and-logs` instead, which deletes the same and starts nothing after. | `npm run build-and-start -- --log-file --delete-pre-existing-log-file` · `npm run build-and-start -- --log-file /tmp/burn-in.log` · `npm run build-and-start -- --delete-all-caches-and-logs` · `npm run build-and-start -- --help` |
 | `build:watch` | — | esbuild in watch mode. Rebuilds both bundles on change, then stamps every page again, so a reloaded page loads the new bundle; skips the one-off generators `build` runs. | `npm run build:watch` |
 | `clean` | `--help`/`-h` | Full reset to fresh-clone state: wallet, bot config, API keys, position records, rebalance log, every scan cache in `app-data/scan-cache/`, logs and build artifacts. Rebuild before starting again. Any other argument is refused before anything is stopped or deleted. See [Wallet and Scan-Cache Resets](#wallet-and-scan-cache-resets). | `npm run clean` · `npm run clean -- --help` |
 | `clean:log` | — | Empty the log-to-file output (`logs/lp-ranger.log`, or the `path` in `logging.json`) in place, if inside the install folder. Safe while the server runs. See [Housekeeping](#housekeeping). | `npm run clean:log` |
@@ -271,7 +274,7 @@ is under way.
 
 `npm stop` (alias `npm run stop`) shuts down without switching to the
 server's terminal. It reads the server PID from `tmp/lp-ranger.pid`
-(written on startup by `src/server/server-pid.js`) and sends **SIGTERM** — the
+(written on startup by `src/lib/pid-file.js`) and sends **SIGTERM** — the
 same handler as Ctrl+C, so it stops all managed positions and closes the
 HTTP server. It escalates to SIGKILL if the process is still there after
 the server's exit timeout plus a margin (`exitTimeoutMs` plus
@@ -288,6 +291,29 @@ still runs `src/server.js`; otherwise it clears the file and falls back to an
 lsof-by-port lookup, as it does when there is no PID file at all. That
 lookup signals a listener only while it is this install's `src/server.js`,
 so another program on the port is left alone.
+
+**The headless bot** (`npm run bot`) serves no http, so
+`npm run gentle-stop` and `npm stop` cannot reach it. Its gentle stop is
+the signal SIGUSR2, sent to the PID in `tmp/lp-ranger-bot.pid`, which it
+writes as it starts, once it takes the signal, and removes whenever it
+exits on its own:
+
+```sh
+kill -USR2 "$(cat tmp/lp-ranger-bot.pid)"
+```
+
+It then stops as the server does for `npm run gentle-stop`: nothing new
+starts, and it exits once each rebalance, compound and scan under way
+has finished. It prints nothing back to the shell that sent the signal;
+its own log says it is stopping. Ctrl+C or SIGTERM is its force-stop,
+exiting within three seconds.
+
+To delete every cache and log while you run the headless bot, use
+`npm run delete-all-caches-and-logs`: once you type YES, it stops the
+headless bot by this signal, deletes, and starts nothing after, so you
+start it again with `npm run bot`.
+`npm run build-and-start -- --delete-all-caches-and-logs` stops it the
+same way, but then starts the server in its place.
 
 ### Dependency Cycles
 
@@ -338,7 +364,8 @@ task.
   in. Stops the server and **waits for it to exit**, runs `reset-wallet`,
   then deletes operator state (`bot-config.json`,
   `bot-config.backup.json`, `api-keys.json`, `position-records.json`,
-  `position-records.backup.json`, `rebalance_log.json`),
+  `position-records.backup.json`, `pool-daily-counts.json`,
+  `rebalance_log.json`),
   every scan cache in `app-data/scan-cache/`, the log files `logging.json`
   names that lie inside the install folder, the build artifacts
   (`src/client/web/dist/`, `src/client/web/fonts/`, `src/client/web/css/ui-tokens.css`,
@@ -369,6 +396,24 @@ task.
   orientation caches cost price-service quota to refill, and the
   block-time cache one paced rpc request per block it holds. Logs are kept
   too. Same script, `--dev`.
+- `npm run delete-all-caches-and-logs` — Delete all of LP Ranger's
+  caches and logs, and start nothing after: the way to clear them when
+  you run the headless bot (the user's ruling, 2026-11-28). It deletes
+  every blockchain scan cache, the figures LP Ranger worked out from the
+  blockchain for each position, the rebalance log wherever it is, and
+  the diagnostic log and the error log inside the install folder; the
+  wallet, keys, settings and today's rebalance counts are kept. It says
+  so first, and goes on only when you type `YES`. Then it stops a
+  running server as `npm run gentle-stop` does, and then a running
+  headless bot by the signal SIGUSR2, each once a rebalance, compound or
+  scan under way has finished, and deletes nothing until each has
+  exited. Start the headless bot again with `npm run bot`; it rebuilds
+  the caches from the blockchain as it runs, which can take several
+  hours. With the server,
+  `npm run build-and-start -- --delete-all-caches-and-logs` deletes the
+  same, then builds and starts the server, in place of a headless bot
+  that ran. Both run
+  [`scripts/delete-all-caches-and-logs.js`](../scripts/delete-all-caches-and-logs.js).
 
 ### Housekeeping
 

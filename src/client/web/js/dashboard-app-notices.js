@@ -22,14 +22,10 @@ export const WALLET_CLEARED_LEFT_NOTICE_ID = "9mm-wallet-cleared-left-modal";
 /** Wallet file not found (dashboard-wallet-import.js). */
 export const WALLET_GONE_NOTICE_ID = "9mm-wallet-gone-modal";
 
-/** Rebalance log error (dashboard-rebalance-log-notice.js). */
-export const REBALANCE_LOG_NOTICE_ID = "9mm-rebalance-log-modal";
-
 /** Every one of them, for the stale-figures guard. */
 export const APP_NOTICE_IDS = Object.freeze([
   START_REFUSAL_NOTICE_ID,
   WALLET_NOT_CLEARED_NOTICE_ID,
   WALLET_CLEARED_LEFT_NOTICE_ID,
   WALLET_GONE_NOTICE_ID,
-  REBALANCE_LOG_NOTICE_ID,
 ]);

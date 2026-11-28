@@ -64,7 +64,7 @@ const { emojiId } = require("./logger");
 /**
  * Token ids per filter.
  *
- * The three shipped PulseChain endpoints accept a 132-value topic array
+ * The shipped PulseChain endpoints accept a 132-value topic array
  * over a 9,000-block window. The JSON-RPC spec sets no such minimum,
  * though, and an operator's own node may cap the array. Chunking caps
  * every request at 100 ids, so a chain of any length reads on any node

@@ -60,7 +60,14 @@ What it does, in order:
                        the blockchain can take several hours, and asks
                        you to type YES; any other answer stops here,
                        deleting nothing. The wallet, keys and settings
-                       are kept. Refused while LP Ranger runs.
+                       are kept. A running LP Ranger is stopped first:
+                       the server, then a headless bot, each once a
+                       rebalance, compound or scan under way has
+                       finished. Then the server starts, in place of
+                       a headless bot that ran. If you run the
+                       headless bot, use this instead, which deletes
+                       the same and starts nothing after:
+                         npm run delete-all-caches-and-logs
 
 Help for what it runs:
   npm start -- --help            Server options (the ones you can pass here)

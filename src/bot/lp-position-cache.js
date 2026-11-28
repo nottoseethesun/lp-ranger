@@ -20,8 +20,8 @@ const { log } = require("../lib/log");
 const { tellFileProblem } = require("../lib/file-problem");
 const { chainCacheTag } = require("../lib/cache-store");
 const fs = require("fs");
-const path = require("path");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { replaceJsonFile } = require("../lib/shared-json-file");
 
 const _C = "\x1b[38;5;118;48;5;94m";
 const _R = "\x1b[0m";
@@ -91,17 +91,15 @@ function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
     opts.blockchain,
     opts.contract,
   );
-  const dir = path.dirname(filePath);
   try {
-    _fs.mkdirSync(dir, { recursive: true });
-    _fs.writeFileSync(
+    // Replaced whole through a copy, so a write cut short leaves the last.
+    replaceJsonFile(
       filePath,
-      JSON.stringify(
-        { positions, lastBlock },
-        (_k, v) => (typeof v === "bigint" ? String(v) : v),
-        2,
-      ),
-      "utf8",
+      { positions, lastBlock },
+      {
+        fsModule: _fs,
+        replacer: (_k, v) => (typeof v === "bigint" ? String(v) : v),
+      },
     );
   } catch (err) {
     tellFileProblem({ doing: "write to", file: filePath, err });

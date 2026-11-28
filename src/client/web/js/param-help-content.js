@@ -760,8 +760,10 @@ export function buildParamHelp(f) {
             "The cap applies <strong>per pool</strong> &mdash; each " +
             "pool&rsquo;s daily count is independent, so one busy pool " +
             "hitting its cap does not stop rebalances on your other pools. " +
-            "Counts survive an app restart (they are rebuilt from on-chain " +
-            "history) and reset at midnight UTC.",
+            "Counts survive an app restart: LP Ranger saves them at every " +
+            "rebalance, and at a start keeps for each pool the larger of the " +
+            "saved count and the rebalance log&rsquo;s. They reset at " +
+            "midnight UTC.",
         },
       ],
     },

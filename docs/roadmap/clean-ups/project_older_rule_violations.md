@@ -20,9 +20,9 @@ exists, and every such swap carries a comment that opens
 `TEST-ONLY global swap:`. The label is what lets one search find every
 use of the exception. The rule is in
 [CLAUDE-BEST-PRACTICES.md](../../claude/CLAUDE-BEST-PRACTICES.md), under
-Core Essentials. Of the 78 test files that swap a standard global, 68
-carry no such label anywhere. Most swap `fetch` or
-`Module.prototype.require`. Ten swap `console.log`, `console.warn` or
+Core Essentials. Of the 118 test files that swap a standard global
+(counted 2026-11-27), 68 carry no such label anywhere. Most swap `fetch`
+or `Module.prototype.require`. Six swap `console.log`, `console.warn` or
 `console.error`; for a module that logs through `src/lib/log.js`, its
 `log._setSinkForTests` seam makes that swap unnecessary. Three swap
 `setTimeout`, where `price-source-backoff._setDelays` and
@@ -34,9 +34,10 @@ module look like the owner, so a search for a name's definition lands
 in the wrong place, and every refactor has to update the copy too.
 Eight runtime modules re-export names they import:
 
-- `src/lib/config.js` re-exports seven values it takes from
-  `src/lib/runtime-flags.js`: the port, the private key, the dry-run and
-  verbose flags, and the chain. The header of `runtime-flags.js` calls
+- `src/lib/config.js` re-exports eight values it takes from
+  `src/lib/runtime-flags.js`: the port and the host, the private key,
+  the dry-run and verbose flags, the chain and its name, and the
+  transaction type. The header of `runtime-flags.js` calls
   this deliberate, so that existing callers keep working.
 - `src/bot/price-fetcher.js` re-exports the price gate's pause functions
   and the cascade's `tryPriceSources`.

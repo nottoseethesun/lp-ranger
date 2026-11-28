@@ -215,8 +215,8 @@ function _checkInProgress(state, copy = {}) {
       ? " The scan can take up to four hours."
       : copy.scanExtra;
   if (!state) return null;
-  /*- A stop the server holds until nothing is under way
-   *  (src/server/stop-when-all-clear.js) waits for the scans running; one
+  /*- A stop held until nothing is under way
+   *  (src/lib/stop-when-all-clear.js) waits for the scans running; one
    *  started now would be cut off, or hold the stop for its length. */
   if (isStopping()) {
     return {

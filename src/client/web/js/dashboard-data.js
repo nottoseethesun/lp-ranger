@@ -25,7 +25,6 @@ import {
 import { paintClearWalletButton } from "./dashboard-wallet-import.js";
 import { paintImportButtons } from "./dashboard-import-buttons.js";
 import { showStartRefusal } from "./dashboard-start-refusal.js";
-import { showRebalanceLogProblem } from "./dashboard-rebalance-log-notice.js";
 import { reloadIfOnPriorWallet } from "./dashboard-wallet-change.js";
 import {
   updateManageBadge,
@@ -574,9 +573,7 @@ import { announceRefill } from "./dashboard-config-save.js";
  * Each status answer: a tab left on a wallet the server no longer holds
  * reloads and does nothing more with it (dashboard-wallet-change.js).
  * Any other tab first shows the server's refusal to start, if it carries
- * one (dashboard-start-refusal.js), and a failed read or write of the
- * rebalance log it has not shown yet (dashboard-rebalance-log-notice.js).
- * Then it shows the answer, read before
+ * one (dashboard-start-refusal.js). Then it shows the answer, read before
  * the rest, so what follows decides on it: the wallet shown unlocked once
  * the server holds its key, should the tab still show it locked
  * (dashboard-wallet.js); Clear Wallet and the Import Wallet buttons held
@@ -590,7 +587,6 @@ import { announceRefill } from "./dashboard-config-save.js";
 function _statusAnswered(data) {
   if (reloadIfOnPriorWallet(data, wallet.address)) return;
   showStartRefusal(data.startRefusal);
-  showRebalanceLogProblem(data.rebalanceLogProblem);
   updateDashboardFromStatus(data);
   showUnlockedIfServerIs(data.walletUnlocked, data.walletAddress);
   paintClearWalletButton(data.clearWalletRefusal);

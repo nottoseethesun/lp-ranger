@@ -5,9 +5,9 @@
  * The one place block ranges are split for `eth_getLogs` / `queryFilter`.
  *
  * RPC endpoints cap how wide a single log query may be and reject
- * anything wider — `rpc-pulsechain.g4mm4.io` answers a too-wide query
- * with JSON-RPC `-32602`, "eth_getLogs is limited to a 10000 block
- * range".  A caller that hands over a five-year span therefore gets an
+ * anything wider — one enforcing the published 10,000-block limit
+ * answers a too-wide query with JSON-RPC `-32602`, "eth_getLogs is
+ * limited to a 10000 block range".  A caller that hands over a five-year span therefore gets an
  * error rather than logs.  A caller that swallows that error and
  * reports "nothing found" turns an unread range into an assertion that
  * the range is empty, which downstream code treats as settled.

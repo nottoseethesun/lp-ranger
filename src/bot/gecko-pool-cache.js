@@ -30,7 +30,7 @@
  * src/lib/scan-cache-dir.js).
  * Lazy-loaded on first access; batched writes via dirty flag, each of
  * which reads the file as it is at that moment, lays this process's
- * entries over it and replaces the file whole (src/bot/shared-json-file.js),
+ * entries over it and replaces the file whole (src/lib/shared-json-file.js),
  * so a write keeps every entry the file held when it read it, as
  * src/bot/price-cache.js does.
  */
@@ -49,7 +49,7 @@ const { SETTING_BOUNDS } = require("../lib/setting-bounds");
 const { withinBound, boundText } = require("../lib/range-check");
 const { scanCachePath } = require("../lib/scan-cache-dir");
 const { readEnv } = require("../lib/env-settings");
-const { readJsonObject, replaceJsonFile } = require("./shared-json-file");
+const { readJsonObject, replaceJsonFile } = require("../lib/shared-json-file");
 
 /*-
  *  `GECKO_POOL_CACHE_PATH` moves the file, read through `readEnv`, so a

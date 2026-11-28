@@ -1,11 +1,11 @@
 ---
 name: project-consolidate-rpc-retry
-description: "Nice-to-have / future — consolidate the per-URL × per-attempt RPC-retry orchestrator pattern used by getPoolState, can-reopen wallet reads, and likely other sites into a single shared helper."
+description: "DONE 2026-10-02: every bounded RPC read retries through one loop, retryRead (src/bot/rpc-read-retry.js); kept for the three-grep sweep that tells whether a new reader keeps its own endpoint walk."
 metadata: 
   node_type: memory
   type: project
   originSessionId: e17d18d9-be7e-475d-b752-a1fab7b154c0
-  modified: 2026-11-25T05:18:25.958Z
+  modified: 2026-11-28T02:35:50.213Z
 ---
 
 **Status: DONE, 2026-10-02.** All three steps shipped. The duplication
@@ -181,7 +181,9 @@ When future features need RPC retry, **copy from the closer of the two existing 
 
 ---
 
-**On the public list (2026-09-02).** Published on the README's
-Nice-to-Have list as "Consolidate the RPC Retry Pattern", detailed in
-`docs/roadmap/clean-ups/project_consolidate_rpc_retry.md`.
-Keep the two in step, and do not add a second entry for it.
+**On the public list.** Published on the README's list on 2026-09-02
+as "Consolidate the RPC Retry Pattern", with a page of its own in
+`docs/roadmap/clean-ups/`. Both were removed on 2026-11-27, at the
+user's word, with the other finished items ("remove any other
+nice-to-haves that have either been done or no longer apply"). This
+note is the record now; do not add the item back.

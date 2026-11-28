@@ -14,29 +14,30 @@ leaves one at a time, one every 222 ms as shipped
 pace exists to stay inside what a public endpoint will tolerate from one
 machine.
 
-But the app is configured with three endpoints, run by three different
-operators. Each of them polices only the traffic that arrives at its own
-door. Queueing all three behind a single budget spends one endpoint's
-allowance and leaves the other two idle. Spreading reads across all
-three would finish a history rebuild in roughly a third of the time
-without asking any one of them for more than it allows today.
+But the app ships with two endpoints, run by two different operators.
+Each of them polices only the traffic that arrives at its own door.
+Queueing both behind a single budget spends one endpoint's allowance and
+leaves the other idle. Spreading reads across both would finish a
+history rebuild in roughly half the time without asking either of them
+for more than it allows today. (A third, `rpc-pulsechain.g4mm4.io`, was
+removed on 2026-11-28 when it shut down.)
 
 ## Detail
 
 The single queue is justified in `src/bot/rpc-request-manager.js` like this:
 
 > Rate limits are published per IP, not per endpoint object. This
-> process may hold three providers … and every one of those shares the
+> process may hold several providers … and every one of those shares the
 > same source address. A per-provider or per-scan limiter would each
 > think itself well-behaved while the machine as a whole sailed past the
 > limit. One queue, one budget.
 
 That reasoning is correct for two provider objects pointing at the **same
 URL**, and it is the reason a naive per-provider limiter is wrong. It
-does not hold for three **different operators**: `rpc-pulsechain.g4mm4.io`
-rate-limits what reaches g4mm4, `rpc.pulsechain.com` limits what reaches
-it, and neither counts the other's traffic. Three independent budgets
-are currently serialized into one.
+does not hold for two **different operators**: `rpc.pulsechain.com`
+rate-limits what reaches it, `rpc.pulsechain.box` limits what reaches
+it, and neither counts the other's traffic. Two independent budgets are
+currently serialized into one.
 
 **Keep that paragraph accurate whatever happens to this entry.** Its
 first half is load-bearing and must stay; only the leap from "same URL"
@@ -62,7 +63,7 @@ mid-nonce is a bad day; only reads may spread.
 **Spill on a queue depth of one.** Idle, nothing is queued and everything
 goes to the primary — preferred endpoint, no traffic sprayed for no
 reason. Under a scan something is always queued, so it fans out across
-all three. It scales on contention with no tuning knob.
+both. It scales on contention with no tuning knob.
 
 ## Unknowns, and how to settle them cheaply
 
@@ -72,12 +73,12 @@ Two things are assumed above and neither is verified:
   50 requests per 10 seconds — 5/s. A lane at today's pace runs at about
   90% of that, so lanes want per-endpoint intervals rather than one
   shared number.
-- **The three operators are independent.** The domains suggest it. If any
-  two sit behind shared infrastructure, the fan-out buys less than three
-  lanes' worth.
+- **The two operators are independent.** The domains suggest it. If they
+  sit behind shared infrastructure, the fan-out buys less than two lanes'
+  worth.
 
-Both are answered by a throwaway script that hits the other two endpoints
-at today's pace for a minute and watches for a 429. Run that first; if
+Both are answered by a throwaway script that hits the other endpoint at
+today's pace for a minute and watches for a 429. Run that first; if
 one complains, there is no design question left to have.
 
 ## Why this is not the first lever to reach for

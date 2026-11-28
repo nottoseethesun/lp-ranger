@@ -3,8 +3,9 @@
  * @module under-way
  * @description
  * What the bot has under way, position by position: a rebalance or
- * compound in progress, and a scan still running. The server's held
- * stop (src/server/stop-when-all-clear.js) asks it what the stop still
+ * compound in progress, and a scan still running. The held stop, the
+ * server's and the headless bot's (src/lib/stop-when-all-clear.js), asks
+ * it what the stop still
  * waits for, and waits for the scans through it. A Clear and an import
  * ask it whether a move is under way or a position is starting, and are
  * refused while one is (`walletChangeRefusal`, `importRefusal`).

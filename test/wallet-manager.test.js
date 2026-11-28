@@ -22,6 +22,7 @@ const util = require("util");
 const { spawnSync } = require("child_process");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { _setSinkForTests } = require("../src/lib/log");
+const { handleFileProblemsWith } = require("../src/lib/file-problem");
 
 const WALLET_FILE = path.join(makeTestTempFolder("wallet"), "wallet.json");
 const TMP_FILE = `${WALLET_FILE}.tmp`;
@@ -339,6 +340,37 @@ describe("wallet-manager, a fresh start", () => {
     await assertSampleLoaded();
   });
 
+  it("tells a wallet.json it cannot read only when no copy holds the wallet", async () => {
+    /*-
+     *  An empty wallet.json beside a whole copy is what a save cut short
+     *  leaves, and the copy recovers it: telling it would stop LP Ranger
+     *  before the program puts the copy back. With no copy to recover
+     *  from, it is a file failure like any other, which stops LP Ranger.
+     *  TEST-ONLY: the handler a program sets (its stop) is a stand-in,
+     *  put back in the `finally`.
+     */
+    const told = [];
+    handleFileProblemsWith((words) => told.push(words));
+    try {
+      await savedWithCopy();
+      fs.writeFileSync(WALLET_FILE, "");
+      _reloadFromDiskForTests();
+      assert.deepStrictEqual(told, [], "the copy recovers it");
+      assert.strictEqual(getAddress(), SAMPLE.address);
+      fs.unlinkSync(TMP_FILE);
+      _reloadFromDiskForTests();
+      assert.strictEqual(told.length, 1, "no copy: told");
+      assert.ok(
+        told[0].startsWith(
+          `LP Ranger could not read ${WALLET_FILE}: it is not valid JSON (`,
+        ),
+        told[0],
+      );
+    } finally {
+      handleFileProblemsWith(null);
+    }
+  });
+
   it("starts with no wallet when neither file holds one, and the start removes the copy", () => {
     fs.writeFileSync(WALLET_FILE, "");
     fs.writeFileSync(TMP_FILE, "{ not a wallet");
@@ -371,7 +403,7 @@ describe("wallet-manager, a fresh start", () => {
       restoreLog();
     }
     assert.ok(
-      said.some((s) => s.includes(`LP Ranger could not delete ${TMP_FILE}.`)),
+      said.some((s) => s.includes(`LP Ranger could not delete ${TMP_FILE}: `)),
       said.join("\n"),
     );
     assert.ok(!said.some((s) => s.includes("Removed wallet.json.tmp")));

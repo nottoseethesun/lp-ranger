@@ -523,8 +523,8 @@ function getCurrentRPCUrl() {
  * list.** Selection is process-wide, and the bot reads concurrently —
  * ten positions polling, a pool-state read, a chunked scan — so one
  * endpoint's failure arrives here several times within the same second.
- * Advancing on each arrival walks the index off the end of a
- * three-endpoint list in about that long, and stepping off the end
+ * Advancing on each arrival walks the index off the end of the
+ * endpoint list in about that long, and stepping off the end
  * halts every JSON-RPC request in the process for an hour. The cost of
  * getting this wrong is therefore not a slow read: it is a frozen bot,
  * on endpoints that were never asked.

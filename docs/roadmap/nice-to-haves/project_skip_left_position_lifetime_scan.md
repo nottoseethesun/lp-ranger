@@ -7,11 +7,14 @@ idea.
 
 On an unmanaged position, the dashboard asks the server for its figures
 in two steps: the current figures first, then the lifetime figures. If
-the operator switches to another position while the first step is still
-loading, the dashboard drops its answer, since it belongs to a position
-no longer on screen. It still asks for the second step, so the server
-works out the lifetime figures of a position nobody is looking at, and
-the dashboard drops that answer too.
+the operator switches to a managed or a closed position while the first
+step is still loading, the dashboard drops its answer, since it belongs
+to a position no longer on screen. It still asks for the second step, so
+the server works out the lifetime figures of a position nobody is
+looking at, and the dashboard drops that answer too. A switch to another
+unmanaged position already skips the second step: that position's own
+request takes the turn (`_fetchGen`,
+src/client/web/js/dashboard-unmanaged.js).
 
 Nothing wrong shows on screen. The cost is the server's time: on a
 position whose history is not cached yet, that work can take long, and

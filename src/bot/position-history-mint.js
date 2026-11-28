@@ -32,10 +32,10 @@
 "use strict";
 
 const fs = require("fs");
-const path = require("path");
 const ethers = require("ethers");
 const { log } = require("../lib/log");
 const { tellFileProblem } = require("../lib/file-problem");
+const { replaceJsonFile } = require("../lib/shared-json-file");
 const config = require("../lib/config");
 const sendTx = require("./send-transaction");
 const { scanChunked } = require("./get-logs-chunked");
@@ -86,15 +86,14 @@ function _loadMintCache() {
   }
 }
 
-/** Persist in-memory mint cache to disk. */
+/**
+ * Persist in-memory mint cache to disk, replaced whole through a copy
+ * (src/lib/shared-json-file.js), so a write cut short leaves the last
+ * copy whole.
+ */
 function _saveMintCache() {
   try {
-    fs.mkdirSync(path.dirname(_MINT_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(
-      _MINT_CACHE_PATH,
-      JSON.stringify(Object.fromEntries(_mintCache), null, 2),
-      "utf8",
-    );
+    replaceJsonFile(_MINT_CACHE_PATH, Object.fromEntries(_mintCache));
   } catch (err) {
     tellFileProblem({ doing: "write to", file: _MINT_CACHE_PATH, err });
   }

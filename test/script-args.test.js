@@ -5,11 +5,12 @@
  * @description How a script that changes something reads its arguments
  *   (scripts/_script-args.js): `--help` prints its help and stops, and an
  *   argument it does not take is refused with exit status 2, both before
- *   it does anything. And that scripts/reset-wallet.js, scripts/stop.js
- *   and scripts/clear-blockchain-scan-cache.js answer them before their
- *   first act. Those three are read, not run: running them would delete
- *   the operator's wallet, stop a running server, or empty the scan
- *   caches.
+ *   it does anything. And that scripts/reset-wallet.js, scripts/stop.js,
+ *   scripts/clear-blockchain-scan-cache.js and
+ *   scripts/delete-all-caches-and-logs.js answer them before their first
+ *   act. Those four are read, not run: running them would delete the
+ *   operator's wallet, stop a running server, empty the scan caches, or
+ *   stop LP Ranger and delete every cache and log.
  */
 
 const { describe, it, afterEach } = require("node:test");
@@ -90,6 +91,7 @@ describe("a script that changes something", () => {
     ["scripts/reset-wallet.js", "deleteWalletFiles();"],
     ["scripts/stop.js", "stopServer();"],
     ["scripts/clear-blockchain-scan-cache.js", "waitForServerExit();"],
+    ["scripts/delete-all-caches-and-logs.js", "loadEnvFile();"],
   ];
   for (const [file, firstAct] of SCRIPTS)
     it(`${file} answers its arguments before it does anything`, () => {

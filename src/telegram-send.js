@@ -3,8 +3,8 @@
  * @description Standalone one-shot Telegram message sender.
  *
  * Designed to be spawned as a detached child process during server
- * shutdown so the notification survives the parent's exit. That is the
- * whole of its job: the escaping, the parse mode and the plain-text
+ * shutdown, and when a file failure stops LP Ranger, so the notification
+ * survives the parent's exit. That is the whole of its job: the escaping, the parse mode and the plain-text
  * fallback all belong to `src/lib/telegram-notifications/telegram-message.js`,
  * which this calls, so this path cannot drift away from the in-process
  * one the way it did when each had its own `fetch`.

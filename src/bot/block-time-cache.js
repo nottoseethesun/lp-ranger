@@ -20,8 +20,8 @@
 const { log } = require("../lib/log");
 const { tellFileProblem } = require("../lib/file-problem");
 const fs = require("fs");
-const path = require("path");
 const { scanCachePath } = require("../lib/scan-cache-dir");
+const { replaceJsonFile } = require("../lib/shared-json-file");
 const { readEnv } = require("../lib/env-settings");
 
 /*-
@@ -85,12 +85,15 @@ async function getBlockTimestamp(provider, blockchain, blockNumber) {
   }
 }
 
-/** Write the cache to disk if any new entries were added since last flush. */
+/**
+ * Write the cache to disk if any new entries were added since last flush,
+ * replaced whole through a copy (src/lib/shared-json-file.js), so a write
+ * cut short leaves the last copy whole.
+ */
 function flushBlockTimeCache() {
   if (!_dirty || !_cache) return;
   try {
-    fs.mkdirSync(path.dirname(_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(_CACHE_PATH, JSON.stringify(_cache, null, 2), "utf8");
+    replaceJsonFile(_CACHE_PATH, _cache);
     _dirty = false;
   } catch (err) {
     tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });

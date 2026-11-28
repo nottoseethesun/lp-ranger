@@ -1,11 +1,11 @@
 ---
 name: feedback_handle_failures_in_the_shared_layer
-description: "A failure that can come from a shared reader or writer is handled inside it, for every caller, never at the one call site an audit found; plain words, no error classification"
+description: "A failure that can come from a shared reader or writer is handled inside it, for every caller, never at the one call site an audit found; plain words naming the cause the error shows, never a guessed one"
 metadata:
   node_type: memory
   type: feedback
   originSessionId: 01dbcc05-c2af-4091-ac37-493cbfdfa591
-  modified: 2026-11-28T00:35:16.879Z
+  modified: 2026-11-28T05:31:33.367Z
 ---
 
 When a failure can come from a shared reader or writer (a file, a log,
@@ -27,9 +27,23 @@ unguarded, and repeats the handling at each call site added later.
 - A missing file a first write creates is no error (*"handle the state
   where there is no log yet - that is not an error"*).
 - Say whether reading or writing failed, never calling a failed read a
-  write; don't classify the error (*"Don't try to find out the exact
-  file error"*). Log the error itself; give the operator plain advice and
-  the remedy the user chose.
+  write. Log the error itself; give the operator plain advice and the
+  remedy the user chose.
+- Name the cause the error itself shows, and the fix for that cause:
+  Node's error code (permissions, a full disk, a folder where the file
+  should be), a SyntaxError for JSON that does not parse, text that is
+  not what LP Ranger writes. Never a blanket cause the error does not
+  show. The user first said *"Don't try to find out the exact file
+  error"*; when my blanket "check the permissions and whether the disk
+  is full" then met a file that was only invalid JSON, they ruled
+  (2026-11-27): *"avoid a false negative of "can't read file or disk
+  full" if that's not the case: NodeJS has a file api that can tell
+  that. Somehow, you jacked that up bad."* An error that wraps another
+  is told by the one it wraps.
+- Any JSON file that is not valid stops LP Ranger gracefully, the server
+  first, then the bot, with that cause in the log (the same ruling:
+  *"LP Ranger always exits gracefully (as always, first server if any
+  then bot) if any json file is not valid"*).
 - No code that repairs the record (*"We don't write any additional
   executable code to try to repair the record"*), and never write over
   a file that could not be read.

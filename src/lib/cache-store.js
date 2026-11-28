@@ -23,9 +23,9 @@
 "use strict";
 
 const { tellFileProblem } = require("./file-problem");
+const { replaceJsonFile } = require("./shared-json-file");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const fs = require("fs");
-const path = require("path");
 const { scanCachePath } = require("./scan-cache-dir");
 
 /**
@@ -81,15 +81,14 @@ function createCacheStore(opts) {
   }
 
   /**
-   * Persist the in-memory Map to disk as JSON, creating parent folders
-   * as needed. A failure is told, never thrown.
+   * Persist the in-memory Map to disk as JSON, replaced whole through a
+   * copy (src/lib/shared-json-file.js), so a full disk or a process killed
+   * mid-write leaves the last copy whole. A failure is told, never thrown.
    */
   function _save() {
     const obj = Object.fromEntries(store);
-    const dir = path.dirname(filePath);
     try {
-      fsModule.mkdirSync(dir, { recursive: true });
-      fsModule.writeFileSync(filePath, JSON.stringify(obj, null, 2), "utf8");
+      replaceJsonFile(filePath, obj, { fsModule });
     } catch (err) {
       tellFileProblem({ doing: "write to", file: filePath, err });
     }

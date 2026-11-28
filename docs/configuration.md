@@ -285,9 +285,9 @@ each layer live in [`docs/security.md`](security.md).
 
 | Variable | Default | JSON counterpart | Notes |
 | --- | --- | --- | --- |
-| `RPC_URL` | `https://rpc-pulsechain.g4mm4.io` | `chains.json` → `<chain>.rpc.urls[0]` | First JSON-RPC endpoint. |
-| `RPC_URL_FALLBACK` | `https://rpc.pulsechain.com` | `chains.json` → `<chain>.rpc.urls[1]` | Second endpoint. |
-| `RPC_URL_FALLBACK_2` | `https://rpc.pulsechain.box` | `chains.json` → `<chain>.rpc.urls[2]` | Third endpoint. Free tier, 50 requests per 10 seconds per IP. |
+| `RPC_URL` | `https://rpc.pulsechain.com` | `chains.json` → `<chain>.rpc.urls[0]` | First JSON-RPC endpoint. |
+| `RPC_URL_FALLBACK` | `https://rpc.pulsechain.box` | `chains.json` → `<chain>.rpc.urls[1]` | Second endpoint. Free tier, 50 requests per 10 seconds per IP. |
+| `RPC_URL_FALLBACK_2` | — | `chains.json` → `<chain>.rpc.urls[2]` | Third endpoint. None is shipped; set it to add one, such as a node of your own. |
 | `REBALANCE_OOR_THRESHOLD_PCT` | `5` | `bot-config-defaults.json` → `rebalanceOutOfRangeThresholdPercent` | How far past the position's price boundary the price must move before the distance condition fires, as a percentage of the position's range width. A fraction is accepted. |
 | `REBALANCE_TIMEOUT_MIN` | `180` | `bot-config-defaults.json` → `rebalanceTimeoutMin` | Minutes continuously out of range before a rebalance fires whatever the distance. `0` disables it. |
 | `IMPERMANENT_LOSS_GUARD_PCT` | `15` | `bot-config-defaults.json` → `impermanentLossGuardPct` | How much impermanent loss a position may carry before the bot stops rebalancing it: how far below holding the coins its NFT was minted with, at today's prices. Tight by default: rebalancing crystallizes the loss, and fees in a quiet pool may never earn it back. Accepted range 1–100. |
@@ -298,7 +298,7 @@ each layer live in [`docs/security.md`](security.md).
 | `DEADLINE_SEC` | `900` | `app-runtime.json` → `tx.deadlineSec` | On-chain deadline stamped into removeLiquidity, swap and mint calldata. Range 300 to 3600 seconds, five minutes to an hour. |
 | `TX_CANCEL_SEC` | `3600` | **derived** — `app-runtime.json` → `tx.deadlineSec` × `tx.cancelToDeadlineMultiple` | Seconds before a stuck transaction is cancelled by a zero-value self-transfer at its nonce. Setting it here fixes it to one number and it stops tracking the deadline; raise `cancelToDeadlineMultiple` instead. Range 1 to 172800 — see [Ranges on the timer settings](#ranges-on-the-timer-settings). |
 | `AGGREGATOR_URL` | `https://swap.watergun.pro/api/aggregator/369` | `chains.json` → `<chain>.aggregator.url` | The active chain's swap aggregator, chain path included — the Watergun Aggregator on PulseChain. Each chain names its own; an empty url means the chain has no aggregator, and every swap goes through the V3 router. A chain entry with no url at all stops the app at startup. `<chain>.aggregator.name` is how the "Route:" badge and the Rebalance Events table name the route; it is required whenever there is a url, so pointing this setting at another aggregator needs that name overridden to match. |
-| `LOG_FILE` | `./app-data/rebalance_log.json` | `app-runtime.json` → `log.file` | Path to the JSON rebalance log, relative to the project root. `npm run clean` and the bookkeeping report find the log there too. Unset under `node --test`, a file in the test process's own temp folder. |
+| `LOG_FILE` | `./app-data/rebalance_log.json` | `app-runtime.json` → `log.file` | Path to the JSON rebalance log, relative to the project root. `npm run clean` and the bookkeeping report find the log there too, and `npm run delete-all-caches-and-logs`, or `npm run build-and-start -- --delete-all-caches-and-logs`, deletes it there, even outside the install folder. Unset under `node --test`, a file in the test process's own temp folder. |
 | `DRY_RUN` | `false` | **none** — a run mode, not a setting | Connects, detects and polls, but sends no transactions. `true` or `false`. |
 | `VERBOSE` | `false` | **none** — a run mode, not a setting | Verbose logging. `true` or `false`; `--verbose` and `-v` on the command line do the same thing. |
 
@@ -679,20 +679,20 @@ once, as the app starts, so a change to it takes effect at the next restart.
 
 ### Why chunking exists
 
-RPC endpoints cap how wide a single log query may be. `rpc-pulsechain.g4mm4.io`
-rejects anything over 10,000 blocks with JSON-RPC `-32602`, "eth_getLogs is
-limited to a 10000 block range". A five-year history scan asks for ~15.8M
-blocks, so without splitting, the query simply fails.
+RPC endpoints cap how wide a single log query may be. One that enforces the
+published 10,000-block limit rejects anything wider with JSON-RPC `-32602`,
+"eth_getLogs is limited to a 10000 block range". A five-year history scan
+asks for ~15.8M blocks, so without splitting, the query simply fails.
 
 `src/bot/get-logs-chunked.js` is the only place that arithmetic lives. Callers hand
 it a range and a query function; it walks the range in capped windows.
 
 The default of 9,000 is 90% of the published 10,000-block limit, verified
-accepted on all three configured endpoints. `g4mm4` enforces 10,000 exactly —
-12,000 is rejected — while `rpc.pulsechain.com` and `rpc.pulsechain.box` accept
-wider, so 10,000 is the binding figure. The remaining 1,000 blocks of headroom
-cover an endpoint that enforces slightly under its published limit. Its
-range in `setting-bounds.json` stops at 10,000.
+accepted on both shipped endpoints. `rpc.pulsechain.com` and
+`rpc.pulsechain.box` accept wider, but an endpoint an operator adds may
+enforce 10,000 exactly, so 10,000 is the binding figure. The remaining 1,000
+blocks of headroom cover an endpoint that enforces slightly under its
+published limit. Its range in `setting-bounds.json` stops at 10,000.
 
 **Failures propagate.** A chunk that fails fails the scan, unless a call site
 explicitly opts into `bestEffort`. Swallowing a query error and returning an

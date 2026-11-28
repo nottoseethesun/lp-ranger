@@ -14,7 +14,7 @@
  * Batched writes via dirty flag: `set` marks dirty, `flush` writes only if
  * needed. A write reads the file as it is at that moment, lays this
  * process's prices over it, and replaces the file whole through a folder
- * of its own (src/bot/shared-json-file.js). So two processes can keep this
+ * of its own (src/lib/shared-json-file.js). So two processes can keep this
  * file at once, as LP Ranger and a tool under util/ that prices through
  * this library can. A write keeps every price the file held when it read
  * it, and a write that a process stopped part way leaves the file as it
@@ -31,7 +31,7 @@ const { log } = require("../lib/log");
 const { tellFileProblem } = require("../lib/file-problem");
 const { scanCachePath } = require("../lib/scan-cache-dir");
 const { readEnv } = require("../lib/env-settings");
-const { readJsonObject, replaceJsonFile } = require("./shared-json-file");
+const { readJsonObject, replaceJsonFile } = require("../lib/shared-json-file");
 
 /*-
  *  `PRICE_CACHE_PATH` moves the file, read through `readEnv`, so a blank

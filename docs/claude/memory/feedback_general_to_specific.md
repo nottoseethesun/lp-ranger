@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 01dbcc05-c2af-4091-ac37-493cbfdfa591
-  modified: 2026-11-27T23:03:15.946Z
+  modified: 2026-11-28T05:31:27.049Z
 ---
 
 # Explaining to the user
@@ -106,6 +106,13 @@ written could not happen.
   seconds later"), and keep such shorthand out of the docs too: with
   the fix the user approved, I replaced it there with plain words
   ("while the server, having refused to start, waits to exit").
+- A command is named in full each time, never by a part of it. In two
+  audit reports I wrote "the flag" for
+  `npm run build-and-start -- --delete-all-caches-and-logs`, and the
+  user asked (2026-11-27): *"'After the flag' - what flag; idk what you
+  are talking about"*. Write the whole command, and say what it does
+  ("it asks you to type YES, stops LP Ranger, then deletes every cache
+  and log") before what goes wrong with it.
 
 Related: [[feedback_operator_sees_ui_not_logs]] (answer in badge and
 dialog terms, not log terms), [[feedback_no_internal_constants_in_design_talk]]

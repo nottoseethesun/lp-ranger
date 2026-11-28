@@ -34,7 +34,7 @@ const {
   createTelegramHandlers,
 } = require("./telegram-notifications/server-telegram");
 const { saveConfig } = require("../lib/bot-config-v2");
-const { createStopWhenAllClear } = require("./stop-when-all-clear");
+const { createStopWhenAllClear } = require("../lib/stop-when-all-clear");
 const { readShutdownTimings } = require("../lib/shutdown-timing");
 const { sendBotResult } = require("./bot-result");
 
@@ -237,7 +237,7 @@ function createRouteHandlers(deps) {
 
   /**
    * POST /api/stop-when-all-clear: stop the server once nothing it has
-   * under way is left (src/server/stop-when-all-clear.js). From the first
+   * under way is left (src/lib/stop-when-all-clear.js). From the first
    * request on, the app is stopping for good (src/bot/app-phase.js), so no
    * position starts and no rebalance, compound or Reload begins; the
    * server exits once each position's move and scan under way has

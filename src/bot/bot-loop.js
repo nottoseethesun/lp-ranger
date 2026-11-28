@@ -730,8 +730,8 @@ async function startBotLoop(opts) {
   botState._triggerScan = async () => {
     if (!claimScanStart(botState)) return;
     /*-
-     *  The pass is kept while it runs, so the server's held stop can wait
-     *  for it to end (src/server/stop-when-all-clear.js).
+     *  The pass is kept while it runs, so the held stop can wait for it to
+     *  end (src/lib/stop-when-all-clear.js).
      */
     botState._scanDone = _scanPass();
     return botState._scanDone;
