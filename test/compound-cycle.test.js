@@ -8,7 +8,6 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { _poll } = require("./_bot-loop-helpers");
-const { useRebalanceLog } = require("./helpers/rebalance-log");
 const { updateHodlBaseline } = require("../src/bot/bot-recorder-baseline");
 const { bigIntReplacer } = require("../src/lib/bigint-json");
 
@@ -383,28 +382,6 @@ describe("bot-recorder helpers", () => {
     assert.equal(state.rebalanceCount, 1);
     assert.equal(state.activePositionId, "55");
     assert.ok(state.lastRebalanceAt);
-  });
-
-  it("appendLog creates and appends to log file", () => {
-    const { appendLog } = require("../src/bot/bot-recorder");
-    const fs = require("fs");
-    const os = require("os");
-    const path = require("path");
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "log-test-"));
-    const logFile = path.join(dir, "test-rebalance-log.json");
-    const restoreLog = useRebalanceLog(logFile);
-    try {
-      appendLog({ action: "test1", value: 42n });
-      appendLog({ action: "test2" });
-      const entries = JSON.parse(fs.readFileSync(logFile, "utf8"));
-      assert.equal(entries.length, 2);
-      assert.equal(entries[0].action, "test1");
-      assert.equal(entries[0].value, "42"); // BigInt → string
-      assert.ok(entries[0].loggedAt);
-    } finally {
-      restoreLog();
-      fs.rmSync(dir, { recursive: true });
-    }
   });
 });
 

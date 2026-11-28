@@ -227,3 +227,7 @@ A test asks no service outside the machine. A result that depends on a third par
 - **A Manage's pool check.** The bot's Manage (`src/bot/position-lifecycle.js`) reads the position's pool from the chain and refuses the position when it cannot, so a test that drives a Manage past that check passes `poolReadStandIn()` (`test/helpers/pool-read-stand-in.js`) as its `ethersLib` and `readProvider`: each NFT open, alone in a pool of its own.
 
 To find a test that still asks an outside service, run the gate with a preload that records every request leaving the machine (`NODE_OPTIONS="--require <preload>"`, subscribing to `undici:request:create`); `npm audit` is the only stage that should appear.
+
+### A free port for every test that listens
+
+A test that starts the server, or a child process that listens, takes its port from `freePort()` (`test/helpers/free-port.js`), never a fixed number, however high. The system hands out ports in the same range (32768–60999 on Linux) for outgoing connections, so a fixed port can be held by another program at that moment, and the test then fails with nothing wrong in the code.

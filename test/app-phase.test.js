@@ -10,9 +10,10 @@
  *   While the start-up runs, a request that would start positions is
  *   refused, naming its progress, and a second start-up does not begin.
  *   While a wallet import runs, a Manage, a second import and an unlock
- *   are refused, and only the import's own closing start-up begins. Once
- *   the app is stopping, nothing starts and no start-up begins, and
- *   nothing clears it.
+ *   are refused, and only the import's own closing start-up begins; from
+ *   its first step until the old wallet's positions are halted, it holds
+ *   every rebalance and compound. Once the app is stopping, nothing
+ *   starts and no start-up begins, and nothing clears it.
  */
 
 const { describe, it, beforeEach } = require("node:test");
@@ -54,6 +55,40 @@ describe("the start-up", () => {
     phase.beginStartUp(2);
     phase.startUpProgress().done = 2;
     assert.deepEqual(phase.startUpProgress(), { done: 0, total: 2 });
+  });
+
+  it("names the action to try again in its refusal", () => {
+    phase.beginStartUp(3);
+    phase.noteStartUpProgress(2);
+    assert.equal(
+      phase.startUpRefusal("Clear Wallet again"),
+      "LP Ranger is still starting the positions it manages (2 of 3). Try Clear Wallet again once it has started them.",
+    );
+  });
+
+  it("names no count when no position is saved", () => {
+    // With nothing to start, it runs only a moment, building the signer.
+    phase.beginStartUp(0);
+    assert.equal(
+      phase.refusalToStart(),
+      "LP Ranger is starting up. Try again in a moment.",
+    );
+  });
+});
+
+describe("holding every rebalance and compound", () => {
+  /*-
+   *  A wallet import holds them from its first step until the old
+   *  wallet's positions are halted, so none begins while it saves the
+   *  new wallet (src/bot/bot-interface.js).
+   */
+  it("holds from the hold until the release, and starts nothing else", () => {
+    assert.equal(phase.movesHeld(), false);
+    phase.holdMoves();
+    assert.equal(phase.movesHeld(), true);
+    assert.equal(phase.refusalToStart(), null, "starts are not refused");
+    phase.releaseMoves();
+    assert.equal(phase.movesHeld(), false);
   });
 });
 

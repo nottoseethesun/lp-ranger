@@ -72,8 +72,8 @@ before(() => {
    *  either way and the test could not tell the flag from its absence.
    *
    *  The log is a file in a folder of the test process's own, clear of
-   *  the operator's: `_readRebalanceLog` resolves the configured path,
-   *  so an absolute one is read as it stands.
+   *  the operator's: `readLog` (src/bot/rebalance-log.js) resolves the
+   *  configured path, so an absolute one is read as it stands.
    */
   const logPath = path.join(
     makeTestTempFolder("history-refresh"),

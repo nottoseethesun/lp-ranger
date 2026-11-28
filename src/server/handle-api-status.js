@@ -11,8 +11,10 @@
  * The handler returns `{ global, positions }`. What the bot knows of
  * itself, the `positions` map among it (settings + bot state +
  * sync-complete flags for stopped slots), comes from its report
- * (src/bot/status-report.js), asked through its interface; the rest is the
- * install's settings and where it logs.
+ * (src/bot/status-report.js), asked through its interface. The rest is the
+ * server's own: the wallet it holds, whether it holds its key, why a Clear
+ * or an import would be refused now, and why the server refused to start,
+ * while it waits to exit; the install's settings; and where it logs.
  */
 
 "use strict";
@@ -41,12 +43,16 @@ function _logFileForDisplay() {
  * @param {object} deps.config           Loaded src/lib/config.js module.
  * @param {object} deps.diskConfig       Mutable v2 disk config object.
  * @param {object} deps.walletManager    Wallet manager instance.
- * @param {{inUse: Function}} deps.walletInUse  Whether an unlock or the
- *   launch's key step is using the wallet (src/server/wallet-in-use.js).
+ * @param {{inUse: Function}} deps.walletInUse  Whether an unlock, a
+ *   Reveal Key or the launch's key step is using the wallet
+ *   (src/server/wallet-in-use.js).
+ * @param {() => (string|null)} deps.startRefusal  Why the launch was
+ *   refused, while the server waits to exit (src/server/server-routes.js).
  * @param {object} deps.bot              The bot's interface
  *   (src/bot/bot-interface.js): its `statusReport`, whether it holds a
- *   key (`hasPrivateKey`), and whether it may take one now
- *   (`refusalToTakeKey`, set while a wallet import is under way).
+ *   key (`hasPrivateKey`), and why a Clear or an import would be refused
+ *   now (`refusalToTakeKey`, `startUpProgress`, `startUpRefusal`,
+ *   `refusalToChangeWallet`, `refusalToImport`).
  * @param {Function} deps.getLpProviderDisplayName  LP-provider label lookup by (factory, PM).
  * @param {Function} deps.moralisEnabledIn       Whether the stored Moralis key is used, from `global`.
  * @param {Function} deps.jsonResponse           HTTP JSON responder.
@@ -58,6 +64,7 @@ function createApiStatusHandler(deps) {
     diskConfig,
     walletManager,
     walletInUse,
+    startRefusal,
     bot,
     getLpProviderDisplayName,
     moralisEnabledIn,
@@ -88,18 +95,37 @@ function createApiStatusHandler(deps) {
         /*-
          *  Whether the server holds a wallet and its key. A page that
          *  showed the wallet locked as it loaded, its Unlock dialog open
-         *  or View-Only, shows it unlocked once this is true: the server
-         *  can take the key a moment after the page loaded, as a launch
-         *  with WALLET_PASSWORD does (src/client/web/js/dashboard-wallet.js).
+         *  or View-Only, shows it unlocked once this is true and
+         *  `walletAddress` names the page's own wallet: the server can
+         *  take the key a moment after the page loaded, as a launch with
+         *  WALLET_PASSWORD does (src/client/web/js/dashboard-wallet.js).
          */
         walletUnlocked: walletManager.hasWallet() && bot.hasPrivateKey(),
         /*-
          *  Why a Clear (`DELETE /api/wallet`) would be refused now, or
-         *  null: an unlock, the launch's key step or a wallet import is
-         *  using the wallet. Every tab disables Clear Wallet meanwhile,
-         *  this the reason it shows (src/server/wallet-clear.js).
+         *  null: an unlock, a Reveal Key, the launch's key step, a wallet
+         *  import, the start-up of the saved positions, a rebalance or
+         *  compound is under way, or a position is starting, or the
+         *  server, having refused to start, waits to exit. Every tab
+         *  disables Clear Wallet meanwhile, this the reason it shows
+         *  (src/server/wallet-clear.js).
          */
-        clearWalletRefusal: refusalToClear(walletInUse, bot),
+        clearWalletRefusal: refusalToClear(walletInUse, bot, startRefusal()),
+        /*-
+         *  Why a wallet import (`POST /api/wallet`) would be refused now,
+         *  or null: a stop, a start-up or another import under way, or a
+         *  rebalance or compound under way or a position starting
+         *  (src/bot/bot-interface.js `refusalToImport`). Every tab
+         *  disables Wallet Setup's Import Wallet buttons meanwhile, this
+         *  the reason they show.
+         */
+        importWalletRefusal: bot.refusalToImport(),
+        /*-
+         *  Why the server refused to start and is about to exit, or null:
+         *  each open tab shows it in a dialog, which stays once the server
+         *  has gone (src/server/server-routes.js `_refuseLaunch`).
+         */
+        startRefusal: startRefusal(),
         positionScan: report.positionScan,
         port: config.PORT,
         host: config.HOST,
@@ -153,6 +179,8 @@ function createApiStatusHandler(deps) {
         importingWallet: report.importingWallet,
         poolDailyCounts: report.poolDailyCounts,
         gasStatus: report.gasStatus,
+        // Each tab shows it in the Rebalance log error dialog, once.
+        rebalanceLogProblem: report.rebalanceLogProblem,
       },
       positions: report.positions,
     });

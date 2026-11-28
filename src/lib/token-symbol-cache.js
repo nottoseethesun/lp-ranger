@@ -24,6 +24,7 @@
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
+const { tellFileProblem } = require("./file-problem");
 const { cacheKey } = require("./cache-store");
 const { scanCachePath } = require("./scan-cache-dir");
 const { readEnv } = require("./env-settings");
@@ -46,12 +47,17 @@ function _loadSymCache() {
   if (_symCache) return;
   try {
     _symCache = JSON.parse(fs.readFileSync(_SYM_CACHE_PATH, "utf8"));
-  } catch {
+  } catch (err) {
+    // Start empty; a file there that cannot be read is told.
+    tellFileProblem({ doing: "read", file: _SYM_CACHE_PATH, err });
     _symCache = {};
   }
 }
 
-/** Persist the in-memory cache to disk (best-effort; swallows fs errors). */
+/**
+ * Persist the in-memory cache to disk; a failure is told as every caught
+ * file failure is (src/lib/file-problem.js), never thrown.
+ */
 function flushSymbolCache() {
   if (!_symCache) return;
   try {
@@ -61,8 +67,8 @@ function flushSymbolCache() {
       JSON.stringify(_symCache, null, 2),
       "utf8",
     );
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    tellFileProblem({ doing: "write to", file: _SYM_CACHE_PATH, err });
   }
 }
 

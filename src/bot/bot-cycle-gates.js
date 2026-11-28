@@ -117,9 +117,14 @@ function gatesFromGuard(deps, poolState, forced, snap, notifyPos) {
     /*-
      *  A Rebalance Now the dry run turns down is over. Left asked for, it
      *  would hold the position's scans until a restart, since no scan
-     *  starts while one waits (src/bot/scan-state.js).
+     *  starts while one waits (src/bot/scan-state.js); left marked as
+     *  rebalancing, every Clear and wallet import would be refused until
+     *  a restart (src/bot/under-way.js).
      */
-    if (forced && deps._botState) deps._botState.forceRebalance = false;
+    if (forced && deps._botState) {
+      deps._botState.forceRebalance = false;
+      deps._botState.rebalanceInProgress = false;
+    }
     return { rebalanced: false };
   }
   return null;

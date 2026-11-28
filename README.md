@@ -390,8 +390,8 @@ To use this, import your wallet in the dashboard, or from a terminal with
 `node scripts/import-wallet.js`, and leave `PRIVATE_KEY` unset. LP Ranger keeps
 the wallet in `app-config/user-configurable/wallet.json`. For best security,
 leave `WALLET_PASSWORD` unset too: the dashboard then asks for the password in
-your browser at each start, and `node src/server.js --headless` and the
-headless bot (`npm run bot`) ask in the terminal, so the password is never
+your browser at each start, and `node src/server.js --unlock-at-terminal`
+and the headless bot (`npm run bot`) ask in the terminal, so the password is never
 saved to disk.
 
 **WARNING:** If you lose your password, the encrypted key file **cannot** be

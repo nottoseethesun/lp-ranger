@@ -17,8 +17,15 @@ import {
   updateHistoryFromStatus,
   updateHistorySyncLabels,
 } from "./dashboard-history.js";
-import { wallet, showUnlockedIfServerIs } from "./dashboard-wallet.js";
+import {
+  wallet,
+  showUnlockedIfServerIs,
+  isWalletUnlocked,
+} from "./dashboard-wallet.js";
 import { paintClearWalletButton } from "./dashboard-wallet-import.js";
+import { paintImportButtons } from "./dashboard-import-buttons.js";
+import { showStartRefusal } from "./dashboard-start-refusal.js";
+import { showRebalanceLogProblem } from "./dashboard-rebalance-log-notice.js";
 import { reloadIfOnPriorWallet } from "./dashboard-wallet-change.js";
 import {
   updateManageBadge,
@@ -32,7 +39,10 @@ import {
   isViewingClosedPos,
   refetchClosedPosHistory,
 } from "./dashboard-closed-pos.js";
-import { askDetailsIfOwed } from "./dashboard-unmanaged.js";
+import {
+  askDetailsIfOwed,
+  flushPendingUnmanagedFetch,
+} from "./dashboard-unmanaged.js";
 import {
   isPositionDataStale,
   markPositionDataFresh,
@@ -562,16 +572,30 @@ import { announceRefill } from "./dashboard-config-save.js";
 
 /**
  * Each status answer: a tab left on a wallet the server no longer holds
- * reloads and does nothing more with it (dashboard-wallet-change.js);
- * any other tab shows it, the wallet shown unlocked first once the server
- * holds its key, should the tab still show it locked (dashboard-wallet.js).
+ * reloads and does nothing more with it (dashboard-wallet-change.js).
+ * Any other tab first shows the server's refusal to start, if it carries
+ * one (dashboard-start-refusal.js), and a failed read or write of the
+ * rebalance log it has not shown yet (dashboard-rebalance-log-notice.js).
+ * Then it shows the answer, read before
+ * the rest, so what follows decides on it: the wallet shown unlocked once
+ * the server holds its key, should the tab still show it locked
+ * (dashboard-wallet.js); Clear Wallet and the Import Wallet buttons held
+ * to the answer's `clearWalletRefusal` and `importWalletRefusal`
+ * (dashboard-wallet-import.js, dashboard-import-buttons.js); and, once
+ * the wallet is unlocked, the
+ * details request a locked page held back, sent only now that an answer
+ * says whether the bot manages the position (dashboard-unmanaged.js).
  * @param {object} data  The status answer, flattened.
  */
 function _statusAnswered(data) {
   if (reloadIfOnPriorWallet(data, wallet.address)) return;
+  showStartRefusal(data.startRefusal);
+  showRebalanceLogProblem(data.rebalanceLogProblem);
+  updateDashboardFromStatus(data);
   showUnlockedIfServerIs(data.walletUnlocked, data.walletAddress);
   paintClearWalletButton(data.clearWalletRefusal);
-  updateDashboardFromStatus(data);
+  paintImportButtons(data.importWalletRefusal);
+  if (isWalletUnlocked()) flushPendingUnmanagedFetch();
 }
 
 initDataPoll(_statusAnswered);

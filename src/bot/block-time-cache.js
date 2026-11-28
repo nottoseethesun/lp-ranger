@@ -18,6 +18,7 @@
 "use strict";
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const fs = require("fs");
 const path = require("path");
 const { scanCachePath } = require("../lib/scan-cache-dir");
@@ -40,7 +41,8 @@ function _ensureLoaded() {
   if (_cache !== null) return;
   try {
     _cache = JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
-  } catch {
+  } catch (err) {
+    tellFileProblem({ doing: "read", file: _CACHE_PATH, err });
     _cache = {};
   }
 }
@@ -91,7 +93,7 @@ function flushBlockTimeCache() {
     fs.writeFileSync(_CACHE_PATH, JSON.stringify(_cache, null, 2), "utf8");
     _dirty = false;
   } catch (err) {
-    log.warn("[block-time-cache] Could not write cache:", err.message);
+    tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });
   }
 }
 

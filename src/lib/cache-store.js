@@ -22,7 +22,7 @@
 
 "use strict";
 
-const { log } = require("./log");
+const { tellFileProblem } = require("./file-problem");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const fs = require("fs");
 const path = require("path");
@@ -64,8 +64,9 @@ function createCacheStore(opts) {
   let store = null;
 
   /**
-   * Load the cache from disk into memory.
-   * Silently starts with an empty Map on any error.
+   * Load the cache from disk into memory, starting with an empty Map on
+   * any error: a cache not written yet, or one that cannot be read,
+   * which is told as every caught file failure is (src/lib/file-problem.js).
    */
   function _load() {
     if (store !== null) return;
@@ -73,14 +74,15 @@ function createCacheStore(opts) {
       const raw = fsModule.readFileSync(filePath, "utf8");
       const parsed = JSON.parse(raw);
       store = new Map(Object.entries(parsed));
-    } catch (_) {
+    } catch (err) {
+      tellFileProblem({ doing: "read", file: filePath, err });
       store = new Map();
     }
   }
 
   /**
-   * Persist the in-memory Map to disk as JSON.
-   * Creates parent directories as needed.
+   * Persist the in-memory Map to disk as JSON, creating parent folders
+   * as needed. A failure is told, never thrown.
    */
   function _save() {
     const obj = Object.fromEntries(store);
@@ -89,7 +91,7 @@ function createCacheStore(opts) {
       fsModule.mkdirSync(dir, { recursive: true });
       fsModule.writeFileSync(filePath, JSON.stringify(obj, null, 2), "utf8");
     } catch (err) {
-      log.warn("[cache-store] Failed to persist cache:", err.message);
+      tellFileProblem({ doing: "write to", file: filePath, err });
     }
   }
 

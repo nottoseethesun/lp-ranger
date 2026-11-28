@@ -19,6 +19,8 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [no separate checkout](feedback_no_separate_checkout.md) — Never change the workflow on my own; no worktree or second copy unless asked
 - [never pattern-kill](feedback_never_pattern_kill.md) — pkill -f kills the caller; kill by port
 - [no flaky push](feedback_no_flaky_push.md) — Fix flaky tests before CI sees them
+- [tests use a free port](feedback_tests_use_a_free_port.md) — A listening test takes `freePort()`, never a fixed port; don't ask
+- [no test runs a destructive command](feedback_no_test_runs_a_destructive_command.md) — Seams and source checks; check what a test runs before a proof breaks a guard
 - [no npx](feedback_no_npx.md) — Never npx; check package.json first
 - [Edit tool, not python](feedback_edit_tool_not_python.md) — Patch with Edit/Write, never python3 or sed
 - [npm script 100-char threshold](feedback_npm_script_100_char_threshold.md) — Inline npm commands over 100 chars move to scripts/
@@ -41,7 +43,7 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [nice-to-haves are not bugs](feedback_nice_to_haves_not_bugs.md) — Such lists need a "not bugs" note
 - [filing a nice-to-have](feedback_filing_a_nice_to_have.md) — File it: page, README row, pointer; operator terms, no investigating
 - [no finding without a failure](feedback_no_finding_without_a_failure.md) — Can't say what breaks? Not a finding
-- [dead code removed](feedback_dead_code_removed.md) — Can never fire → delete it now; prove it first
+- [dead code removed](feedback_dead_code_removed.md) — Can never fire → delete it now; prove it first; a replaced mechanism takes its own parts with it
 - [lead with open bugs](feedback_lead_with_open_bugs.md) — Open bugs are the FIRST line; record each at once
 - [PLS/wPLS interchangeable](feedback_pls_wpls_interchangeable.md) — Don't ask which
 - [operator controls the wallet](feedback_operator_controls_the_wallet.md) — What the owner sends from the bot's wallet is not a bot bug
@@ -52,7 +54,7 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [don't chase downstream symptoms](feedback_dont_chase_downstream_symptoms.md) — A symptom mid-fix is information, not a work order
 - [don't invent a requirement](feedback_dont_invent_a_requirement.md) — A guard protecting a guard means step one was wrong
 - [don't force a placement](feedback_dont_force_a_placement.md) — A suggested place needing new machinery is likely wrong; check its premise first
-- [explaining to the user](feedback_general_to_specific.md) — Operator terms first; what happens before function names; no internal constants; badge/dialog terms, the log is my instrument
+- [explaining to the user](feedback_general_to_specific.md) — Operator terms first; define terms, no coined names, scenarios step by step and true to the app (one password); no internal constants; badge/dialog terms
 - [prose style](feedback_prose_style.md) — Short sentences, no slop words, lowercase tech initials
 - [audit English by the hand-off](feedback_audit_english_by_the_handoff.md) — Docs, help and JSDoc audits follow docs/claude/CLAUDE-ENGLISH-AUDIT.md
 - [word budget keeps every step](feedback_word_budget_keeps_every_step.md) — Cut points, never steps
@@ -76,6 +78,7 @@ Durable knowledge **not derivable from the code**: the rules for HOW to work (`f
 - [ask what withholding costs](feedback_ask_what_withholding_costs.md) — A withheld key in a wholesale-replaced container is a deletion
 - [audit program state](feedback_audit_program_state.md) — Audit for needless state; derive from what exists
 - [basic fix first](feedback_basic_fix_first.md) — Look for a one-line or reordering fix first
+- [handle failures in the shared layer](feedback_handle_failures_in_the_shared_layer.md) — A shared reader/writer handles its own failures, for every caller; plain words
 - [defense in depth must be slower](feedback_defense_in_depth_must_be_slower.md) — A backup must be strictly slower than the primary
 - [dotenv/api-keys not layered](feedback_dotenv_apikeys_not_for_layered_pattern.md) — `.env` stays outside the layered-defaults pattern
 - [EIP-55 checksum URL segments](feedback_eip55_checksum_url_segments.md) — Addresses checksummed, URL segments included

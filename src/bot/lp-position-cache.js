@@ -17,6 +17,7 @@ const { scanChunked } = require("./get-logs-chunked");
 const { topicForTokenId } = require("./nft-token-topic");
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const { chainCacheTag } = require("../lib/cache-store");
 const fs = require("fs");
 const path = require("path");
@@ -67,7 +68,8 @@ function loadLpPositionCache(walletAddress, opts) {
       return data;
     }
     return null;
-  } catch {
+  } catch (err) {
+    tellFileProblem({ doing: "read", file: filePath, err });
     return null;
   }
 }
@@ -102,7 +104,7 @@ function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
       "utf8",
     );
   } catch (err) {
-    log.warn(_C + "[lp-cache] Failed to persist cache: " + err.message + _R);
+    tellFileProblem({ doing: "write to", file: filePath, err });
   }
 }
 
@@ -117,8 +119,8 @@ function saveLpPositionCache(walletAddress, positions, lastBlock, opts) {
  * `LP-browser stale until manual scan` failure mode that surfaced
  * during burn-in.  ENOENT (cache file didn't exist — first rebalance
  * for this wallet, or already cleared) stays silent; other errors are
- * surfaced so a permission/disk-full issue can't masquerade as a
- * successful clear.
+ * told as every caught file failure is (src/lib/file-problem.js), so a
+ * permission/disk-full issue can't masquerade as a successful clear.
  *
  * @param {string} walletAddress
  * @param {object} opts
@@ -143,16 +145,7 @@ function clearLpPositionCache(walletAddress, opts) {
         _R,
     );
   } catch (err) {
-    if (err && err.code !== "ENOENT") {
-      log.warn(
-        _C +
-          "[lp-cache] Failed to clear cache for wallet " +
-          walletAddress.slice(0, 8) +
-          "…: " +
-          err.message +
-          _R,
-      );
-    }
+    tellFileProblem({ doing: "delete", file: filePath, err });
   }
 }
 

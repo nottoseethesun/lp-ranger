@@ -28,6 +28,11 @@ const { poolKey } = require("../lib/pool-key");
 const { Mutex } = require("async-mutex");
 const { nextMidnight } = require("./throttle");
 const { emojiId } = require("./logger");
+const {
+  utcDay,
+  readPoolDailyCounts,
+  savePoolDailyCounts,
+} = require("./pool-daily-counts-file");
 const config = require("../lib/config");
 const sendTx = require("./send-transaction");
 const { createFailoverSigner } = require("./nonce-manager-wrapper");
@@ -38,8 +43,9 @@ const { isStopping } = require("./app-phase");
  * @property {string}   key       Composite key (blockchain-wallet-contract-tokenId).
  * @property {string}   tokenId   NFT token ID.
  * @property {string}   status    'running' | 'stopped'
- * @property {{ stop: Function }|null} handle  Bot loop handle; null until
- *   the loop has started, and again once stopped.
+ * @property {{ halt: Function, stop: Function }|null} handle  Bot loop
+ *   handle; null until the loop has started, and again once halted or
+ *   stopped.
  * @property {Promise<void>|null} starting  The start under way, settled
  *   once the loop's first check has ended; null at any other time.
  */
@@ -168,10 +174,33 @@ function createPositionManager(opts) {
     return getPoolDailyCount(pk) < max;
   }
 
-  /** Record a rebalance for a pool. */
+  /**
+   * Record a rebalance for a pool, and save today's counts, so a restart
+   * counts it whether or not its rebalance log entry was written
+   * (src/bot/pool-daily-counts-file.js).
+   */
   function recordPoolRebalance(pk) {
     _tickPoolDaily();
     _poolDailyCounts.set(pk, (_poolDailyCounts.get(pk) || 0) + 1);
+    savePoolDailyCounts(utcDay(_clock()), Object.fromEntries(_poolDailyCounts));
+  }
+
+  /**
+   * Take back today's counts as saved (src/bot/pool-daily-counts-file.js),
+   * keeping for each pool the larger of the saved count and the one
+   * already seeded from the rebalance log. Called as the bot starts.
+   * @returns {number}  How many pools' counts the saved ones raised.
+   */
+  function restoreSavedPoolDailyCounts() {
+    _tickPoolDaily();
+    const saved = readPoolDailyCounts(utcDay(_clock()));
+    let raised = 0;
+    for (const [pk, n] of Object.entries(saved)) {
+      if (n <= (_poolDailyCounts.get(pk) || 0)) continue;
+      _poolDailyCounts.set(pk, n);
+      raised++;
+    }
+    return raised;
   }
 
   /** Get all pool daily counts (for status response). */
@@ -324,12 +353,45 @@ function createPositionManager(opts) {
   }
 
   /**
+   * The keys of the positions whose start is under way: their first
+   * check is running, before their loop can be halted or stopped. A Clear
+   * and a wallet import are refused meanwhile (src/bot/under-way.js).
+   * @returns {string[]}
+   */
+  function startingKeys() {
+    return [..._positions.values()]
+      .filter((entry) => entry.starting !== null)
+      .map((entry) => entry.key);
+  }
+
+  /**
+   * Halt every managed position's loop at once, waiting for nothing: no
+   * further check is scheduled, and a check still under way starts no
+   * move (src/bot/bot-loop.js). For a Clear and a wallet import, which
+   * are refused while a rebalance or compound is under way or a
+   * position is starting (`startingKeys`), so every position has a loop
+   * to halt and none has a move to finish.
+   */
+  function haltAll() {
+    for (const entry of _positions.values()) {
+      if (entry.handle !== null) entry.handle.halt();
+      entry.handle = null;
+      entry.status = "stopped";
+    }
+    log.info("[pos-mgr] All positions halted");
+  }
+
+  /**
    * Stop all managed positions, resolving once each loop's check under
    * way has ended. A position still starting has no loop to stop until
    * its first check ends, so its start is waited for and the loop it
    * records is stopped then. Only the positions held when the call came
    * are marked stopped: one whose start begins during the wait keeps its
-   * loop, and with it the record that the loop runs.
+   * loop, and with it the record that the loop runs. The server's held
+   * stop (`npm run gentle-stop`), its signal handler (Ctrl+C, `npm stop`)
+   * and the headless bot's shutdown use it. The held stop lets a move
+   * under way finish; the other two exit within `shutdown.exitTimeoutMs`,
+   * whether or not it has.
    * @returns {Promise<void>}
    */
   async function stopAll() {
@@ -431,6 +493,8 @@ function createPositionManager(opts) {
   return {
     startPosition,
     removePosition,
+    startingKeys,
+    haltAll,
     stopAll,
     migrateKey,
     getAll,
@@ -441,6 +505,7 @@ function createPositionManager(opts) {
     getPoolDailyCount,
     canRebalancePool,
     recordPoolRebalance,
+    restoreSavedPoolDailyCounts,
     getPoolDailyCounts,
     seedPoolDailyCounts,
     getRebalanceLock,

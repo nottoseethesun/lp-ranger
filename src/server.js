@@ -59,7 +59,7 @@
  *   POST /api/wallet                → Import wallet (seed or private key)
  *   POST /api/wallet/unlock         → Decrypt wallet with password
  *   POST /api/wallet/reveal         → Return plaintext private key (requires password)
- *   DELETE /api/wallet              → Delete wallet file from disk
+ *   DELETE /api/wallet              → Clear Wallet: remove the wallet and its key, stop every position
  *
  *   Positions
  *   POST /api/positions/scan        → Scan wallet for up to 300 LP positions
@@ -159,7 +159,10 @@ log.info(
 
 const installServerErrorGuard = require("./server/server-error-guard");
 
-const _headless = process.argv.includes("--headless");
+/*- `--unlock-at-terminal`: the launch asks for the wallet password at
+ *  the terminal the server was started from; the dashboard is served as
+ *  ever. */
+const _unlockAtTerminal = process.argv.includes("--unlock-at-terminal");
 
 const http = require("http");
 const fs = require("fs");
@@ -184,6 +187,14 @@ const { createWalletInUse } = require("./server/wallet-in-use");
 const { createWalletClearRoute } = require("./server/wallet-clear");
 const { logVersionBanner } = require("./server/build-info");
 const { createBot } = require("./bot/bot-interface");
+const { sendFileProblemsTo, tellFileProblem } = require("./lib/file-problem");
+const { notifyFileProblem } = require("./lib/telegram-notifications/telegram");
+
+/*-
+ *  Every file failure LP Ranger catches is told in the log and as the
+ *  Telegram alert for other errors (src/lib/file-problem.js).
+ */
+sendFileProblemsTo(notifyFileProblem);
 
 /*-
  * First log: version/commit banner for support triage. Logged before
@@ -329,8 +340,9 @@ function serveStatic(urlPath, res) {
   const ext = path.extname(filePath).toLowerCase();
   const mimeType = MIME[ext] || "application/octet-stream";
 
+  let data = null;
   try {
-    const data = fs.readFileSync(filePath);
+    data = fs.readFileSync(filePath);
     // HTML: no-cache so index.html (with cache-bust query) is always fresh.
     // JS/CSS/fonts: immutable-style caching (cache-bust query handles updates).
     const isHtml = ext === ".html";
@@ -347,7 +359,9 @@ function serveStatic(urlPath, res) {
     }
     res.writeHead(200, headers);
     res.end(data);
-  } catch (_) {
+  } catch (err) {
+    // A dashboard file it could not read is told (src/lib/file-problem.js).
+    if (data === null) tellFileProblem({ doing: "read", file: filePath, err });
     res.writeHead(500, {
       "Content-Type": "text/plain",
     });
@@ -415,8 +429,8 @@ const {
 } = require("./server/telegram-notifications/server-shutdown");
 
 /*-
- *  Whether an unlock or the launch's key step is using the wallet: a
- *  Clear is refused meanwhile (src/server/wallet-clear.js).
+ *  Whether an unlock, a Reveal Key or the launch's key step is using the
+ *  wallet: a Clear is refused meanwhile (src/server/wallet-clear.js).
  */
 const _walletInUse = createWalletInUse();
 
@@ -427,7 +441,7 @@ const _routeHandlers = createRouteHandlers({
   walletInUse: _walletInUse,
   jsonResponse,
   readJsonBody,
-  askPassword: _headless ? _askPassword : null,
+  askPassword: _unlockAtTerminal ? _askPassword : null,
   notifyShutdown: _notifyShutdown,
 });
 
@@ -463,6 +477,7 @@ const _routes = {
     diskConfig: _diskConfig,
     walletManager,
     walletInUse: _walletInUse,
+    startRefusal: () => _routeHandlers.startRefusal(),
     bot: _bot,
     getLpProviderDisplayName,
     moralisEnabledIn,
@@ -478,6 +493,7 @@ const _routes = {
     walletInUse: _walletInUse,
     bot: _bot,
     decryptApiKeys: (pw) => _routeHandlers._decryptApiKeys(pw),
+    startRefusal: () => _routeHandlers.startRefusal(),
     jsonResponse,
     readJsonBody,
   }),
@@ -485,6 +501,8 @@ const _routes = {
     walletManager,
     walletInUse: _walletInUse,
     bot: _bot,
+    forgetSessionPassword: () => _routeHandlers.forgetSessionPassword(),
+    startRefusal: () => _routeHandlers.startRefusal(),
     jsonResponse,
   }),
   "POST /api/config": _routeHandlers._handleApiConfig,

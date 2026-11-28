@@ -6,7 +6,8 @@
  * the line-budget tax.  Feedback is logged in the Activity Log through
  * `act()`.  The module also writes the dialog's own controls: it clears
  * the key field after a save and sets the switch's checked, disabled and
- * title.
+ * title. Wallet Setup's optional Moralis key is saved here too
+ * (`saveSetupMoralisKey`).
  */
 
 import {
@@ -16,6 +17,29 @@ import {
   checkMoralisKeyStatus,
 } from "./dashboard-helpers.js";
 import { getLastStatus } from "./dashboard-data.js";
+
+/**
+ * Check the stored Moralis key once the wallet is unlocked, when the
+ * server has decrypted it, and say in the Activity Log if Moralis
+ * refuses it. Run by each unlock path (dashboard-wallet.js). A network
+ * error is passed over: the next unlock checks again.
+ * @returns {Promise<void>}
+ */
+export async function validateMoralisAfterUnlock() {
+  try {
+    const res = await fetch("/api/api-keys/status");
+    const data = await res.json();
+    if (data.moralis === "invalid")
+      act(
+        "⚠️",
+        "warning",
+        "Moralis Key Invalid",
+        "Your Moralis API key failed validation. Re-enter it in Settings.",
+      );
+  } catch {
+    /* network error — skip */
+  }
+}
 
 /**
  * POST the Moralis key to /api/api-keys and log success/failure in the
@@ -53,6 +77,21 @@ export async function saveMoralisApiKey(key, pw, inp) {
     act("❌", "error", "Save Failed", err.message);
   }
   return false;
+}
+
+/**
+ * Save the optional Moralis API key typed in Wallet Setup, with the
+ * wallet's new password, as the wallet is created or imported
+ * (dashboard-wallet.js `confirmWallet`). The first of the setup tabs'
+ * Moralis boxes that holds a key is the one saved; with none, nothing.
+ * @param {string} password  The password the wallet is saved under.
+ * @returns {Promise<void>}
+ */
+export async function saveSetupMoralisKey(password) {
+  const inputs = document.querySelectorAll(".setupMoralisKeyInput");
+  const inp = Array.from(inputs).find((el) => el.value.trim());
+  if (!inp) return;
+  await saveMoralisApiKey(inp.value.trim(), password, inp);
 }
 
 /**

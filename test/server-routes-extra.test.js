@@ -15,6 +15,7 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { createRouteHandlers } = require("./_bot-route-adapters");
+const { createWalletInUse } = require("../src/server/wallet-in-use");
 
 /** Build a minimal deps object with stubs. */
 function makeDeps(overrides = {}) {
@@ -276,13 +277,15 @@ describe("_handlePositionDetails — RPC error path", () => {
 describe("_handleWalletReveal — no mnemonic", () => {
   it("sets hasMnemonic to false when mnemonic is null", async () => {
     const deps = makeDeps({
+      // Reveal Key marks the wallet in use while it decrypts.
+      walletInUse: createWalletInUse(),
       readJsonBody: async () => ({ password: "pw" }),
       walletManager: {
         revealWallet: async () => ({
           privateKey: "0xpk",
           mnemonic: null,
+          address: "0xAddr",
         }),
-        getAddress: () => "0xAddr",
         getStatus: () => ({ source: "key" }),
       },
     });

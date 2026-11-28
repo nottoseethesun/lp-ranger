@@ -14,7 +14,10 @@
  * (`oorRecoveredMin`, `rangeRounded`, `residualWarning`), so the
  * dashboard shows it once (src/bot/bot-loop.js). The bot's status report
  * carries the figure (src/bot/status-report.js), so the dashboard's
- * Manage button waits out the same retire.
+ * Manage button waits out the same retire. A server that refuses to
+ * start waits as long before it exits, so open tabs show why
+ * (src/server/server-routes.js `_exitRefused`, through the bot's
+ * interface).
  */
 
 "use strict";

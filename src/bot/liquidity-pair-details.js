@@ -30,6 +30,7 @@
 "use strict";
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const fs = require("fs");
 const path = require("path");
 const { liquidityPairScopeKey } = require("../lib/cache-store");
@@ -64,12 +65,17 @@ const _ERC20_BALANCE_ABI = [
 /** @type {Record<string, { initialResidualData?: InitialResidualData }>|null} */
 let _cache = null;
 
-/** Lazy-load the cache from disk.  Silently starts empty on any error. */
+/**
+ * Lazy-load the cache from disk, starting empty on any error: a cache not
+ * written yet, or one that cannot be read, which is told as every caught
+ * file failure is (src/lib/file-problem.js).
+ */
 function _ensureLoaded() {
   if (_cache !== null) return;
   try {
     _cache = JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
-  } catch {
+  } catch (err) {
+    tellFileProblem({ doing: "read", file: _CACHE_PATH, err });
     _cache = {};
   }
 }
@@ -84,7 +90,7 @@ function _persist() {
     fs.writeFileSync(tmp, JSON.stringify(_cache, null, 2) + "\n", "utf8");
     fs.renameSync(tmp, _CACHE_PATH);
   } catch (err) {
-    log.warn("[liquidity-pair-details] Could not persist cache:", err.message);
+    tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });
   }
 }
 

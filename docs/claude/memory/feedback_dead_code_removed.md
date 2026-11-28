@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d369b37d-2a0a-4f23-a78a-ed163018a4c8
-  modified: 2026-10-17T05:05:32.285Z
+  modified: 2026-11-27T21:08:12.935Z
 ---
 
 # Dead code is removed
@@ -41,6 +41,18 @@ also tells the next reader the value can be missing, which is false.
   practice", it is not dead.
 - A coverage list that excuses a branch as "unreachable" is a list of
   candidates for this rule, not a place to leave them.
+- **A replaced mechanism takes its own parts with it** (the user,
+  2026-11-27, when a Clear or an import changed from waiting for a
+  rebalance or compound to refusing at once: "we can't leave unused
+  subsystems in the code"; "If anything else needs that system, it
+  stays, of course"). Before building the new way, list every caller of
+  the old one: what only the old way used goes in the same change, its
+  texts and docs included, and what another caller needs stays. Tell
+  the user which is which, naming the callers. The callers being moved
+  to the new way stop calling the old one: I first described the Clear
+  and the import as still calling the waiting stop, and the user had to
+  point out that removing that was the change ("please be more
+  careful").
 
 Related: [[feedback_never_hard_code_a_chain]],
 [[feedback_one_literal_per_shipped_default]],

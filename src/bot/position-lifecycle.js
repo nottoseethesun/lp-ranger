@@ -246,10 +246,11 @@ function createPositionLifecycle(deps) {
    * Manage waits twice before its loop starts: on the pool check's chain
    * reads, then on the shared signer. A wallet import or a stop that
    * began meanwhile refuses it, as either would have at its start. So
-   * does a key that is no longer the one it began with, as after an
-   * import that began and ended while it waited. Asked after each wait,
-   * so no loop starts signing with the key of a wallet the import has
-   * swapped out, and no such key is left to the new wallet's positions.
+   * does a key that is no longer the one it began with: after an import
+   * that began and ended while it waited, or a Clear, which forgets the
+   * key at once (src/server/wallet-clear.js). Asked after each wait, so
+   * no loop starts signing with the key of a wallet an import has
+   * swapped out or a Clear removed.
    * @param {string} key  The position's composite key.
    * @param {string|null} pk  The key the request began with.
    * @returns {object|null}  The refusal (src/server/bot-result.js).
@@ -260,7 +261,7 @@ function createPositionLifecycle(deps) {
       now ??
       (getPrivateKey() === pk
         ? null
-        : "The wallet's key changed while this Manage was under way. Try again.");
+        : "The wallet's key changed or was removed while this Manage was under way.");
     if (error === null) return null;
     log.warn(
       "[pos-route] Manage refused after its wait (key=%s): %s",

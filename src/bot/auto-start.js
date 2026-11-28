@@ -16,10 +16,12 @@
  * one comes off the list too, at once. While the app runs, the
  * drained-position retire waits before it takes one off: from the first
  * check that finds the position drained with no rebalance under way or
- * asked for and no mint retry coming, a later one holding the retire off
- * with its time still counted (src/bot/bot-cycle-drain.js). That wait is
+ * asked for and no retry coming of a rebalance left mid-way, a later
+ * rebalance or retry holding the retire off with its time still counted
+ * (src/bot/bot-cycle-drain.js). That wait is
  * the owner's time to rescue a rebalance that stopped between its drain
- * and its mint, as by raising Slippage so the bot retries the mint. The
+ * and its mint: by clicking Rebalance Now, or, while mid-rebalance tries
+ * are left, by raising Slippage so the bot retries the mint. The
  * retry rests on state the bot keeps only in memory, which a restart
  * clears, so a start has nothing to wait for.
  *

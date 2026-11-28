@@ -32,6 +32,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { tellFileProblem } = require("./file-problem");
 const fs = require("fs");
 const path = require("path");
 const { getAddress } = require("ethers");
@@ -175,12 +176,19 @@ function loadConfig(dir, skipBackups = false) {
  */
 function backUpSettings(dir) {
   const file = _configPath(dir);
+  const backup = file.replace(".json", ".backup.json");
   try {
     const raw = JSON.parse(fs.readFileSync(file, "utf8"));
     if (Object.keys(raw.positions || {}).length > 0)
-      fs.copyFileSync(file, file.replace(".json", ".backup.json"));
-  } catch {
-    /* best-effort: no file, or one that is not json, has nothing to keep */
+      fs.copyFileSync(file, backup);
+  } catch (err) {
+    // No file means nothing to keep; any other failure is told.
+    tellFileProblem({
+      doing: "copy",
+      file: backup,
+      err,
+      what: `${file} to ${backup}`,
+    });
   }
   if (Object.keys(readPositionRecords(dir)).length > 0)
     backUpPositionRecords(dir);
@@ -216,6 +224,7 @@ function _loadSettingsFile(filePath) {
       positions: raw.positions || {},
     };
   } catch (err) {
+    tellFileProblem({ doing: "read", file: filePath, err });
     log.info(
       "[config] loadConfig: no file or parse error — starting empty (%s)",
       err.message,
@@ -279,7 +288,9 @@ function _readDiskConfig(filePath) {
       running: Object.values(pos).filter((p) => p.status === "running").length,
       positions: pos,
     };
-  } catch {
+  } catch (err) {
+    // None saved yet is no failure; a file there that cannot be read is told.
+    tellFileProblem({ doing: "read", file: filePath, err });
     return { count: 0, running: 0, positions: {} };
   }
 }
@@ -408,7 +419,7 @@ function _writeSplit(cfg, filePath, dir) {
   try {
     writePositionRecords(records, dir);
   } catch (err) {
-    log.warn("[config] Could not save position records:", err.message);
+    tellFileProblem({ doing: "write to", file: positionRecordsPath(dir), err });
   }
   // Ensure the parent directory exists (e.g. app-config/user-configurable/ on first run
   // after a fresh install, or a test tmp dir that hasn't been populated).
@@ -419,7 +430,7 @@ function _writeSplit(cfg, filePath, dir) {
     fs.writeFileSync(tmpPath, text, "utf8");
     fs.renameSync(tmpPath, filePath);
   } catch (err) {
-    log.warn("[config] Could not save bot config:", err.message);
+    tellFileProblem({ doing: "write to", file: filePath, err });
     try {
       fs.unlinkSync(tmpPath);
     } catch {

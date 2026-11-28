@@ -2,8 +2,8 @@
  * @file test/server.test.js
  * @description Integration tests for src/server.js.
  *
- * Starts the server on a fixed high port of its own (`TEST_PORT`, below),
- * exercises each route, then shuts down cleanly. No external http
+ * Starts the server on a port the system says is free (`TEST_PORT`,
+ * below), exercises each route, then shuts down cleanly. No external http
  * library needed — uses Node's built-in `http` module.
  *
  * Run with: npm test
@@ -15,6 +15,7 @@ const { describe, it } = require("node:test");
 const assert = require("assert");
 const http = require("http");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
+const { freePort } = require("./helpers/free-port");
 
 /*-
  *  Refused outside the test runner, before the server loads. Loading
@@ -101,7 +102,8 @@ function req(opts) {
 
 // ── Test suite ────────────────────────────────────────────────────────────────
 
-const TEST_PORT = 54321;
+// The port the server is started on, one the system says is free.
+let TEST_PORT = 0;
 let serverInstance;
 
 /** Fetch a fresh CSRF token from the running server. */
@@ -114,6 +116,7 @@ describe("server", () => {
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   it("starts on the specified port", async () => {
+    TEST_PORT = await freePort();
     serverInstance = await start(TEST_PORT);
     assert.ok(
       serverInstance.listening,

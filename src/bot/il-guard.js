@@ -69,6 +69,7 @@
 
 const { log } = require("../lib/log");
 const { notify } = require("../lib/telegram-notifications/telegram");
+const { tellFileProblem } = require("../lib/file-problem");
 const fs = require("fs");
 const path = require("path");
 const config = require("../lib/config");
@@ -219,22 +220,15 @@ function ilGuardInputs(snap) {
  *  Read with `fs` rather than `require` because it is data, not a
  *  module — and a guarded `require` here trips `n/global-require`. */
 function _resolveManualUrl() {
+  const file = path.join(__dirname, "..", "lib", "shared-help-content.json");
   try {
-    const h = JSON.parse(
-      fs.readFileSync(
-        path.join(__dirname, "..", "lib", "shared-help-content.json"),
-        "utf8",
-      ),
-    );
+    const h = JSON.parse(fs.readFileSync(file, "utf8"));
     const anchor = h?.inIlGuard?.manualAnchor;
     if (!h?.manualBaseUrl || !anchor) return null;
     return `${h.manualBaseUrl}#${anchor}`;
   } catch (err) {
-    log.warn(
-      "[il-guard] Could not read shared-help-content.json (%s) — the " +
-        "Telegram alert will omit its manual link.",
-      err.message,
-    );
+    // Shipped with LP Ranger: missing, it is told too. The alert then has no manual link.
+    tellFileProblem({ doing: "read", file, err, missingIsNormal: false });
     return null;
   }
 }

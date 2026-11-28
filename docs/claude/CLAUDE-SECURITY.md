@@ -31,7 +31,8 @@ private key means total loss of funds. Keys flow through:
 
 - `PRIVATE_KEY` env var (plaintext — simplest, least secure)
 - `app-config/user-configurable/wallet.json` (AES-256-GCM encrypted on disk, gitignored — imported via dashboard or `node scripts/import-wallet.js`)
-- In memory once unlocked, as the key and in the signer built from it, until the process exits or a wallet import replaces the wallet (never written to disk in plaintext)
+- In memory once unlocked, as the key and in the signer built from it, until the process exits, a wallet import replaces the wallet, or Clear Wallet removes it (never written to disk in plaintext). A Clear also sets `PRIVATE_KEY` and `WALLET_PASSWORD` to unset in memory and removes their lines from `.env`
+- With a wallet imported, the server refuses a launch whose `PRIVATE_KEY` is for another wallet, logs both and exits (`_refuseLaunch`, src/server/server-routes.js); the headless bot compares nothing and starts the key's own wallet's positions
 
 **secretlint** catches hardcoded credentials of the kinds its
 recommended preset knows: service tokens, and private keys in PEM form
@@ -292,8 +293,8 @@ at **600,000 iterations** (OWASP 2023 guidance for SHA-512).
 `src/lib/api-key-store.js` (third-party API keys) reuses
 `src/lib/key-store.js`'s encryption helpers at the same 600,000
 iterations. Once unlocked, the plaintext key stays in memory until the
-process exits or a wallet import replaces the wallet
-(docs/security.md § In-Memory Handling). The
+process exits, a wallet import replaces the wallet, or a Clear removes
+it (docs/security.md § In-Memory Handling). The
 encrypted `app-config/user-configurable/wallet.json` and
 `app-config/user-configurable/api-keys.json` files are both gitignored.
 
@@ -304,7 +305,7 @@ wallet file is read, still encrypted, as the report loads
 `src/lib/config.js`, and nothing in the report uses it. It asks for the
 wallet's password only because the app encrypts every api
 key with it, through a terminal prompt that shows nothing of what is
-typed (`src/lib/ask-password.js`, shared with `--headless`, src/bot.js and
+typed (`src/lib/ask-password.js`, shared with `--unlock-at-terminal`, src/bot.js and
 scripts/import-wallet.js), never as an argument, which shell history and
 `ps` would keep; the password is kept nowhere, and the plain key only in
 memory for the run. With no key saved, it asks for one and saves it there,
@@ -321,21 +322,27 @@ build.
 The wallet password — the passphrase the operator chose during
 import (via the dashboard UI or `node scripts/import-wallet.js`) —
 decrypts both `wallet.json` and every service entry in
-`api-keys.json`. One password, every secret. Clearing the wallet (the
-dashboard's Clear Wallet, or `npm run reset-wallet`) deletes only
-`wallet.json` and its save's temp copy, `wallet.json.tmp`: the api keys
-stay, under the old password, so a wallet
-imported again under a new password cannot open them until each is
-saved again. The Clear Wallet dialog warns of this.
+`api-keys.json`. One password, every secret. Clearing the wallet, with
+the dashboard's Clear Wallet or `npm run reset-wallet`, deletes
+`wallet.json`, its save's temp copy `wallet.json.tmp`, and every
+`WALLET_PASSWORD` line in `.env`. Clear Wallet also deletes every
+`PRIVATE_KEY` line and forgets the key and the password in memory.
+Neither Clear Wallet nor `npm run reset-wallet` deletes
+`api-keys.json`: the api keys stay, under the
+old password, so a wallet imported again under a new password cannot
+open them until each is saved again. The Clear Wallet dialog warns of
+this.
 
 Three modes, in order of security recommendation:
 
 1. **Dashboard unlock dialog** (default) — operator types password
    in the browser after each restart.
-2. **`--headless` terminal prompt** — `node src/server.js --headless`
+2. **`--unlock-at-terminal` terminal prompt** — `node src/server.js --unlock-at-terminal`
    prompts on stdin. Same security as the dashboard (memory only),
-   no browser needed. If no password is provided, the server exits
-   with an error rather than falling through to dashboard mode. With
+   no browser needed to unlock; the dashboard is still served, and an
+   unlock there while the prompt waits takes the key. If neither gives a
+   password, the server exits with an error rather than falling through
+   to dashboard mode. With
    no terminal to type into, the prompt closes at once and says so,
    and the server exits with that error. So does the headless bot, but
    not in a dry run (`DRY_RUN=true`), which goes on with no key and
@@ -346,7 +353,7 @@ Three modes, in order of security recommendation:
 In all three modes the password is cached in `_sessionPassword`
 in `src/server/server-routes.js` so subsequent API-key operations during
 the same session don't re-prompt. The cache is discarded when the
-process exits.
+process exits, and a wallet import or a Clear forgets it.
 
 **How `reset-wallet` works.** `scripts/reset-wallet.js`
 (invoked via `npm run reset-wallet`) performs two idempotent
@@ -355,10 +362,17 @@ actions:
 1. Delete `app-config/user-configurable/wallet.json`, and
    `wallet.json.tmp` beside it, the copy a save writes first, from which
    the next start would otherwise put the wallet back.
-2. Remove every line matching `^WALLET_PASSWORD=` from `.env`
-   by reading the file, filtering out the matching lines, writing
-   to a `.tmp` sibling, and atomically renaming. File permissions
-   are preserved via `fs.chmodSync` before the rename.
+2. Remove every line of `.env` that sets `WALLET_PASSWORD`, read as
+   dotenv reads one (`removeEnvFileSettings`, `src/lib/env-settings.js`,
+   which Clear Wallet uses for `PRIVATE_KEY` and `WALLET_PASSWORD`): an
+   `export` before it, spaces around the `=`, a `NAME: value` colon, and
+   a quoted value running over several lines. Such a value runs on to
+   the first later line holding its closing quote, when only spaces or a
+   `#` comment follow that quote; otherwise dotenv reads its first line
+   alone, opening quote included, and so does the removal. A
+   link to `.env` is followed and left a link. The file is written as a
+   copy made as a new file with its own mode, never a wider one, and
+   renamed over it; a copy whose write or rename fails is removed.
 
 Both steps tolerate missing targets. `npm run clean` and
 `npm run dev-clean` run `reset-wallet` once they have force-stopped a

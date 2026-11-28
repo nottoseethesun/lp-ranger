@@ -11,12 +11,19 @@ const { createWalletInUse } = require("../../src/server/wallet-in-use");
 
 /**
  * Build a minimal deps object with stubs for createRouteHandlers; the
- * tracker of whether the wallet is in use is the server's own.
+ * tracker of whether the wallet is in use is the server's own. When the
+ * server refuses to start, it waits for nothing here before its exit, and
+ * never ends the test's process: the exit throws instead, unless a test
+ * passes its own.
  */
 function makeDeps(overrides = {}) {
   const posStates = new Map();
   return {
     walletInUse: createWalletInUse(),
+    wait: async () => {},
+    exitProcess: (code) => {
+      throw new Error(`a test's route handlers tried to exit with ${code}`);
+    },
     diskConfig: {
       global: {},
       positions: {},
@@ -24,6 +31,8 @@ function makeDeps(overrides = {}) {
     positionMgr: {
       runningCount: () => 0,
       count: () => 0,
+      startingKeys: () => [],
+      haltAll: () => {},
       stopAll: async () => {},
       resetSharedSigner: () => {},
       startPosition: async () => {},

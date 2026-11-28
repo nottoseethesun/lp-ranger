@@ -20,7 +20,7 @@
 
 "use strict";
 
-const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const config = require("../lib/config");
 const fs = require("fs");
 const path = require("path");
@@ -28,22 +28,27 @@ const { scanCachePath } = require("../lib/scan-cache-dir");
 
 let _CACHE_PATH = scanCachePath("pnl-epochs-cache.json");
 
-/** Read the full cache from disk. */
+/**
+ * Read the full cache from disk: empty when it is not written yet, or
+ * cannot be read, which is told as every caught file failure is
+ * (src/lib/file-problem.js).
+ */
 function _readCache() {
   try {
     return JSON.parse(fs.readFileSync(_CACHE_PATH, "utf8"));
-  } catch {
+  } catch (err) {
+    tellFileProblem({ doing: "read", file: _CACHE_PATH, err });
     return {};
   }
 }
 
-/** Write the full cache to disk. */
+/** Write the full cache to disk; a failure is told, never thrown. */
 function _writeCache(data) {
   try {
     fs.mkdirSync(path.dirname(_CACHE_PATH), { recursive: true });
     fs.writeFileSync(_CACHE_PATH, JSON.stringify(data, null, 2), "utf8");
   } catch (err) {
-    log.warn("[epoch-cache] Could not write cache:", err.message);
+    tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });
   }
 }
 

@@ -5,14 +5,14 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: f8b08a58-72ba-4f26-a891-71b9e99630e4
-  modified: 2026-10-24T04:55:09.049Z
+  modified: 2026-11-27T19:15:02.592Z
 ---
 
 Nothing secret typed at a terminal shows on screen: a password, a
 private key, an api key. Every prompt for one goes through
 `src/lib/ask-password.js`, which gives Node's readline an output that drops
 what it is given, so the line still edits and nothing echoes.
-`--headless`, bot.js, scripts/import-wallet.js and the bookkeeping
+`--unlock-at-terminal`, bot.js, scripts/import-wallet.js and the bookkeeping
 report's Moralis key prompts all use it.
 
 **Why:** the user, 2026-10-21, on learning the report's prompts showed

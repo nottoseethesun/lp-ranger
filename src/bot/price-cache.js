@@ -28,6 +28,7 @@
 "use strict";
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const { scanCachePath } = require("../lib/scan-cache-dir");
 const { readEnv } = require("../lib/env-settings");
 const { readJsonObject, replaceJsonFile } = require("./shared-json-file");
@@ -160,7 +161,7 @@ function flushPriceCache() {
     _cache = merged;
     _dirty = false;
   } catch (err) {
-    log.warn("[price-cache] Could not write cache:", err.message);
+    tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });
   }
 }
 

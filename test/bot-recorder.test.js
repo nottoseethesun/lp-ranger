@@ -3,28 +3,24 @@
  * @description Unit tests for the BigInt replacer the rebalance log is
  *   written with (bigIntReplacer, src/lib/bigint-json.js) and for pure
  *   helper functions in bot-recorder.js: _activePosSummary, _collectTokenIds,
- *   _pushRebalanceEvent, _recordResidual, appendLog, and
- *   _notifyRebalance; and for `updateHodlBaseline`, split out of it into
- *   bot-recorder-baseline.js.
+ *   _pushRebalanceEvent, _recordResidual and _notifyRebalance; and for
+ *   `updateHodlBaseline`, split out of it into bot-recorder-baseline.js.
+ *   The rebalance log's own reads and writes are tested in
+ *   test/rebalance-log.test.js.
  */
 
 "use strict";
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
 const {
   _activePosSummary,
   _collectTokenIds,
   _pushRebalanceEvent,
   _recordResidual,
   _notifyRebalance,
-  appendLog,
 } = require("../src/bot/bot-recorder");
 const { bigIntReplacer } = require("../src/lib/bigint-json");
-const { useRebalanceLog } = require("./helpers/rebalance-log");
 const {
   updateHodlBaseline: _updateHodlBaseline,
 } = require("../src/bot/bot-recorder-baseline");
@@ -481,29 +477,5 @@ describe("_applyRebalanceResult", () => {
     assert.ok(rangePatch);
     assert.strictEqual(rangePatch.rangeRounded.requested, 10);
     assert.strictEqual(rangePatch.rangeRounded.effective, 12.5);
-  });
-});
-
-// ── appendLog ───────────────────────────────────────────────────────
-
-describe("appendLog", () => {
-  it("creates log file and appends entry", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "br-test-"));
-    const logPath = path.join(dir, "test-rebalance.json");
-    const restoreLog = useRebalanceLog(logPath);
-    try {
-      appendLog({ action: "test", value: 123n });
-      const entries = JSON.parse(fs.readFileSync(logPath, "utf8"));
-      assert.strictEqual(entries.length, 1);
-      assert.strictEqual(entries[0].action, "test");
-      assert.strictEqual(entries[0].value, "123");
-      assert.ok(entries[0].loggedAt);
-      appendLog({ action: "test2" });
-      const entries2 = JSON.parse(fs.readFileSync(logPath, "utf8"));
-      assert.strictEqual(entries2.length, 2);
-    } finally {
-      restoreLog();
-      fs.rmSync(dir, { recursive: true });
-    }
   });
 });

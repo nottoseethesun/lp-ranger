@@ -5,8 +5,9 @@
  * The bot's report of itself for `GET /api/status`, which the dashboard
  * polls: each position's state, the wallet's gas, the wallet scan's
  * progress, the swap route between rebalances, the managed list, the
- * start-up's progress, each pool's rebalances today, and how long the bot
- * gives the dashboard to see a change. The server builds the status
+ * start-up's progress, each pool's rebalances today, how long the bot
+ * gives the dashboard to see a change, and the last failed read or write
+ * of the rebalance log. The server builds the status
  * answer around it (src/server/handle-api-status.js).
  *
  * The bot's own: the server reaches it only through the bot's interface
@@ -28,6 +29,7 @@ const {
 } = require("./position-states");
 const { managedPositionList } = require("./managed-positions");
 const { guaranteedDashboardHasPolledMs } = require("./dashboard-has-polled");
+const { rebalanceLogProblem } = require("./rebalance-log");
 
 /**
  * Create the status report.
@@ -46,7 +48,8 @@ const { guaranteedDashboardHasPolledMs } = require("./dashboard-has-polled");
  * @returns {(posDefaults: object) => Promise<object>}  The report: the
  *   `positions` map, and `gasStatus`, `positionScan`, `swapRouteLabel`,
  *   `managedPositions`, `startingManagedPositions`, `importingWallet`,
- *   `poolDailyCounts` and `guaranteedDashboardHasPolledMs`.
+ *   `poolDailyCounts`, `guaranteedDashboardHasPolledMs` and
+ *   `rebalanceLogProblem`.
  */
 function createStatusReport(deps) {
   const {
@@ -103,6 +106,12 @@ function createStatusReport(deps) {
        *  dashboard's Manage button and Re-scan Prices dialog keep to it.
        */
       guaranteedDashboardHasPolledMs: guaranteedDashboardHasPolledMs(),
+      /*-
+       *  The last failed read or write of the rebalance log since the
+       *  process started, or null: the words for the operator and when,
+       *  which each tab shows once (src/bot/rebalance-log.js).
+       */
+      rebalanceLogProblem: rebalanceLogProblem(),
     };
   };
 }

@@ -55,6 +55,7 @@ const fs = require("fs");
 const path = require("path");
 const { readEnv } = require("./env-settings");
 const { makeTestTempFolder } = require("./test-temp-folders");
+const { tellFileProblem } = require("./file-problem");
 
 // ── Crypto constants ────────────────────────────────────────────────────────
 
@@ -163,15 +164,16 @@ function _saveToDisk(wallet) {
   };
   const file = walletFilePath();
   const tmp = `${file}.tmp`;
-  // Ensure parent dir exists (e.g. app-config/ on first run).
-  fs.mkdirSync(path.dirname(file), { recursive: true });
   try {
+    // Ensure parent dir exists (e.g. app-config/ on first run).
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), {
       encoding: "utf8",
       flush: true,
     });
     _renameKeepingMode(tmp, file);
   } catch (err) {
+    tellFileProblem({ doing: "write to", file, err });
     _removeTmpFile(tmp);
     throw err;
   }
@@ -193,7 +195,9 @@ function _removeTmpFile(tmp) {
   try {
     fs.unlinkSync(tmp);
     return true;
-  } catch {
+  } catch (err) {
+    // None there is the usual case; any other failure is told.
+    tellFileProblem({ doing: "delete", file: tmp, err });
     return false;
   }
 }
@@ -211,8 +215,9 @@ function _removeFromDisk() {
   );
   try {
     fs.unlinkSync(file);
-  } catch {
-    /* file may not exist */
+  } catch (err) {
+    // The file may not exist; any other failure is told.
+    tellFileProblem({ doing: "delete", file, err });
   }
   _removeTmpFile(`${file}.tmp`);
 }
@@ -227,7 +232,9 @@ function _readWalletFile(file) {
   try {
     const raw = JSON.parse(fs.readFileSync(file, "utf8"));
     return raw && raw.address && raw.encrypted ? raw : null;
-  } catch {
+  } catch (err) {
+    // A file not there holds no wallet; one there that cannot be read is told.
+    tellFileProblem({ doing: "read", file, err });
     return null;
   }
 }
@@ -249,6 +256,7 @@ function _recoverFromTmpFile(file) {
       "[wallet] wallet.json was missing, empty or damaged: loaded the wallet from wallet.json.tmp, which could not be renamed back (%s)",
       err.message,
     );
+    tellFileProblem({ doing: "write to", file, err });
   }
 }
 
@@ -268,12 +276,9 @@ function settleWalletFile() {
     _recoverFromTmpFile(file);
     return;
   }
+  // A failure to remove it is told by `_removeTmpFile`.
   if (_removeTmpFile(tmp))
     log.info("[wallet] Removed wallet.json.tmp, left by a save cut short");
-  else
-    log.warn(
-      "[wallet] Could not remove wallet.json.tmp, left by a save cut short",
-    );
 }
 
 /**
@@ -355,32 +360,58 @@ async function importWallet({
 }
 
 /**
+ * Whether `address` is the wallet loaded now, in any letter case.
+ * @param {string|null} address
+ * @returns {boolean}
+ */
+function _isLoadedWallet(address) {
+  if (typeof address !== "string" || typeof _state.address !== "string")
+    return false;
+  return address.toLowerCase() === _state.address.toLowerCase();
+}
+
+/**
  * Decrypt and return wallet secrets.  Requires the session password.
+ *
+ * The decrypt is for the wallet loaded as it begins, read once, so its
+ * answer carries that wallet's address. A new wallet makes an older one
+ * stale (the user's rule, 2026-11-27): when the key derivation ends, a
+ * wallet replaced meanwhile, by an import, or removed, by a Clear,
+ * rejects the decrypt with `staleWallet` set on the error, never as a
+ * wrong password. The import itself goes on as normal.
  * @param {string} password  The password set during import.
- * @returns {Promise<{privateKey: string, mnemonic: string|null}>}
- * @throws {Error} If no wallet is loaded or the password is wrong.
+ * @returns {Promise<{privateKey: string, mnemonic: string|null,
+ *   address: string}>}
+ * @throws {Error} If no wallet is loaded, the password is wrong, or the
+ *   wallet changed during the decrypt (`staleWallet: true`).
  */
 async function revealWallet(password) {
-  if (!_state.encrypted) throw new Error("No wallet loaded");
+  const { address, encrypted } = _state;
+  if (!encrypted) throw new Error("No wallet loaded");
   if (!password || typeof password !== "string") {
     throw new Error("Password is required");
   }
 
-  const salt = Buffer.from(_state.encrypted.saltHex, "hex");
+  const salt = Buffer.from(encrypted.saltHex, "hex");
   const key = await _deriveKey(password, salt);
+  if (!_isLoadedWallet(address))
+    throw Object.assign(
+      new Error("The wallet changed while it was being decrypted"),
+      { staleWallet: true, address },
+    );
 
   try {
     const decipher = crypto.createDecipheriv(
       _CIPHER,
       key,
-      Buffer.from(_state.encrypted.ivHex, "hex"),
+      Buffer.from(encrypted.ivHex, "hex"),
     );
-    decipher.setAuthTag(Buffer.from(_state.encrypted.authTagHex, "hex"));
+    decipher.setAuthTag(Buffer.from(encrypted.authTagHex, "hex"));
     const decrypted = Buffer.concat([
-      decipher.update(Buffer.from(_state.encrypted.ciphertextHex, "hex")),
+      decipher.update(Buffer.from(encrypted.ciphertextHex, "hex")),
       decipher.final(),
     ]);
-    return JSON.parse(decrypted.toString("utf8"));
+    return { ...JSON.parse(decrypted.toString("utf8")), address };
   } catch {
     throw new Error("Wrong password");
   }

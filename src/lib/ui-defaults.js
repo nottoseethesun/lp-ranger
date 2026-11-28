@@ -39,6 +39,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { tellFileProblem } = require("./file-problem");
 const {
   loadMergedDefaults,
   loadShippedDefaults,
@@ -119,6 +120,12 @@ function _read({ strict }) {
   try {
     written = loadMergedDefaults(_FILENAME);
   } catch (err) {
+    tellFileProblem({
+      doing: "read",
+      file: err.path ?? _FILENAME,
+      err,
+      missingIsNormal: false,
+    });
     log.warn(
       "[ui-defaults] %s could not be read (%s) — using the shipped values",
       _FILENAME,

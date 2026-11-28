@@ -30,8 +30,11 @@ function heldStart() {
   const ended = new Promise((resolve) => {
     finish = resolve;
   });
-  const held = { stops: 0, finish: () => finish() };
+  const held = { stops: 0, halts: 0, finish: () => finish() };
   held.handle = {
+    halt() {
+      held.halts += 1;
+    },
     stop() {
       held.stops += 1;
       return Promise.resolve();
@@ -40,6 +43,46 @@ function heldStart() {
   held.startLoop = () => ended.then(() => held.handle);
   return held;
 }
+
+describe("halting every position at once, as a Clear and an import do", () => {
+  it("halts each loop without waiting for its check, and marks it stopped", async () => {
+    /*-
+     *  A Clear and an import are refused while a rebalance or compound
+     *  is under way, so a check still running is only reading: they
+     *  wait for nothing (the user's design, 2026-11-27).
+     */
+    const mgr = makeMgr();
+    const held = heldStart();
+    held.handle.stop = () => new Promise(() => {}); // a check that never ends
+    held.finish();
+    await mgr.startPosition("key-1", {
+      tokenId: "100",
+      startLoop: held.startLoop,
+    });
+    assert.equal(mgr.runningCount(), 1);
+    assert.equal(
+      mgr.haltAll(),
+      undefined,
+      "returns at once, a promise to none",
+    );
+    assert.equal(held.halts, 1, "its loop halted");
+    assert.equal(mgr.runningCount(), 0, "and recorded as stopped");
+  });
+
+  it("names the positions whose start is under way, and none once started", async () => {
+    // A Clear and an import are refused while one starts.
+    const mgr = makeMgr();
+    const held = heldStart();
+    const starting = mgr.startPosition("key-1", {
+      tokenId: "100",
+      startLoop: held.startLoop,
+    });
+    assert.deepEqual(mgr.startingKeys(), ["key-1"]);
+    held.finish();
+    await starting;
+    assert.deepEqual(mgr.startingKeys(), []);
+  });
+});
 
 describe("a position whose start is under way", () => {
   it("is stopped by a stop of every position, which waits for its start", async () => {

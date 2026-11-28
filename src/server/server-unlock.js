@@ -24,15 +24,16 @@
  * `dashboardPollIntervalMs` apart, three seconds as shipped), so
  * meanwhile the password can arrive a second time from another tab, or
  * from "Unlock Wallet" in a tab left in View-Only mode. A second
- * start-up over running positions gave each a fresh, empty record of its
- * state in place of the one its bot loop writes to, which left it on
- * "Syncing…", refused its Rebalance Now and Compound Now, and hid it from
- * the one-position-per-pool check until a restart.
+ * start-up over running positions would give each a fresh, empty record
+ * of its state in place of the one its bot loop writes to. That would
+ * leave it on "Syncing…", refuse its Rebalance Now and Compound Now, and
+ * hide it from the one-position-per-pool check until a restart.
  *
  * A wrong password is answered 401 and changes nothing. With no wallet
- * saved there is nothing to unlock: the request is answered 404, saying
- * so, and nothing is decrypted; the dashboard then shows its Wallet file
- * not found notice, and Wallet Setup after it. The wallet is marked in use
+ * loaded in the server (none saved when it started, or a Clear since)
+ * there is nothing to unlock: the request is answered 404, saying so, and
+ * nothing is decrypted; the dashboard then shows its Wallet file not
+ * found notice, and Wallet Setup after it. The wallet is marked in use
  * from before it is asked for until the key is taken
  * (src/server/wallet-in-use.js), and a Clear is refused meanwhile
  * (src/server/wallet-clear.js), so it is still there at every step.
@@ -41,25 +42,41 @@
  * takes no key. It is asked again after each decrypt, since an import
  * can begin during either. Refused after the api keys' decrypt, it
  * leaves them set up; the import decrypts them again with its own
- * password. The import is replacing the wallet this
- * password opens: an unlock then would hand the bot the old wallet's
- * key, and its start-up would start the old wallet's positions once the
- * new wallet is in.
+ * password. The import is replacing the wallet this password opens: an
+ * unlock then would hand the bot the old wallet's key, and its start-up
+ * would start the old wallet's positions once the new wallet is in. An
+ * import that lands during the wallet's decrypt makes that decrypt stale
+ * (src/lib/wallet-manager.js), and one that begins during either decrypt
+ * is found by the check after it: either way the unlock is refused with
+ * `walletReplaced` set, which the dashboard takes quietly, never as a
+ * wrong password or an error (the user's ruling, 2026-11-27). While the
+ * server, having refused to start, waits to exit, an unlock is refused
+ * too, saying so.
  */
 
 const { log } = require("../lib/log");
 const unlockLog = require("./server-unlock-log");
 
-// The answer to an unlock with no wallet saved.
+// The answer to an unlock with no wallet loaded.
 const _NO_WALLET = "There is no wallet to unlock. Import one first.";
+
+// The answer to an unlock whose decrypt another wallet made stale.
+const _STALE =
+  "Another wallet replaced this one while it was being unlocked. " +
+  "Nothing was unlocked.";
+
+// The answer to an unlock while the server, having refused to start, waits to exit.
+const _STOPPING =
+  "LP Ranger cannot start and is stopping, so there is nothing to unlock.";
 
 /**
  * Build the unlock route.
  *
  * @param {object} deps
- * @param {object} deps.walletManager  Says whether a wallet is saved
+ * @param {object} deps.walletManager  Says whether a wallet is loaded
  *   (`hasWallet`) and decrypts it (`revealWallet(password)`), throwing on
- *   a wrong password.
+ *   a wrong password, and with `staleWallet` set when another wallet
+ *   replaced it during the decrypt.
  * @param {{begin: Function, end: Function}} deps.walletInUse  Marks the
  *   wallet in use while the unlock runs (src/server/wallet-in-use.js).
  * @param {object} deps.bot  The bot's interface (src/bot/bot-interface.js):
@@ -67,6 +84,8 @@ const _NO_WALLET = "There is no wallet to unlock. Import one first.";
  *   the decrypted key (`setPrivateKey`, `hasPrivateKey`) and starts the
  *   positions saved as managed (`startManagedPositions`).
  * @param {(password: string) => Promise<void>} deps.decryptApiKeys
+ * @param {() => (string|null)} deps.startRefusal  Why the launch was
+ *   refused, while the server waits to exit (src/server/server-routes.js).
  * @param {Function} deps.jsonResponse
  * @param {Function} deps.readJsonBody
  * @returns {(req: object, res: object) => Promise<void>}
@@ -77,6 +96,7 @@ function createUnlockHandler(deps) {
     walletInUse,
     bot,
     decryptApiKeys,
+    startRefusal,
     jsonResponse,
     readJsonBody,
   } = deps;
@@ -84,16 +104,35 @@ function createUnlockHandler(deps) {
 
   /**
    * Answer 409 when the bot may not take a key now, as during a wallet
-   * import (`refusalToTakeKey`), naming why.
+   * import (`refusalToTakeKey`), naming why. Asked after a decrypt
+   * (`overtaken`), the import began during it: `walletReplaced` is set,
+   * and the dashboard takes the answer quietly, as for a stale decrypt
+   * (`_stale`), since nothing is wrong.
    * @param {object} res
+   * @param {boolean} [overtaken=false]  Whether a decrypt has run.
    * @returns {boolean} Whether the unlock was refused.
    */
-  function _refused(res) {
+  function _refused(res, overtaken = false) {
     const refusal = bot.refusalToTakeKey();
     if (refusal === null) return false;
     unlockLog.logUnlockRefused(refusal);
-    jsonResponse(res, 409, { ok: false, error: refusal });
+    const answer = { ok: false, error: refusal };
+    if (overtaken) answer.walletReplaced = true;
+    jsonResponse(res, 409, answer);
     return true;
+  }
+
+  /**
+   * Answer 409 for a decrypt another wallet made stale: an import replaced
+   * the wallet during it (src/lib/wallet-manager.js). `walletReplaced` is
+   * set, and the dashboard takes the answer quietly, showing no error
+   * (the user's ruling, 2026-11-27): nothing is wrong, the import goes on
+   * as normal, and the tab follows the new wallet once it has finished.
+   * @param {object} res
+   */
+  function _stale(res) {
+    unlockLog.logUnlockRefused(_STALE);
+    jsonResponse(res, 409, { ok: false, walletReplaced: true, error: _STALE });
   }
 
   /**
@@ -116,19 +155,20 @@ function createUnlockHandler(deps) {
     try {
       ({ privateKey } = await walletManager.revealWallet(password));
     } catch (err) {
+      if (err.staleWallet === true) return _stale(res);
       unlockLog.logUnlockFail(err);
       return jsonResponse(res, 401, { ok: false, error: "Wrong password" });
     }
     // Asked again: an import may have begun during the decrypt.
-    if (_refused(res)) return;
+    if (_refused(res, true)) return;
     /*-
      *  The api keys are decrypted before the bot takes the key, so no
      *  position starts until that decrypt has ended. A failure is logged
      *  and the unlock goes on.
      */
-    await decryptApiKeys(password).catch(warn("API key decrypt failed"));
+    await decryptApiKeys(password).catch(warn("api key decrypt failed"));
     // And again, since one can begin during that decrypt too.
-    if (_refused(res)) return;
+    if (_refused(res, true)) return;
     /*-
      *  Read only now, just before the key is taken: the launch can have
      *  taken it during the decrypts, and then started the positions.
@@ -150,6 +190,11 @@ function createUnlockHandler(deps) {
     if (!body.password) {
       unlockLog.logUnlockMissing();
       return jsonResponse(res, 400, { ok: false, error: "Missing password" });
+    }
+    // Having refused to start, the server waits to exit: it unlocks nothing.
+    if (startRefusal() !== null) {
+      unlockLog.logUnlockRefused(_STOPPING);
+      return jsonResponse(res, 409, { ok: false, error: _STOPPING });
     }
     if (_refused(res)) return;
     /*-

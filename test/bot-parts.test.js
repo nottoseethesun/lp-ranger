@@ -10,7 +10,9 @@
  *   count. Bug #19: the headless bot built its parts itself and left the
  *   count empty, so after a restart its first check could rebalance a pool
  *   already at its cap. test/bot-start-up-shared.test.js pins that
- *   src/bot.js builds its bot through `createBot`.
+ *   src/bot.js builds its bot through `createBot`. The counts saved apart
+ *   from the log (src/bot/pool-daily-counts-file.js) are taken back too,
+ *   each pool keeping the larger.
  */
 
 const { describe, it, before, after } = require("node:test");
@@ -21,6 +23,11 @@ const { useRebalanceLog } = require("./helpers/rebalance-log");
 const { makeTestTempFolder } = require("../src/lib/test-temp-folders");
 const { poolKey } = require("../src/lib/pool-key");
 const { buildBotParts, createBot } = require("../src/bot/bot-interface");
+const {
+  poolDailyCountsPath,
+  savePoolDailyCounts,
+  utcDay,
+} = require("../src/bot/pool-daily-counts-file");
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const PM = "0xCC05bf158202b4F461Ede8843d76dcd7Bbad07f2";
@@ -78,6 +85,24 @@ describe("the bot's parts", () => {
     assert.deepEqual(positionMgr.getPoolDailyCounts(), TODAY);
     assert.equal(positionMgr.canRebalancePool(keyOf(A), 2), false);
     assert.equal(positionMgr.canRebalancePool(keyOf(B), 2), true);
+  });
+
+  it("take back today's counts saved apart from the log, keeping the larger", (t) => {
+    /*-
+     *  The saved counts hold a rebalance the log lost: here three in
+     *  pool A, which the log holds two of.
+     */
+    atNoonOnTheLogsDay(t);
+    savePoolDailyCounts(utcDay(Date.now()), { [keyOf(A)]: 3 });
+    try {
+      const { positionMgr } = buildBotParts();
+      assert.deepEqual(positionMgr.getPoolDailyCounts(), {
+        ...TODAY,
+        [keyOf(A)]: 3,
+      });
+    } finally {
+      fs.rmSync(poolDailyCountsPath(), { force: true });
+    }
   });
 
   it("are the parts createBot builds the bot over", async (t) => {

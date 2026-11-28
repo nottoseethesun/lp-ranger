@@ -28,6 +28,7 @@ import {
   checkWalletLocked,
 } from "./dashboard-wallet.js";
 import { walletGoneAtUnlock } from "./dashboard-wallet-import.js";
+import { startRefusalShown } from "./dashboard-start-refusal.js";
 import {
   injectPositionDeps,
   scanPositions,
@@ -195,6 +196,7 @@ injectWalletDeps({
   dropPendingRoute,
   flushPendingUnmanagedFetch,
   walletGoneAtUnlock,
+  startRefusalShown,
 });
 injectPositionDeps({
   positionRangeVisual,
@@ -442,7 +444,8 @@ function _afterDisclaimer() {
        *  The wallet is always still locked at init time, so the call
        *  itself entry-skips with "wallet-locked" and records pos as
        *  pending.  flushPendingUnmanagedFetch() (called from the unlock
-       *  paths) drains it once the wallet is ready.
+       *  paths, and after each status answer once unlocked) drains it
+       *  once the wallet is ready and a status answer has been read.
        *
        *  Still no isPositionManaged gate HERE, and for the original
        *  reason: no /api/status response has necessarily landed this
@@ -450,12 +453,12 @@ function _afterDisclaimer() {
        *  carry-over from a previous session (the server may have
        *  retired the position while the page was closed).
        *
-       *  The gate moved to the flush, where a poll has landed and the
-       *  answer is authoritative.  It had to move: the claim that a
+       *  The gate moved to the flush, which waits for a status answer,
+       *  whose word is authoritative.  It had to move: the claim that a
        *  fetch for a managed position is "a harmless no-op" stopped
        *  being true once every RPC request went through the paced
        *  global queue — it is a multi-minute chain scan racing the bot
-       *  for that queue.  See `shouldSkipUnmanagedFetch` in
+       *  for that queue.  See `pendingFetchStep` in
        *  dashboard-unmanaged.js. */
       fetchUnmanagedDetails(active);
     }
@@ -484,7 +487,11 @@ function _afterDisclaimer() {
 
   // Check if the server already has a wallet loaded (e.g. from a previous page load)
   const walletStatusChecked = checkServerWalletStatus();
-  checkWalletLocked();
+  /*- The lock check waits for the wallet check: only then does the page
+   *  know which wallet it shows, and it offers Unlock Wallet only for the
+   *  server's (a page whose address names another offers Wallet Setup
+   *  alone). */
+  walletStatusChecked.then(() => checkWalletLocked());
 
   // Initialise client-side URL routing (must run after wallet status check starts)
   initRouter();

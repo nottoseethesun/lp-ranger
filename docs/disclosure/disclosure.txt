@@ -232,11 +232,14 @@ duty or advisory relationship."
                          (node scripts/import-wallet.js). Same password
                          also encrypts all API keys in api-keys.json.
   Wallet unlock          Three modes: (1) dashboard dialog (default),
-                         (2) --headless terminal prompt (no browser),
+                         (2) --unlock-at-terminal prompt (typed at the
+                         server's terminal; the dashboard is served too),
                          (3) WALLET_PASSWORD env var (unattended).
                          Password held in memory only in modes 1-2.
-  Key in memory          Plaintext exists only during decrypt/sign window;
-                         never written to disk unencrypted
+  Key in memory          Once unlocked, held in the server's memory until
+                         the server stops, an import replaces the wallet
+                         or Clear Wallet removes it; never written to disk
+                         unencrypted
   Nonce safety           Async-mutex rebalance lock serializes all TXs across
                          positions (one nonce at a time)
   TX recovery            4-phase pipeline: wait -> speed-up (1.5x gas) ->

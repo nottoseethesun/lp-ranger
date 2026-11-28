@@ -23,6 +23,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { tellFileProblem } = require("./file-problem");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 
 const _FILENAME = "setting-labels.json";
@@ -48,6 +49,12 @@ function readSettingLabels() {
     }
     return out;
   } catch (err) {
+    tellFileProblem({
+      doing: "read",
+      file: err.path ?? _FILENAME,
+      err,
+      missingIsNormal: false,
+    });
     log.warn("[setting-labels] Falling back to empty map: %s", err.message);
     return {};
   }

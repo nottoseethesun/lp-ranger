@@ -40,6 +40,7 @@ const path = require("path");
 const { log } = require("./log");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 const { makeTestTempFolder } = require("./test-temp-folders");
+const { tellFileProblem } = require("./file-problem");
 
 /**
  * Read where the file lives: `errorLogPath` in logging.json, beside the
@@ -125,9 +126,11 @@ function writeErrorLog(err, context, opts) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.appendFileSync(filePath, body);
     return true;
-  } catch {
+  } catch (err) {
     /*- Never throw from inside the error path.  A logging failure must
-     *  not itself cascade into another catastrophic error. */
+     *  not itself cascade into another catastrophic error: it is told,
+     *  as every caught file failure is (src/lib/file-problem.js). */
+    tellFileProblem({ doing: "write to", file: filePath, err });
     return false;
   }
 }
@@ -193,8 +196,10 @@ function clearErrorLog(matchSubstring, opts) {
     if (rebuilt === content) return false; // nothing removed → no rewrite
     fs.writeFileSync(filePath, rebuilt);
     return true;
-  } catch {
-    /*- Never throw from the error-record path — a clear failure is non-fatal. */
+  } catch (err) {
+    /*- Never throw from the error-record path — a clear failure is
+     *  non-fatal, and told. */
+    tellFileProblem({ doing: "write to", file: filePath, err });
     return false;
   }
 }
@@ -221,8 +226,10 @@ function resetErrorLog(opts) {
     fs.rmSync(filePath);
     log.info("[error-log] Cleared previous error.log on startup: %s", filePath);
     return true;
-  } catch {
-    /*- Never throw from the error-record path — a reset failure is non-fatal. */
+  } catch (err) {
+    /*- Never throw from the error-record path — a reset failure is
+     *  non-fatal, and told. */
+    tellFileProblem({ doing: "delete", file: filePath, err });
     return false;
   }
 }

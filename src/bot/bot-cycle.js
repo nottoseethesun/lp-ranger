@@ -42,12 +42,12 @@ const {
   updatePnlAndStats: _updatePnlAndStats,
 } = require("./bot-pnl-updater");
 const {
-  appendLog,
   _closePnlEpoch,
   _recordResidual,
   _applyRebalanceResult,
   _activePosSummary,
 } = require("./bot-recorder");
+const { appendLog } = require("./rebalance-log");
 const { PM_ABI } = require("./pm-abi");
 const { spentGasOf, recordSpentGas } = require("./spent-gas");
 const {
@@ -139,8 +139,16 @@ async function _prepareRebalance(deps) {
     );
   if (deps._isStopped?.() === true) {
     if (release) release();
+    /*-
+     *  Not started, so not under way: a Rebalance Now's mark comes off,
+     *  or every Clear and wallet import would be refused until a restart
+     *  (src/bot/under-way.js). The request itself stays, so a loop whose
+     *  moves were only held, by an import that then failed, still makes
+     *  it at its next check.
+     */
+    if (deps._botState) deps._botState.rebalanceInProgress = false;
     log.info(
-      "[rebalance] %s: not started — the bot loop for this position has stopped",
+      "[rebalance] %s: not started — the bot loop for this position has stopped, or a wallet import holds every move",
       _rebalanceCtx(deps, position),
     );
     return null;
@@ -198,6 +206,7 @@ async function _handleRebalanceSuccess(deps, result, state, throttle, pos) {
       pos.token0,
       pos.token1,
     );
+  // Never throws: a failure is told to the operator (src/bot/rebalance-log.js).
   appendLog(result);
   log.info(
     "[rebalance] %s: Rebalance OK — new tokenId: #%s %s",
@@ -301,7 +310,6 @@ async function _executeAndRecord(deps, ethersLib) {
        */
       await recordSpentGas(spentGasOf(result), deps, _actualGasCostUsd);
     }
-    state.rebalanceInProgress = false;
     /*- Clear the yellow "residual cleanup" banner on failure too; a failed
      *  cleanup should not leave the UI stuck in that state.  residualCleanupUsed
      *  is NOT set here — failures don't consume the cleanup opportunity. */
@@ -325,6 +333,12 @@ async function _executeAndRecord(deps, ethersLib) {
       trigger,
     };
   } finally {
+    /*-
+     *  The rebalance is over, however it ended: a throw left it marked
+     *  as under way, and every Clear and wallet import refused until a
+     *  restart (src/bot/under-way.js).
+     */
+    state.rebalanceInProgress = false;
     if (release) {
       release();
       log.info("[bot] Rebalance lock released for #%s", position.tokenId);

@@ -32,6 +32,7 @@
 const fs = require("fs");
 const { enableLogFile, resolveLogFilePath } = require("./log-file");
 const { loadMergedDefaults } = require("./load-merged-defaults");
+const { tellFileProblem } = require("./file-problem");
 
 /**
  * Flag that clears the log file before this run starts writing to it.
@@ -72,7 +73,14 @@ function _readLoggingConfig() {
     const enabled = obj.enabled === true;
     const p = typeof obj.path === "string" && obj.path ? obj.path : null;
     return { enabled, path: p };
-  } catch {
+  } catch (err) {
+    // Shipped with LP Ranger: missing, it is told too.
+    tellFileProblem({
+      doing: "read",
+      file: err.path ?? "logging.json",
+      err,
+      missingIsNormal: false,
+    });
     return { enabled: false, path: null };
   }
 }
@@ -82,12 +90,13 @@ function _readLoggingConfig() {
  *
  * An absent file is the success case, not an error — the flag asks for
  * an empty log, and there is nothing emptier than no file. Any other
- * failure warns rather than throwing: the run is still worth having,
- * and a log that opens with a previous run's lines still in it is
- * better than no bot. The warning goes to the terminal because nothing
- * is teeing to the file yet, and it says plainly that the file was NOT
- * cleared, since reading stale lines as current is the whole failure
- * this flag exists to prevent.
+ * failure is told rather than thrown, as every caught file failure is
+ * (src/lib/file-problem.js): the run is still worth having, and a log
+ * that opens with a previous run's lines still in it is better than no
+ * bot. The words go to the terminal, since nothing is teeing to the
+ * file yet, and say plainly that LP Ranger could not delete it, since
+ * reading stale lines as current is the whole failure this flag exists
+ * to prevent.
  *
  * @param {string} absPath  Resolved path of the file to remove.
  * @returns {void}
@@ -96,11 +105,7 @@ function _deletePreExistingLogFile(absPath) {
   try {
     fs.unlinkSync(absPath);
   } catch (err) {
-    if (err.code === "ENOENT") return;
-    process.stderr.write(
-      `[log-file] Could not delete ${absPath}: ${err.message}\n` +
-        `[log-file] NOT cleared — this run appends to the previous one.\n`,
-    );
+    tellFileProblem({ doing: "delete", file: absPath, err });
   }
 }
 

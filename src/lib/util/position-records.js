@@ -34,6 +34,7 @@ const fs = require("fs");
 const path = require("path");
 const { RECORD_POSITION_KEYS } = require("../bot-config-keys");
 const { makeTestTempFolder } = require("../test-temp-folders");
+const { tellFileProblem } = require("../file-problem");
 
 const RECORDS_FILE = "position-records.json";
 
@@ -126,10 +127,17 @@ function splitPositionSlots(positions) {
  */
 function backUpPositionRecords(dir) {
   const file = positionRecordsPath(dir);
+  const backup = file.replace(".json", ".backup.json");
   try {
-    fs.copyFileSync(file, file.replace(".json", ".backup.json"));
-  } catch {
-    /* best-effort, and no file means nothing to keep */
+    fs.copyFileSync(file, backup);
+  } catch (err) {
+    // No file means nothing to keep; any other failure is told.
+    tellFileProblem({
+      doing: "copy",
+      file: backup,
+      err,
+      what: `${file} to ${backup}`,
+    });
   }
 }
 

@@ -402,11 +402,16 @@ describe("_checkRebalanceGates", () => {
      *  The residual cleanup's flag is the bot's own, and stays. */
     const asked = makeDeps({
       dryRun: true,
-      _botState: { forceRebalance: true },
+      _botState: { forceRebalance: true, rebalanceInProgress: true },
     });
     const r = _checkRebalanceGates(asked, { tick: 500 }, true);
     assert.strictEqual(r.rebalanced, false);
     assert.strictEqual(asked._botState.forceRebalance, false);
+    /*-
+     *  Left marked as rebalancing, it would refuse every Clear and
+     *  wallet import until a restart (src/bot/under-way.js).
+     */
+    assert.strictEqual(asked._botState.rebalanceInProgress, false);
     const cleanup = makeDeps({
       dryRun: true,
       _botState: { forceRebalance: true, residualCleanupInProgress: true },

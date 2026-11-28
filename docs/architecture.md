@@ -573,7 +573,9 @@ starting the positions saved as managed, one at a time, it reports that
 start-up's progress in `GET /api/status` (`startingManagedPositions`).
 While a wallet is imported, from its first step until the start-up of the
 new wallet's saved positions has finished, it reports `importingWallet`,
-and refuses a Manage and an unlock. The Syncing state keeps Manage and
+and refuses a Manage, an unlock, a Clear and another import, and, until
+it has halted the old wallet's positions, a Rebalance Now and a Compound
+Now. The Syncing state keeps Manage and
 Stop Managing disabled until each ends. Once the import has replaced a
 wallet, every status answer also names the new one (`walletJustChanged`),
 and every other tab still holding the old wallet reloads once the import

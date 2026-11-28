@@ -6,7 +6,8 @@
  * keep that file under the 500-line ESLint limit.  When a managed
  * NFT has sat at 0 liquidity for `DRAINED_RETIRE_MS`, counted from the
  * first check that found it so with no rebalance in flight or asked
- * for and no mint retry coming, the bot loop auto-retires the position
+ * for, and no retry coming of a rebalance left mid-way, the bot loop
+ * auto-retires the position
  * (status 'running' → 'stopped').  NFTs are NEVER burned — this is
  * a pure software state flip and the user can re-manage the same
  * NFT from the dashboard at any time.
@@ -23,7 +24,8 @@ const { notify } = require("../lib/telegram-notifications/telegram");
 /*-
  *  How long the bot waits before it auto-retires a drained position,
  *  counted from the first check that found it drained with no rebalance
- *  in flight or asked for and no mint retry coming: app-runtime.json →
+ *  in flight or asked for, and no retry coming of a rebalance left
+ *  mid-way: app-runtime.json →
  *  retire.drainedAfterMs. Time-based (not poll-count-based) so it stays
  *  predictable whatever CHECK_INTERVAL_SEC is.
  */
@@ -46,9 +48,10 @@ function _notifyPos(position) {
  * Outcomes:
  *   - Position has liquidity and retirement timer was armed → clear
  *     the timer, return `null` (proceed normally).
- *   - Drained + rebalance in flight → don't arm/advance the timer
- *     (an in-flight rebalance briefly shows 0 liquidity between
- *     removeLiquidity and mint); return `{ rebalanced: false }`.
+ *   - Drained + rebalance in flight → no retire while it runs (an
+ *     in-flight rebalance briefly shows 0 liquidity between
+ *     removeLiquidity and mint): the timer is not armed, and once armed
+ *     it keeps counting; return `{ rebalanced: false }`.
  *   - Drained + no rebalance in flight + `forceRebalance` → `null`
  *     so the rebalance pipeline runs on the drained NFT.
  *   - Drained + no rebalance in flight + `rebalanceFailedMidway` without
@@ -84,7 +87,8 @@ function checkZeroLiquidity(deps) {
    *  will fire (the gate in `_checkRebalanceGates` blocks at paused).
    *  Treat aborted-drained as equivalent to pristine-drained for drain-
    *  timer purposes so the drained auto-retire safety net still fires;
-   *  user must adjust Slippage or click Manage to retry before then.
+   *  before then the owner clicks Rebalance Now, or raises Slippage
+   *  while mid-rebalance tries are left, which lets the bot try again.
    */
   const midwayFail = !!state.rebalanceFailedMidway && !state.rebalancePaused;
   const now = Date.now();
@@ -116,7 +120,7 @@ function checkZeroLiquidity(deps) {
       }
     } else {
       log.info(
-        "[bot] Position closed (0 liquidity) — rebalance in progress, retirement timer paused",
+        "[bot] Position closed (0 liquidity) — rebalance in progress, no retire while it runs",
       );
     }
     return { rebalanced: false };

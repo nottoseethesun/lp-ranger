@@ -70,6 +70,7 @@ const STATE_FILES = [
   "app-config/user-configurable/api-keys.json",
   "app-data/position-records.json",
   "app-data/position-records.backup.json",
+  "app-data/pool-daily-counts.json",
 ];
 
 /*- Written by `npm run build`; the prestart guard
@@ -228,9 +229,10 @@ clean — return the install to the state a fresh clone is in
 USAGE
   npm run clean              Stop the server, then delete the wallet file
                              and WALLET_PASSWORD in .env, bot-config.json,
-                             the api keys, the position records, the
-                             rebalance log, every scan cache, the logs and
-                             the build output. Rebuild before npm start.
+                             the api keys, the position records, today's
+                             rebalance counts, the rebalance log, every
+                             scan cache, the logs and the build output.
+                             Rebuild before npm start.
   npm run dev-clean          The same, keeping the price, block-time and
                              Gecko caches, which cost api quota to refill.
   npm run clean:log          Empty the diagnostic log, and nothing else.

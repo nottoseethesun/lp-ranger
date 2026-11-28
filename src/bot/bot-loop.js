@@ -11,7 +11,6 @@
  * Exports:
  *   - `startBotLoop(opts)` — create provider/signer, detect position, start polling
  *   - `pollCycle(deps)` — single poll iteration
- *   - `appendLog(result)` — write rebalance result to disk log
  *
  * The private-key resolver lives in `src/bot/bot-private-key.js`; callers
  * (bot.js, tests) import it directly from there.
@@ -41,11 +40,7 @@ const { appendToPoolCache } = require("./pool-scanner");
 const { createResidualTracker } = require("./residual-tracker");
 const sendTx = require("./send-transaction");
 const { createFailoverSigner } = require("./nonce-manager-wrapper");
-const {
-  appendLog,
-  _scanAndReconstruct,
-  _activePosSummary,
-} = require("./bot-recorder");
+const { _scanAndReconstruct, _activePosSummary } = require("./bot-recorder");
 const { notify: _notify } = require("../lib/telegram-notifications/telegram");
 const { checkGasBalance } = require("./gas-monitor");
 const { pollCycle, _humanizeError } = require("./bot-cycle");
@@ -53,7 +48,7 @@ const { _reloadFromConfig } = require("./bot-cycle-triggers");
 const { applyCurrentNftFigures } = require("./bot-pnl-current-nft");
 const { countDepositsOnRise } = require("./deposit-count");
 const { wireBotStateGetConfig } = require("./bot-state-init");
-const { isStopping } = require("./app-phase");
+const { isStopping, movesHeld } = require("./app-phase");
 const { guaranteedDashboardHasPolledMs } = require("./dashboard-has-polled");
 const {
   isAscanRunningOnThisPosition,
@@ -224,7 +219,9 @@ function _countRescan(botState) {
  *   'stopped' and removes the entry from the position manager.  The bot
  *   loop has already stopped its own timer + set running=false by the
  *   time this fires.
- * @returns {Promise<{ stop: Function }>}  Handle with stop() method.
+ * @returns {Promise<{ halt: Function, stop: Function }>}  Handle: halt()
+ *   halts the loop at once; stop() halts it, then waits out a poll under
+ *   way.
  */
 async function startBotLoop(opts) {
   const { privateKey, updateBotState, botState } = opts;
@@ -652,12 +649,13 @@ async function startBotLoop(opts) {
         // The deposit count a poll makes when the wallet's coins rise.
         _countDepositsOnRise: countDepositsOnRise,
         /*-
-         *  A stop of this loop, or of the app, during this poll keeps it
-         *  from starting a move. The app's counts even before anything
-         *  can stop this loop: its first poll runs before its start
-         *  hands back the handle a stop needs.
+         *  A stop or halt of this loop, a stop of the app, or a wallet
+         *  import holding every move (src/bot/app-phase.js) during this
+         *  poll keeps it from starting a move. The app's two count even
+         *  before anything can stop this loop: its first poll runs before
+         *  its start hands back the handle a stop needs.
          */
-        _isStopped: () => _stopped || isStopping(),
+        _isStopped: () => _stopped || isStopping() || movesHeld(),
       });
       if (result.rebalanced || result.cancelled || result.compounded)
         specialActionCompleted = true;
@@ -831,21 +829,35 @@ async function startBotLoop(opts) {
     );
     botState._triggerScan?.();
   }, config.LIFETIME_RESCAN_CHECK_MS);
+  /*-
+   *  Halt the loop, once: no further poll is scheduled, and a poll still
+   *  under way starts no move, since a move asks `_stopped` right before
+   *  it begins. It does not wait for that poll.
+   */
+  const halt = () => {
+    if (_stopped) return;
+    _stopped = true;
+    _scheduler.stop();
+    clearInterval(lifetimeRescanTimer);
+    updateBotState({ running: false });
+    log.info("[bot] Bot loop stopped");
+  };
   return {
+    /*-
+     *  A Clear and a wallet import halt the loop without waiting: each is
+     *  refused while a rebalance or compound is under way, so a poll
+     *  still under way is only reading, and finishes on its own
+     *  (src/bot/position-manager.js `haltAll`).
+     */
+    halt,
     stop() {
       /*-
-       *  The first call halts the loop. Every call, the first or a later
-       *  one, then waits out a poll under way: a second stop, such as a
-       *  second shutdown request, must not report the loop stopped while
-       *  its poll could still be finishing a rebalance or compound.
+       *  Halt the loop, then wait out a poll under way, every call, the
+       *  first or a later one: a second stop, such as a second shutdown
+       *  request, must not report the loop stopped while its poll could
+       *  still be finishing a rebalance or compound.
        */
-      if (!_stopped) {
-        _stopped = true;
-        _scheduler.stop();
-        clearInterval(lifetimeRescanTimer);
-        updateBotState({ running: false });
-        log.info("[bot] Bot loop stopped");
-      }
+      halt();
       if (!polling) return Promise.resolve();
       return new Promise((resolve) => {
         const check = setInterval(() => {
@@ -862,7 +874,6 @@ async function startBotLoop(opts) {
 module.exports = {
   pollCycle,
   isRecoveryResult,
-  appendLog,
   startBotLoop,
   _overridePnlWithRealValues,
   _initPnlTracker,

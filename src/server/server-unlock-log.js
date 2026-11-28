@@ -74,14 +74,18 @@ function logUnlockFail(err) {
   );
 }
 
-/** Log the 409 path (a wallet import under way), with the bot's reason. */
+/**
+ * Log a 409 (a wallet import under way, a decrypt another wallet made
+ * stale, or the server, having refused to start, waiting to exit), with
+ * its reason.
+ */
 function logUnlockRefused(reason) {
   log.warn(`${NS} POST /api/wallet/unlock refused — %s`, reason);
 }
 
-/** Log the 404 path: no wallet is saved, so there is nothing to unlock. */
+/** Log the 404 path: no wallet is loaded, so there is nothing to unlock. */
 function logUnlockNoWallet() {
-  log.warn(`${NS} POST /api/wallet/unlock refused — no wallet is saved`);
+  log.warn(`${NS} POST /api/wallet/unlock refused — no wallet is loaded`);
 }
 
 module.exports = {

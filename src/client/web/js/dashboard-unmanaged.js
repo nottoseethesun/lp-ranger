@@ -70,7 +70,8 @@ let _lastFetchedId = null,
  *  wallet was unlocked.  flushPendingUnmanagedFetch() drains it on
  *  unlock so the one-shot fetch fires for the position the user is
  *  actually looking at — not whatever posStore.getActive() happens to
- *  return at unlock time (which is racy on cold loads). */
+ *  return at unlock time (which is racy on cold loads). Any request sent
+ *  for it ends the hold (fetchUnmanagedDetails). */
 let _pendingPos = null;
 
 /** Reset the dedup guard so the next fetchUnmanagedDetails call will re-fetch. */
@@ -79,8 +80,8 @@ export function resetLastFetchedId() {
 }
 
 /**
- * Whether the pending unmanaged fetch should be dropped because the bot
- * owns this position.
+ * What to do with the details request a locked page held back for its
+ * position: wait, skip it because the bot owns the position, or send it.
  *
  * A position is never both managed and unmanaged — but on a cold load
  * the browser is asked before it can answer. `isPositionManaged()` reads
@@ -90,12 +91,15 @@ export function resetLastFetchedId() {
  * cost two full passes over every NFT in the rebalance chain on every
  * startup.
  *
- * `hasPolled` is what makes the check trustworthy, and it is not
- * belt-and-braces. The managed Set is also restored from localStorage
- * for instant badge render, so before any poll lands it may be a
- * carry-over from a previous session — the server may have retired the
- * position while the page was closed. Until a real response arrives we
- * do not trust it, and the fetch proceeds exactly as it always has.
+ * Until a status answer has been read, it waits. The managed Set is also
+ * restored from localStorage for instant badge render, so before any
+ * poll lands it may be a carry-over from a previous session — the server
+ * may have retired the position while the page was closed — and neither
+ * skipping nor sending can be decided on it. The status handler asks
+ * again once it has read an answer (`_statusAnswered`, dashboard-data.js),
+ * so an unmanaged position gets its figures a poll later. A page already
+ * showing the wallet unlocked asks for an unmanaged position's details
+ * the moment you put that position on screen.
  *
  * Once a poll HAS landed the answer is authoritative, because the
  * server's `managedPositions` is the union of live bot loops and
@@ -107,32 +111,41 @@ export function resetLastFetchedId() {
  * Pure so the decision can be driven directly by a test rather than
  * re-expressed in one.
  * @param {{isManaged: boolean, hasPolled: boolean}} state
- * @returns {boolean}  True to skip the fetch.
+ * @returns {"wait"|"skip"|"send"}
  */
-export function shouldSkipUnmanagedFetch({ isManaged, hasPolled }) {
-  return hasPolled === true && isManaged === true;
+export function pendingFetchStep({ isManaged, hasPolled }) {
+  if (hasPolled !== true) return "wait";
+  return isManaged === true ? "skip" : "send";
 }
 
 /**
  * Fire any pending unmanaged-details fetch that was deferred because the
- * wallet was still locked when the activation path tried to fetch.  Called
- * from the wallet unlock paths (auto-unlock, manual submit).  No-op
- * when nothing is pending.
+ * wallet was still locked when the activation path tried to fetch. Called
+ * from the wallet unlock paths (auto-unlock, manual submit) and, once the
+ * wallet is unlocked, after each status answer is read. No-op when
+ * nothing is pending; until a status answer is read, it keeps the
+ * position pending (`pendingFetchStep`).
  */
 export function flushPendingUnmanagedFetch() {
   const pos = _pendingPos;
-  _pendingPos = null;
   if (!pos) return;
-  /*- Drop the pending if the bot owns this position.  The prime at init
-   *  deliberately does not check — no poll has landed that early — so
-   *  this is where the question gets asked, by which time /api/status
-   *  has answered it.  See `shouldSkipUnmanagedFetch`. */
-  if (
-    shouldSkipUnmanagedFetch({
-      isManaged: isPositionManaged(pos.tokenId),
-      hasPolled: getLastStatus() !== null,
-    })
-  ) {
+  /*- The prime at init deliberately does not check whether the bot owns
+   *  the position — no poll has landed that early — so this is where the
+   *  question gets asked, once /api/status has answered it. */
+  const step = pendingFetchStep({
+    isManaged: isPositionManaged(pos.tokenId),
+    hasPolled: getLastStatus() !== null,
+  });
+  if (step === "wait") {
+    log.info(
+      "%c[lp-ranger] [unmanaged] FLUSH-WAIT #%s until a status answer is read",
+      "color:#fa0;background:#310;padding:1px 4px;border-radius:2px",
+      pos?.tokenId,
+    );
+    return;
+  }
+  _pendingPos = null;
+  if (step === "skip") {
     log.info(
       "%c[lp-ranger] [unmanaged] FLUSH-SKIP managed #%s",
       "color:#fa0;background:#310;padding:1px 4px;border-radius:2px",
@@ -373,6 +386,12 @@ export async function fetchUnmanagedDetails(pos) {
   }
   const tid = String(pos.tokenId);
   _lastFetchedId = tid;
+  /*- A request for the position held back ends the hold, whichever path
+   *  sent it (the status poll's `askDetailsIfOwed` included): otherwise
+   *  the flush would send it again, and the server would read the
+   *  position's whole history twice. */
+  if (_pendingPos !== null && String(_pendingPos.tokenId) === tid)
+    _pendingPos = null;
   const gen = ++_fetchGen;
   log.info(
     "%c[lp-ranger] [unmanaged] ENTRY #%s gen=%d → starting phase1+phase2",

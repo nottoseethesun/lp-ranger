@@ -31,27 +31,33 @@
  *   graphic marked `data-position-graphic` (the range and composition
  *   bars), gives each history table one row of dashes, and greys every
  *   control. The watch also makes the page inert, all of it except the
- *   disclaimer and the wallet unlock, so no button, box or link can be
- *   used: nothing is done to a position whose figures have not arrived,
- *   while the wallet can still be unlocked, which some answers wait for.
+ *   disclaimer, the wallet unlock and the notices about the app rather
+ *   than a position, so no button, box or link can be used: nothing is
+ *   done to a position whose figures have not arrived, while the wallet
+ *   can still be unlocked, which some answers wait for, and a notice's OK
+ *   still closes it.
  */
 
 import { compositeKey } from "./dashboard-helpers.js";
 import { activeChainId } from "./dashboard-chain.js";
 import { posStore } from "./dashboard-positions-store.js";
+import { APP_NOTICE_IDS } from "./dashboard-app-notices.js";
 
 /** The body attribute the stylesheet keys the stale look on. */
 export const STALE_ATTRIBUTE = "data-position-data-stale";
 
 /*-
  *  What stays usable while the figures are stale: the disclaimer, which
- *  must be accepted before anything starts, and the wallet unlock, its
- *  dialog and the button that opens it.
+ *  must be accepted before anything starts; the wallet unlock, its dialog
+ *  and the button that opens it; and the notices about the app rather
+ *  than a position, which can come while no position's figures can
+ *  arrive, as with the wallet locked (their ids, dashboard-app-notices.js).
  */
 const _USABLE_IDS = Object.freeze([
   "disclaimerOverlay",
   "walletUnlockModal",
   "unlockWalletBtn",
+  ...APP_NOTICE_IDS,
 ]);
 
 /*-

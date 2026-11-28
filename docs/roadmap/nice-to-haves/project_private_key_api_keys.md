@@ -10,16 +10,18 @@ The Telegram bot token and chat id, and the Moralis api key, are
 stored encrypted with the wallet's password, in
 `app-config/user-configurable/api-keys.json`. The server decrypts them
 when it is given that password: from `WALLET_PASSWORD` in `.env`, at
-the terminal prompt of `--headless`, in the dashboard's Unlock Wallet
+the terminal prompt of `--unlock-at-terminal`, in the dashboard's Unlock Wallet
 dialog, or with a wallet import.
 
 A server started with `PRIVATE_KEY` in `.env` signs with that key and
-is given no password, so it decrypts none of them. The dashboard shows
-the wallet unlocked, since the server holds a key, and offers no
-Unlock Wallet dialog. So for the whole session no Telegram alert is
-sent, the alert for a closed position taken off the managed list at
-start-up included, and prices are asked of the other price services
-instead of Moralis. The server's log says so as it starts.
+is given no password, so it decrypts none of them. With a wallet
+imported, the key must be that wallet's: the server refuses to start
+with another wallet's key. The dashboard shows the wallet unlocked,
+since the server holds a key, and its Unlock Wallet button is disabled.
+So for the whole session no Telegram alert is sent, the alert for a
+closed position taken off the managed list at start-up included, and
+prices are asked of the other price services instead of Moralis. The
+server's log says so as it starts.
 
 ## Shape of the fix
 

@@ -24,7 +24,8 @@
  *   deposits and moves show this rebalance took (`depositTakenAt`,
  *   src/bot/deposit-attribution-inputs.js);
  * - this install's own records of its rebalances, from the rebalance log
- *   (`readLog`, handed in by the caller that owns it);
+ *   (`readLog`, src/bot/rebalance-log.js, handed in by the scan pass,
+ *   src/bot/bot-recorder.js);
  * - the NFT events the pass read for its Lifetime scan (the pass's shared
  *   chain read), in which a rebalance rebuilt from the chain finds its
  *   drain;

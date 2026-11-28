@@ -1,7 +1,7 @@
 /**
  * @file test/bot-loop.test.js
  * @description Tests for src/bot/bot-loop.js — resolvePrivateKey, startBotLoop,
- * pollCycle, appendLog, forceRebalance.  RPC boot-fallback semantics
+ * pollCycle, forceRebalance.  RPC boot-fallback semantics
  * and feeData-patch coverage live in test/send-transaction.test.js and
  * against `buildProvider` directly, because `send-transaction.js` owns
  * read-side failover as well as writes.

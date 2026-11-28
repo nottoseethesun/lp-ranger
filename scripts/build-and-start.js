@@ -13,7 +13,10 @@
  * what a command does should not perform the command.
  *
  * A flag that must be seen BEFORE the first step therefore needs
- * something in front of both steps, which is this file.
+ * something in front of both steps, which is this file. So does
+ * `--delete-all-caches-and-logs`, which deletes all of LP Ranger's caches
+ * and logs before the build, once the operator has typed YES
+ * (scripts/delete-all-caches-and-logs.js).
  *
  * Signals and exit codes are the shell's old behaviour, kept: each step
  * runs with `stdio: "inherit"` so the terminal talks to it directly, a
@@ -27,6 +30,7 @@
 const path = require("path");
 const { spawnSync } = require("child_process");
 const cliHelp = require("../src/server/server-cli-help");
+const { DELETE_ALL_FLAG, DECLINED_EXIT } = require("./_delete-all-flag");
 
 const ROOT = path.join(__dirname, "..");
 
@@ -37,6 +41,21 @@ const args = process.argv.slice(2);
 if (args.includes("--help") || args.includes("-h")) {
   cliHelp("build-and-start");
   process.exit(0);
+}
+
+/*- Before step one, when asked: delete all of LP Ranger's caches and
+ *  logs, once the operator has typed YES, in a process of its own
+ *  (scripts/delete-all-caches-and-logs.js), since it loads the `.env`
+ *  this one must not. Any other answer stops the run, with no error. */
+if (args.includes(DELETE_ALL_FLAG)) {
+  const deletion = spawnSync(
+    process.execPath,
+    [path.join(ROOT, "scripts", "delete-all-caches-and-logs.js")],
+    { cwd: ROOT, stdio: "inherit" },
+  );
+  if (deletion.status === DECLINED_EXIT) process.exit(0);
+  if (deletion.status !== 0)
+    process.exit(deletion.status === null ? 1 : deletion.status);
 }
 
 /*- Step one. `shell: true` on Windows only — npm is a shim there and
@@ -52,10 +71,14 @@ if (build.status !== 0) process.exit(build.status === null ? 1 : build.status);
 /*- Step two. Not `npm start`: that would run the `prestart` artifact
  *  check, which the build above has just satisfied, and would put a
  *  second npm process between the terminal and the server for no gain.
- *  The operator's flags go here, where the server reads them. */
+ *  The operator's flags go here, where the server reads them, all but
+ *  the one this script took. */
 const server = spawnSync(
   process.execPath,
-  [path.join(ROOT, "src", "server.js"), ...args],
+  [
+    path.join(ROOT, "src", "server.js"),
+    ...args.filter((a) => a !== DELETE_ALL_FLAG),
+  ],
   {
     cwd: ROOT,
     stdio: "inherit",

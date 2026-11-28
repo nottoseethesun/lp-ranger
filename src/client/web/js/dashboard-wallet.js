@@ -8,8 +8,7 @@
  * wallet clear live in dashboard-wallet-import.js, and are imported from
  * there.
  *
- * Depends on: dashboard-helpers.js (g, act, ACT_ICONS),
- * ethers-adapter.js (ethers).
+ * Depends on the modules it imports below, a list kept nowhere else.
  *
  * NOTE: Positions (updatePosStripUI, scanPositions, posStore) are not
  * imported: dashboard-init.js hands them in through `injectWalletDeps`
@@ -19,11 +18,15 @@
 
 import { g, act, ACT_ICONS, fetchWithCsrf } from "./dashboard-helpers.js";
 import { rpcUrlReady } from "./dashboard-rpc-endpoints.js";
-import { saveMoralisApiKey } from "./dashboard-moralis-key.js";
+import {
+  saveSetupMoralisKey,
+  validateMoralisAfterUnlock,
+} from "./dashboard-moralis-key.js";
 import { flushPendingTelegramConfig } from "./dashboard-telegram.js";
 import { ethers } from "./ethers-adapter.js";
 import * as unlockLog from "./dashboard-unlock-log.js";
 import { paintManageUI } from "./dashboard-manage-ui.js";
+import { paintUnlockButton } from "./dashboard-unlock-button.js";
 import { withUiSettings } from "./dashboard-ui-settings.js";
 import { pageReloadedByBrowser } from "./dashboard-idle.js";
 import {
@@ -47,12 +50,15 @@ let _getPendingRouteWallet = null;
 let _dropPendingRoute = null;
 let _flushPendingUnmanagedFetch = null;
 let _walletGoneAtUnlock = null;
+let _startRefusalShown = null;
 
 /**
  * Inject position-module references. Called once from
  * dashboard-init.js. `walletGoneAtUnlock` is what an unlock does when
  * the server answers that it holds no wallet
- * (src/client/web/js/dashboard-wallet-import.js).
+ * (src/client/web/js/dashboard-wallet-import.js); `startRefusalShown`
+ * says whether the tab has shown the server's refusal to start
+ * (src/client/web/js/dashboard-start-refusal.js).
  */
 export function injectWalletDeps(deps) {
   _updatePosStripUI = deps.updatePosStripUI;
@@ -72,6 +78,7 @@ export function injectWalletDeps(deps) {
   if (deps.flushPendingUnmanagedFetch)
     _flushPendingUnmanagedFetch = deps.flushPendingUnmanagedFetch;
   if (deps.walletGoneAtUnlock) _walletGoneAtUnlock = deps.walletGoneAtUnlock;
+  if (deps.startRefusalShown) _startRefusalShown = deps.startRefusalShown;
 }
 
 // ── Wallet state ──────────────────────────────────────────
@@ -311,14 +318,6 @@ export async function generateWallet() {
   }
 }
 
-/** Save the optional Moralis API key from the setup dialog. */
-async function _saveSetupMoralisKey(password) {
-  const inputs = document.querySelectorAll(".setupMoralisKeyInput");
-  const inp = Array.from(inputs).find((el) => el.value.trim());
-  if (!inp) return;
-  await saveMoralisApiKey(inp.value.trim(), password, inp);
-}
-
 /*-
  *  The fields of the setup dialog that hold a wallet's secrets: the
  *  seed phrase or key typed in, the password, and the key and seed
@@ -395,12 +394,9 @@ export async function confirmWallet() {
 
   _walletUnlocked = true;
   delete wallet._pending;
-  // The import hands the server the key; a tab left in View-Only offered it.
-  const unlockBtn = g("unlockWalletBtn");
-  if (unlockBtn) {
-    unlockBtn.disabled = true;
-    unlockBtn.title = "Wallet is already unlocked";
-  }
+  /*- The import hands the server the key. Unlock Wallet, which a tab
+   *  left in View-Only enables, is disabled. */
+  paintUnlockButton("unlocked");
 
   const revealBtn = g("wsRevealBtn");
   if (revealBtn) revealBtn.style.display = "inline-block";
@@ -408,7 +404,7 @@ export async function confirmWallet() {
   if (clearBtn) clearBtn.style.display = "inline-block";
 
   // Save optional Moralis API key if provided during setup
-  await _saveSetupMoralisKey(password);
+  await saveSetupMoralisKey(password);
 
   // Flush Telegram config stashed during the setup dialog
   // (deferred because the wallet password wasn't set yet).
@@ -585,6 +581,7 @@ export async function checkServerWalletStatus() {
     if (data.loaded && data.address) {
       _restoreServerWallet(data);
     } else {
+      paintUnlockButton("none");
       clearAllPositionState();
       applyWalletUI();
       openWalletModal();
@@ -619,6 +616,33 @@ export function isWalletUnlocked() {
 }
 
 /**
+ * Whether `address` is the wallet this page holds, in any letter case.
+ * @param {string|null|undefined} address
+ * @returns {boolean}
+ */
+function _isPageWallet(address) {
+  if (typeof wallet.address !== "string" || typeof address !== "string")
+    return false;
+  return address.toLowerCase() === wallet.address.toLowerCase();
+}
+
+/**
+ * Close the Unlock dialog, emptying its password box and hiding what is
+ * typed there again: once the server holds the key, another wallet took
+ * over, or the server refused to start (dashboard-start-refusal.js), the
+ * tab keeps no copy of a password typed but never sent.
+ */
+export function closeUnlockDialog() {
+  const m = g("walletUnlockModal");
+  if (m) m.classList.add("hidden");
+  const pw = g("unlockPassword");
+  if (pw) {
+    pw.value = "";
+    pw.type = "password";
+  }
+}
+
+/**
  * Show the unlock dialog, with no error left from an earlier try: an
  * error shown when the dialog was dismissed would otherwise greet the
  * next unlock.
@@ -642,25 +666,44 @@ export async function checkWalletLocked() {
     unlockLog.logStatus("checkWalletLocked", s);
     if (s.locked && _walletUnlocked) {
       unlockLog.logInfo("locked answer after the page showed it unlocked");
+    } else if (
+      s.locked &&
+      _startRefusalShown !== null &&
+      _startRefusalShown()
+    ) {
+      /*- The server cannot start and is stopping, so no Unlock dialog
+       *  opens. The Unlock Wallet button is painted as for any locked
+       *  answer: the server refuses a click until it is started again,
+       *  and then the click unlocks. */
+      unlockLog.logInfo("the server cannot start: no Unlock dialog");
+      paintUnlockButton(_isPageWallet(s.address) ? "locked" : "none");
+    } else if (s.locked && s.address && !_isPageWallet(s.address)) {
+      /*- The server's wallet is locked, and the page holds another wallet,
+       *  or none, as when its address names another
+       *  (`_restoreServerWallet`): it offers Wallet Setup alone, no
+       *  Unlock dialog for a wallet it does not show. */
+      unlockLog.logInfo("the server's wallet is not this page's: no unlock");
+      paintUnlockButton("none");
     } else if (s.locked) {
       const m = g("walletUnlockModal");
       const pw = g("unlockPassword");
       unlockLog.logLockedBranch(m, pw);
       showUnlockDialog();
       if (pw) pw.focus();
-      const ub = g("unlockWalletBtn");
-      if (ub) {
-        ub.disabled = false;
-        ub.title = "Unlock wallet to manage positions";
-      }
+      paintUnlockButton("locked");
       unlockLog.logInfo("modal shown; awaiting user submit of unlockForm");
+    } else if (s.address && _walletUnlocked) {
+      /*- A status answer already showed it unlocked
+       *  (`showUnlockedIfServerIs`), the Moralis key's check and the held
+       *  details request included: neither is made twice. */
+      unlockLog.logInfo("unlocked answer after the page showed it unlocked");
     } else if (s.address) {
       // Wallet exists and is already unlocked (e.g. WALLET_PASSWORD env var).
       unlockLog.logInfo(
         "server reports already-unlocked wallet — skipping modal",
       );
       _walletUnlocked = true;
-      _validateMoralisAfterUnlock();
+      validateMoralisAfterUnlock();
       /*- Drain the pending unmanaged-details fetch recorded by the
        *  activation path while the wallet was still locked.  This is
        *  position-correct (the exact pos that was being viewed), unlike
@@ -669,6 +712,7 @@ export async function checkWalletLocked() {
       if (_flushPendingUnmanagedFetch) _flushPendingUnmanagedFetch();
     } else {
       unlockLog.logInfo("no wallet loaded on server — nothing to do");
+      paintUnlockButton("none");
     }
   } catch (err) {
     unlockLog.logWarn("checkWalletLocked failed", err);
@@ -687,20 +731,15 @@ export async function checkWalletLocked() {
 function _showWalletUnlocked(detail) {
   _viewOnly = false;
   _walletUnlocked = true;
-  const m = g("walletUnlockModal");
-  if (m) m.classList.add("hidden");
-  const b = g("unlockWalletBtn");
-  if (b) {
-    b.disabled = true;
-    b.title = "Wallet is already unlocked";
-  }
+  closeUnlockDialog();
+  paintUnlockButton("unlocked");
   /*- Manage button is repainted by the single owner
    *  (paintManageUI in dashboard-manage-ui.js) — its compute reads
    *  isWalletUnlocked(), set to true above. */
   paintManageUI();
   act(ACT_ICONS.play, "wallet", "Wallet Unlocked", detail);
   // Validate Moralis key after unlock — notify if corrupted
-  _validateMoralisAfterUnlock();
+  validateMoralisAfterUnlock();
   /*- Now that API keys are decrypted, drain the pending unmanaged
    *  fetch (deferred from initial activation — prices need the
    *  Moralis key).  See flushPendingUnmanagedFetch JSDoc. */
@@ -723,8 +762,7 @@ function _showWalletUnlocked(detail) {
  */
 export function showUnlockedIfServerIs(serverUnlocked, serverWallet) {
   if (serverUnlocked !== true || _walletUnlocked) return;
-  if (wallet.address === null || typeof serverWallet !== "string") return;
-  if (serverWallet.toLowerCase() !== wallet.address.toLowerCase()) return;
+  if (!_isPageWallet(serverWallet)) return;
   _showWalletUnlocked(
     "Position management enabled: the server holds the wallet's key",
   );
@@ -751,9 +789,13 @@ export async function submitUnlock(e) {
     const d = await res.json();
     unlockLog.logSubmitResponse(d);
     if (d.ok) {
-      // The server holds the password now; the tab keeps no copy.
-      pw.value = "";
       _showWalletUnlocked("Position management enabled");
+    } else if (d.walletReplaced === true) {
+      /*- Another tab's import replaced the wallet during the decrypt:
+       *  nothing is wrong, and this tab follows the new wallet once the
+       *  import has finished (dashboard-wallet-change.js). No error. */
+      unlockLog.logInfo("unlock overtaken by another wallet's import");
+      closeUnlockDialog();
     } else if (res.status === 404 && _walletGoneAtUnlock !== null) {
       // The server holds no wallet, as after a Clear in another tab.
       pw.value = "";
@@ -770,33 +812,12 @@ export async function submitUnlock(e) {
   }
 }
 
-/** Validate Moralis key after wallet unlock; notify if invalid. */
-async function _validateMoralisAfterUnlock() {
-  try {
-    const res = await fetch("/api/api-keys/status");
-    const data = await res.json();
-    if (data.moralis === "invalid")
-      act(
-        "\u26A0\uFE0F",
-        "warning",
-        "Moralis Key Invalid",
-        "Your Moralis API key failed validation. Re-enter it in Settings.",
-      );
-  } catch {
-    /* network error — skip */
-  }
-}
-
 /** Dismiss the unlock modal and enter view-only mode. */
 export function dismissToViewOnly() {
   _viewOnly = true;
   const m = g("walletUnlockModal");
   if (m) m.classList.add("hidden");
-  const b = g("unlockWalletBtn");
-  if (b) {
-    b.disabled = false;
-    b.title = "Unlock wallet to manage positions";
-  }
+  paintUnlockButton("locked");
   /*- Manage button repainted via the single owner — paintManageUI's
    *  compute sees isWalletUnlocked()=false (view-only mode keeps the
    *  flag false) and renders the locked-state tooltip. */

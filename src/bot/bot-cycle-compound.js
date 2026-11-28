@@ -538,12 +538,13 @@ async function _executeCompoundInner(deps, poolState, ethersLib, trigger) {
   try {
     /*-
      *  No compound starts on a stopped loop: a server shutting down
-     *  would cut it off between the collect and the deposit. Asked once
-     *  the lock is held, since the wait for it can span the stop.
+     *  would cut it off between the collect and the deposit. Nor while a
+     *  wallet import holds every move. Asked once the lock is held, since
+     *  the wait for it can span the stop.
      */
     if (deps._isStopped?.() === true) {
       log.info(
-        "[bot] %s: compound not started — the bot loop for this position has stopped",
+        "[bot] %s: compound not started — the bot loop for this position has stopped, or a wallet import holds every move",
         logCtx({
           chain: config.CHAIN_NAME,
           wallet: deps.address,

@@ -37,6 +37,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { tellFileProblem } = require("./file-problem");
 
 /*- Synchronous file descriptor (fs.openSync + fs.writeSync) instead of
  *  a streaming Writable.  Two reasons:
@@ -126,11 +127,15 @@ function _writeToFile(chunk) {
   else return;
   try {
     fs.writeSync(_fd, _stripAnsi(s));
-  } catch {
-    /*- File handle was closed between the null-check and the write
-     *  (rare race in process-exit teardown).  Swallow so the original
-     *  process.stdout.write still runs and the terminal still sees
-     *  the output. */
+  } catch (err) {
+    /*- A handle closed between the null-check and the write (a rare
+     *  race in process-exit teardown) is no failure. Any other is told,
+     *  as every caught file failure is (src/lib/file-problem.js): its
+     *  log line meets this write again, and is not told twice. Either
+     *  way the original process.stdout.write still runs, so the
+     *  terminal still sees the output. */
+    if (err.code !== "EBADF")
+      tellFileProblem({ doing: "write to", file: _activePath, err });
   }
 }
 

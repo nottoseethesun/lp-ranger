@@ -32,10 +32,13 @@
 
 const fs = require("fs");
 const path = require("path");
+const { tellFileProblem } = require("../lib/file-problem");
 
 /**
  * The object a JSON file holds: an empty one when the file is missing,
- * is not JSON, or holds something other than an object.
+ * is not JSON, or holds something other than an object. A file there
+ * that cannot be read as one is told as every caught file failure is
+ * (src/lib/file-problem.js).
  * @param {string} filePath
  * @returns {Record<string, *>}
  */
@@ -43,12 +46,19 @@ function readJsonObject(filePath) {
   let parsed;
   try {
     parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
+  } catch (err) {
+    tellFileProblem({ doing: "read", file: filePath, err });
     return {};
   }
   const isObject =
     parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
-  return isObject ? parsed : {};
+  if (isObject) return parsed;
+  tellFileProblem({
+    doing: "read",
+    file: filePath,
+    err: { message: "it holds no JSON object" },
+  });
+  return {};
 }
 
 /**

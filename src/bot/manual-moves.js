@@ -5,7 +5,9 @@
  * Rebalance Now and Compound Now: the operator's request for a move on a
  * running position, made by that position's next poll, which the request
  * wakes at once rather than waiting for the poll's timer. Each returns a
- * result the server answers with (src/server/bot-result.js).
+ * result the server answers with (src/server/bot-result.js). Each is
+ * refused while a scan runs on the position, and while a wallet import
+ * holds every move.
  *
  * The bot's own: the server reaches it only through the bot's interface
  * (src/bot/bot-interface.js).
@@ -18,6 +20,7 @@ const { emojiId } = require("./logger");
 const { positionTag } = require("./position-answer-tag");
 const { isAscanRunningOnThisPosition } = require("./scan-state");
 const { scanRunningRefusal } = require("./scan-refusal");
+const { movesHeld } = require("./app-phase");
 
 /**
  * The refusal of a Rebalance Now or Compound Now while a scan is running
@@ -34,6 +37,28 @@ function _scanRunningRefusal(move, action, positionKey) {
     reason: "refused",
     scanInProgress: true,
     error: scanRunningRefusal(move, `${action} waits until the read finishes`),
+    ...positionTag(positionKey),
+  };
+}
+
+/**
+ * The refusal of a Rebalance Now or Compound Now while a wallet import
+ * holds every move (src/bot/app-phase.js `movesHeld`), from its first
+ * step until it has stopped the positions running now. Taken then, the
+ * request would mark a position the import is about to stop, and a
+ * position stopped while marked as rebalancing would refuse every later
+ * Clear and import until a restart.
+ * @param {string} action  The button: "Rebalance Now" or "Compound Now".
+ * @param {string} positionKey  The position the request named.
+ * @returns {object}
+ */
+function _importHoldsRefusal(action, positionKey) {
+  return {
+    ok: false,
+    reason: "refused",
+    error:
+      "LP Ranger is importing a wallet, so no rebalance or compound starts " +
+      `now. Try ${action} again once the import has finished.`,
     ...positionTag(positionKey),
   };
 }
@@ -70,6 +95,7 @@ function createManualMoves(deps) {
      *  start (src/bot/scan-state.js). */
     if (isAscanRunningOnThisPosition(state))
       return _scanRunningRefusal("rebalance", "Rebalance Now", positionKey);
+    if (movesHeld()) return _importHoldsRefusal("Rebalance Now", positionKey);
     const tokenId = positionKey.split("-").pop();
     /*- The client no longer sends `customRangeWidthPct` in the body.
      *  Range-width override is persistent per-position config
@@ -115,6 +141,7 @@ function createManualMoves(deps) {
      *  the next rebuild (src/bot/scan-state.js). */
     if (isAscanRunningOnThisPosition(state))
       return _scanRunningRefusal("compound", "Compound Now", positionKey);
+    if (movesHeld()) return _importHoldsRefusal("Compound Now", positionKey);
     const tokenId = positionKey.split("-").pop();
     log.info("[bot] Manual compound for %s %s", positionKey, emojiId(tokenId));
     // Asked for: no scan starts until it is made (src/bot/scan-state.js).

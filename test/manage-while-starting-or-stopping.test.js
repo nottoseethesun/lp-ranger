@@ -193,9 +193,51 @@ describe("a Manage request and a wallet import", () => {
     });
     const res = await manage(t.routes);
     assert.equal(res.status, 409);
-    assert.match(res.body.error, /wallet's key changed while this Manage/);
+    assert.match(
+      res.body.error,
+      /wallet's key changed or was removed while this Manage/,
+    );
     assert.equal(t.calls.signers, 0);
     assert.deepEqual(t.calls.started, []);
+  });
+
+  it("is refused when a Clear lands during its pool check, starting nothing", async () => {
+    /*-
+     *  The Clear forgets the key at once, so the check after the pool's
+     *  chain read finds it gone, and no loop starts signing with the
+     *  cleared key.
+     */
+    const keys = { current: "0xpk123" };
+    const t = routesThroughPoolCheck({
+      keys,
+      onRead: () => {
+        keys.current = null;
+      },
+    });
+    const res = await manage(t.routes);
+    assert.equal(res.status, 409);
+    assert.match(
+      res.body.error,
+      /wallet's key changed or was removed while this Manage/,
+    );
+    assert.equal(t.calls.signers, 0, "no signer asked for");
+    assert.deepEqual(t.calls.started, [], "no loop started");
+    assert.equal(getAllPositionBotStates().has(KEY), false);
+  });
+
+  it("is refused when a Clear lands while it waits for the signer, leaving nothing behind", async () => {
+    const keys = { current: "0xpk123" };
+    const t = routesThroughPoolCheck({
+      keys,
+      onSigner: () => {
+        keys.current = null;
+      },
+    });
+    const res = await manage(t.routes);
+    assert.equal(res.status, 409);
+    assert.match(res.body.error, /was removed while this Manage/);
+    assert.deepEqual(t.calls.started, [], "no loop started");
+    assert.deepEqual(t.diskConfig.positions, {}, "no slot left");
   });
 
   it("is refused when an import begins while it waits for the signer, leaving nothing behind", async () => {

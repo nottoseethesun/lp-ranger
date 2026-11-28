@@ -9,6 +9,10 @@ const { describe, it, beforeEach } = require("node:test");
 const assert = require("assert");
 const path = require("path");
 const {
+  sendFileProblemsTo,
+  _forgetToldFileProblemsForTests,
+} = require("../src/lib/file-problem");
+const {
   lpPositionCachePath,
   loadLpPositionCache,
   saveLpPositionCache,
@@ -162,32 +166,36 @@ describe("lp-position-cache — clear", () => {
     );
   });
 
-  it("warns when unlinkSync fails for a non-ENOENT reason (permissions, etc.)", () => {
+  it("tells a delete that fails for a reason other than the file being gone (permissions, etc.)", () => {
     /*- Operator-visibility regression guard: a permission/disk-full
      *  failure must not masquerade as a successful clear.  ENOENT
      *  stays silent (normal first-rebalance / already-cleared path);
-     *  any other error surfaces a `[lp-cache] Failed to clear cache`
-     *  warning so the operator can see why a stale cache might
-     *  outlive a rebalance. */
+     *  any other error is told as every caught file failure is
+     *  (src/lib/file-problem.js), so the operator can see why a stale
+     *  cache might outlive a rebalance.
+     *
+     *  TEST-ONLY: the alert a program sets is a stand-in, put back in
+     *  the `finally`. */
     const mockFs = createMockFs();
     mockFs.unlinkSync = () => {
       const e = new Error("EACCES: permission denied");
       e.code = "EACCES";
       throw e;
     };
-    const origWarn = console.warn;
-    const warns = [];
-    console.warn = (...args) => warns.push(args.join(" "));
+    const alerts = [];
+    _forgetToldFileProblemsForTests();
+    sendFileProblemsTo((words) => alerts.push(words));
     try {
       assert.doesNotThrow(() =>
         clearLpPositionCache(WALLET, { blockchain: CHAIN, fsModule: mockFs }),
       );
-      assert.ok(
-        warns.some((s) => s.includes("Failed to clear cache")),
-        "expected a [lp-cache] Failed to clear cache warning",
+      assert.equal(alerts.length, 1);
+      assert.match(
+        alerts[0],
+        /^LP Ranger could not delete .*lp-position-cache/,
       );
     } finally {
-      console.warn = origWarn;
+      sendFileProblemsTo(null);
     }
   });
 });

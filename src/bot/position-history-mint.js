@@ -35,6 +35,7 @@ const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const config = require("../lib/config");
 const sendTx = require("./send-transaction");
 const { scanChunked } = require("./get-logs-chunked");
@@ -79,8 +80,9 @@ function _loadMintCache() {
   try {
     const raw = JSON.parse(fs.readFileSync(_MINT_CACHE_PATH, "utf8"));
     for (const [k, v] of Object.entries(raw)) _mintCache.set(k, v);
-  } catch {
-    /* no file or corrupt — start empty */
+  } catch (err) {
+    // Start empty; a file there that cannot be read is told.
+    tellFileProblem({ doing: "read", file: _MINT_CACHE_PATH, err });
   }
 }
 
@@ -93,8 +95,8 @@ function _saveMintCache() {
       JSON.stringify(Object.fromEntries(_mintCache), null, 2),
       "utf8",
     );
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    tellFileProblem({ doing: "write to", file: _MINT_CACHE_PATH, err });
   }
 }
 

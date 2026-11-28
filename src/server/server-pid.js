@@ -24,6 +24,7 @@
 const fs = require("fs");
 const path = require("path");
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 
 /*- Default path, relative to process.cwd() when not absolute — the server and
  *  scripts/stop.js both run from the project root, so they agree on it. */
@@ -63,8 +64,10 @@ function writePidFile(opts) {
       filePath,
     );
     return true;
-  } catch {
-    /*- A PID-file write failure must not abort startup. */
+  } catch (err) {
+    /*- A PID-file write failure must not abort startup: it is told, as
+     *  every caught file failure is (src/lib/file-problem.js). */
+    tellFileProblem({ doing: "write to", file: filePath, err });
     return false;
   }
 }
@@ -78,8 +81,9 @@ function writePidFile(opts) {
 function _removeIfOwn(filePath) {
   try {
     if (readPid({ filePath }) === process.pid) fs.rmSync(filePath);
-  } catch {
-    // Gone already; nothing to remove.
+  } catch (err) {
+    // Gone already is nothing to remove; any other failure is told.
+    tellFileProblem({ doing: "delete", file: filePath, err });
   }
 }
 
@@ -115,7 +119,9 @@ function readPid(opts) {
     const raw = fs.readFileSync(filePath, "utf8").trim();
     const pid = Number(raw);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
-  } catch {
+  } catch (err) {
+    // No file is no server; one there that cannot be read is told.
+    tellFileProblem({ doing: "read", file: filePath, err });
     return null;
   }
 }

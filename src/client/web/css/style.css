@@ -716,9 +716,17 @@ body::before{
   white-space:nowrap;
 }
 
-.ws-reveal-btn:hover{
+.ws-reveal-btn:hover:not(:disabled){
   background:rgb(0 229 255 / 15%);
   border-color:var(--accent);
+}
+
+/* Disabled, as Clear Wallet is while a Clear would be refused: dimmed,
+   and the help cursor invites a hover over the tooltip saying why. */
+.ws-reveal-btn:disabled{
+  opacity:.5;
+  cursor:help;
+  pointer-events:all;
 }
 
 .realized-gains-row{
@@ -1016,7 +1024,10 @@ body:has(.\39 mm-pos-mgr-modal-overlay){
   background:linear-gradient(135deg,var(--accent),#06f);
   color:#000;
 }
-.modal-btn.primary:hover{opacity:0.9;}
+
+/* Hover only while enabled: an Import Wallet button disabled by its
+   fieldset takes the pointer for its tooltip, and must stay dimmed. */
+.modal-btn.primary:hover:not(:disabled){opacity:0.9;}
 
 .modal-btn.secondary{
   background:var(--bg3);
@@ -1024,7 +1035,7 @@ body:has(.\39 mm-pos-mgr-modal-overlay){
   color:var(--muted);
 }
 
-.modal-btn.secondary:hover{
+.modal-btn.secondary:hover:not(:disabled){
   border-color:var(--accent);
   color:var(--accent);
 }

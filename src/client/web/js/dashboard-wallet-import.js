@@ -1,15 +1,19 @@
 /**
  * @file dashboard-wallet-import.js
- * @description Wallet import flows (seed phrase, private key),
- * on-chain activity detection, key reveal modal, wallet clear,
- * and shared validation helpers.
+ * @description Wallet import flows (seed phrase, private key; whether
+ * the server would take an import now is painted by
+ * dashboard-import-buttons.js), on-chain activity detection, key reveal modal,
+ * wallet clear (Clear Wallet's state on each status answer,
+ * `paintClearWalletButton`), what an unlock does when the server holds
+ * no wallet (`walletGoneAtUnlock`), and shared validation helpers.
  *
- * Split from dashboard-wallet.js — dashboard-events.js imports this
- * module directly; dashboard-wallet.js does not import or re-export it.
+ * Split from dashboard-wallet.js — dashboard-events.js, dashboard-init.js
+ * and dashboard-data.js import this module directly; dashboard-wallet.js
+ * does not import or re-export it.
  *
- * Depends on: dashboard-helpers.js (g, act, ACT_ICONS),
- * ethers-adapter.js (ethers),
- * dashboard-wallet.js (wallet state, confirmWallet, etc.).
+ * Depends on the modules it imports below, a list kept nowhere else:
+ * dashboard-wallet.js among them, for the wallet's state and
+ * `confirmWallet`.
  */
 
 import {
@@ -20,6 +24,13 @@ import {
   cloneTpl,
 } from "./dashboard-helpers.js";
 import { ethers } from "./ethers-adapter.js";
+import { log } from "./dashboard-log.js";
+import { paintUnlockButton } from "./dashboard-unlock-button.js";
+import {
+  WALLET_NOT_CLEARED_NOTICE_ID,
+  WALLET_CLEARED_LEFT_NOTICE_ID,
+  WALLET_GONE_NOTICE_ID,
+} from "./dashboard-app-notices.js";
 import {
   wallet,
   isKnownWallet,
@@ -351,7 +362,7 @@ export async function openRevealModal() {
 }
 
 function _showWalletFileGoneDialog() {
-  const id = "9mm-wallet-gone-modal";
+  const id = WALLET_GONE_NOTICE_ID;
   if (document.getElementById(id)) return;
   const o = document.createElement("div");
   o.className = "9mm-pos-mgr-modal-overlay";
@@ -402,6 +413,15 @@ export async function revealWallet() {
       body: JSON.stringify({ password }),
     });
     const data = await res.json();
+    if (data.walletReplaced === true) {
+      /*- Another tab's import replaced the wallet during the decrypt:
+       *  nothing is wrong, and this tab follows the new wallet once the
+       *  import has finished (dashboard-wallet-change.js). No error. */
+      log.info("[lp-ranger] [wallet] Reveal Key overtaken by an import");
+      g("revealPassword").value = "";
+      closeRevealModal();
+      return;
+    }
     if (!data.ok) throw new Error(data.error);
     // The server has checked the password; the tab keeps no copy.
     g("revealPassword").value = "";
@@ -460,7 +480,8 @@ export function closeClearWalletModal() {
 }
 
 /**
- * Forget the wallet on this page, the server's being gone: its address
+ * Forget the wallet on this page once the server holds none, after a
+ * Clear it confirmed or an unlock it answered with no wallet: its address
  * and source, the Reveal and Clear buttons, Unlock Wallet, every
  * position's state, and the wallet in the address bar.
  */
@@ -471,12 +492,9 @@ function _forgetWalletOnThisPage() {
   if (revealBtn) revealBtn.style.display = "none";
   const clearBtn = g("wsClearBtn");
   if (clearBtn) clearBtn.style.display = "none";
-  // A tab left in View-Only offered it; there is nothing to unlock now.
-  const unlockBtn = g("unlockWalletBtn");
-  if (unlockBtn) {
-    unlockBtn.disabled = true;
-    unlockBtn.title = "No wallet to unlock";
-  }
+  /*- Unlock Wallet, which a tab left in View-Only enables: with no
+   *  wallet, there is nothing to unlock. */
+  paintUnlockButton("none");
 
   clearAllPositionState();
   applyWalletUI();
@@ -513,8 +531,11 @@ const _CLEAR_TITLE = "Clear wallet from server and browser";
  * Hold Clear Wallet to the server's rule on every status answer
  * (dashboard-data.js): disabled, the reason its tooltip, while the answer
  * says a Clear would be refused (`clearWalletRefusal`,
- * src/server/wallet-clear.js), as while an unlock, the launch's key step
- * or a wallet import is using the wallet; enabled otherwise.
+ * src/server/wallet-clear.js): while the server, having refused to
+ * start, waits to exit; while a wallet import or the start-up of the
+ * saved positions is under way; while a rebalance or compound is under
+ * way, or a position is starting; or while an unlock, a Reveal Key or
+ * the launch's key step uses the wallet. Enabled otherwise.
  * @param {string|null|undefined} refusal  The answer's `clearWalletRefusal`.
  */
 export function paintClearWalletButton(refusal) {
@@ -526,40 +547,159 @@ export function paintClearWalletButton(refusal) {
 }
 
 /**
- * A Clear the server refused (409), as when this tab's last status answer
- * came before an unlock began: the wallet is kept, and the reason shown.
- * @param {Response} res  The refusal.
+ * Why a Clear the server did not confirm was not done, in the operator's
+ * words: no answer at all, the server's refusal (409), or the error it
+ * answered with.
+ * @param {Response|null} res  The answer, or null when the server could
+ *   not be reached.
+ * @returns {Promise<string>}
  */
-async function _clearRefused(res) {
-  let reason = "The server refused to clear the wallet.";
+async function _whyNotCleared(res) {
+  if (res === null)
+    return (
+      "No answer came from the server, so this page cannot tell whether " +
+      "the wallet was cleared. Once the server is running, reload the " +
+      "page to see the wallet as the server holds it."
+    );
+  let error = null;
   try {
     const d = await res.json();
-    if (typeof d.error === "string") reason = d.error;
+    if (typeof d.error === "string") error = d.error;
   } catch {
-    /* no reason given: the general one stands */
+    /* no body: the status alone says what happened */
   }
-  act("⚠️", "warning", "Wallet Not Cleared", reason);
-  alert("The wallet was not cleared. " + reason);
+  if (res.status === 409 && error !== null)
+    return `${error} Nothing was changed.`;
+  const said = error === null ? "" : `: ${error}`;
+  return (
+    `The server answered with an error (${res.status}${said}). ` +
+    "Reload the page to see the wallet as the server holds it."
+  );
 }
 
-/** Execute wallet clear after user confirms. */
+/**
+ * Show one of the Clear's notices: the template `tplId`, filled by
+ * `fill`, in an overlay with the id `id`, replacing one already shown,
+ * and gone when its OK is clicked.
+ * @param {string} id  The overlay's id.
+ * @param {string} tplId  The template's id.
+ * @param {(frag: DocumentFragment) => void} fill
+ */
+function _showClearNotice(id, tplId, fill) {
+  document.getElementById(id)?.remove();
+  const frag = cloneTpl(tplId);
+  if (!frag) return;
+  fill(frag);
+  const o = document.createElement("div");
+  o.className = "9mm-pos-mgr-modal-overlay";
+  o.id = id;
+  o.appendChild(frag);
+  o.querySelector("[data-dismiss-modal]").addEventListener("click", () =>
+    o.remove(),
+  );
+  document.body.appendChild(o);
+}
+
+/**
+ * Say that a Clear was not done, or got no answer, and why: in the
+ * browser's log, in the Activity Log, and in the Wallet not cleared
+ * dialog, headed Clear Wallet: no answer when no answer came, since a
+ * server stopped partway may have cleared the wallet. The page keeps its
+ * wallet, since the server did not say it cleared it.
+ * @param {string} reason
+ * @param {boolean} answered  Whether the server answered at all.
+ */
+function _showNotCleared(reason, answered) {
+  if (answered) {
+    log.warn("[lp-ranger] [wallet] Clear Wallet not done: %s", reason);
+    act("⚠️", "warning", "Wallet Not Cleared", reason);
+  } else {
+    log.warn("[lp-ranger] [wallet] Clear Wallet got no answer: %s", reason);
+    act("⚠️", "warning", "Clear Wallet: No Answer", reason);
+  }
+  _showClearNotice(
+    WALLET_NOT_CLEARED_NOTICE_ID,
+    "tplWalletNotClearedModal",
+    (frag) => {
+      if (!answered)
+        frag.querySelector('[data-tpl="heading"]').textContent =
+          "Clear Wallet: no answer";
+      frag.querySelector('[data-tpl="reason"]').textContent = reason;
+    },
+  );
+}
+
+/**
+ * What a Clear the server did could not remove, from its answer
+ * (`warnings`): a `.env` it could not rewrite, or a setting from the
+ * environment the server was started from.
+ * @param {Response} res  The 200 answer.
+ * @returns {Promise<string[]>}  Empty when nothing was left.
+ */
+async function _clearWarnings(res) {
+  try {
+    const d = await res.json();
+    return Array.isArray(d.warnings)
+      ? d.warnings.filter((w) => typeof w === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Say what a Clear could not remove: in the browser's log, in the
+ * Activity Log, and in the Wallet cleared: finish by hand dialog, one
+ * paragraph for each.
+ * @param {string[]} warnings
+ */
+function _showClearedLeft(warnings) {
+  for (const w of warnings) {
+    log.warn("[lp-ranger] [wallet] Clear Wallet left: %s", w);
+    act("⚠️", "warning", "Wallet Cleared: Finish by Hand", w);
+  }
+  _showClearNotice(
+    WALLET_CLEARED_LEFT_NOTICE_ID,
+    "tplWalletClearedLeftModal",
+    (frag) => {
+      const where = frag.querySelector('[data-tpl="warnings"]');
+      for (const w of warnings) {
+        const p = document.createElement("p");
+        p.textContent = w;
+        where.appendChild(p);
+      }
+    },
+  );
+}
+
+/**
+ * Clear Wallet, once the operator confirms. The page forgets the wallet
+ * only when the server answers that it cleared it (200): it then holds
+ * no wallet and no key, and has stopped every position. What the server
+ * could not remove, it names in its answer, and the page shows it
+ * (`_showClearedLeft`). Any other outcome keeps the wallet and says why
+ * (`_showNotCleared`).
+ */
 export async function confirmClearWallet() {
   closeClearWalletModal();
   let res = null;
   try {
     res = await fetchWithCsrf("/api/wallet", { method: "DELETE" });
   } catch {
-    /* server unavailable */
+    /* the server could not be reached: no answer */
   }
-  if (res !== null && res.status === 409) {
-    await _clearRefused(res);
+  if (res === null || res.status !== 200) {
+    _showNotCleared(await _whyNotCleared(res), res !== null);
     return;
   }
+  const warnings = await _clearWarnings(res);
   _forgetWalletOnThisPage();
+  log.info("[lp-ranger] [wallet] Clear Wallet done");
   act(
     ACT_ICONS.clear,
     "wallet",
     "Wallet Cleared",
-    "All wallet data removed from server and browser",
+    "Wallet and key removed from server and browser; every position stopped",
   );
+  if (warnings.length > 0) _showClearedLeft(warnings);
 }

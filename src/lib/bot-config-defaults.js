@@ -34,6 +34,7 @@
 "use strict";
 
 const { log } = require("./log");
+const { tellFileProblem } = require("./file-problem");
 const {
   loadMergedDefaults,
   loadShippedDefaults,
@@ -444,6 +445,12 @@ function _read({ strict }) {
      *  is what keeps `GET /api/bot-config-defaults` off a 500.
      */
     if (err.badTimerValue || err.badSettingValue) throw err;
+    tellFileProblem({
+      doing: "read",
+      file: err.path ?? _FILENAME,
+      err,
+      missingIsNormal: false,
+    });
     log.warn(
       "[bot-config-defaults] Falling back to the shipped file's values: %s",
       err.message,

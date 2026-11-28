@@ -9,8 +9,8 @@
  *   positions saved as managed. Entering the password again, from another
  *   dashboard tab still showing the Unlock Wallet dialog, say, confirms
  *   it and decrypts the same keys again, and starts nothing: a second
- *   start-up over running positions once left each half-connected to the
- *   dashboard until a restart. A wrong password changes nothing. While a
+ *   start-up over running positions would leave each half-connected to
+ *   the dashboard until a restart. A wrong password changes nothing. While a
  *   wallet import is under way, an unlock is refused and takes no key,
  *   asked again after each decrypt.
  *
@@ -66,7 +66,10 @@ const KEY = "0x" + "11".repeat(32);
  * and how many start-ups had begun, when that decrypt began, and whether
  * it had finished when the start-up began. Each `during…` is handed
  * `clearNow`, which sends a Clear through the server's own route, as
- * another tab does, and gives back its answer; so does the route.
+ * another tab does, and gives back its answer; so does the route. With
+ * `stale`, the wallet's decrypt rejects as one another wallet's import
+ * overtook does (src/lib/wallet-manager.js). With `refusedLaunch`, the
+ * launch was refused and the server waits to exit (`startRefusal`).
  */
 function route({
   key = null,
@@ -74,6 +77,8 @@ function route({
   duringApiKeys = () => {},
   apiKeysFail = false,
   saved = true,
+  stale = false,
+  refusedLaunch = null,
 } = {}) {
   const calls = {
     startUps: 0,
@@ -95,7 +100,11 @@ function route({
       hasWallet: () => wallet.saved,
       revealWallet: async (password) => {
         calls.revealed++;
-        duringDecrypt(clearNow);
+        await duringDecrypt(clearNow);
+        if (stale)
+          throw Object.assign(new Error("The wallet changed"), {
+            staleWallet: true,
+          });
         if (password !== "right") throw new Error("bad password");
         return { privateKey: KEY };
       },
@@ -109,7 +118,7 @@ function route({
         startUps: calls.startUps,
       };
       await new Promise((resolve) => setImmediate(resolve));
-      duringApiKeys(privateKeyRef, clearNow);
+      await duringApiKeys(privateKeyRef, clearNow);
       if (apiKeysFail) throw new Error("api keys unreadable");
       calls.apiKeysDone = true;
     },
@@ -117,6 +126,7 @@ function route({
       calls.startUps++;
       calls.apiKeysDoneAtStart = calls.apiKeysDone;
     },
+    startRefusal: () => refusedLaunch,
     jsonResponse: (res, status, answer) =>
       Object.assign(res, { status, answer }),
     readJsonBody: async () => body,
@@ -239,35 +249,60 @@ describe("entering the wallet password while a wallet import is under way", () =
   afterEach(() => appPhase._resetAppPhaseForTests());
 
   it("is refused before the decrypt, changing nothing", async () => {
+    // Refused before any decrypt: an error the dialog shows, not quiet.
     const r = route();
     appPhase.beginWalletImport();
     const res = await r.unlock("right");
     assert.equal(res.status, 409);
     assert.match(res.answer.error, /importing a wallet/);
+    assert.equal(res.answer.walletReplaced, undefined, "not taken quietly");
     assert.equal(r.calls.revealed, 0, "no decrypt");
     assert.equal(r.privateKeyRef.current, null);
     assert.deepEqual(r.calls.decrypted, []);
     assert.equal(r.calls.startUps, 0);
   });
 
-  it("is refused when the import begins during its decrypt", async () => {
+  it("is refused when the import begins during its decrypt, quietly", async () => {
+    /*-
+     *  The import overtook the unlock, as one whose own decrypt ends
+     *  later does in the usual timing: nothing is wrong, so the dashboard
+     *  shows no error (the user's ruling, 2026-11-27).
+     */
     const r = route({ duringDecrypt: () => appPhase.beginWalletImport() });
     const res = await r.unlock("right");
     assert.equal(res.status, 409);
     assert.match(res.answer.error, /importing a wallet/);
+    assert.equal(res.answer.walletReplaced, true, "taken quietly");
     assert.equal(r.calls.revealed, 1);
     assert.equal(r.privateKeyRef.current, null, "the old key not taken");
     assert.deepEqual(r.calls.decrypted, []);
     assert.equal(r.calls.startUps, 0);
   });
 
-  it("is refused when the import begins during its api keys' decrypt", async () => {
+  it("is refused when the import begins during its api keys' decrypt, quietly", async () => {
     const r = route({ duringApiKeys: () => appPhase.beginWalletImport() });
     const res = await r.unlock("right");
     assert.equal(res.status, 409);
     assert.match(res.answer.error, /importing a wallet/);
+    assert.equal(res.answer.walletReplaced, true, "taken quietly");
     assert.deepEqual(r.calls.decrypted, ["right"]);
     assert.equal(r.privateKeyRef.current, null, "the old key not taken");
+    assert.equal(r.calls.startUps, 0);
+  });
+});
+
+describe("entering the wallet password while the server, having refused to start, waits to exit", () => {
+  /*-
+   *  The server cannot start and exits in a few seconds: an unlock then
+   *  would answer "Position management enabled" just before the exit.
+   */
+  it("is refused, saying the server is stopping, decrypting nothing", async () => {
+    const r = route({ refusedLaunch: "PRIVATE_KEY is for another wallet" });
+    const res = await r.unlock("right");
+    assert.equal(res.status, 409);
+    assert.match(res.answer.error, /cannot start and is stopping/);
+    assert.equal(r.calls.revealed, 0, "no decrypt");
+    assert.equal(r.privateKeyRef.current, null);
     assert.equal(r.calls.startUps, 0);
   });
 });
@@ -281,10 +316,12 @@ describe("a Clear sent while the wallet is being unlocked", () => {
    */
   it("is refused during the wallet's decrypt, and the unlock takes the key", async () => {
     const answers = [];
-    const r = route({ duringDecrypt: (clearNow) => answers.push(clearNow()) });
+    const r = route({
+      duringDecrypt: async (clearNow) => answers.push(await clearNow()),
+    });
     const res = await r.unlock("right");
     assert.equal(answers[0].status, 409);
-    assert.match(answers[0].body.error, /unlocking the wallet/);
+    assert.match(answers[0].body.error, /decrypting the wallet/);
     assert.equal(r.wallet.saved, true, "the wallet kept");
     assert.equal(res.status, 200);
     assert.equal(r.privateKeyRef.current, KEY);
@@ -294,7 +331,7 @@ describe("a Clear sent while the wallet is being unlocked", () => {
   it("is refused during the api keys' decrypt, and the unlock takes the key", async () => {
     const answers = [];
     const r = route({
-      duringApiKeys: (_ref, clearNow) => answers.push(clearNow()),
+      duringApiKeys: async (_ref, clearNow) => answers.push(await clearNow()),
     });
     const res = await r.unlock("right");
     assert.equal(answers[0].status, 409);
@@ -307,14 +344,32 @@ describe("a Clear sent while the wallet is being unlocked", () => {
   it("goes through once the unlock has answered", async () => {
     const r = route();
     await r.unlock("right");
-    assert.equal(r.clearNow().status, 200);
+    assert.equal((await r.clearNow()).status, 200);
     assert.equal(r.wallet.saved, false, "the wallet removed");
   });
 
   it("goes through once a wrong password has been answered", async () => {
     const r = route();
     assert.equal((await r.unlock("wrong")).status, 401);
-    assert.equal(r.clearNow().status, 200);
+    assert.equal((await r.clearNow()).status, 200);
     assert.equal(r.wallet.saved, false, "the wallet removed");
+  });
+});
+
+describe("an unlock whose decrypt another wallet's import overtook", () => {
+  /*-
+   *  A new wallet makes an older one stale (the user's rule, 2026-11-27):
+   *  the decrypt opened a wallet that is no longer the server's. Nothing
+   *  is wrong, so the answer says so in a way the dashboard takes
+   *  quietly, never as a wrong password.
+   */
+  it("is answered 409 with walletReplaced set, taking no key and starting nothing", async () => {
+    const r = route({ stale: true });
+    const res = await r.unlock("right");
+    assert.equal(res.status, 409);
+    assert.equal(res.answer.walletReplaced, true);
+    assert.equal(r.privateKeyRef.current, null, "no key taken");
+    assert.deepEqual(r.calls.decrypted, [], "no api keys decrypted");
+    assert.equal(r.calls.startUps, 0);
   });
 });

@@ -38,6 +38,7 @@
 const fs = require("fs");
 const path = require("path");
 const { log } = require("./log");
+const { tellFileProblem } = require("./file-problem");
 
 const _APP_CONFIG_DIR = path.join(__dirname, "..", "..", "app-config");
 
@@ -161,6 +162,7 @@ function _readUserOverride(filename) {
   try {
     raw = fs.readFileSync(p, "utf8");
   } catch (err) {
+    tellFileProblem({ doing: "read", file: p, err });
     log.warn(
       "[load-merged-defaults] Cannot read user override %s: %s — " +
         "falling back to shipped defaults",
@@ -172,6 +174,7 @@ function _readUserOverride(filename) {
   try {
     return stripDocKeys(JSON.parse(raw));
   } catch (err) {
+    tellFileProblem({ doing: "read", file: p, err });
     log.warn(
       "[load-merged-defaults] Malformed user override JSON at %s: %s — " +
         "falling back to shipped defaults",

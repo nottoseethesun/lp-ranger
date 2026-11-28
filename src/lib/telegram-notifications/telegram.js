@@ -235,6 +235,18 @@ async function notify(eventType, details = {}) {
 }
 
 /**
+ * Send a file failure LP Ranger caught as the alert for other errors:
+ * what the program hands src/lib/file-problem.js as it starts.
+ * @param {string} words  What LP Ranger could not do to which file, and
+ *   what to do.
+ * @param {string} detail  The error.
+ * @returns {Promise<boolean>}
+ */
+function notifyFileProblem(words, detail) {
+  return notify("otherError", { message: words, error: detail });
+}
+
+/**
  * Send a test message to verify the bot token and chat ID work.
  * @returns {Promise<{ok: boolean, error?: string}>}
  */
@@ -268,6 +280,7 @@ module.exports = {
   getEnabledEvents,
   buildHeader,
   notify,
+  notifyFileProblem,
   testConnection,
   EVENT_LABELS,
   _send,

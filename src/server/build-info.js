@@ -17,6 +17,7 @@
 "use strict";
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -33,28 +34,30 @@ function _git(cmd) {
 }
 
 function _pkgVersion() {
+  const file = path.join(__dirname, "..", "..", "package.json");
   try {
-    const p = JSON.parse(
-      fs.readFileSync(path.join(__dirname, "..", "..", "package.json"), "utf8"),
-    );
+    const p = JSON.parse(fs.readFileSync(file, "utf8"));
     return p.version || "unknown";
-  } catch {
+  } catch (err) {
+    // Shipped with LP Ranger: missing, it is told too.
+    tellFileProblem({ doing: "read", file, err, missingIsNormal: false });
     return "unknown";
   }
 }
 
 function _readBaked() {
+  const file = path.join(__dirname, "build-info.json");
   try {
-    const baked = JSON.parse(
-      fs.readFileSync(path.join(__dirname, "build-info.json"), "utf8"),
-    );
+    const baked = JSON.parse(fs.readFileSync(file, "utf8"));
     return {
       version: baked.version || "unknown",
       commit: baked.commit || "unknown",
       commitDate: baked.commitDate || "unknown",
       tag: baked.tag || null,
     };
-  } catch {
+  } catch (err) {
+    // None before `npm run build`; one there that cannot be read is told.
+    tellFileProblem({ doing: "read", file, err });
     return null;
   }
 }

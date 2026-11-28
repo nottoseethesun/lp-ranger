@@ -3,7 +3,7 @@
  * @description
  * A prompt on the terminal for a secret, such as a password or an api
  * key, that shows nothing of what is typed. Shared by server.js
- * (`--headless`), bot.js, scripts/import-wallet.js and the bookkeeping
+ * (`--unlock-at-terminal`), bot.js, scripts/import-wallet.js and the bookkeeping
  * report's Moralis key (util/bookkeeping/moralis-key.js). The prompt goes
  * to stderr, so stdout stays clean for piped output.
  *

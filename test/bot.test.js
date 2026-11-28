@@ -2,7 +2,7 @@
 
 /**
  * @file test/bot.test.js
- * @description Tests for bot.js — pollCycle, appendLog, CLI help.
+ * @description Tests for bot.js — pollCycle, CLI help.
  * Boot-time RPC fallback semantics are covered in
  * test/send-transaction-read-failover.test.js (the read-side failover
  * was unified with send-transaction.js).

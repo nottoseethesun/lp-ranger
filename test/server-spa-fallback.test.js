@@ -33,8 +33,10 @@ if (process.env.NODE_TEST_CONTEXT === undefined)
 process.env.LP_RANGER_USER_CONFIG_DIR = makeTestTempFolder("spa-overrides");
 
 const { start, stop } = require("../src/server");
+const { freePort } = require("./helpers/free-port");
 
-const PORT = 54370;
+// The port the server is started on, one the system says is free.
+let PORT = 0;
 
 /**
  * Make an HTTP request and return { status, headers, body }.
@@ -67,6 +69,7 @@ function req(opts) {
 
 describe("SPA catch-all routing", () => {
   before(async () => {
+    PORT = await freePort();
     await start(PORT);
   });
   after(async () => {

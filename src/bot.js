@@ -83,6 +83,14 @@ const { createPerPositionBotState } = require("./bot/position-states");
 const { migrateAppConfig } = require("./lib/migrate-app-config");
 const { askPassword: _askPassword } = require("./lib/ask-password");
 const { readShutdownTimings } = require("./lib/shutdown-timing");
+const { sendFileProblemsTo } = require("./lib/file-problem");
+const { notifyFileProblem } = require("./lib/telegram-notifications/telegram");
+
+/*-
+ *  Every file failure LP Ranger catches is told in the log and as the
+ *  Telegram alert for other errors (src/lib/file-problem.js).
+ */
+sendFileProblemsTo(notifyFileProblem);
 
 // One-time migration of legacy root-level config files into app-config/.
 // Idempotent: a no-op after the first successful run.

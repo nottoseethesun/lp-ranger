@@ -9,6 +9,10 @@
 const { describe, it, beforeEach } = require("node:test");
 const assert = require("assert");
 const { createCacheStore, eventCachePath } = require("../src/lib/cache-store");
+const {
+  sendFileProblemsTo,
+  _forgetToldFileProblemsForTests,
+} = require("../src/lib/file-problem");
 const path = require("path");
 
 // A store's lifetime is its caller's to give; these tests give a minute.
@@ -21,7 +25,9 @@ function createMockFs() {
   return {
     files,
     readFileSync(path) {
-      if (files[path] === undefined) throw new Error("ENOENT");
+      // A missing file, as the real one reports it: `code` names it.
+      if (files[path] === undefined)
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
       return files[path];
     },
     writeFileSync(path, data) {
@@ -180,7 +186,7 @@ describe("cache-store — error resilience", () => {
     assert.strictEqual(await cache.get("anything"), null);
   });
 
-  it("survives write failure gracefully", async () => {
+  it("survives write failure gracefully, telling it", async () => {
     const mockFs = createMockFs();
     mockFs.writeFileSync = () => {
       throw new Error("disk full");
@@ -190,17 +196,24 @@ describe("cache-store — error resilience", () => {
       defaultTtlMs: TTL_MS,
       fsModule: mockFs,
     });
-    // Should not throw
-    const warnings = [];
-    const origWarn = console.warn;
-    console.warn = (...args) => {
-      warnings.push(args.join(" "));
-    };
+    /*-
+     *  TEST-ONLY: the alert a program sets is a stand-in, put back in the
+     *  `finally`; the failure is told as every caught file failure is
+     *  (src/lib/file-problem.js).
+     */
+    const alerts = [];
+    _forgetToldFileProblemsForTests();
+    sendFileProblemsTo((words, detail) => alerts.push({ words, detail }));
     try {
-      await cache.set("k", "v");
-      assert.ok(warnings.some((w) => w.includes("disk full")));
+      await cache.set("k", "v"); // Should not throw
+      assert.equal(alerts.length, 1);
+      assert.match(
+        alerts[0].words,
+        /^LP Ranger could not write to \/tmp\/test-cache\.json\./,
+      );
+      assert.equal(alerts[0].detail, "disk full");
     } finally {
-      console.warn = origWarn;
+      sendFileProblemsTo(null);
     }
   });
 });

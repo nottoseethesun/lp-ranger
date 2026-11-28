@@ -46,6 +46,7 @@
 
 const { ethers } = require("ethers");
 const { log } = require("./log");
+const { tellFileProblem } = require("./file-problem");
 const { loadMergedDefaults } = require("./load-merged-defaults");
 
 const _FILENAME = "lp-providers.json";
@@ -101,6 +102,12 @@ function readLpProviders() {
     return out;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown error";
+    tellFileProblem({
+      doing: "read",
+      file: err.path ?? _FILENAME,
+      err: { message: msg, code: err.code },
+      missingIsNormal: false,
+    });
     log.warn("[lp-providers] Falling back to empty map: %s", msg);
     return {};
   }

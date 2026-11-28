@@ -24,6 +24,7 @@
 const { log } = require("../src/lib/log");
 const fs = require("fs");
 const path = require("path");
+const { removeEnvFileSettings } = require("../src/lib/env-settings");
 const { readScriptArgs, answeredWithoutWork } = require("./_script-args");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -66,28 +67,11 @@ function deleteWalletFiles() {
 
 /** Remove any WALLET_PASSWORD line from .env, keeping the file's mode. */
 function scrubWalletPassword() {
-  if (!fs.existsSync(ENV_FILE)) {
-    log.info("• .env not present");
-    return;
-  }
-  const original = fs.readFileSync(ENV_FILE, "utf8");
-  const lines = original.split("\n");
-  const kept = lines.filter((line) => !/^WALLET_PASSWORD=/.test(line));
-  if (kept.length === lines.length) {
+  const removed = removeEnvFileSettings(ENV_FILE, ["WALLET_PASSWORD"]);
+  if (removed === null) log.info("• .env not present");
+  else if (removed.length === 0)
     log.info("• WALLET_PASSWORD not present in .env");
-    return;
-  }
-  const tmpFile = ENV_FILE + ".tmp";
-  fs.writeFileSync(tmpFile, kept.join("\n"));
-  // Preserve file mode from the original.
-  try {
-    const stat = fs.statSync(ENV_FILE);
-    fs.chmodSync(tmpFile, stat.mode);
-  } catch {
-    /* best-effort; rename proceeds regardless */
-  }
-  fs.renameSync(tmpFile, ENV_FILE);
-  log.info("✔ Removed WALLET_PASSWORD from .env");
+  else log.info("✔ Removed WALLET_PASSWORD from .env");
 }
 
 /** Read the arguments, then reset the wallet unless one was answered. */

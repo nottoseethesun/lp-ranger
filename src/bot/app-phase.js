@@ -25,7 +25,13 @@
  * launch's key step are refused too (`refusalToTakeKey`), and no start-up
  * begins but the import's own: either could hand the bot the old
  * wallet's key and start the old wallet's positions once the new wallet
- * is in. The dashboard's badge reads Syncing meanwhile.
+ * is in. The dashboard's badge reads Syncing meanwhile. The import is
+ * refused while a rebalance or compound is under way, so it never waits
+ * for one, and from its first step until the old wallet's positions are
+ * halted it holds every rebalance and compound (`movesHeld`, asked with
+ * the loop's own stop right before a move starts, src/bot/bot-loop.js),
+ * so none begins while it saves the new wallet (the user's design,
+ * 2026-11-27).
  *
  * The third phase is the stop for good: Ctrl+C or `npm stop`, which
  * signal the server, or the server's stop route, which
@@ -39,6 +45,12 @@
 
 // Set by a stop for good.
 let _stopping = false;
+
+/*-
+ *  Set from a wallet import's first step until the old wallet's positions
+ *  are halted: no rebalance or compound begins meanwhile.
+ */
+let _movesHeld = false;
 
 /*-
  *  While the start-up is under way, how many of the saved positions it
@@ -142,6 +154,46 @@ function walletImportUnderWay() {
 }
 
 /**
+ * Hold every rebalance and compound: from now until `releaseMoves`, none
+ * begins. A wallet import holds them from its first step, having found
+ * none under way, until the old wallet's positions are halted.
+ */
+function holdMoves() {
+  _movesHeld = true;
+}
+
+/** Let rebalances and compounds begin again. */
+function releaseMoves() {
+  _movesHeld = false;
+}
+
+/**
+ * Whether rebalances and compounds are held, so none may begin.
+ * @returns {boolean}
+ */
+function movesHeld() {
+  return _movesHeld;
+}
+
+/**
+ * Why a request is refused while the start-up runs, in the operator's
+ * words: what the start-up has done, when it has positions to start.
+ * With none saved, it runs only a moment, building the signer.
+ * @param {string} action  What to try again: "again", or an action's
+ *   name followed by "again".
+ * @returns {string}
+ */
+function startUpRefusal(action) {
+  const { done, total } = _startUp;
+  if (total === 0)
+    return `LP Ranger is starting up. Try ${action} in a moment.`;
+  return (
+    `LP Ranger is still starting the positions it manages (${done} of ` +
+    `${total}). Try ${action} once it has started them.`
+  );
+}
+
+/**
  * Why a request that would start positions must be refused now, in the
  * operator's words, or null when it may go ahead. During an import's
  * closing start-up, the start-up's progress is named.
@@ -149,12 +201,7 @@ function walletImportUnderWay() {
  */
 function refusalToStart() {
   if (_stopping) return "LP Ranger is stopping, so nothing starts.";
-  if (_startUp !== null)
-    return (
-      "LP Ranger is still starting the positions it manages " +
-      `(${_startUp.done} of ${_startUp.total}). ` +
-      "Try again once it has started them."
-    );
+  if (_startUp !== null) return startUpRefusal("again");
   if (_importing) return _IMPORTING;
   return null;
 }
@@ -170,11 +217,15 @@ function refusalToTakeKey() {
   return _importing ? _IMPORTING_FOR_UNLOCK : null;
 }
 
-/** Back to a process that has neither started up, imported, nor begun stopping. */
+/**
+ * Back to a process that has neither started up, imported, held its
+ * moves, nor begun stopping.
+ */
 function _resetAppPhaseForTests() {
   _stopping = false;
   _startUp = null;
   _importing = false;
+  _movesHeld = false;
 }
 
 module.exports = {
@@ -184,9 +235,13 @@ module.exports = {
   noteStartUpProgress,
   endStartUp,
   startUpProgress,
+  startUpRefusal,
   beginWalletImport,
   endWalletImport,
   walletImportUnderWay,
+  holdMoves,
+  releaseMoves,
+  movesHeld,
   refusalToStart,
   refusalToTakeKey,
   _resetAppPhaseForTests,

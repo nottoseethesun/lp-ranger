@@ -19,7 +19,12 @@ const { createReloadPosition } = require("../src/bot/reload-position");
 const { createRescanPrices } = require("../src/bot/rescan-prices");
 const { createStatusReport } = require("../src/bot/status-report");
 const { botOperations } = require("../src/bot/bot-interface");
-const { refusalToTakeKey } = require("../src/bot/app-phase");
+const {
+  refusalToTakeKey,
+  startUpProgress,
+  startUpRefusal,
+} = require("../src/bot/app-phase");
+const { walletChangeRefusal, importRefusal } = require("../src/bot/under-way");
 const { createWalletInUse } = require("../src/server/wallet-in-use");
 const {
   createPositionRoutes: positionRoutesOver,
@@ -99,12 +104,17 @@ function createRouteHandlers(deps) {
  * the test passes: `positionMgr`, `buildStatusPositions`,
  * `buildGasStatusPayload`, `actualGasCostUsd`, `primaryRouteLabel`,
  * `managedKeys`, and the wallet scan's progress from
- * `routeHandlers.getPositionScanStatus`. Whether the server holds a
- * wallet and its key (the answer's `walletUnlocked`) is neither, unless
- * the test passes `walletManager.hasWallet` or `hasPrivateKey`. Whether a
- * Clear would be refused (`clearWalletRefusal`) comes from the bot's own
- * import phase (src/bot/app-phase.js) and the tracker the test passes as
- * `walletInUse`, else an idle one of the server's own.
+ * `routeHandlers.getPositionScanStatus`. The server holds no wallet and
+ * no key unless the test passes `walletManager.hasWallet` or
+ * `hasPrivateKey`; the answer's `walletUnlocked` is true only when it
+ * passes both. Whether a Clear or an import would be refused
+ * (`clearWalletRefusal`, `importWalletRefusal`) comes from the bot's own
+ * phases (src/bot/app-phase.js: an import, a start-up), its own rule for
+ * a move under way or a position starting (src/bot/under-way.js), over
+ * the bot states the test passes as `getAllPositionBotStates` and the
+ * starts it passes as `startingKeys`, and the tracker it passes as
+ * `walletInUse`, else an idle one of the server's own. The launch was
+ * refused (`startRefusal`) only when the test passes `startRefusal`.
  * @param {object} deps
  * @returns {(req: object, res: object) => Promise<void>}
  */
@@ -121,11 +131,23 @@ function createApiStatusHandler(deps) {
   });
   const walletManager = { hasWallet: () => false, ...deps.walletManager };
   const hasPrivateKey = deps.hasPrivateKey ?? (() => false);
+  const states = deps.getAllPositionBotStates ?? (() => new Map());
+  const startingKeys = deps.startingKeys ?? (() => []);
   return statusRouteOver({
     ...deps,
     walletManager,
     walletInUse: deps.walletInUse ?? createWalletInUse(),
-    bot: { statusReport, hasPrivateKey, refusalToTakeKey },
+    startRefusal: deps.startRefusal ?? (() => null),
+    bot: {
+      statusReport,
+      hasPrivateKey,
+      refusalToTakeKey,
+      startUpProgress,
+      startUpRefusal,
+      refusalToChangeWallet: (action) =>
+        walletChangeRefusal(states(), startingKeys(), action),
+      refusalToImport: () => importRefusal(states(), startingKeys()),
+    },
   });
 }
 

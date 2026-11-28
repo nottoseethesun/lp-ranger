@@ -36,6 +36,7 @@
 "use strict";
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const config = require("../lib/config");
 const {
   getHistoricalPrice,
@@ -600,11 +601,12 @@ function _loadDustPriceSources() {
       (t) => t && t.address && t.moralisChain && t.dexScreenerChain,
     );
   } catch (err) {
-    log.warn(
-      "[price-fetcher] Could not load %s: %s",
-      _DUST_THRESHOLD_FILENAME,
-      err.message ?? err,
-    );
+    tellFileProblem({
+      doing: "read",
+      file: err.path ?? _DUST_THRESHOLD_FILENAME,
+      err: { message: err.message ?? String(err), code: err.code },
+      missingIsNormal: false,
+    });
     return [];
   }
 }

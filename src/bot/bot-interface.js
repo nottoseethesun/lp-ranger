@@ -26,7 +26,7 @@ const ethers = require("ethers");
 const { log } = require("../lib/log");
 const config = require("../lib/config");
 const sendTx = require("./send-transaction");
-const botRecorder = require("./bot-recorder");
+const { readLog } = require("./rebalance-log");
 const { createRebalanceLock } = require("./rebalance-lock");
 const { createPositionManager } = require("./position-manager");
 const {
@@ -39,7 +39,11 @@ const {
   markStopping,
   beginWalletImport,
   endWalletImport,
+  holdMoves,
+  releaseMoves,
   refusalToTakeKey,
+  startUpProgress,
+  startUpRefusal,
 } = require("./app-phase");
 const {
   createPerPositionBotState,
@@ -48,6 +52,7 @@ const {
   getAllPositionBotStates,
 } = require("./position-states");
 const { createAutoStartManagedPositions } = require("./auto-start");
+const { guaranteedDashboardHasPolledMs } = require("./dashboard-has-polled");
 const { createPositionLifecycle } = require("./position-lifecycle");
 const { createManualMoves } = require("./manual-moves");
 const { createWalletScan } = require("./wallet-scan");
@@ -57,15 +62,22 @@ const { createRescanPrices } = require("./rescan-prices");
 const { createSettingsSave } = require("./settings-save");
 const { createStatusReport } = require("./status-report");
 const { managedPositionList } = require("./managed-positions");
-const { underWay, scansEnded } = require("./under-way");
+const {
+  underWay,
+  walletChangeRefusal,
+  importRefusal,
+  scansEnded,
+} = require("./under-way");
 
 /**
  * Build the bot's parts: put the rpc endpoints into service, read the
  * price library's cache lifetimes, and make the rebalance lock and the
  * position manager, its count of today's rebalances per pool seeded from
- * the rebalance log, so a restart mid-day does not reset the daily cap
- * (which would otherwise allow MAX_REBALANCES_PER_DAY × restart-count
- * rebalances against it).
+ * the rebalance log and raised to the counts saved apart from it
+ * (src/bot/pool-daily-counts-file.js), so a restart mid-day does not
+ * reset the daily cap (which would otherwise allow
+ * MAX_REBALANCES_PER_DAY × restart-count rebalances against it), not even
+ * when the log lost a rebalance.
  *
  * `createBot` is its one caller in the app, so the server and the
  * headless bot build the parts one way, the count included.
@@ -81,9 +93,21 @@ function buildBotParts(opts = {}) {
   const positionMgr = createPositionManager({
     rebalanceLock: createRebalanceLock(),
   });
-  const seeded = positionMgr.seedPoolDailyCounts(botRecorder.readLog());
+  const entries = readLog();
+  const seeded = positionMgr.seedPoolDailyCounts(entries);
   if (seeded > 0)
     log.info("[bot] Seeded %d pool rebalance(s) for today's cap", seeded);
+  /*-
+   *  The counts saved apart from the log hold a rebalance the log lost:
+   *  one whose entry could not be written, or a log that cannot be read
+   *  or was deleted (src/bot/pool-daily-counts-file.js).
+   */
+  const raised = positionMgr.restoreSavedPoolDailyCounts();
+  if (raised > 0)
+    log.info(
+      "[bot] Today's saved rebalance counts raised %d pool(s)' count for today's cap",
+      raised,
+    );
   return { positionMgr };
 }
 
@@ -208,6 +232,15 @@ function botOperations(parts) {
     ethersLib: parts.ethersLib,
     readProvider: parts.readProvider,
   });
+  /*-
+   *  Why a Clear or an import is refused now: a rebalance or compound
+   *  under way, or a position starting (src/bot/under-way.js).
+   */
+  const refusalToChangeWallet = (action) =>
+    walletChangeRefusal(states(), positionMgr.startingKeys(), action);
+  // Why an import is refused now: that, or what refuses any start.
+  const refusalToImport = () =>
+    importRefusal(states(), positionMgr.startingKeys());
 
   return {
     // ── The key and the start-up ──
@@ -225,6 +258,37 @@ function botOperations(parts) {
      */
     refusalToTakeKey: () => refusalToTakeKey(),
     /**
+     * The start-up's progress while it is under way, `{ done, total }`,
+     * else null (src/bot/app-phase.js): a Clear is refused meanwhile,
+     * since the start-up would go on starting positions the Clear stops
+     * (src/server/wallet-clear.js).
+     */
+    startUpProgress: () => startUpProgress(),
+    /**
+     * Why a request is refused while the start-up runs, in the
+     * operator's words, `action` naming what to try again
+     * (src/bot/app-phase.js). Asked only while it runs.
+     */
+    startUpRefusal: (action) => startUpRefusal(action),
+    /**
+     * Why a Clear or an import is refused now, or null: a rebalance or
+     * compound under way, or a position starting (src/bot/under-way.js).
+     * `action` names what to try again.
+     */
+    refusalToChangeWallet: (action) => refusalToChangeWallet(action),
+    /**
+     * Why a wallet import is refused now, or null: what refuses any start
+     * (a stop, a start-up or another import under way,
+     * src/bot/app-phase.js), or what refuses a Clear or an import.
+     */
+    refusalToImport: () => refusalToImport(),
+    /**
+     * How long the bot gives the dashboard to see a change
+     * (src/bot/dashboard-has-polled.js): the server waits this long after
+     * a launch it refuses, so open tabs show why before it exits.
+     */
+    guaranteedDashboardHasPolledMs: () => guaranteedDashboardHasPolledMs(),
+    /**
      * The signer every position signs through, built once from the key
      * the bot holds (a random wallet in a dry run with none): its
      * provider, signer and address. The headless bot asks for it as it
@@ -237,15 +301,23 @@ function botOperations(parts) {
         dryRun: config.DRY_RUN,
       }),
     /**
-     * Once another wallet is imported, before it is unlocked: stop every
-     * position, then keep nothing of the previous wallet — its key, and
-     * the signer built from it, which would otherwise sign for the new
-     * wallet's positions.
+     * Once another wallet is imported, before it is unlocked, and at a
+     * Clear (src/server/wallet-clear.js): halt every position at once,
+     * then keep nothing of the previous wallet — its key, and the signer
+     * built from it, which would otherwise sign for the new wallet's
+     * positions. It waits for nothing: both are refused while a rebalance
+     * or compound is under way or a position is starting
+     * (`refusalToChangeWallet`), and a check still reading the chain
+     * starts no move once halted (src/bot/position-manager.js
+     * `haltAll`). An import's hold on every move ends here, the old
+     * positions being halted. The positions' saved status is left as it
+     * is, so the next unlock of their wallet starts them again.
      */
-    forgetWallet: async () => {
-      await positionMgr.stopAll();
+    forgetWallet: () => {
+      positionMgr.haltAll();
       privateKeyRef.current = null;
       positionMgr.resetSharedSigner();
+      releaseMoves();
     },
     /**
      * Start the positions saved as managed (src/bot/auto-start.js). The
@@ -255,13 +327,27 @@ function botOperations(parts) {
     startManagedPositions: (opts) => startManagedPositions(opts),
     /**
      * Begin a wallet import (src/bot/app-phase.js): null when it began,
-     * else why it is refused (a stop, a start-up or another import under
-     * way). Until `endWalletImport`, a Manage is refused and the status
-     * report says an import is under way.
+     * else why it is refused (`refusalToImport`). Until `endWalletImport`,
+     * a Manage is refused and the status report says an import is under
+     * way. Every rebalance and compound is held from now until
+     * `forgetWallet` halts the old wallet's positions, so none begins
+     * while the import saves the new wallet.
      */
-    beginWalletImport: () => beginWalletImport(),
-    /** End the wallet import, its closing start-up included. */
-    endWalletImport: () => endWalletImport(),
+    beginWalletImport: () => {
+      const refusal = refusalToImport();
+      if (refusal !== null) return refusal;
+      beginWalletImport();
+      holdMoves();
+      return null;
+    },
+    /**
+     * End the wallet import, its closing start-up included, and its hold
+     * on every move, should it end before `forgetWallet` ran.
+     */
+    endWalletImport: () => {
+      releaseMoves();
+      endWalletImport();
+    },
     /** How many positions' loops are running. */
     runningCount: () => positionMgr.runningCount(),
 

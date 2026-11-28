@@ -15,8 +15,7 @@
 
 const { log } = require("../lib/log");
 const { receiptGasWei } = require("./receipt-gas");
-const fs = require("fs");
-const path = require("path");
+const { readLog } = require("./rebalance-log");
 const ethers = require("ethers");
 const config = require("../lib/config");
 const sendTx = require("./send-transaction");
@@ -46,22 +45,6 @@ const _IFACE = new ethers.Interface(PM_ABI);
 
 /** In-memory cache for ERC-20 decimals, by canonical `chain-token` key. */
 const _decimalsCache = new Map();
-
-/**
- * Read and parse the rebalance log from disk. The path is resolved the
- * way the writer, src/bot/bot-recorder.js, resolves it, so a log configured
- * at an absolute path is read where it is written.
- */
-function _readRebalanceLog() {
-  try {
-    const logPath = path.resolve(config.rebalanceLogPath());
-    const raw = fs.readFileSync(logPath, "utf8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 /**
  * Fetch ERC-20 decimals with caching.
@@ -673,7 +656,7 @@ async function getPositionHistory(tokenId, opts = {}) {
     mintTxHash: null,
     closeTxHash: null,
   };
-  const entries = _readRebalanceLog();
+  const entries = readLog();
   const mint = entries.find((e) => String(e.newTokenId) === String(tokenId));
   const close = entries.find((e) => String(e.oldTokenId) === String(tokenId));
   if (mint) applyMintEntry(result, mint);
@@ -760,5 +743,4 @@ module.exports = {
   needsEntryFromChain,
   _needsPriceFill, // exported for tests
   _needsExitFromChain, // exported for tests
-  _readRebalanceLog, // exported for tests
 };

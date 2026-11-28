@@ -95,6 +95,40 @@ describe("wallet-manager", () => {
     });
   });
 
+  it("revealWallet's answer names the wallet it opened", async () => {
+    await importWallet(SAMPLE);
+    const secrets = await revealWallet(SAMPLE.password);
+    assert.strictEqual(secrets.address, SAMPLE.address);
+  });
+
+  it("a decrypt overtaken by another wallet's import is stale, not a wrong password", async () => {
+    /*-
+     *  The other wallet's file is put in place and loaded while the
+     *  decrypt derives its key: an import landing in that moment.
+     */
+    const other = { ...SAMPLE, address: "0x" + "2".repeat(40) };
+    await importWallet(other);
+    const otherFile = fs.readFileSync(WALLET_FILE, "utf8");
+    await importWallet(SAMPLE);
+    const decrypt = revealWallet(SAMPLE.password);
+    fs.writeFileSync(WALLET_FILE, otherFile);
+    _reloadFromDiskForTests();
+    await assert.rejects(decrypt, (err) => {
+      assert.strictEqual(err.staleWallet, true);
+      assert.strictEqual(err.address, SAMPLE.address);
+      assert.notStrictEqual(err.message, "Wrong password");
+      return true;
+    });
+    assert.strictEqual(getAddress(), other.address, "the import stands");
+  });
+
+  it("a decrypt overtaken by a Clear is stale, not a wrong password", async () => {
+    await importWallet(SAMPLE);
+    const decrypt = revealWallet(SAMPLE.password);
+    clearWallet();
+    await assert.rejects(decrypt, (err) => err.staleWallet === true);
+  });
+
   it("clearWallet removes all state", async () => {
     await importWallet(SAMPLE);
     clearWallet();
@@ -321,7 +355,7 @@ describe("wallet-manager, a fresh start", () => {
     assert.deepStrictEqual(filesNow(), before);
   });
 
-  it("warns at the start when it cannot remove a leftover copy, never claiming it did", async () => {
+  it("tells the start's failure to remove a leftover copy, never claiming it did", async () => {
     await importWallet(SAMPLE);
     fs.mkdirSync(TMP_FILE);
     const said = [];
@@ -329,13 +363,17 @@ describe("wallet-manager, a fresh start", () => {
     const restoreLog = _setSinkForTests({
       log: (...args) => said.push(util.format(...args)),
       warn: (...args) => said.push(util.format(...args)),
+      error: (...args) => said.push(util.format(...args)),
     });
     try {
       settleWalletFile();
     } finally {
       restoreLog();
     }
-    assert.ok(said.some((s) => s.includes("Could not remove wallet.json.tmp")));
+    assert.ok(
+      said.some((s) => s.includes(`LP Ranger could not delete ${TMP_FILE}.`)),
+      said.join("\n"),
+    );
     assert.ok(!said.some((s) => s.includes("Removed wallet.json.tmp")));
   });
 });

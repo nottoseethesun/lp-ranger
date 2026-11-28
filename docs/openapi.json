@@ -140,16 +140,41 @@
                         },
                         "importingWallet": {
                           "type": "boolean",
-                          "description": "Whether a wallet import is under way, from its first step until the start-up of the new wallet's saved positions has finished. A Manage and an unlock are refused meanwhile, and the dashboard's badge reads Syncing."
+                          "description": "Whether a wallet import is under way, from its first step until the start-up of the new wallet's saved positions has finished. A Manage, an unlock, a Clear (DELETE /api/wallet) and a second import are refused meanwhile, and the dashboard's badge reads Syncing."
                         },
                         "walletUnlocked": {
                           "type": "boolean",
-                          "description": "Whether the server holds a wallet and its key. A dashboard tab holding the wallet walletAddress names that showed it locked as it loaded, its Unlock dialog open or View-Only, shows it unlocked once this is true, as after a launch with WALLET_PASSWORD that took the key a moment after the page loaded."
+                          "description": "Whether the server holds a wallet and its key. A dashboard tab that showed the wallet locked as it loaded, its Unlock dialog open or View-Only, shows it unlocked once this is true and walletAddress is that tab's wallet, as after a launch with WALLET_PASSWORD that took the key a moment after the page loaded."
                         },
                         "clearWalletRefusal": {
                           "type": "string",
                           "nullable": true,
-                          "description": "Why a Clear (DELETE /api/wallet) would be refused now, in the operator's words: an unlock, the launch's key step or a wallet import is using the wallet. Null when a Clear would go through. Every dashboard tab disables Clear Wallet while it is set, this its tooltip."
+                          "description": "Why a Clear (DELETE /api/wallet) would be refused now, in the operator's words: the server, having refused to start, waits to exit; a wallet import or the start-up of the saved positions is under way; a rebalance or compound is under way, or a position is starting; or an unlock, a Reveal Key or the launch's key step is using the wallet. Null when a Clear would go through. Every dashboard tab disables Clear Wallet while it is set, this its tooltip."
+                        },
+                        "importWalletRefusal": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Why a wallet import (POST /api/wallet) would be refused now, in the operator's words: the server is stopping; the start-up of the saved positions or another import is under way; or a rebalance or compound is under way, or a position is starting. Null when an import would go through. Every dashboard tab disables Wallet Setup's Import Wallet buttons while it is set, this their tooltip."
+                        },
+                        "startRefusal": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Why the server refused to start and is about to exit, in the operator's words, ending with what to do and to restart the server, as for a PRIVATE_KEY for another wallet than the one imported. Null on an ordinary launch. Each open dashboard tab shows it in a dialog, which stays once the server has gone, and closes its Unlock dialog. A Clear and an unlock are refused meanwhile. The server exits once tabs have had time to ask (the dashboard's poll interval, dashboardPollIntervalMs, times pollsBeforeAssumedSeen: 7.5 s as shipped), without waiting for anyone to read it."
+                        },
+                        "rebalanceLogProblem": {
+                          "type": "object",
+                          "nullable": true,
+                          "description": "The last failed read or write of the rebalance log since the server started, or null. There being no log yet is no failure. Each dashboard tab shows each failure once, in its Rebalance log error dialog.",
+                          "properties": {
+                            "message": {
+                              "type": "string",
+                              "description": "The words for the operator, its paragraphs apart by a blank line: whether reading or writing the log failed, to check the file's permissions and whether the disk is full, then to restart LP Ranger and use Settings → Reload Current Position, and should the app still not work, to run npm run build-and-start -- --delete-all-caches-and-logs, which removes the log with all of LP Ranger's other caches and logs."
+                            },
+                            "at": {
+                              "type": "integer",
+                              "description": "When it failed, in milliseconds since the Unix epoch."
+                            }
+                          }
                         },
                         "walletJustChanged": {
                           "type": "object",
@@ -434,7 +459,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Unlock encrypted wallet",
-        "description": "Decrypt the wallet file and the stored api keys with the provided password, both before the bot takes the key, so no position starts until the api keys' decrypt has ended; a failed one is logged and the unlock goes on. Answered once both decrypts are done. The first unlock also starts the positions saved as managed; the request is idempotent, so entering the password again only confirms it. Refused while a wallet import is under way, asked again after each decrypt. A Clear (DELETE /api/wallet) is refused while the unlock runs, so the wallet is there at every step.",
+        "description": "Decrypt the wallet file and the stored api keys with the provided password, both before the bot takes the key, so no position starts until the api keys' decrypt has ended. A failed api-key decrypt is logged and the unlock goes on. A success is answered once both decrypts are done. The first unlock also starts the positions saved as managed; the request is idempotent, so entering the password again only confirms it. Refused while a wallet import is under way, asked again after each decrypt; an import that lands during the wallet's decrypt makes it stale, refused the same way and never answered as a wrong password. Refused too while the server, having refused to start, waits to exit. A Clear (DELETE /api/wallet) is refused while the unlock runs, so the wallet is there at every step.",
         "requestBody": {
           "required": true,
           "content": {
@@ -462,10 +487,10 @@
             "description": "Invalid password"
           },
           "404": {
-            "description": "No wallet is saved, so there is nothing to unlock, as after a Clear in another tab since the page loaded. Nothing was decrypted and no key taken; `error` says there is no wallet. The dashboard then shows its Wallet file not found notice, and Wallet Setup after it."
+            "description": "No wallet is loaded in the server (none saved when it started, or a Clear since, as from another tab since the page loaded), so there is nothing to unlock. Nothing was decrypted and no key taken; `error` says there is no wallet. The dashboard then shows its Wallet file not found notice, and Wallet Setup after it."
           },
           "409": {
-            "description": "A wallet import is under way. Nothing changed; `error` says why."
+            "description": "A wallet import is under way, or the server refused to start and waits to exit. An import that began during either of the unlock's decrypts, or that replaced the wallet during the wallet's decrypt, sets `walletReplaced`: nothing is wrong then, and the dashboard shows no error. No key was taken. Refused after the api keys' decrypt, the unlock leaves them decrypted, and the import decrypts them again with its own password. `error` says why."
           }
         }
       }
@@ -474,7 +499,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Import wallet",
-        "description": "Import a wallet from its address and private key. The dashboard sends both, from a private key typed in, a seed phrase, or a wallet it generated; with a seed phrase or a generated wallet it sends the phrase as well. Encrypts and persists to app-config/user-configurable/wallet.json, then stops every position and starts the new wallet's saved ones. From its first step until that start-up has finished, a Manage and an unlock are refused and `GET /api/status` reports `importingWallet`.",
+        "description": "Import a wallet from its address and private key. The dashboard sends both, from a private key typed in, a seed phrase, or a wallet it generated; with a seed phrase or a generated wallet it sends the phrase as well. Encrypts and persists to app-config/user-configurable/wallet.json, then halts every position at once and starts the new wallet's saved ones. Refused at once, rather than waiting, while a rebalance or compound is under way or a position is starting; once taken, it holds every rebalance and compound until it has halted the old wallet's positions. From its first step until its start-up has finished, a Manage, an unlock, a Clear (DELETE /api/wallet) and a second import are refused, and `GET /api/status` reports `importingWallet`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -517,20 +542,34 @@
             "description": "No password, private key or address, or the wallet file could not be written; `error` says which. A failed write leaves the saved wallet and the one in use as they were."
           },
           "409": {
-            "description": "Refused, with nothing imported, while the app may start nothing: during the start-up of the positions saved as managed, during another import, and once the server is stopping. `error` says which, in the operator's words."
+            "description": "Refused, with nothing imported: during the start-up of the positions saved as managed, during another import, once the server is stopping, and while a rebalance or compound is under way or a position is starting, naming it. `error` says which, in the operator's words. Every status answer carries the same refusal as importWalletRefusal."
           }
         }
       },
       "delete": {
         "tags": ["Wallet"],
         "summary": "Clear wallet",
-        "description": "Delete the encrypted wallet file from disk. Refused while the server is using the wallet: an unlock or the launch's key step under way, from its first step (the --headless prompt included) until the bot holds the key and the start-up has begun, or a wallet import under way, its start-up included. Every status answer carries the same refusal as clearWalletRefusal.",
+        "description": "Remove the stored wallet and its key. The server forgets the wallet (walletAddress turns null, and an unlock answers 404) and deletes its encrypted file. It sets PRIVATE_KEY and WALLET_PASSWORD to unset in memory and removes their lines from .env, and forgets the session's wallet password. It halts every position at once and forgets the key and the signer built from it; the positions' saved status is kept, so importing the same wallet again starts them again. It waits for nothing and answers at once. Refused while the server, having refused to start, waits to exit; while a wallet import or the start-up of the saved positions is under way; while a rebalance or compound is under way or a position is starting; and while an unlock, a Reveal Key or the launch's key step is using the wallet (the last from its first step, the --unlock-at-terminal prompt included, until the bot holds the key and the start-up has begun, or the step ends without a key; the prompt holds it until it is answered, even after a dashboard unlock has taken the key, and whatever is typed there is then ignored, so pressing Enter ends the wait). Every status answer carries the same refusal as clearWalletRefusal.",
         "responses": {
           "200": {
-            "description": "Wallet file deleted"
+            "description": "Wallet cleared: no wallet, no key, every position stopped. `warnings` lists, in the operator's words, what the Clear could not remove: a .env it could not rewrite, naming the lines left, or PRIVATE_KEY or WALLET_PASSWORD set in the environment the server was started from. Each is logged too, and the dashboard shows them in its Wallet cleared: finish by hand dialog.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "warnings": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
           },
           "409": {
-            "description": "The server is using the wallet: an unlock, the launch's key step or a wallet import is under way. Nothing changed; `error` says why, in the operator's words."
+            "description": "Refused, nothing changed: the server, having refused to start, waits to exit; a wallet import or the start-up of the saved positions is under way; a rebalance or compound is under way, or a position is starting; or an unlock, a Reveal Key or the launch's key step is using the wallet. `error` says why, in the operator's words."
           }
         }
       }
@@ -539,7 +578,7 @@
       "post": {
         "tags": ["Wallet"],
         "summary": "Reveal wallet private key",
-        "description": "Decrypt and return the plaintext private key. Requires password.",
+        "description": "Decrypt and return the plaintext private key. Requires password. A Clear (DELETE /api/wallet) is refused while the decrypt runs.",
         "requestBody": {
           "required": true,
           "content": {
@@ -565,6 +604,9 @@
           },
           "403": {
             "description": "Wrong password"
+          },
+          "409": {
+            "description": "Another wallet replaced this one while its key was being decrypted, as by an import in another tab. Nothing was revealed; `walletReplaced` is set, and the dashboard shows no error."
           }
         }
       }
@@ -1008,7 +1050,7 @@
             "description": "Missing positionKey"
           },
           "409": {
-            "description": "Position not running, or a scan is running on it: a rebalance made during the scan would be left out of the figures it rebuilds. The scan refusal carries `scanInProgress: true` and the reason in `error`; the dashboard's dialog waits for the scan to end. Names the position by positionKey. Once accepted, the rebalance holds the position's scans back until it is made."
+            "description": "Position not running; a scan is running on it, since a rebalance made during the scan would be left out of the figures it rebuilds; or a wallet import holds every rebalance and compound, from its first step until it has halted the old wallet's positions. The scan refusal carries `scanInProgress: true` and the reason in `error`; the dashboard's dialog waits for the scan to end. Names the position by positionKey. Once accepted, the rebalance holds the position's scans back until it is made."
           }
         }
       }
@@ -1043,7 +1085,7 @@
             "description": "Missing positionKey"
           },
           "409": {
-            "description": "Position not running, or a scan is running on it: a compound made during the scan would be left out of the figures it rebuilds. The scan refusal carries `scanInProgress: true`, the reason in `error`, and the position's positionKey; the dashboard's Compound Now dialog waits for the scan to end. Once accepted, the compound holds the position's scans back until it is made."
+            "description": "Position not running; a scan is running on it, since a compound made during the scan would be left out of the figures it rebuilds; or a wallet import holds every rebalance and compound, from its first step until it has halted the old wallet's positions. The scan refusal carries `scanInProgress: true`, the reason in `error`, and the position's positionKey; the dashboard's Compound Now dialog waits for the scan to end. Once accepted, the compound holds the position's scans back until it is made."
           }
         }
       }

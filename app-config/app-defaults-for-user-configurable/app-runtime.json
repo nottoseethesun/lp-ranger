@@ -29,7 +29,7 @@
     "sendRetryBaseDelayMs": 30000
   },
   "dashboard": {
-    "_comment": "pollsBeforeAssumedSeen: how many dashboard poll intervals (dashboardPollIntervalMs, in ui-defaults_non-layout_for-server-up-scenario.json) the bot waits after a change the dashboard must show before assuming it was shown. 2.5 covers two whole polls even when one went out just before the change. The bot waits this long before retiring a position whose re-open failed, so its alert is on screen first; the dashboard keeps the Manage button disabled as long after a retire. GET /api/status sends the milliseconds as guaranteedDashboardHasPolledMs. Startup stops outside its range in setting-bounds.json.",
+    "_comment": "pollsBeforeAssumedSeen: how many dashboard poll intervals (dashboardPollIntervalMs, in ui-defaults_non-layout_for-server-up-scenario.json) the bot waits after a change the dashboard must show before assuming it was shown. 2.5 covers two whole polls even when one went out just before the change. The bot waits this long before retiring a position whose re-open failed, so its alert is on screen first; the dashboard keeps the Manage button disabled as long after a retire; and a server that refuses to start, as for a PRIVATE_KEY for another wallet than the one imported, waits this long before it exits, so open tabs show why. GET /api/status sends the milliseconds as guaranteedDashboardHasPolledMs. Startup stops outside its range in setting-bounds.json.",
     "pollsBeforeAssumedSeen": 2.5
   },
   "poll": {
@@ -38,7 +38,7 @@
     "lifetimeRescanCheckMs": 1800000
   },
   "retire": {
-    "_comment": "drainedAfterMs: how long the bot waits before it stops managing a drained position, from the first check that finds it drained with no rebalance under way or asked for and no mint retry coming; a later rebalance or retry holds the stop off, its time still counted. One found drained as the app starts is taken off the managed list at once (src/bot/auto-start.js). The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too: the operator has this long to click Rebalance Now, or, after an aborted swap with tries left, raise Slippage, which lets the bot try again. Read by src/bot/bot-cycle-drain.js; its range is in setting-bounds.json.",
+    "_comment": "drainedAfterMs: how long the bot waits before it stops managing a drained position. The wait runs from the first check that finds it drained with no rebalance under way or asked for, and no retry coming of a rebalance left mid-way (tx.midwayRetryLimit). A later rebalance or retry holds the stop off, its time still counted. One found drained when the saved positions are started, once the wallet is unlocked, is taken off the managed list at once (src/bot/auto-start.js). The NFT is not burned and can be managed again. A rebalance aborted after its drain counts too. The operator has this long to click Rebalance Now, or, while mid-rebalance tries are left, to raise Slippage, which lets the bot try again. Read by src/bot/bot-cycle-drain.js; its range is in setting-bounds.json.",
     "drainedAfterMs": 1800000
   },
   "rescanPrices": {

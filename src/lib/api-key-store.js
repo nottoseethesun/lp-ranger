@@ -40,6 +40,7 @@ const {
 } = require("./key-store");
 const { makeTestTempFolder } = require("./test-temp-folders");
 const { readEnv } = require("./env-settings");
+const { tellFileProblem } = require("./file-problem");
 
 /** This test process's file, made the first time one is asked for. */
 let _testFile = null;
@@ -66,23 +67,37 @@ function apiKeysPath() {
   return _testFile;
 }
 
-/** Read the full api-keys.json from disk. */
+/**
+ * Read the full api-keys.json from disk: empty when none is saved yet,
+ * or when it cannot be read, which is told as every caught file failure
+ * is (src/lib/file-problem.js).
+ */
 function _readStore() {
+  const file = apiKeysPath();
   try {
-    return JSON.parse(fs.readFileSync(apiKeysPath(), "utf8"));
-  } catch {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (err) {
+    tellFileProblem({ doing: "read", file, err });
     return {};
   }
 }
 
-/** Write the full store to disk (atomic). */
+/**
+ * Write the full store to disk (atomic). A failure is told, then thrown
+ * on to the save that asked, which answers it.
+ */
 function _writeStore(data) {
   const file = apiKeysPath();
-  // Ensure parent dir exists (e.g. app-config/user-configurable/ on first run).
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = file + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
-  fs.renameSync(tmp, file);
+  try {
+    // Ensure parent dir exists (e.g. app-config/user-configurable/ on first run).
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = file + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    tellFileProblem({ doing: "write to", file, err });
+    throw err;
+  }
 }
 
 /**

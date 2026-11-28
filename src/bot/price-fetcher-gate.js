@@ -35,6 +35,8 @@
 const { log } = require("../lib/log");
 const { readBotConfigDefaults } = require("../lib/bot-config-defaults");
 const { loadConfig } = require("../lib/bot-config-v2");
+const { tellFileProblem } = require("../lib/file-problem");
+const { positionRecordsPath } = require("../lib/util/position-records");
 
 let _priceLookupsPaused = false;
 let _allowOverrideCount = 0;
@@ -107,7 +109,13 @@ function readPriceCacheSettings(skipBackups = false) {
   let cfg;
   try {
     cfg = loadConfig(undefined, skipBackups).global || {};
-  } catch {
+  } catch (err) {
+    // The position records could not be read: told, and the defaults kept.
+    tellFileProblem({
+      doing: "read",
+      file: err.path ?? positionRecordsPath(),
+      err,
+    });
     cfg = {};
   }
   _settingsTtls = _ttlsFrom(cfg);

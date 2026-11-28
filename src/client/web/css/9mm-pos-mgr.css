@@ -1123,6 +1123,23 @@ span[title]:not([title=""]):hover {
   pointer-events: all;
 }
 
+/* The fieldset around each Import Wallet button in Wallet Setup: it adds
+   nothing to the layout, and its `disabled`, set while the server would
+   refuse an import, disables the button whatever the button's own checks
+   say. The button then takes the help cursor, and a hover shows its
+   tooltip saying why. */
+.\39 mm-pos-mgr-import-gate {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.\39 mm-pos-mgr-import-gate:disabled .modal-btn {
+  cursor: help;
+  pointer-events: all;
+}
+
 .\39 mm-pos-mgr-btn-sm:hover:not(:disabled) {
   background: rgb(0 229 255 / 15%);
 }
@@ -3998,7 +4015,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-top {
   top: 10px;
-  background-image: url("../images/background-cloud_top.png?v=1795678068794");
+  background-image: url("../images/background-cloud_top.png?v=1795830993674");
   animation-duration: var(--cloud-top-speed);
 
   /* - ⅔-through the bottom's cycle; phase drifts over time because
@@ -4011,7 +4028,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-middle {
   top: 40%;
-  background-image: url("../images/background-cloud_middle.png?v=1795678068794");
+  background-image: url("../images/background-cloud_middle.png?v=1795830993674");
   animation-duration: var(--cloud-middle-speed);
   animation-delay: calc(-1 * var(--cloud-max-speed) / 3);
 
@@ -4021,7 +4038,7 @@ span[title]:not([title=""]):hover {
 
 .\39 mm-pos-mgr-cloud-bottom {
   top: 70%;
-  background-image: url("../images/background-cloud_bottom.png?v=1795678068794");
+  background-image: url("../images/background-cloud_bottom.png?v=1795830993674");
   animation-duration: var(--cloud-max-speed);
 
   /* - Nearest to viewer — densest for atmospheric perspective. */

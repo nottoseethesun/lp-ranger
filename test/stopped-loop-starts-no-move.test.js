@@ -111,6 +111,31 @@ describe("a stopped bot loop starts no rebalance", () => {
     assert.equal(lock.released, 1);
   });
 
+  it("takes a declined Rebalance Now's mark off, and keeps the request", async () => {
+    /*-
+     *  A Rebalance Now marks the position as rebalancing when it is
+     *  asked for. Declined by a halted loop, or one whose moves a wallet
+     *  import holds, and left marked, it would refuse every Clear and
+     *  import until a restart (src/bot/under-way.js). The request stays,
+     *  so a loop whose import failed still makes it at its next check.
+     */
+    // As a Rebalance Now leaves it (src/bot/manual-moves.js).
+    const asked = {
+      rebalanceOutOfRangeThresholdPercent: 0,
+      forceRebalance: true,
+      rebalanceInProgress: true,
+    };
+    const { r, sent } = await pollOutOfRange({
+      _rebalanceLock: countingLock(),
+      _isStopped: () => true,
+      _botState: asked,
+    });
+    assert.equal(r.stopped, true);
+    assert.equal(sent.length, 0, "no transaction sent");
+    assert.equal(asked.rebalanceInProgress, false, "not under way");
+    assert.equal(asked.forceRebalance, true, "still asked for");
+  });
+
   it("starts one, as before, on a loop that is running", async () => {
     const lock = countingLock();
     const { r, ownerReads } = await pollOutOfRange({
@@ -182,34 +207,56 @@ describe("a stopped bot loop starts no compound", () => {
  *  start, so this pins that the loop hands it to every poll.
  */
 describe("the bot loop's stop flag", () => {
-  it("is handed to every poll, and carries the app's stop too", () => {
+  it("is handed to every poll, and carries the app's stop and a wallet import's hold too", () => {
     /*-
      *  A loop's first poll runs while its start is under way, before
      *  anything holds the handle that stops it, so only the app's stop
-     *  (src/bot/app-phase.js) can keep that poll from starting a move.
+     *  and an import's hold on every move (src/bot/app-phase.js) can keep
+     *  that poll from starting a move.
      */
     const src = fs.readFileSync(
       path.join(__dirname, "..", "src", "bot", "bot-loop.js"),
       "utf8",
     );
-    assert.match(src, /_isStopped: \(\) => _stopped \|\| isStopping\(\),/);
+    assert.match(
+      src,
+      /_isStopped: \(\) => _stopped \|\| isStopping\(\) \|\| movesHeld\(\),/,
+    );
+  });
+
+  it("is set by a halt, which waits for nothing", () => {
+    /*-
+     *  A Clear and an import halt every loop at once (the user's design,
+     *  2026-11-27): each is refused while a move is under way, so the
+     *  flag alone keeps a poll still reading from starting one.
+     */
+    const src = fs.readFileSync(
+      path.join(__dirname, "..", "src", "bot", "bot-loop.js"),
+      "utf8",
+    );
+    const halt = src.slice(
+      src.indexOf("  const halt = () => {"),
+      src.indexOf("  return {\n    /*-"),
+    );
+    assert.match(halt, /if \(_stopped\) return;\s*_stopped = true;/);
+    assert.doesNotMatch(halt, /polling|Promise/, "no wait in a halt");
   });
 
   it("is set before a stop waits for the poll under way", () => {
     /*-
      *  The server's own shutdown, which `npm run gentle-stop` asks for,
-     *  stops each loop and waits for it: set first, the flag keeps a
-     *  poll from starting a move, and the wait lets a move already
-     *  begun finish rather than be cut off.
+     *  stops each loop and waits for it: set first, by the halt, the flag
+     *  keeps a poll from starting a move, and the wait lets a move
+     *  already begun finish rather than be cut off.
      */
     const src = fs.readFileSync(
       path.join(__dirname, "..", "src", "bot", "bot-loop.js"),
       "utf8",
     );
     const stop = src.slice(src.indexOf("    stop() {"));
-    const flagged = stop.indexOf("_stopped = true;");
+    const flagged = stop.indexOf("halt();");
     const waits = stop.indexOf("if (!polling) return Promise.resolve();");
-    assert.ok(flagged > -1 && waits > flagged, "the flag, then the wait");
+    assert.ok(flagged > -1 && waits > flagged, "the halt, then the wait");
     assert.match(
       stop,
       /if \(!polling\) \{\s*clearInterval\(check\);\s*resolve\(\);/,

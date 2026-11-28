@@ -38,6 +38,7 @@
 "use strict";
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const config = require("../lib/config");
 const { geckoRateLimit } = require("./gecko-rate-limit");
 const { retryOn429 } = require("./price-source-backoff");
@@ -370,7 +371,7 @@ function flushGeckoPoolCache() {
     _cache = merged;
     _dirty = false;
   } catch (err) {
-    log.warn("[gecko-pool-cache] Could not write cache:", err.message);
+    tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });
   }
 }
 

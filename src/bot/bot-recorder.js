@@ -2,8 +2,9 @@
  * @file src/bot/bot-recorder.js
  * @module bot-recorder
  * @description
- * Logging, epoch closing, history scanning, rebalance recording,
- * and HODL baseline updates.
+ * Epoch closing, history scanning, rebalance recording, and HODL
+ * baseline updates. The rebalance log's reads and writes are in
+ * src/bot/rebalance-log.js.
  * Extracted from bot-loop.js.
  */
 
@@ -14,15 +15,12 @@ const { log } = require("../lib/log");
  *  Loading any bot module signals the bot subsystem is active —
  *  bot-banner prints on first require (cached, so exactly once per
  *  process). The bot's interface (bot-interface.js), the one bot module
- *  the server loads, pulls in bot-recorder unconditionally, so this is
- *  where the bot announces itself in server mode.
+ *  the server loads, pulls in bot-recorder unconditionally, through
+ *  bot-loop.js, so this is where the bot announces itself in server mode.
  */
 require("./bot-banner");
 
-const fs = require("fs");
-const path = require("path");
 const config = require("../lib/config");
-const { bigIntReplacer } = require("../lib/bigint-json");
 const rangeMath = require("./range-math");
 const { getPoolState } = require("./rebalancer-pools");
 const { scanPoolHistory } = require("./pool-scanner");
@@ -53,43 +51,7 @@ const { prepareSharedRead, epochEventsFrom } = require("./shared-chain-read");
 const { ensureInitialResidualData } = require("./liquidity-pair-details");
 const { activityFieldsOf } = require("./rebalance-activity-figures");
 const { finishPassRebalanceFigures } = require("./bot-rebalance-figures");
-
-/**
- * Read the on-disk rebalance log and return its entries.
- * Returns [] for missing, empty, or malformed files — callers should
- * treat "no seed available" the same as "no rebalances".
- * @returns {Array<object>}
- */
-function readLog() {
-  try {
-    const logPath = path.resolve(config.rebalanceLogPath());
-    const raw = fs.readFileSync(logPath, "utf8");
-    const entries = JSON.parse(raw);
-    return Array.isArray(entries) ? entries : [];
-  } catch (_) {
-    return [];
-  }
-}
-
-/**
- * Append a rebalance result to the on-disk JSON log.
- * Creates the file if it does not exist.
- * @param {object} result  The rebalance result object.
- */
-function appendLog(result) {
-  const logPath = path.resolve(config.rebalanceLogPath());
-  let entries = [];
-  try {
-    const raw = fs.readFileSync(logPath, "utf8");
-    entries = JSON.parse(raw);
-  } catch (_) {
-    // File missing or corrupt — start fresh.
-  }
-  entries.push({ ...result, loggedAt: new Date().toISOString() });
-  // Ensure parent dir exists (e.g. app-config/ on first run).
-  fs.mkdirSync(path.dirname(logPath), { recursive: true });
-  fs.writeFileSync(logPath, JSON.stringify(entries, bigIntReplacer, 2));
-}
+const { readLog } = require("./rebalance-log");
 
 /**
  * After an epoch close, credit unclaimed fees that were re-deposited via
@@ -656,8 +618,6 @@ function _applyRebalanceResult(deps, result) {
 }
 
 module.exports = {
-  appendLog,
-  readLog,
   _closePnlEpoch,
   _scanHistory,
   _scanAndReconstruct,

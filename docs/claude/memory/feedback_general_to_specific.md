@@ -1,8 +1,11 @@
 ---
 name: feedback_general_to_specific
-description: "Explain in the operator's terms: name the thing first, say what happens before naming functions, talk behavior rather than internal constants, and answer in badge and dialog terms, the log being my instrument"
+description: "Explain in the operator's terms: name the thing first, define each term, no names of my own coining, scenarios step by step and true to the app's model (one password), behavior before functions, no internal constants, badge and dialog terms, the log being my instrument"
 metadata:
+  node_type: memory
   type: feedback
+  originSessionId: 01dbcc05-c2af-4091-ac37-493cbfdfa591
+  modified: 2026-11-27T23:03:15.946Z
 ---
 
 # Explaining to the user
@@ -74,6 +77,35 @@ heading and "an initial statement of the problem", and go in order:
   operator sees, and the fix.
 - No metaphors for program state: a figure, a flag or a wait is
   "kept", "left in place" or "carried over", said with what keeps it.
+
+**Coined names count, and so does a compressed scenario (2026-11-27).**
+In an audit report I called last round's feature "the catch-up" and
+described a misconfiguration in one clause. The user: *"The reader
+won't know what 'catch-up' means: Again, you wasted my time but saved
+maybe three seconds of yours: Re-explain"*, and *"I have to guess since
+you saved your time, but wasted mine … You'll have to re-explain like a
+smart AI."* On a third item they asked me to *"define and re-explain
+first"*: I had written "if the two wallets share a password", but the
+app uses one password for every wallet and key, so the scenario as
+written could not happen.
+- A name I gave a feature in conversation is not the reader's: say what
+  the feature does on screen each time ("each tab asks the server for
+  its status every three seconds, and closes its own Unlock dialog when
+  the answer says the server holds the key").
+- Define each term a scenario rests on before the steps (the server's
+  wallet, locked, the address's wallet), then number the steps, each
+  with what the operator does and sees.
+- Check the scenario against the app's model before sending it: one
+  password for every wallet and key; one wallet stored at a time.
+- It happened again the same day: I wrote "a page loaded during a
+  refused launch's 7.5 seconds", a shorthand of my own, and the user
+  asked *"What's 'a refused launch' - you are short-circuiting critical
+  points so no one can understand what you mean"*. Say what the server
+  does instead ("LP Ranger refuses to start, because PRIVATE_KEY is for
+  another wallet than the one imported; it shows why and exits 7.5
+  seconds later"), and keep such shorthand out of the docs too: with
+  the fix the user approved, I replaced it there with plain words
+  ("while the server, having refused to start, waits to exit").
 
 Related: [[feedback_operator_sees_ui_not_logs]] (answer in badge and
 dialog terms, not log terms), [[feedback_no_internal_constants_in_design_talk]]

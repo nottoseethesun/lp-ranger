@@ -30,11 +30,21 @@
  * Which `.env` file is read is decided here too (`envFilePath`), and
  * `loadEnvFile` loads it: the install's, in the working directory, and
  * none under `node --test`, so no test runs on the operator's choices. A
- * test that needs a variable sets it in `process.env`.
+ * test that needs a variable sets it in `process.env`. It notes which
+ * variables the environment had set before (`setBeforeEnvFile`), since
+ * dotenv leaves those as they are.
+ *
+ * It also takes a variable away. `unsetEnv` deletes it from this
+ * process's environment, and `removeEnvFileSettings` removes every line
+ * of a `.env` file that sets it, through a copy renamed over the file.
+ * Clear Wallet uses both for `PRIVATE_KEY` and `WALLET_PASSWORD`
+ * (src/server/wallet-clear.js), and `npm run reset-wallet` the second for
+ * `WALLET_PASSWORD`. `envFileSets` says whether a file sets a variable.
  *
  * The private key and the wallet password are never quoted back.
  */
 
+const fs = require("fs");
 const path = require("path");
 const dotenv = require("dotenv");
 const validator = require("validator");
@@ -42,6 +52,7 @@ const { boundAt } = require("./setting-bounds");
 const { withinBound, boundText } = require("./range-check");
 const { assertTimerSec } = require("./timer-bounds");
 const { isUrl, isAddress } = require("./value-kinds");
+const { tellFileProblem } = require("./file-problem");
 
 /** A kind of `.env` value: the words for what passes, and its reading. */
 const _kind = (what, read) => Object.freeze({ what, read });
@@ -292,36 +303,78 @@ function envProblems(env, ctx) {
 }
 
 /**
- * The lines of a `.env` file that set something: each line's number, and
- * the name it sets, or null for a line that is not `NAME=value`. Blank
- * lines and comments set nothing, and neither do the further lines of a
- * quoted value that runs over several.
+ * Where in `text`, from `from` on, the quote `q` first appears unescaped,
+ * or -1: a backslash before it escapes it, as dotenv reads a quoted value.
+ * @param {string} text
+ * @param {string} q  `"`, `'` or a backquote.
+ * @param {number} from
+ * @returns {number}
+ */
+function _unescapedQuote(text, q, from) {
+  for (let k = from; k < text.length; k++) {
+    if (text[k] === "\\" && text[k + 1] === q) k++;
+    else if (text[k] === q) return k;
+  }
+  return -1;
+}
+
+/**
+ * The index of the line a value begun on line `i` ends on, as dotenv
+ * reads it. A value that opens a quote and does not close it on its line
+ * runs on to the later line where that quote first closes, but only when
+ * nothing but spaces or a `#` comment follows the closing quote there.
+ * Otherwise dotenv reads it as one unquoted line, the opening quote
+ * included, and so does this.
+ * @param {string[]} lines  The file, split into lines.
+ * @param {number} i  The value's first line.
+ * @param {string} value  The value's text on that line.
+ * @returns {number}
+ */
+function _valueEnd(lines, i, value) {
+  const q = value[0];
+  if (q !== '"' && q !== "'" && q !== "`") return i;
+  if (_unescapedQuote(value, q, 1) !== -1) return i;
+  for (let j = i + 1; j < lines.length; j++) {
+    const at = _unescapedQuote(lines[j], q, 0);
+    if (at === -1) continue;
+    // Only spaces or a `#` comment may follow the closing quote.
+    const rest = lines[j].slice(at + 1).trimStart();
+    return rest === "" || rest.startsWith("#") ? j : i;
+  }
+  return i;
+}
+
+/**
+ * The lines of a `.env` file that set something: each line's number, the
+ * name it sets, or null for a line that is not `NAME=value` (or `NAME:
+ * value`, which dotenv reads the same), and the last line its value runs
+ * to. Blank lines and comments set nothing, and neither do the further
+ * lines of a quoted value that runs over several, read as dotenv reads
+ * one (`_valueEnd`): they are that setting's, up to its `last`.
  *
  * @param {string} text  The file.
- * @returns {{line: number, name: string|null}[]}
+ * @returns {{line: number, name: string|null, last: number}[]}
  */
 function _settingLines(text) {
+  const lines = text.split(/\r?\n/);
   const out = [];
-  let open = null; // the quote a value running over lines opened with
-  text.split(/\r?\n/).forEach((line, i) => {
-    if (open !== null) {
-      if (line.includes(open)) open = null;
-      return;
-    }
-    const t = line.trim();
-    if (t === "" || t.startsWith("#")) return;
-    // `export NAME=value` sets NAME, as dotenv reads it.
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t === "" || t.startsWith("#")) continue;
+    /*-
+     *  `export NAME=value` sets NAME, as dotenv reads it, and so does
+     *  `NAME: value`, a colon followed by a space.
+     */
     const bare = /^export\s/.test(t) ? t.slice("export".length).trimStart() : t;
-    const m = /^([\w.-]+)\s*=\s*(.*)$/.exec(bare);
+    const m = /^([\w.-]+)(?:\s*=\s*|:\s+)(.*)$/.exec(bare);
     if (m === null) {
-      out.push({ line: i + 1, name: null });
-      return;
+      out.push({ line: i + 1, name: null, last: i + 1 });
+      continue;
     }
-    out.push({ line: i + 1, name: m[1] });
-    const q = m[2][0];
-    if ((q === '"' || q === "'" || q === "`") && m[2].indexOf(q, 1) === -1)
-      open = q;
-  });
+    const end = _valueEnd(lines, i, m[2]);
+    out.push({ line: i + 1, name: m[1], last: end + 1 });
+    i = end;
+  }
   return out;
 }
 
@@ -356,14 +409,140 @@ function envFilePath() {
   return path.resolve(".env");
 }
 
+/*-
+ *  The variables the environment the process was started from had set
+ *  before `.env` was first read (`loadEnvFile`), or null until then.
+ */
+let _setBeforeEnvFile = null;
+
 /**
  * Load the `.env` file the app reads (`envFilePath`) into `process.env`.
  * As dotenv does, it leaves a variable the environment already sets as it
- * is, and a missing file loads nothing.
+ * is, and a missing file loads nothing. The first call notes which
+ * variables the environment had set before (`setBeforeEnvFile`); a later
+ * call would find `.env`'s own among them.
  */
 function loadEnvFile() {
+  if (_setBeforeEnvFile === null)
+    _setBeforeEnvFile = new Set(Object.keys(process.env));
   const file = envFilePath();
-  if (file !== null) dotenv.config({ path: file });
+  if (file === null) return;
+  /*- No `.env` is no failure; one there that cannot be read is told, as
+   *  every caught file failure is (src/lib/file-problem.js). */
+  const { error } = dotenv.config({ path: file });
+  if (error !== undefined) tellFileProblem({ doing: "read", file, err: error });
+}
+
+/**
+ * Whether the environment the process was started from (the shell, a
+ * service manager) set `name` before `.env` was read. Its value, not
+ * `.env`'s, is then the one in use, and the next start from that
+ * environment sets it again. False before `loadEnvFile` has run. Clear
+ * Wallet asks it (src/server/wallet-clear.js).
+ * @param {string} name
+ * @returns {boolean}
+ */
+function setBeforeEnvFile(name) {
+  return _setBeforeEnvFile !== null && _setBeforeEnvFile.has(name);
+}
+
+/**
+ * Stand in for the environment as it was before `.env` was read, for a
+ * test; `null` as if `.env` had not been read yet.
+ * @param {string[]|null} names
+ * @returns {Set<string>|null}  What it replaces, for the test to put back.
+ */
+function _setEnvBeforeFileForTests(names) {
+  const was = _setBeforeEnvFile;
+  _setBeforeEnvFile = names === null ? null : new Set(names);
+  return was;
+}
+
+/**
+ * Unset a variable in this process's environment, as `unset` does in a
+ * shell: it is gone, so `readEnv` reads it as not set. Clear Wallet
+ * unsets PRIVATE_KEY and WALLET_PASSWORD this way
+ * (src/server/wallet-clear.js).
+ * @param {string} name
+ */
+function unsetEnv(name) {
+  delete process.env[name];
+}
+
+/**
+ * Whether the `.env` file `file` sets `name`, read as dotenv reads it.
+ * @param {string} file
+ * @param {string} name
+ * @returns {boolean}  False with no file.
+ */
+function envFileSets(file, name) {
+  if (!fs.existsSync(file)) return false;
+  return _settingLines(fs.readFileSync(file, "utf8")).some(
+    (s) => s.name === name,
+  );
+}
+
+/**
+ * Write `text` over `target` through a copy beside it, renamed over it,
+ * so the file is never left half written. The copy is made with the
+ * file's own mode, never a wider one, as a new file (`wx`), so it is
+ * never written through a link left at its path, and is removed if its
+ * write or the rename fails, so no copy of its secrets is left behind.
+ * @param {string} target  The file itself, not a link to it.
+ * @param {string} text
+ */
+function _replaceFile(target, text) {
+  const mode = fs.statSync(target).mode & 0o777;
+  const copy = `${target}.tmp`;
+  fs.rmSync(copy, { force: true });
+  try {
+    fs.writeFileSync(copy, text, { mode, flag: "wx" });
+    fs.chmodSync(copy, mode);
+    fs.renameSync(copy, target);
+  } catch (err) {
+    /*-
+     *  A write cut short (a full disk) leaves part of the copy, which can
+     *  hold a secret: removed. A copy found at the path (`EEXIST`, from
+     *  `wx`) was put there by someone else, so it is left alone.
+     */
+    if (err.code !== "EEXIST") fs.rmSync(copy, { force: true });
+    throw err;
+  }
+}
+
+/**
+ * Remove every line of a `.env` file that sets one of `names`, read as
+ * dotenv reads it (an `export` before it, spaces around the `=`), a value
+ * running over several lines removed whole, in one rewrite of the file
+ * (`_replaceFile`). A link is followed: the file it names is rewritten,
+ * and the link left as it was. `npm run reset-wallet` removes
+ * WALLET_PASSWORD this way, and Clear Wallet PRIVATE_KEY and
+ * WALLET_PASSWORD (src/server/wallet-clear.js).
+ * @param {string} file  The `.env` file, or a link to it.
+ * @param {string[]} names  The variables.
+ * @returns {string[]|null}  The names it removed, in the order given;
+ *   null with no file.
+ */
+function removeEnvFileSettings(file, names) {
+  if (!fs.existsSync(file)) return null;
+  const target = fs.realpathSync(file);
+  const text = fs.readFileSync(target, "utf8");
+  const drop = new Set();
+  const removed = new Set();
+  for (const s of _settingLines(text)) {
+    if (!names.includes(s.name)) continue;
+    removed.add(s.name);
+    for (let n = s.line; n <= s.last; n++) drop.add(n);
+  }
+  if (drop.size === 0) return [];
+  _replaceFile(
+    target,
+    text
+      .split("\n")
+      .filter((_line, i) => !drop.has(i + 1))
+      .join("\n"),
+  );
+  return names.filter((name) => removed.has(name));
 }
 
 module.exports = {
@@ -373,4 +552,9 @@ module.exports = {
   envFileProblems,
   envFilePath,
   loadEnvFile,
+  setBeforeEnvFile,
+  unsetEnv,
+  envFileSets,
+  removeEnvFileSettings,
+  _setEnvBeforeFileForTests,
 };

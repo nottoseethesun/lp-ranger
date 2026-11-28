@@ -24,7 +24,8 @@ back, not only when it loads. Half of this is built: the status answer
 the page asks for every few seconds carries `walletUnlocked`, whether
 the server holds a wallet and its key (`src/server/handle-api-status.js`),
 and a page still showing the wallet locked shows it unlocked once that
-is true (`showUnlockedIfServerIs`, `src/client/web/js/dashboard-wallet.js`,
+is true and `walletAddress` names the page's own wallet
+(`showUnlockedIfServerIs`, `src/client/web/js/dashboard-wallet.js`,
 called from the poll's handler in `src/client/web/js/dashboard-data.js`).
 That covers a page loaded in the moment before a launch with
 `WALLET_PASSWORD` takes the key.

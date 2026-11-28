@@ -46,12 +46,13 @@ const C = {
   positionType: "erc20",
 };
 
-let store, stale;
+let store, stale, notices;
 
 before(async () => {
   await learnActiveChain("pulsechain", "PulseChain");
   store = await import("../src/client/web/js/dashboard-positions-store.js");
   stale = await import("../src/client/web/js/dashboard-stale-data.js");
+  notices = await import("../src/client/web/js/dashboard-app-notices.js");
   for (const p of [A, B, C]) store.posStore.add(p);
 });
 
@@ -217,6 +218,33 @@ describe("the watch", () => {
     document.body.append(dialog);
     mock.timers.tick(50);
     assert.ok(dialog.hasAttribute("inert"));
+  });
+
+  it("leaves usable a notice about the app, added while the figures are stale", () => {
+    /*-
+     *  None is about a position, and each can come while no position's
+     *  figures can arrive, as with the wallet locked: made inert, its OK
+     *  would do nothing. The ids are the ones the code showing
+     *  each notice uses (dashboard-app-notices.js; the dialogs are found
+     *  by them in test/dashboard-wallet-poll.test.js and
+     *  test/dashboard-rebalance-log-notice.test.js).
+     */
+    watch = stale.startStaleDataWatch(50);
+    select(B);
+    mock.timers.tick(50);
+    const ids = notices.APP_NOTICE_IDS;
+    assert.equal(ids.length, 5, "every notice about the app");
+    for (const id of ids) {
+      const notice = document.createElement("div");
+      notice.id = id;
+      notice.append(document.createElement("button"));
+      document.body.append(notice);
+    }
+    mock.timers.tick(50);
+    for (const id of ids) {
+      assert.equal(inert(id), false, `${id} stays usable`);
+      document.getElementById(id).remove();
+    }
   });
 
   it("frees everything once the figures are fresh", () => {

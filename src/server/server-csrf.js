@@ -19,6 +19,7 @@
 "use strict";
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const Tokens = require("csrf");
 const {
   loadMergedDefaults,
@@ -51,6 +52,12 @@ function readCsrfTunable() {
       out.refreshIntervalMs = p.refreshIntervalMs;
     return out;
   } catch (err) {
+    tellFileProblem({
+      doing: "read",
+      file: err.path ?? _FILENAME,
+      err,
+      missingIsNormal: false,
+    });
     log.warn("[csrf] Falling back to built-in defaults: %s", err.message);
     return { ..._FALLBACK };
   }

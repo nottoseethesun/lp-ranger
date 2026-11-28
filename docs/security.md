@@ -128,8 +128,8 @@ Nothing is rolled in-house.
   readable form, and only your password can unlock it. Once
   unlocked, the key is held in the server's memory, as the key itself
   and in the signer every managed position shares, until the server
-  stops or a wallet import replaces the wallet; protecting the
-  machine it runs on protects the key. (Encryption: AES-256-GCM
+  stops, a wallet import replaces the wallet, or Clear Wallet removes
+  it; protecting the machine it runs on protects the key. (Encryption: AES-256-GCM
   (Advanced Encryption Standard, 256-bit key, Galois/Counter Mode)
   with PBKDF2 (Password-Based Key Derivation Function 2) SHA-512
   key derivation.)
@@ -349,10 +349,10 @@ provides their wallet password through one of three methods
 
 1. **Dashboard unlock dialog** (default) — open LP Ranger in a
    browser, type the password, click "Unlock."
-2. **`--headless` terminal prompt** — run
-   `node src/server.js --headless` and type the password at the
-   terminal. Same security as the dashboard (password in memory
-   only), no browser needed.
+2. **`--unlock-at-terminal` terminal prompt** — run
+   `node src/server.js --unlock-at-terminal` and type the password at
+   the terminal. Same security as the dashboard (password in memory
+   only), no browser needed to unlock; the dashboard is still served.
 3. **`WALLET_PASSWORD` in `.env`** — fully unattended, for systemd /
    Docker / CI. The password lives on disk as plaintext — least
    recommended (see *Operator responsibilities when using
@@ -405,8 +405,9 @@ there is no separate "API-keys password" to manage or lose. After
 the unlock, the server keeps the password in `_sessionPassword` in
 [`src/server/server-routes.js`](../src/server/server-routes.js), so saving an API key
 or the Telegram settings later in the same session needs no password.
-It is discarded when the process exits. Revealing the wallet's key
-always asks for the password again.
+It is discarded when the process exits, and a wallet import or a Clear
+forgets it. Revealing the wallet's key always asks for the password
+again.
 
 **Two ways to import the wallet — same password either way:** The
 encrypted `wallet.json` file can be created through either of two
@@ -426,25 +427,32 @@ The server picks its signing key in fixed priority
 ([`src/server/server-routes.js`](../src/server/server-routes.js)'s
 `_tryResolveKey`): `PRIVATE_KEY` (plaintext hex in `.env` — *not
 recommended*) → the encrypted wallet, unlocked by the `WALLET_PASSWORD`
-env var, else by the terminal prompt under `--headless`, else by the
+env var, else by the terminal prompt under `--unlock-at-terminal`, else by the
 dashboard's Unlock Wallet dialog
 ([`src/server/server-unlock.js`](../src/server/server-unlock.js)).
 The launch takes no key once the bot holds one, as when the dialog was
 answered while the launch waited on the prompt or the decrypt, and none
 while a wallet
 import is under way, which takes its own wallet's key; nor does an
-unlock during an import. The headless bot (`npm run bot`) has no
-dashboard. It picks its key
-the same way, with the terminal prompt in place of the dialog
-([`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js)'s
-`resolvePrivateKey()`).
+unlock during an import. With a wallet imported, the server refuses a
+`PRIVATE_KEY` for another wallet (`_refuseLaunch`): it would sign with
+one wallet and start the other's positions. It logs both wallets and
+what to do, every open dashboard tab shows the same in a dialog, and
+the server exits. The headless bot (`npm run bot`) has no dashboard. It
+picks its key the same way, with the terminal prompt in place of the
+dialog ([`src/bot/bot-private-key.js`](../src/bot/bot-private-key.js)'s
+`resolvePrivateKey()`), compares no `PRIVATE_KEY` with the imported
+wallet, and starts the positions of the wallet its key belongs to.
 
 The three unlock methods differ only in how the password reaches the
 server; the encrypted files, the decryption and the in-memory handling
-are the same. In `--headless` mode, if the wallet can't be unlocked (no password
+are the same. In `--unlock-at-terminal` mode, if the wallet can't be unlocked (no password
 provided, no `WALLET_PASSWORD` in env, no wallet imported), the
 server **exits with an error** rather than falling through to
-dashboard-only mode — there is no browser to fall back to. With no
+dashboard-only mode. The dashboard is served while the prompt waits,
+and an unlock there takes the key; the launch then takes nothing from
+the prompt, whatever is typed there. Without such an unlock, a prompt
+answered with no password stops the server. With no
 terminal to type into, as when a service manager starts it, the prompt
 closes at once and says so (`src/lib/ask-password.js`), and the server
 exits with that error. The headless bot (`npm run bot`) exits the same
@@ -463,8 +471,8 @@ newline is read as typed.
   stale plaintext passwords long after the live file has been
   rotated.
 - When rotating a password, run `npm run reset-wallet` rather than
-  editing `.env` by hand — the script scrubs the `WALLET_PASSWORD=`
-  line and deletes `app-config/user-configurable/wallet.json`, and the
+  editing `.env` by hand — the script removes any line setting
+  `WALLET_PASSWORD` and deletes `app-config/user-configurable/wallet.json`, and the
   copy a save writes first, in one step, so the next restart forces a
   fresh import. Have the wallet's
   seed phrase or private key at hand before you run it: the import
@@ -478,10 +486,19 @@ newline is read as typed.
 1. Delete `app-config/user-configurable/wallet.json`, and
    `wallet.json.tmp` beside it, the copy a save writes first, from which
    the app would otherwise recover the wallet at its next start.
-2. Remove every line matching `^WALLET_PASSWORD=` from `.env` by
-   reading the file, filtering out the matching lines, writing to a
-   `.tmp` sibling, and atomically renaming. File permissions are
-   preserved via `fs.chmodSync` before the rename.
+2. Remove every line of `.env` that sets `WALLET_PASSWORD`, read as
+   dotenv reads one: an `export` before it, spaces around the `=`, a
+   `NAME: value` colon, and a quoted value running over several lines.
+   Such a value runs on to the first later line holding its closing
+   quote, when only spaces or a `#` comment follow that quote; otherwise
+   dotenv reads its first line alone, opening quote included, and so
+   does the removal. Clear Wallet removes
+   `PRIVATE_KEY` and `WALLET_PASSWORD` the same way
+   (`removeEnvFileSettings`, `src/lib/env-settings.js`). A link to
+   `.env` is followed and left a link. The file is written as a copy
+   beside it, made as a new file with the file's own mode, never a
+   wider one, and renamed over it; a copy whose write or rename fails
+   is removed, so no partial copy of its secrets is left behind.
 
 Both steps tolerate missing targets (no error if `.env` is absent or
 the line never existed), so the script is safe to run on any system
@@ -508,10 +525,12 @@ server's memory: the key the bot holds (`privateKeyRef`, in
 [`src/bot/bot-interface.js`](../src/bot/bot-interface.js)), and the shared
 signer built from it (an ethers `Wallet`, built in
 [`src/bot/position-manager.js`](../src/bot/position-manager.js)). Both stay
-for as long as the server runs, until a wallet import replaces the wallet:
-the import stops every position and drops both (`forgetWallet`). The wallet
-password is in `_sessionPassword` for the session, and a wallet import
-drops it too. Neither the key nor the password is ever written to disk
+for as long as the server runs, until a wallet import replaces the wallet
+or a Clear removes it: either halts every position and drops both
+(`forgetWallet`). The wallet password is in `_sessionPassword` for the
+session, and an import or a Clear drops it too. A Clear also sets
+`PRIVATE_KEY` and `WALLET_PASSWORD` to unset in memory and removes
+their lines from `.env`. Neither the key nor the password is ever written to disk
 unencrypted, returned by
 `GET /api/status`, or included in any log line. The key leaves the
 server only through `POST /api/wallet/reveal`, which decrypts it again
@@ -520,7 +539,13 @@ from the password sent with that request.
 The dashboard tab plays no part in signing. Once the server confirms it
 holds a wallet being created or imported, the tab clears the key, the
 seed phrase and the password from the setup dialog. The unlock dialog
-and Reveal Key clear the password once the server has accepted it.
+empties its password box whenever the dashboard closes it: on an
+unlock, when a status answer says the server holds the key, when
+another wallet's import overtook the unlock, and when the server
+refuses to start. View-Only only hides the dialog, and what was typed
+stays in the box. Reveal Key empties its box once the server reveals
+the key or another wallet's import overtook it; after a wrong password,
+what was typed stays for another try.
 
 **Lint enforcement:** The custom ESLint rule
 [`9mm/no-secret-logging`](../eslint-rules/no-secret-logging.js) flags

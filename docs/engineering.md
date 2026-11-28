@@ -362,27 +362,102 @@ begin until someone opens the dashboard.
 
 The server finds the stored wallet rather than starting empty. With a
 wallet password configured (`WALLET_PASSWORD` in `.env`, or one typed at
-the terminal when started with `--headless`) it unlocks immediately;
+the terminal when started with `--unlock-at-terminal`) it unlocks immediately;
 otherwise it waits for the browser unlock and continues from there.
 Either way, every decrypt finishes before anything starts: with the same
 password it decrypts the stored api keys (Telegram, Moralis) before the
 bot takes the key, so no position starts until that decrypt has ended,
 and no alert the start-up sends is lost to one still under way. A failed
 api-key decrypt is logged and the start goes on. A wallet import keeps
-the same order. Clear Wallet (`DELETE /api/wallet`,
-`src/server/wallet-clear.js`) is refused, answered 409 with the reason,
-while the server is using the wallet: from an unlock's first step, or
-the launch's key step's, the `--headless` prompt included, until the bot
-holds the key and the start-up has begun (`src/server/wallet-in-use.js`),
-and through a whole wallet import, its start-up included. So no decrypt
-finds its wallet gone partway (the user's design, 2026-11-26). Every
-status answer carries the refusal as `clearWalletRefusal`, null when a
-Clear would go through, and every tab disables Clear Wallet meanwhile,
-the refusal its tooltip. A page that loaded while the wallet was still
-locked shows it unlocked once a status answer naming its wallet says,
-in `walletUnlocked`, that the server holds a wallet and its key.
+the same order.
 
-It then starts each position whose saved status is **running**: the list
+Clear Wallet, the dashboard's ✕ Clear button and its Clear Wallet
+dialog, removes the stored wallet from the server, its file included
+(`DELETE /api/wallet`, `src/server/wallet-clear.js`). It also removes
+the key (the user's ruling, 2026-11-27). `PRIVATE_KEY` and
+`WALLET_PASSWORD` are set to unset in memory and their lines removed
+from `.env`. The session's wallet password is forgotten. The bot halts
+every position at once, then forgets the key and the signer built from
+it, as an import does to the old wallet (`forgetWallet`). The positions'
+saved status is kept, so importing the same wallet again starts them
+again.
+
+A Clear waits for nothing and answers at once (the user's design,
+2026-11-27: refuse, never wait). It is refused while a rebalance or
+compound is under way or a position is starting, so no move is left
+for it to wait for. A halted position's check that is still reading
+the chain finishes on its own and starts no move: a move asks whether
+its loop was halted right before it begins. Nothing that goes wrong
+with `.env` stops a Clear halfway. A rewrite that fails is logged,
+naming the file and the lines left in it, and so is a setting the
+environment the server was started from set, which the next start
+reads again. That holds even when `.env` also had a line for it: dotenv
+leaves a variable already set as it is, so the environment's value was
+the one in use (`setBeforeEnvFile`, `src/lib/env-settings.js`, notes
+what the environment set before `.env` was first read). The Clear still
+finishes, its answer names each in
+`warnings`, and the dashboard shows them in the Wallet cleared: finish
+by hand dialog. The lines go by dotenv's own rule (`removeEnvFileSettings`,
+`src/lib/env-settings.js`): a quote left open runs on to the first
+later line holding the same quote, when only spaces or a `#` comment
+follow it there; otherwise the value is its first line alone, the
+opening quote included. A link to
+`.env` is followed, and the file is rewritten through a copy made with
+its own mode.
+
+A Clear is refused, answered 409 with the reason:
+
+- while the server, having refused to start, waits to exit;
+- while a wallet import or the start-up of the saved positions is under
+  way, since the start-up would go on starting positions the Clear stops;
+- while a rebalance or compound is under way, or a position is starting
+  (`src/bot/under-way.js`). A rebalance counts from the moment it holds
+  the rebalance lock, a Rebalance Now from the moment it is asked for,
+  and a compound from the moment it holds the lock. Each counts until
+  its last transaction is confirmed, the swaps that spread its leftover
+  coins included, or until it fails or is turned down, as a Rebalance
+  Now is in a dry run. A position's start counts because its first
+  check runs, and can rebalance, before its loop can be halted;
+- while the server is using the wallet. An unlock uses it from its
+  first step. So does the launch's key step, the server's own unlock as
+  it starts (`_tryResolveKey`), the `--unlock-at-terminal` prompt
+  included. Each uses it until the bot holds the key and the start-up
+  has begun, or until it ends without a key
+  (`src/server/wallet-in-use.js`). The prompt holds it until it is
+  answered, even after a dashboard unlock has taken the key; whatever
+  is typed there is then ignored, so pressing Enter ends the wait.
+  Reveal Key uses it while it decrypts. So no decrypt finds its wallet
+  gone partway (the user's design, 2026-11-26).
+
+Every status answer carries the refusal as `clearWalletRefusal`, null
+when a Clear would go through, and every tab disables Clear Wallet
+meanwhile, the refusal its tooltip.
+
+A wallet import (`POST /api/wallet`) is refused the same way while a
+rebalance or compound is under way or a position is starting, and while
+a stop, a start-up or another import is under way. Every status answer
+carries that refusal as `importWalletRefusal`, and every tab disables
+Wallet Setup's Import Wallet buttons meanwhile, the refusal their
+tooltip. Once taken, the import holds every rebalance and compound from
+its first step until it has halted the old wallet's positions
+(`holdMoves`, `src/bot/app-phase.js`), since saving the new wallet takes
+a moment in which a check could otherwise begin one. Meanwhile a
+Rebalance Now or Compound Now is refused (409), naming the import:
+accepted, it would mark a position the import halts, and a halted
+position left marked as rebalancing would refuse every later Clear and
+import until a restart (`src/bot/manual-moves.js`).
+
+A new wallet makes an older one stale (the user's rule, 2026-11-27). A
+decrypt carries the address of the wallet it began with, and one an
+import overtook is rejected once its key derivation ends (`revealWallet`,
+`src/lib/wallet-manager.js`), never as a wrong password: the unlock and
+Reveal Key answer 409 with `walletReplaced` set, which the dashboard
+takes quietly, since the import goes on as normal; the launch's key
+step stands aside. A page that loaded while the wallet was still locked
+shows it unlocked once a status answer naming its wallet says, in
+`walletUnlocked`, that the server holds a wallet and its key.
+
+The server then starts each position whose saved status is **running**: the list
 Manage adds to and Stop Managing removes from, which a stop of the app
 leaves alone. Only the positions of the chain it runs and the wallet it
 holds are started; one saved under another wallet or chain waits for
@@ -396,10 +471,12 @@ listed position keeps its pool. A closed one comes off at once, with its
 auto-compound off and the retire's Telegram alert sent, as the
 drained-position retire leaves one after its wait. While the app runs,
 that wait runs from the first check that finds the position drained with
-no rebalance under way or asked for and no mint retry coming; a later
-one holds the retire off, its time still counted. It is the owner's
-time to rescue a rebalance that stopped between its drain and its mint,
-as by raising Slippage so the bot retries the mint. That retry rests on
+no rebalance under way or asked for, and no retry coming of a rebalance
+left mid-way. A later rebalance or retry holds the retire off, its time
+still counted. That wait is the owner's time to rescue a rebalance that
+stopped between its drain and its mint: by clicking Rebalance Now, or,
+while mid-rebalance tries are left, by raising Slippage so the bot
+retries the mint. That retry rests on
 state the bot keeps only in memory, which a restart clears, so a start
 has nothing to wait for.
 LP Ranger manages one active position per pool, so each pool keeps the
@@ -3313,15 +3390,100 @@ One home for each kind of data:
   another.
 - **`app-data/rebalance_log.json`** — Runtime, gitignored. JSON array
   of every rebalance event ever: timestamps, fees collected, gas cost,
-  exit/entry USD values, token balances. Appended to by
-  `src/bot/bot-recorder.js`. Read by `src/bot/position-history.js` for
-  closed-position P&L display. Its path is `LOG_FILE` in `.env` when
+  exit/entry USD values, token balances. Every read and write the bot
+  and the server make of it is in `src/bot/rebalance-log.js` (the
+  bookkeeping report in `util/` reads it with its own reader): appended
+  to as each rebalance succeeds, read as the bot starts (each pool's
+  rebalances today), by a scan pass that has Rebalance entries still
+  waiting for their Activity Log figures, as after a rebalance or
+  Reload Current Position (what it logged of each), and for
+  closed-position P&L display (`src/bot/position-history.js`). There
+  being no log yet is no error. Any other failed read or write is told
+  as every file failure is (see "File Failures"), once while its words
+  are unchanged, and carried by every status answer
+  (`rebalanceLogProblem`), and each dashboard tab shows it, once, in
+  the Rebalance log error
+  dialog: whether reading or writing failed, to check the file's
+  permissions and whether the disk is full, then to restart LP Ranger
+  (the server or headless bot, and the browser) and use Settings →
+  Reload Current Position, and should the app still not work on
+  restart, to remove the log with all of LP Ranger's other caches and
+  logs: `npm run build-and-start -- --delete-all-caches-and-logs`
+  (`scripts/delete-all-caches-and-logs.js`, run by
+  `scripts/build-and-start.js` in a process of its own before the build).
+  That deletes every scan cache, the chain-derived figures in the
+  position records (`clearScanDerivedConfig`), the rebalance log,
+  wherever `LOG_FILE` puts it, and the diagnostic log and the error log,
+  each only inside the install folder; today's rebalance counts
+  (`app-data/pool-daily-counts.json`) are kept. It says so first, and
+  that the rebuild can take several hours, and goes on only once the
+  operator types `YES`; any other answer stops the run, deleting nothing
+  (the user's design, 2026-11-27). Nothing repairs the log. The log is
+  written in place, not through a copy, which would cost a large log
+  time and disk wear (the user's ruling, 2026-11-27): so a write a full
+  disk cuts short leaves part of it, which no later read parses, and
+  the dialog then comes back after the restart as a failed read; the
+  third step's flag removes it. A write never throws, so a rebalance's
+  record-keeping goes on, and a log that could not be read is never
+  written over. Its
+  path is `LOG_FILE` in `.env` when
   set, else `log.file` in `app-runtime.json`
   (`./app-data/rebalance_log.json` as shipped, an operator's copy
   applied). Under `node --test` it is a file in the test
   process's own temp folder, unless `LOG_FILE` names another. Lives
   outside `app-config/` because it's per-install runtime DATA, not
   config.
+- **`app-data/pool-daily-counts.json`** — Runtime, gitignored. Each
+  pool's rebalances today (UTC), by pool key, toward Max Rebalances /
+  Day: saved at every rebalance and taken back as the bot starts, beside
+  the counts read from the rebalance log, each pool keeping the larger
+  (`src/bot/pool-daily-counts-file.js`). So a restart counts every
+  rebalance made today, one whose log entry could not be written, those
+  in a log that cannot be read and those in a log
+  `--delete-all-caches-and-logs` removed included (the user's decision,
+  2026-11-27). It holds one day: a file from an earlier day counts
+  nothing. Small, it is replaced whole through a copy, so a write cut
+  short leaves the last counts whole; a failed save is told as every
+  file failure is. `npm run clean` deletes it; the flag keeps it. Under
+  `node --test` it is a file in the test process's own temp folder.
+
+### File Failures
+
+Every file failure LP Ranger catches and handles, rather than throwing
+it on, is told one way, through `tellFileProblem`
+(`src/lib/file-problem.js`; the user's design, 2026-11-27): a scan
+cache, the price caches, the settings and their backups, the position
+records, the rebalance log and today's rebalance counts, the wallet file
+and its copy, the api keys, the PID file, the error and diagnostic logs,
+`.env` (at the start, and in a Clear), a dashboard file the server
+serves, and the shipped settings files a reader falls back from. Each is
+told in the log, tagged `[files]`, with the error, and as the Telegram
+alert for other errors, in words that say only what LP Ranger could not
+do to which file ("could not read", "write to", "copy" or "delete") and
+advise checking the file's permissions and whether the disk is full; the
+rebalance log adds its three steps and the dashboard's dialog. A missing
+file is no failure of a read, a copy or a delete, so a cache or a log
+not written yet tells nothing; a file LP Ranger ships must be there, so
+missing it is told. A failure is told once while its words for that file
+are unchanged, so a file that stays unreadable is told once, not on
+every read; another failure takes its place and is told. What each place
+does after a failure is unchanged: a cache starts empty, a write is not
+thrown, a reader falls back to the shipped values (saying so in a line
+of its own), and a save the dashboard asked for still fails to it.
+
+The Telegram alert goes through the function each program hands the
+module as it starts (`sendFileProblemsTo(notifyFileProblem)`, in
+`src/server.js` and `src/bot.js`), since the Telegram module loads
+modules that tell their own failures here. Telegram sends only once its
+settings are decrypted, which in the server is after the wallet unlock:
+a failure before then reaches the log alone, as every alert does; the
+headless bot never loads the Telegram settings, so it logs. The
+diagnostic log's own write is told too: its words are recorded before
+they are logged, so the log line, meeting the same failure, is not told
+again. A write racing the exit (`EBADF`) is no failure. One reader is
+left as it was: `readGlobalSetting` (`src/lib/bot-config-v2.js`) logs
+nothing, since it runs as `src/lib/config.js` loads, and the startup
+check has refused a settings file it cannot read before then.
 
 ### The Dashboard's Three Settings Files
 
@@ -3952,7 +4114,8 @@ What happens when the process starts, in order:
    service, reads the price library's cache lifetimes, makes the single
    rebalance lock (async mutex) and position manager every bot loop in
    the process shares, and seeds today's per-pool rebalance counts from
-   the rebalance log. Every route asks the bot for what it needs through
+   the rebalance log, raised to the counts saved apart from it
+   (`app-data/pool-daily-counts.json`). Every route asks the bot for what it needs through
    the operations `createBot` returns. Then one line per saved position
    is logged, naming its NFT and its status, so config-stomp incidents
    are visible in the console at boot.
@@ -3991,7 +4154,7 @@ What happens when the process starts, in order:
    3. `_tryResolveKey()` (src/server/server-routes.js) tries to obtain
       the wallet private key — either from `PRIVATE_KEY` in `.env`, from a
       `WALLET_PASSWORD`-decrypted `app-config/user-configurable/wallet.json`, or,
-      only when the server was started with `--headless`, from a password
+      only when the server was started with `--unlock-at-terminal`, from a password
       typed at the terminal prompt.
       - On success: when the key came from a password, it first
         decrypts the stored api keys (Telegram, Moralis) with it,
@@ -4006,20 +4169,40 @@ What happens when the process starts, in order:
         300), so they don't all poll the RPC on the same tick. The
         start-up ends early once a stop begins.
       - If the wallet is locked and the server was not started with
-        `--headless`: logs
+        `--unlock-at-terminal`: logs
         `Wallet locked — unlock via dashboard to start bot.` and
         enters dashboard-only mode until the user unlocks via
         `POST /api/wallet/unlock`.
       - If no wallet exists and the server was not started with
-        `--headless`: logs `No wallet key — dashboard-only mode`.
-      - With `--headless` and no key, the terminal is the only way in:
-        it logs an error and the process exits with status 1.
+        `--unlock-at-terminal`: logs `No wallet key — dashboard-only mode`.
+      - With `--unlock-at-terminal` and no key, from neither the prompt
+        nor a dashboard unlock while it waited, it logs an error and the
+        process exits with status 1.
+      - With a `PRIVATE_KEY` for another wallet than the one imported, it
+        refuses to start (`_refuseLaunch`): it logs both wallets and
+        what to do, ending "Then restart the server. The server is
+        stopping now.", and every status answer carries that as
+        `startRefusal`, which each open dashboard tab shows in its LP
+        Ranger cannot start dialog, closing the Unlock dialog; a lock
+        check answering later opens none. Nothing starts meanwhile, and
+        a Clear Wallet and an unlock are refused, the answer saying that
+        LP Ranger cannot start and is stopping. Once the tabs have had time
+        to ask (the dashboard's poll interval, `dashboardPollIntervalMs`,
+        times `pollsBeforeAssumedSeen`: 7.5 s as shipped), the process
+        exits with status 1, without waiting for anyone to read the
+        dialog.
       - It stands aside, taking no key and starting nothing, while a
         wallet import is under way, and once the bot holds a key, as
         when the dashboard was unlocked while the launch waited on the
         prompt or a decrypt. It asks before the wallet's decrypt, again
         after it, and again after the api keys'. A Clear Wallet is
-        refused from its first step until the start-up has begun.
+        refused from its first step until the start-up it begins has
+        finished, or until the step ends without one: the key step
+        marks the wallet in use until either, and the start-up refuses
+        a Clear until it ends. Standing aside at the
+        `--unlock-at-terminal` prompt after a dashboard unlock, the step
+        ends only once the prompt is answered; pressing Enter there ends
+        it.
 9. **If imported as a module (e.g. from a test)**: nothing in step 8
    runs. The caller controls `start()` / `stop()` lifecycle explicitly.
 
@@ -4060,12 +4243,24 @@ Telegram bot token's and chat id's, when the server holds no wallet
 password this session: none came with an unlock, the launch's key step
 or an import. So does a Telegram save whose event choices are not valid, and a
 Telegram test while no bot token and chat id are held this session. The
-unlock answers a wrong password 401, and 404 when no wallet is saved to
-unlock. The wallet's own steps answer 409: the import while the app may
-start nothing (a stop, a start-up or another import under way), the
-unlock while an import is under way, and Clear Wallet while the server
-is using the wallet (an unlock, the launch's key step or an import under
-way). An error a route in the route
+unlock answers a wrong password 401, and 404 when no wallet is loaded
+in the server to unlock. The wallet's own steps answer 409:
+
+- the import while the app may start nothing (a stop, a start-up or
+  another import under way), and while a rebalance or compound is under
+  way or a position is starting;
+- the unlock while an import is under way, with `walletReplaced` set
+  when the import began during its decrypt or made that decrypt stale,
+  and while the server, having refused to start, waits to exit;
+- Reveal Key when another wallet's import made its decrypt stale, with
+  `walletReplaced` set;
+- Clear Wallet while the server, having refused to start, waits to
+  exit, while an import or
+  the start-up is under way, while a rebalance or compound is under way
+  or a position is starting, and while an unlock, a Reveal Key or the
+  launch's key step uses the wallet.
+
+An error a route in the route
 table throws becomes 400, or 403 for a wrong password, in
 `handleRequest`. The closed position's history is matched after the
 table, outside that catch. An error it throws reaches the server's

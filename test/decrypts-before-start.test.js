@@ -134,7 +134,8 @@ describe("every decrypt finishes before anything starts", () => {
     // Sent on the event loop's next turn: inside the api keys' decrypt.
     const answers = [];
     const r = routes({
-      onReveal: (clearNow) => setImmediate(() => answers.push(clearNow())),
+      onReveal: (clearNow) =>
+        setImmediate(async () => answers.push(await clearNow())),
     });
     await r.h._tryResolveKey();
     assert.equal(answers[0].status, 409);
@@ -153,7 +154,8 @@ describe("every decrypt finishes before anything starts", () => {
   it("at a wallet import, a Clear during its decrypts is refused, and its start-up finds Telegram set up", async () => {
     const answers = [];
     const r = routes({
-      onReveal: (clearNow) => setImmediate(() => answers.push(clearNow())),
+      onReveal: (clearNow) =>
+        setImmediate(async () => answers.push(await clearNow())),
     });
     await r.h._handleWalletImport({}, makeRes());
     assert.equal(answers[0].status, 409);

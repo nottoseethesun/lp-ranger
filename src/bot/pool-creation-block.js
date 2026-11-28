@@ -21,6 +21,7 @@
 "use strict";
 
 const { log } = require("../lib/log");
+const { tellFileProblem } = require("../lib/file-problem");
 const fs = require("fs");
 const path = require("path");
 const ethers = require("ethers");
@@ -63,8 +64,9 @@ function _loadDisk() {
     for (const [k, v] of Object.entries(raw)) {
       if (Number.isFinite(v) && v >= 0) _memCache.set(k, v);
     }
-  } catch {
-    /* no cache file yet — that's fine */
+  } catch (err) {
+    // No cache file yet is no failure; any other is told.
+    tellFileProblem({ doing: "read", file: _CACHE_PATH, err });
   }
 }
 
@@ -77,8 +79,8 @@ function _saveDisk() {
       JSON.stringify(Object.fromEntries(_memCache), null, 2),
       "utf8",
     );
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    tellFileProblem({ doing: "write to", file: _CACHE_PATH, err });
   }
 }
 

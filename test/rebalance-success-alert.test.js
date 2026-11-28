@@ -23,6 +23,7 @@ const assert = require("node:assert/strict");
 
 const REBALANCER = require.resolve("../src/bot/rebalancer");
 const RECORDER = require.resolve("../src/bot/bot-recorder");
+const LOG = require.resolve("../src/bot/rebalance-log");
 const TELEGRAM = require.resolve("../src/lib/telegram-notifications/telegram");
 const PNL = require.resolve("../src/bot/bot-pnl-updater");
 const CYCLE = require.resolve("../src/bot/bot-cycle");
@@ -87,8 +88,8 @@ describe("the rebalance-succeeded alert", () => {
         }),
         enrichResultUsd: async () => {},
       },
+      [LOG]: { appendLog: () => {} },
       [RECORDER]: {
-        appendLog: () => {},
         _closePnlEpoch: async () => {},
         _recordResidual: () => {},
         _applyRebalanceResult: () => {},
@@ -138,8 +139,8 @@ describe("the Activity Log figures of a successful rebalance", () => {
           result.token1UsdPrice = 1;
         },
       },
+      [LOG]: { appendLog: (result) => logged.push(structuredClone(result)) },
       [RECORDER]: {
-        appendLog: (result) => logged.push(structuredClone(result)),
         _closePnlEpoch: async () => {},
         _recordResidual: () => {},
         _applyRebalanceResult: (_deps, result) => applied.push(result),

@@ -5,8 +5,10 @@
  *   (`createRouteHandlers`): the wallet import and reveal
  *   (src/server/server-routes.js), the wallet scan, details and lifetime
  *   (src/server/position-routes.js), and the token-symbol lookup; and
- *   that the map holds every handler the server mounts. Settings saves
- *   are tested in test/server-routes-extra.test.js, the held stop in
+ *   that the map holds every handler the server mounts. The import's
+ *   refusals while a move is under way, and its hold on every move, are
+ *   tested in test/server-wallet-import-refusals.test.js, settings saves
+ *   in test/server-routes-extra.test.js, the held stop in
  *   test/server-routes-stop.test.js, the start-up in
  *   test/server-auto-start.test.js, and the launch's key step in
  *   test/server-launch-key-step.test.js.
@@ -21,15 +23,19 @@ const { compositeKey } = require("../src/lib/bot-config-v2");
 const config = require("../src/lib/config");
 const { CHAIN_NAME } = config;
 const appPhase = require("../src/bot/app-phase");
+const { createWalletInUse } = require("../src/server/wallet-in-use");
 const { makeDeps, makeRes } = require("./helpers/route-handler-deps");
+const { clearRequestOver } = require("./helpers/wallet-clear-request");
 
 describe("server-routes createRouteHandlers", () => {
   // ── _handleWalletImport ───────────────────────────────────────────────────
 
   describe("_handleWalletImport", () => {
+    afterEach(() => appPhase._resetAppPhaseForTests());
+
     it("imports wallet and responds with ok", async () => {
       let importedWith = null;
-      let stoppedAll = false;
+      let haltedAll = false;
       const deps = makeDeps({
         readJsonBody: async () => ({
           address: "0xABCD1234567890",
@@ -47,8 +53,8 @@ describe("server-routes createRouteHandlers", () => {
         },
         positionMgr: {
           ...makeDeps().positionMgr,
-          stopAll: async () => {
-            stoppedAll = true;
+          haltAll: () => {
+            haltedAll = true;
           },
         },
       });
@@ -59,10 +65,10 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(res._body.ok, true);
       assert.strictEqual(res._body.address, "0xABCD1234567890");
       assert.ok(importedWith);
-      assert.ok(stoppedAll);
+      assert.ok(haltedAll);
     });
 
-    it("keeps nothing of the previous wallet once its positions stop", async () => {
+    it("keeps nothing of the previous wallet once its positions are halted", async () => {
       /*-
        *  The cached signer was built from the old wallet's key. Kept, it
        *  signed for the new wallet's positions, and every rebalance
@@ -75,7 +81,7 @@ describe("server-routes createRouteHandlers", () => {
         readJsonBody: async () => ({ address: "0x2", password: "pw" }),
         positionMgr: {
           ...makeDeps().positionMgr,
-          stopAll: async () => order.push("stop"),
+          haltAll: () => order.push("halt"),
           resetSharedSigner: () => {
             order.push("forget signer");
             assert.equal(privateKeyRef.current, null, "old key gone first");
@@ -84,7 +90,7 @@ describe("server-routes createRouteHandlers", () => {
       });
       const res = makeRes();
       await createRouteHandlers(deps)._handleWalletImport({}, res);
-      assert.deepEqual(order, ["stop", "forget signer"]);
+      assert.deepEqual(order, ["halt", "forget signer"]);
       assert.equal(privateKeyRef.current, "0xpk_pw", "the new wallet's key");
     });
 
@@ -140,9 +146,9 @@ describe("server-routes createRouteHandlers", () => {
        */
       afterEach(() => appPhase._resetAppPhaseForTests());
 
-      /** Import, recording whether the wallet changed or a stop came. */
+      /** Import, recording whether the wallet changed or the positions were halted. */
       async function importRecorded() {
-        const seen = { imported: false, stopped: false };
+        const seen = { imported: false, halted: false };
         const base = makeDeps();
         const h = createRouteHandlers(
           makeDeps({
@@ -154,8 +160,8 @@ describe("server-routes createRouteHandlers", () => {
             },
             positionMgr: {
               ...base.positionMgr,
-              stopAll: async () => {
-                seen.stopped = true;
+              haltAll: () => {
+                seen.halted = true;
               },
             },
           }),
@@ -170,7 +176,7 @@ describe("server-routes createRouteHandlers", () => {
         const { res, seen } = await importRecorded();
         assert.strictEqual(res._status, 409);
         assert.match(res._body.error, /still starting/);
-        assert.deepStrictEqual(seen, { imported: false, stopped: false });
+        assert.deepStrictEqual(seen, { imported: false, halted: false });
       });
 
       it("is refused once the app is stopping", async () => {
@@ -178,7 +184,7 @@ describe("server-routes createRouteHandlers", () => {
         const { res, seen } = await importRecorded();
         assert.strictEqual(res._status, 409);
         assert.match(res._body.error, /stopping/);
-        assert.deepStrictEqual(seen, { imported: false, stopped: false });
+        assert.deepStrictEqual(seen, { imported: false, halted: false });
       });
 
       it("is refused while another import is under way", async () => {
@@ -186,7 +192,7 @@ describe("server-routes createRouteHandlers", () => {
         const { res, seen } = await importRecorded();
         assert.strictEqual(res._status, 409);
         assert.match(res._body.error, /importing a wallet/);
-        assert.deepStrictEqual(seen, { imported: false, stopped: false });
+        assert.deepStrictEqual(seen, { imported: false, halted: false });
       });
     });
 
@@ -271,6 +277,11 @@ describe("server-routes createRouteHandlers", () => {
   // ── _handleWalletReveal ───────────────────────────────────────────────────
 
   describe("_handleWalletReveal", () => {
+    /*-
+     *  The decrypt's answer names the wallet it opened
+     *  (src/lib/wallet-manager.js `revealWallet`), and Reveal Key answers
+     *  with that address.
+     */
     it("reveals wallet with correct password", async () => {
       const deps = makeDeps({
         readJsonBody: async () => ({ password: "secret" }),
@@ -278,8 +289,8 @@ describe("server-routes createRouteHandlers", () => {
           revealWallet: async () => ({
             privateKey: "0xpk",
             mnemonic: "word1 word2",
+            address: "0xAddr",
           }),
-          getAddress: () => "0xAddr",
           getStatus: () => ({ source: "key" }),
         },
       });
@@ -291,6 +302,56 @@ describe("server-routes createRouteHandlers", () => {
       assert.strictEqual(res._body.privateKey, "0xpk");
       assert.strictEqual(res._body.hasMnemonic, true);
       assert.strictEqual(res._body.address, "0xAddr");
+    });
+
+    it("refuses a Clear while it decrypts", async () => {
+      // A Clear sent from another tab, on a later turn, during the decrypt.
+      const walletInUse = createWalletInUse();
+      const clearNow = clearRequestOver(walletInUse);
+      const answers = [];
+      const h = createRouteHandlers(
+        makeDeps({
+          walletInUse,
+          readJsonBody: async () => ({ password: "secret" }),
+          walletManager: {
+            revealWallet: async () => {
+              await new Promise((resolve) => setImmediate(resolve));
+              answers.push(await clearNow());
+              return { privateKey: "0xpk", mnemonic: null, address: "0xA" };
+            },
+            getStatus: () => ({ source: "key" }),
+          },
+        }),
+      );
+      await h._handleWalletReveal({}, makeRes());
+      assert.strictEqual(answers[0].status, 409);
+      assert.match(answers[0].body.error, /reveal its key/);
+      assert.strictEqual((await clearNow()).status, 200, "taken once done");
+    });
+
+    it("answers a decrypt another wallet's import overtook 409, revealing nothing", async () => {
+      /*-
+       *  The decrypt was stale (the user's rule, 2026-11-27): the answer
+       *  sets `walletReplaced`, which the dashboard takes quietly.
+       */
+      const h = createRouteHandlers(
+        makeDeps({
+          readJsonBody: async () => ({ password: "secret" }),
+          walletManager: {
+            revealWallet: async () => {
+              throw Object.assign(new Error("The wallet changed"), {
+                staleWallet: true,
+              });
+            },
+            getStatus: () => ({ source: "key" }),
+          },
+        }),
+      );
+      const res = makeRes();
+      await h._handleWalletReveal({}, res);
+      assert.strictEqual(res._status, 409);
+      assert.strictEqual(res._body.walletReplaced, true);
+      assert.strictEqual(res._body.privateKey, undefined, "nothing revealed");
     });
   });
 
